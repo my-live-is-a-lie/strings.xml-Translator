@@ -1,0 +1,6 @@
+{
+  "name": "Android Strings XML Translator",
+  "description": "Offline Android strings.xml translation tool inspired by Weblate. Import strings.xml, translate string keys with formatted preview, and export target XML.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

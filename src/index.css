@@ -1,0 +1,233 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-sans: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-mono: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+
+    /* Material 3 Light Theme Tokens */
+    --md-sys-color-primary: #0b57d0;
+    --md-sys-color-on-primary: #ffffff;
+    --md-sys-color-primary-container: #d3e3fd;
+    --md-sys-color-on-primary-container: #041e49;
+
+    --md-sys-color-surface: #f8f9fa;
+    --md-sys-color-surface-container-lowest: #ffffff;
+    --md-sys-color-surface-container-low: #f0f4f9;
+    --md-sys-color-surface-container: #eaecf0;
+    --md-sys-color-surface-container-high: #e1e4ea;
+    --md-sys-color-surface-container-highest: #d8dce4;
+
+    --md-sys-color-on-surface: #1f1f1f;
+    --md-sys-color-on-surface-variant: #444746;
+    --md-sys-color-outline: #747775;
+    --md-sys-color-outline-variant: #c4c7c5;
+
+    /* Dynamic App Accent Color Tokens (Default: Teal) */
+    --accent-primary: #1eb996;
+    --accent-hover: #19a585;
+    --accent-active: #158c71;
+    --accent-muted: #185f54;
+    --accent-muted-hover: #1c6f63;
+    --accent-muted-active: #144f46;
+    --accent-border: #16695e;
+    --accent-soft: rgba(30, 185, 150, 0.15);
+    --accent-ring: rgba(30, 185, 150, 0.25);
+  }
+
+  html[data-accent="teal"] {
+    --accent-primary: #1eb996;
+    --accent-hover: #19a585;
+    --accent-active: #158c71;
+    --accent-muted: #185f54;
+    --accent-muted-hover: #1c6f63;
+    --accent-muted-active: #144f46;
+    --accent-border: #16695e;
+    --accent-soft: rgba(30, 185, 150, 0.15);
+    --accent-ring: rgba(30, 185, 150, 0.25);
+  }
+
+  html[data-accent="blue"] {
+    --accent-primary: #3b82f6;
+    --accent-hover: #2563eb;
+    --accent-active: #1d4ed8;
+    --accent-muted: #1e3a8a;
+    --accent-muted-hover: #1d4ed8;
+    --accent-muted-active: #172554;
+    --accent-border: #1d4ed8;
+    --accent-soft: rgba(59, 130, 246, 0.15);
+    --accent-ring: rgba(59, 130, 246, 0.25);
+  }
+
+  html[data-accent="violet"] {
+    --accent-primary: #8b5cf6;
+    --accent-hover: #7c3aed;
+    --accent-active: #6d28d9;
+    --accent-muted: #4c1d95;
+    --accent-muted-hover: #5b21b6;
+    --accent-muted-active: #3b0764;
+    --accent-border: #6d28d9;
+    --accent-soft: rgba(139, 92, 246, 0.15);
+    --accent-ring: rgba(139, 92, 246, 0.25);
+  }
+
+  html[data-accent="rose"] {
+    --accent-primary: #f43f5e;
+    --accent-hover: #e11d48;
+    --accent-active: #be123c;
+    --accent-muted: #881337;
+    --accent-muted-hover: #9f1239;
+    --accent-muted-active: #4c0519;
+    --accent-border: #be123c;
+    --accent-soft: rgba(244, 63, 94, 0.15);
+    --accent-ring: rgba(244, 63, 94, 0.25);
+  }
+
+  html[data-accent="amber"] {
+    --accent-primary: #f59e0b;
+    --accent-hover: #d97706;
+    --accent-active: #b45309;
+    --accent-muted: #78350f;
+    --accent-muted-hover: #92400e;
+    --accent-muted-active: #451a03;
+    --accent-border: #b45309;
+    --accent-soft: rgba(245, 158, 11, 0.15);
+    --accent-ring: rgba(245, 158, 11, 0.25);
+  }
+
+  html[data-accent="cyan"] {
+    --accent-primary: #06b6d4;
+    --accent-hover: #0891b2;
+    --accent-active: #0e7490;
+    --accent-muted: #164e63;
+    --accent-muted-hover: #155e75;
+    --accent-muted-active: #083344;
+    --accent-border: #0e7490;
+    --accent-soft: rgba(6, 182, 212, 0.15);
+    --accent-ring: rgba(6, 182, 212, 0.25);
+  }
+
+  .dark {
+    /* Material 3 Dark Theme Tokens */
+    --md-sys-color-primary: #a8c7fa;
+    --md-sys-color-on-primary: #062e6f;
+    --md-sys-color-primary-container: #0842a0;
+    --md-sys-color-on-primary-container: #d3e3fd;
+
+    --md-sys-color-surface: #111318;
+    --md-sys-color-surface-container-lowest: #0c0e12;
+    --md-sys-color-surface-container-low: #191c20;
+    --md-sys-color-surface-container: #1d2024;
+    --md-sys-color-surface-container-high: #282b30;
+    --md-sys-color-surface-container-highest: #33363b;
+
+    --md-sys-color-on-surface: #e2e2e6;
+    --md-sys-color-on-surface-variant: #c4c7c5;
+    --md-sys-color-outline: #8e918f;
+    --md-sys-color-outline-variant: #444746;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: var(--md-sys-color-surface);
+    color: var(--md-sys-color-on-surface);
+  }
+}
+
+/* Material 3 elevation shadows */
+.m3-elevation-1 {
+  box-shadow: 0 1px 3px 1px rgba(0, 0, 0, 0.08), 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+}
+.m3-elevation-2 {
+  box-shadow: 0 2px 6px 2px rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+}
+.m3-elevation-3 {
+  box-shadow: 0 4px 12px 3px rgba(0, 0, 0, 0.12), 0 1px 3px 0 rgba(0, 0, 0, 0.08);
+}
+
+/* Material 3 ripple transition helper */
+.m3-state-layer {
+  position: relative;
+  overflow: hidden;
+  transition: background-color 150ms cubic-bezier(0.2, 0, 0, 1), transform 100ms ease;
+}
+
+.m3-state-layer:active {
+  transform: scale(0.985);
+}
+
+/* Custom subtle scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(140, 145, 155, 0.3);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(140, 145, 155, 0.5);
+}
+
+/* Bind App Accent Classes to Dynamic Theme Tokens */
+.bg-\[\#1EB996\],
+.dark .dark\:bg-\[\#1EB996\],
+.bg-\[\#0B57D0\],
+.dark .dark\:bg-\[\#A8C7FA\] {
+  background-color: var(--accent-primary) !important;
+}
+
+.dark .dark\:text-\[\#062E6F\] {
+  color: #ffffff !important;
+}
+
+.hover\:bg-\[\#19A585\]:hover,
+.dark .dark\:hover\:bg-\[\#19A585\]:hover,
+.hover\:bg-\[\#0842A0\]:hover {
+  background-color: var(--accent-hover) !important;
+}
+
+.active\:bg-\[\#158C71\]:active {
+  background-color: var(--accent-active) !important;
+}
+
+.bg-\[\#185F54\] {
+  background-color: var(--accent-muted) !important;
+}
+
+.hover\:bg-\[\#1C6F63\]:hover {
+  background-color: var(--accent-muted-hover) !important;
+}
+
+.active\:bg-\[\#144F46\]:active {
+  background-color: var(--accent-muted-active) !important;
+}
+
+.text-\[\#1EB996\],
+.dark .dark\:text-\[\#1EB996\],
+.text-\[\#0B57D0\],
+.dark .dark\:text-\[\#A8C7FA\] {
+  color: var(--accent-primary) !important;
+}
+
+.fill-\[\#1EB996\] {
+  fill: var(--accent-primary) !important;
+}
+
+.border-\[\#16695E\] {
+  border-color: var(--accent-border) !important;
+}
+
+.border-\[\#1EB996\],
+.focus\:border-\[\#1EB996\]:focus {
+  border-color: var(--accent-primary) !important;
+}
+
+.bg-\[\#1EB996\]\/10,
+.bg-\[\#1EB996\]\/20 {
+  background-color: var(--accent-soft) !important;
+}
+
