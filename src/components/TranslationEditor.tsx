@@ -19,7 +19,8 @@ import {
   Trash2,
   FastForward,
   Undo2,
-  Redo2
+  Redo2,
+  ClipboardPaste
 } from 'lucide-react';
 import {
   ResourceItem,
@@ -32,6 +33,7 @@ import { LanguageSelectorModal } from './LanguageSelectorModal';
 import { getArabicLanguageName, getLanguageOption } from '../utils/languages';
 import { suggestTranslation } from '../utils/translator';
 import { normalizePluralsForLanguage } from '../utils/xmlParser';
+import { copyTextToClipboard, readTextFromClipboard } from '../utils/storage';
 
 const PLURAL_QUANTITY_LABELS_AR: Record<string, string> = {
   zero: 'صفر (0)',
@@ -109,6 +111,15 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     end: number;
   } | null>(null);
 
+  // Track whether an input box currently has an active type line marker (blinking caret) inside it
+  const activeLineMarkerRef = useRef<{
+    fieldType: 'string' | 'plural' | 'array';
+    quantity?: string;
+    index?: number;
+    position: number;
+  } | null>(null);
+  const isInteractingWithToolbarOrPasteRef = useRef(false);
+
   // Target Language selector modal state
   const [showLangModal, setShowLangModal] = useState(false);
 
@@ -119,12 +130,161 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   // UI feedback states
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedSource, setCopiedSource] = useState(false);
+  const [copiedTarget, setCopiedTarget] = useState(false);
   const [showSavedFeedback, setShowSavedFeedback] = useState(false);
   const [showToolsMenu, setShowToolsMenu] = useState(false);
   const [showInfoTooltip, setShowInfoTooltip] = useState(false);
 
   // Suggestion loading state
   const [isSuggesting, setIsSuggesting] = useState(false);
+
+  // Local draft state so typing/pasting/suggesting in the input box is only saved when clicking Save & Continue or Save & Stay
+  const [draftState, setDraftState] = useState<{
+    baseItem: ResourceItem;
+    draftItem: ResourceItem;
+    past: ResourceItem[];
+    future: ResourceItem[];
+  }>(() => ({
+    baseItem: item,
+    draftItem: item,
+    past: [],
+    future: [],
+  }));
+  const lastDraftEditRef = useRef<{ timestamp: number }>({ timestamp: 0 });
+
+  let currentDraftState = draftState;
+  if (draftState.baseItem !== item) {
+    currentDraftState = {
+      baseItem: item,
+      draftItem: item,
+      past: [],
+      future: [],
+    };
+    setDraftState(currentDraftState);
+  }
+
+  const draftItem = currentDraftState.draftItem;
+  const draftPast = currentDraftState.past;
+  const draftFuture = currentDraftState.future;
+
+  const updateDraftItem = React.useCallback(
+    (updatedItem: ResourceItem, options?: { undoDeletesText?: boolean }) => {
+      const now = Date.now();
+      setDraftState((curr) => {
+        const oldItem = curr.draftItem;
+        if (!options?.undoDeletesText && JSON.stringify(oldItem) === JSON.stringify(updatedItem)) {
+          return curr;
+        }
+
+        let isRapidSingleCharEdit = false;
+        if (
+          !options?.undoDeletesText &&
+          oldItem.type === 'string' &&
+          updatedItem.type === 'string' &&
+          curr.past.length > 0 &&
+          now - lastDraftEditRef.current.timestamp < 700
+        ) {
+          const lenDiff = Math.abs(oldItem.target.length - updatedItem.target.length);
+          const notCleared = updatedItem.target.length > 0;
+          if (lenDiff <= 1 && notCleared) {
+            isRapidSingleCharEdit = true;
+          }
+        }
+
+        let nextPast = curr.past;
+        if (!isRapidSingleCharEdit) {
+          const snapshotItem: ResourceItem = options?.undoDeletesText
+            ? oldItem.type === 'string'
+              ? { ...oldItem, target: '', status: 'untranslated', translationSource: undefined }
+              : oldItem.type === 'plural'
+                ? {
+                    ...oldItem,
+                    items: oldItem.items.map((pi) => ({ ...pi, target: '' })),
+                    status: 'untranslated',
+                    translationSource: undefined,
+                  }
+                : {
+                    ...oldItem,
+                    items: oldItem.items.map((ai) => ({ ...ai, target: '' })),
+                    status: 'untranslated',
+                    translationSource: undefined,
+                  }
+            : oldItem;
+          nextPast = [...curr.past.slice(-99), snapshotItem];
+        }
+
+        if (
+          !options?.undoDeletesText &&
+          oldItem.type === 'string' &&
+          updatedItem.type === 'string' &&
+          Math.abs(oldItem.target.length - updatedItem.target.length) <= 1 &&
+          updatedItem.target.length > 0
+        ) {
+          lastDraftEditRef.current = { timestamp: now };
+        } else {
+          lastDraftEditRef.current = { timestamp: 0 };
+        }
+
+        return {
+          ...curr,
+          draftItem: updatedItem,
+          past: nextPast,
+          future: [],
+        };
+      });
+    },
+    []
+  );
+
+  const handleEditorUndo = React.useCallback(() => {
+    lastDraftEditRef.current = { timestamp: 0 };
+    if (draftPast.length > 0) {
+      setDraftState((curr) => {
+        if (curr.past.length === 0) return curr;
+        const previous = curr.past[curr.past.length - 1];
+        return {
+          ...curr,
+          draftItem: previous,
+          past: curr.past.slice(0, -1),
+          future: [...curr.future, curr.draftItem],
+        };
+      });
+    } else if (canUndo && onUndo) {
+      onUndo();
+    }
+  }, [draftPast.length, canUndo, onUndo]);
+
+  const handleEditorRedo = React.useCallback(() => {
+    lastDraftEditRef.current = { timestamp: 0 };
+    if (draftFuture.length > 0) {
+      setDraftState((curr) => {
+        if (curr.future.length === 0) return curr;
+        const next = curr.future[curr.future.length - 1];
+        return {
+          ...curr,
+          draftItem: next,
+          past: [...curr.past, curr.draftItem],
+          future: curr.future.slice(0, -1),
+        };
+      });
+    } else if (canRedo && onRedo) {
+      onRedo();
+    }
+  }, [draftFuture.length, canRedo, onRedo]);
+
+  const discardDraftAndNavigate = React.useCallback(
+    (navigateFn: () => void) => {
+      lastDraftEditRef.current = { timestamp: 0 };
+      setDraftState({
+        baseItem: item,
+        draftItem: item,
+        past: [],
+        future: [],
+      });
+      navigateFn();
+    },
+    [item]
+  );
 
   // Reset direction when target language changes
   useEffect(() => {
@@ -135,21 +295,23 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   useEffect(() => {
     setShowToolsMenu(false);
     lastCursorRef.current = null;
+    activeLineMarkerRef.current = null;
+    lastDraftEditRef.current = { timestamp: 0 };
   }, [item.id]);
 
   // Extract source text
   const getSourceText = (): string => {
-    if (item.type === 'string') return item.source;
-    if (item.type === 'plural') return item.items[0]?.source || '';
-    if (item.type === 'array') return item.items[0]?.source || '';
+    if (draftItem.type === 'string') return draftItem.source;
+    if (draftItem.type === 'plural') return draftItem.items[0]?.source || '';
+    if (draftItem.type === 'array') return draftItem.items[0]?.source || '';
     return '';
   };
 
-  // Extract current target text
+  // Extract current target text (from local editor draft)
   const getTargetText = (): string => {
-    if (item.type === 'string') return item.target;
-    if (item.type === 'plural') return item.items[0]?.target || '';
-    if (item.type === 'array') return item.items[0]?.target || '';
+    if (draftItem.type === 'string') return draftItem.target;
+    if (draftItem.type === 'plural') return draftItem.items[0]?.target || '';
+    if (draftItem.type === 'array') return draftItem.items[0]?.target || '';
     return '';
   };
 
@@ -171,82 +333,82 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     const handleResize = () => adjustTextareaHeight();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [item.id, currentTargetText, item.type, direction]);
+  }, [item.id, currentTargetText, draftItem.type, direction]);
 
-  // Handle single string text change
+  // Handle single string text change (updates local draft only; saved on Save & Continue / Save & Stay)
   const handleSingleTextChange = (val: string) => {
-    if (item.type !== 'string') return;
+    if (draftItem.type !== 'string') return;
     const isNowEmpty = !val.trim();
     const updated: SingleStringItem = {
-      ...item,
+      ...draftItem,
       target: val,
-      status: isNowEmpty ? 'untranslated' : item.status === 'untranslated' ? 'translated' : item.status,
+      status: isNowEmpty ? 'untranslated' : draftItem.status === 'untranslated' ? 'translated' : draftItem.status,
       translationSource: isNowEmpty ? undefined : 'manual',
     };
-    onUpdateTranslation(updated);
+    updateDraftItem(updated);
   };
 
   // Ensure plural items always include all CLDR quantities for targetLang (e.g. zero, one, two, few, many, other for Arabic)
   const normalizedPluralItems =
-    item.type === 'plural'
-      ? (normalizePluralsForLanguage([item], targetLang)[0] as PluralStringItem).items
+    draftItem.type === 'plural'
+      ? (normalizePluralsForLanguage([draftItem], targetLang)[0] as PluralStringItem).items
       : [];
 
-  // Plural change
+  // Plural change (updates local draft only)
   const handlePluralQuantityChange = (quantity: string, val: string) => {
-    if (item.type !== 'plural') return;
+    if (draftItem.type !== 'plural') return;
     const baseItems = normalizedPluralItems;
     const newItems = baseItems.map((pi) => (pi.quantity === quantity ? { ...pi, target: val } : pi));
     const anyFilled = newItems.some((pi) => pi.target.trim().length > 0);
     const updated: PluralStringItem = {
-      ...item,
+      ...draftItem,
       items: newItems,
-      status: anyFilled ? (item.status === 'untranslated' ? 'translated' : item.status) : 'untranslated',
+      status: anyFilled ? (draftItem.status === 'untranslated' ? 'translated' : draftItem.status) : 'untranslated',
       translationSource: anyFilled ? 'manual' : undefined,
     };
-    onUpdateTranslation(updated);
+    updateDraftItem(updated);
   };
 
-  // Array item change
+  // Array item change (updates local draft only)
   const handleArrayItemChange = (index: number, val: string) => {
-    if (item.type !== 'array') return;
-    const newItems = item.items.map((ai) => (ai.index === index ? { ...ai, target: val } : ai));
+    if (draftItem.type !== 'array') return;
+    const newItems = draftItem.items.map((ai) => (ai.index === index ? { ...ai, target: val } : ai));
     const anyFilled = newItems.some((ai) => ai.target.trim().length > 0);
     const updated: ArrayStringItem = {
-      ...item,
+      ...draftItem,
       items: newItems,
-      status: anyFilled ? (item.status === 'untranslated' ? 'translated' : item.status) : 'untranslated',
+      status: anyFilled ? (draftItem.status === 'untranslated' ? 'translated' : draftItem.status) : 'untranslated',
       translationSource: anyFilled ? 'manual' : undefined,
     };
-    onUpdateTranslation(updated);
+    updateDraftItem(updated);
   };
 
-  // Clone source directly to target (Weblate clone action)
+  // Clone source directly to target (Weblate clone action - updates local draft only)
   const handleCloneSourceToTarget = () => {
-    if (item.type === 'string') {
+    if (draftItem.type === 'string') {
       const updated: SingleStringItem = {
-        ...item,
-        target: item.source,
-        status: item.source ? 'translated' : item.status,
-        translationSource: item.source ? 'manual' : undefined,
+        ...draftItem,
+        target: draftItem.source,
+        status: draftItem.source ? 'translated' : draftItem.status,
+        translationSource: draftItem.source ? 'manual' : undefined,
       };
-      onUpdateTranslation(updated);
-    } else if (item.type === 'plural') {
+      updateDraftItem(updated);
+    } else if (draftItem.type === 'plural') {
       const updated: PluralStringItem = {
-        ...item,
-        items: item.items.map((pi) => ({ ...pi, target: pi.source })),
+        ...draftItem,
+        items: normalizedPluralItems.map((pi) => ({ ...pi, target: pi.source })),
         status: 'translated',
         translationSource: 'manual',
       };
-      onUpdateTranslation(updated);
-    } else if (item.type === 'array') {
+      updateDraftItem(updated);
+    } else if (draftItem.type === 'array') {
       const updated: ArrayStringItem = {
-        ...item,
-        items: item.items.map((ai) => ({ ...ai, target: ai.source })),
+        ...draftItem,
+        items: draftItem.items.map((ai) => ({ ...ai, target: ai.source })),
         status: 'translated',
         translationSource: 'manual',
       };
-      onUpdateTranslation(updated);
+      updateDraftItem(updated);
     }
   };
 
@@ -257,13 +419,40 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     extra?: { quantity?: string; index?: number }
   ) => {
     if (!el) return;
+    const start = typeof el.selectionStart === 'number' ? el.selectionStart : el.value.length;
+    const end = typeof el.selectionEnd === 'number' ? el.selectionEnd : el.value.length;
     lastCursorRef.current = {
       fieldType,
       quantity: extra?.quantity,
       index: extra?.index,
-      start: typeof el.selectionStart === 'number' ? el.selectionStart : el.value.length,
-      end: typeof el.selectionEnd === 'number' ? el.selectionEnd : el.value.length,
+      start,
+      end,
     };
+    activeLineMarkerRef.current = {
+      fieldType,
+      quantity: extra?.quantity,
+      index: extra?.index,
+      position: start,
+    };
+  };
+
+  const handleTextareaBlur = (
+    el: HTMLTextAreaElement | null,
+    fieldType: 'string' | 'plural' | 'array',
+    extra?: { quantity?: string; index?: number }
+  ) => {
+    setTimeout(() => {
+      if (isInteractingWithToolbarOrPasteRef.current) return;
+      if (el && document.activeElement === el) return;
+      if (
+        activeLineMarkerRef.current &&
+        activeLineMarkerRef.current.fieldType === fieldType &&
+        activeLineMarkerRef.current.quantity === extra?.quantity &&
+        activeLineMarkerRef.current.index === extra?.index
+      ) {
+        activeLineMarkerRef.current = null;
+      }
+    }, 0);
   };
 
   // Insert character, symbol, or Android syntax token at cursor (line indicator) position in the active textarea
@@ -271,9 +460,9 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     charToInsert: string,
     targetField?: { fieldType: 'plural'; quantity: string } | { fieldType: 'array'; index: number }
   ) => {
-    if (item.type === 'string') {
+    if (draftItem.type === 'string') {
       const el = textareaRef.current;
-      const text = item.target;
+      const text = draftItem.target;
       const isFocused = el && document.activeElement === el;
       const saved =
         lastCursorRef.current?.fieldType === 'string' ? lastCursorRef.current : null;
@@ -322,7 +511,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       return;
     }
 
-    if (item.type === 'plural') {
+    if (draftItem.type === 'plural') {
       const saved =
         lastCursorRef.current?.fieldType === 'plural' ? lastCursorRef.current : null;
       const targetQty =
@@ -371,16 +560,16 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       return;
     }
 
-    if (item.type === 'array') {
+    if (draftItem.type === 'array') {
       const saved =
         lastCursorRef.current?.fieldType === 'array' ? lastCursorRef.current : null;
       const targetIdx =
         (targetField?.fieldType === 'array' ? targetField.index : undefined) ??
         saved?.index ??
-        item.items[0]?.index ??
+        draftItem.items[0]?.index ??
         0;
 
-      const arrayEntry = item.items.find((ai) => ai.index === targetIdx);
+      const arrayEntry = draftItem.items.find((ai) => ai.index === targetIdx);
       if (!arrayEntry) return;
 
       const el = arrayTextareaRefs.current[targetIdx];
@@ -426,7 +615,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     targetField?: { fieldType: 'plural'; quantity: string } | { fieldType: 'array'; index: number }
   ) => {
     if (!text) {
-      return <span className="italic text-slate-500">Empty string</span>;
+      return <span className="italic text-slate-500">{isAr ? 'نص فارغ' : 'Empty string'}</span>;
     }
 
     const tokenRegex = /(%(?:\d+\$)?[+# 0,-]*\d*(?:\.\d+)?[bcdefgopsx%]|\\\\[nt]|\\[nt]|\{[a-zA-Z0-9_-]+\}|<\/?[a-zA-Z][^>]*>)/gi;
@@ -442,7 +631,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             role="button"
             tabIndex={0}
             dir="ltr"
-            title="انقر لإدراج هذا الرمز في موضع المؤشر / Tap to insert at cursor"
+            title={isAr ? 'انقر لإدراج هذا الرمز في موضع المؤشر' : 'Tap to insert at cursor'}
             onMouseDown={(e) => {
               // Prevent blurring the active textarea so the line indicator stays in place
               e.preventDefault();
@@ -470,68 +659,361 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   // Copy link / XML key
   const handleCopyLink = () => {
     const xmlSnippet = `<string name="${item.name}">${currentTargetText || sourceText}</string>`;
-    navigator.clipboard.writeText(xmlSnippet);
+    void copyTextToClipboard(xmlSnippet);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
   };
 
   // Copy English source
   const handleCopySource = () => {
-    navigator.clipboard.writeText(sourceText);
+    void copyTextToClipboard(sourceText);
     setCopiedSource(true);
     setTimeout(() => setCopiedSource(false), 2000);
   };
 
+  // Copy input box text (target translation)
+  const handleCopyTarget = () => {
+    let textToCopy = currentTargetText;
+    if (draftItem.type === 'string') {
+      textToCopy = draftItem.target;
+    } else if (draftItem.type === 'plural') {
+      const targetQty =
+        activeLineMarkerRef.current?.quantity ||
+        lastCursorRef.current?.quantity ||
+        normalizedPluralItems[0]?.quantity;
+      const found = normalizedPluralItems.find((pi) => pi.quantity === targetQty);
+      textToCopy = found ? found.target : currentTargetText;
+    } else if (draftItem.type === 'array') {
+      const targetIdx =
+        activeLineMarkerRef.current?.index ??
+        lastCursorRef.current?.index ??
+        draftItem.items[0]?.index ??
+        0;
+      const found = draftItem.items.find((ai) => ai.index === targetIdx);
+      textToCopy = found ? found.target : currentTargetText;
+    }
+
+    void copyTextToClipboard(textToCopy);
+    setCopiedTarget(true);
+    setTimeout(() => setCopiedTarget(false), 2000);
+  };
+
+  // Paste into input box:
+  // - If the input box does NOT have a type line marker active in it: replace any existing text with clipboard text.
+  // - If there IS a type line marker active in the text box: paste from that line marker without removing existing text.
+  const handlePasteTarget = async () => {
+    // Snapshot active line marker state right when Paste is triggered
+    const activeMarker = activeLineMarkerRef.current;
+    const activeElement = typeof document !== 'undefined' ? document.activeElement : null;
+
+    const pastedText = await readTextFromClipboard();
+    isInteractingWithToolbarOrPasteRef.current = false;
+
+    if (pastedText === null || pastedText === undefined) return;
+
+    if (draftItem.type === 'string') {
+      const el = textareaRef.current;
+      const isFocusedNow = Boolean(el && activeElement === el);
+      const hasActiveLineMarker = isFocusedNow || activeMarker?.fieldType === 'string';
+
+      if (hasActiveLineMarker) {
+        const text = draftItem.target || '';
+        const rawPos = isFocusedNow && el
+          ? el.selectionStart
+          : activeMarker?.position ?? text.length;
+        const pos = Math.max(0, Math.min(rawPos, text.length));
+        const newText = text.substring(0, pos) + pastedText + text.substring(pos);
+        const newCursor = pos + pastedText.length;
+
+        lastCursorRef.current = {
+          fieldType: 'string',
+          start: newCursor,
+          end: newCursor,
+        };
+        activeLineMarkerRef.current = {
+          fieldType: 'string',
+          position: newCursor,
+        };
+
+        handleSingleTextChange(newText);
+        setTimeout(() => {
+          if (el) {
+            adjustTextareaHeight(el);
+            el.focus();
+            el.setSelectionRange(newCursor, newCursor);
+          }
+        }, 0);
+      } else {
+        // No active type line marker in the input box: remove any text in the input box and replace with clipboard text
+        activeLineMarkerRef.current = null;
+        lastCursorRef.current = null;
+        handleSingleTextChange(pastedText);
+        setTimeout(() => {
+          if (el) {
+            adjustTextareaHeight(el);
+          }
+        }, 0);
+      }
+      return;
+    }
+
+    if (draftItem.type === 'plural') {
+      const focusedQty = Object.keys(pluralTextareaRefs.current).find(
+        (q) => pluralTextareaRefs.current[q] && activeElement === pluralTextareaRefs.current[q]
+      );
+      const hasActiveLineMarker = Boolean(
+        focusedQty || (activeMarker?.fieldType === 'plural' && activeMarker.quantity)
+      );
+      const targetQty =
+        focusedQty ||
+        activeMarker?.quantity ||
+        lastCursorRef.current?.quantity ||
+        normalizedPluralItems[0]?.quantity;
+      if (!targetQty) return;
+
+      const pluralEntry = normalizedPluralItems.find((pi) => pi.quantity === targetQty);
+      if (!pluralEntry) return;
+      const el = pluralTextareaRefs.current[targetQty];
+
+      if (hasActiveLineMarker) {
+        const text = pluralEntry.target || '';
+        const rawPos =
+          focusedQty && el ? el.selectionStart : activeMarker?.position ?? text.length;
+        const pos = Math.max(0, Math.min(rawPos, text.length));
+        const newText = text.substring(0, pos) + pastedText + text.substring(pos);
+        const newCursor = pos + pastedText.length;
+
+        lastCursorRef.current = {
+          fieldType: 'plural',
+          quantity: targetQty,
+          start: newCursor,
+          end: newCursor,
+        };
+        activeLineMarkerRef.current = {
+          fieldType: 'plural',
+          quantity: targetQty,
+          position: newCursor,
+        };
+
+        handlePluralQuantityChange(targetQty, newText);
+        setTimeout(() => {
+          if (el) {
+            adjustTextareaHeight(el);
+            el.focus();
+            el.setSelectionRange(newCursor, newCursor);
+          }
+        }, 0);
+      } else {
+        activeLineMarkerRef.current = null;
+        handlePluralQuantityChange(targetQty, pastedText);
+        setTimeout(() => {
+          if (el) {
+            adjustTextareaHeight(el);
+          }
+        }, 0);
+      }
+      return;
+    }
+
+    if (draftItem.type === 'array') {
+      const focusedIdxKey = Object.keys(arrayTextareaRefs.current).find(
+        (idxKey) =>
+          arrayTextareaRefs.current[Number(idxKey)] &&
+          activeElement === arrayTextareaRefs.current[Number(idxKey)]
+      );
+      const focusedIdx = focusedIdxKey !== undefined ? Number(focusedIdxKey) : undefined;
+      const hasActiveLineMarker = Boolean(
+        focusedIdx !== undefined ||
+          (activeMarker?.fieldType === 'array' && activeMarker.index !== undefined)
+      );
+      const targetIdx =
+        focusedIdx ??
+        activeMarker?.index ??
+        lastCursorRef.current?.index ??
+        draftItem.items[0]?.index ??
+        0;
+
+      const arrayEntry = draftItem.items.find((ai) => ai.index === targetIdx);
+      if (!arrayEntry) return;
+      const el = arrayTextareaRefs.current[targetIdx];
+
+      if (hasActiveLineMarker) {
+        const text = arrayEntry.target || '';
+        const rawPos =
+          focusedIdx !== undefined && el
+            ? el.selectionStart
+            : activeMarker?.position ?? text.length;
+        const pos = Math.max(0, Math.min(rawPos, text.length));
+        const newText = text.substring(0, pos) + pastedText + text.substring(pos);
+        const newCursor = pos + pastedText.length;
+
+        lastCursorRef.current = {
+          fieldType: 'array',
+          index: targetIdx,
+          start: newCursor,
+          end: newCursor,
+        };
+        activeLineMarkerRef.current = {
+          fieldType: 'array',
+          index: targetIdx,
+          position: newCursor,
+        };
+
+        handleArrayItemChange(targetIdx, newText);
+        setTimeout(() => {
+          if (el) {
+            adjustTextareaHeight(el);
+            el.focus();
+            el.setSelectionRange(newCursor, newCursor);
+          }
+        }, 0);
+      } else {
+        activeLineMarkerRef.current = null;
+        handleArrayItemChange(targetIdx, pastedText);
+        setTimeout(() => {
+          if (el) {
+            adjustTextareaHeight(el);
+          }
+        }, 0);
+      }
+    }
+  };
+
   // Toggle "Needs editing / Needs review" (تحتاج إلى تعديل)
   const handleToggleNeedsReview = () => {
-    const newStatus: TranslationStatus = item.status === 'needs_review' ? 'translated' : 'needs_review';
-    onUpdateTranslation({
-      ...item,
+    const newStatus: TranslationStatus = draftItem.status === 'needs_review' ? 'translated' : 'needs_review';
+    updateDraftItem({
+      ...draftItem,
       status: newStatus,
     });
   };
 
-  // Save without continuing (حفظ بدون متابعة)
-  const handleSaveWithoutContinuing = () => {
-    if (item.type === 'string' && item.target.trim() && item.status === 'untranslated') {
-      onUpdateTranslation({
-        ...item,
-        status: 'translated',
-      });
-    }
+  // Build final ResourceItem to save when user clicks Save & Continue or Save & Stay
+  const buildSavedItemFromDraft = React.useCallback(
+    (currentDraft: ResourceItem): ResourceItem => {
+      if (currentDraft.type === 'string') {
+        const isNowEmpty = !currentDraft.target.trim();
+        return {
+          ...currentDraft,
+          status: isNowEmpty
+            ? 'untranslated'
+            : currentDraft.status === 'untranslated'
+              ? 'translated'
+              : currentDraft.status,
+          translationSource: isNowEmpty ? undefined : currentDraft.translationSource || 'manual',
+        };
+      }
+      if (currentDraft.type === 'plural') {
+        const baseItems = (
+          normalizePluralsForLanguage([currentDraft], targetLang)[0] as PluralStringItem
+        ).items;
+        const anyFilled = baseItems.some((pi) => pi.target.trim().length > 0);
+        return {
+          ...currentDraft,
+          items: baseItems,
+          status: anyFilled
+            ? currentDraft.status === 'untranslated'
+              ? 'translated'
+              : currentDraft.status
+            : 'untranslated',
+          translationSource: anyFilled ? currentDraft.translationSource || 'manual' : undefined,
+        };
+      }
+      if (currentDraft.type === 'array') {
+        const anyFilled = currentDraft.items.some((ai) => ai.target.trim().length > 0);
+        return {
+          ...currentDraft,
+          status: anyFilled
+            ? currentDraft.status === 'untranslated'
+              ? 'translated'
+              : currentDraft.status
+            : 'untranslated',
+          translationSource: anyFilled ? currentDraft.translationSource || 'manual' : undefined,
+        };
+      }
+      return currentDraft;
+    },
+    [targetLang]
+  );
+
+  // Save without continuing (حفظ بدون متابعة / Save & Stay)
+  const handleSaveWithoutContinuing = React.useCallback(() => {
+    const savedItem = buildSavedItemFromDraft(draftItem);
+    const undoDeletesText = savedItem.translationSource === 'ai' && item.status === 'untranslated';
+    lastDraftEditRef.current = { timestamp: 0 };
+    setDraftState({
+      baseItem: savedItem,
+      draftItem: savedItem,
+      past: [],
+      future: [],
+    });
+    onUpdateTranslation(savedItem, undoDeletesText ? { undoDeletesText: true } : undefined);
     setShowSavedFeedback(true);
     setTimeout(() => setShowSavedFeedback(false), 2000);
-  };
+  }, [buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation]);
 
-  // Save and continue (حفظ ومتابعة)
-  const handleSaveAndContinue = () => {
-    if (item.type === 'string' && item.target.trim() && item.status === 'untranslated') {
-      onUpdateTranslation({
-        ...item,
-        status: 'translated',
-      });
-    }
+  // Save and continue (حفظ ومتابعة / Save & Continue)
+  const handleSaveAndContinue = React.useCallback(() => {
+    const savedItem = buildSavedItemFromDraft(draftItem);
+    const undoDeletesText = savedItem.translationSource === 'ai' && item.status === 'untranslated';
+    lastDraftEditRef.current = { timestamp: 0 };
+    setDraftState({
+      baseItem: savedItem,
+      draftItem: savedItem,
+      past: [],
+      future: [],
+    });
+    onUpdateTranslation(savedItem, undoDeletesText ? { undoDeletesText: true } : undefined);
     onNavigateNext();
-  };
+  }, [buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation, onNavigateNext]);
 
-  // Suggest translation (اقترح) — immediately fills the input box and allows Undo button to delete suggested text
+  // Editor keyboard shortcuts for Undo/Redo and Ctrl+Enter (Save & Continue)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        handleEditorUndo();
+        return;
+      }
+      if (
+        ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') ||
+        ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'z')
+      ) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        handleEditorRedo();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        handleSaveAndContinue();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [handleEditorUndo, handleEditorRedo, handleSaveAndContinue]);
+
+  // Suggest translation (اقترح) — immediately fills the input box (draft) and allows Undo button to delete suggested text
   const handleSuggest = async () => {
     setIsSuggesting(true);
 
     try {
-      if (item.type === 'string') {
-        const res = await suggestTranslation(item.source, targetLang, targetLocaleName);
+      if (draftItem.type === 'string') {
+        const res = await suggestTranslation(draftItem.source, targetLang, targetLocaleName);
         if (res && res.text) {
           const isNowEmpty = !res.text.trim();
           const updated: SingleStringItem = {
-            ...item,
+            ...draftItem,
             target: res.text,
             status: isNowEmpty ? 'untranslated' : 'translated',
             translationSource: isNowEmpty ? undefined : 'ai',
           };
-          onUpdateTranslation(updated, { undoDeletesText: true });
+          updateDraftItem(updated, { undoDeletesText: true });
         }
-      } else if (item.type === 'plural') {
+      } else if (draftItem.type === 'plural') {
         const updated = await Promise.all(
           normalizedPluralItems.map(async (pi) => {
             const res = await suggestTranslation(pi.source, targetLang, targetLocaleName, pi.quantity);
@@ -541,18 +1023,18 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             };
           })
         );
-        onUpdateTranslation(
+        updateDraftItem(
           {
-            ...item,
+            ...draftItem,
             items: updated,
             status: 'translated',
             translationSource: 'ai',
           },
           { undoDeletesText: true }
         );
-      } else if (item.type === 'array') {
+      } else if (draftItem.type === 'array') {
         const updated = await Promise.all(
-          item.items.map(async (ai) => {
+          draftItem.items.map(async (ai) => {
             const res = await suggestTranslation(ai.source, targetLang, targetLocaleName);
             return {
               ...ai,
@@ -560,9 +1042,9 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             };
           })
         );
-        onUpdateTranslation(
+        updateDraftItem(
           {
-            ...item,
+            ...draftItem,
             items: updated,
             status: 'translated',
             translationSource: 'ai',
@@ -577,7 +1059,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     }
   };
 
-  // Auto-translate untranslated strings automatically when Auto Translate toggle is active
+  // Auto-translate untranslated strings into the editor input box when Auto Translate toggle is active
   const autoTranslatedItemKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -613,11 +1095,14 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               translationSource: 'ai',
             };
             completed = true;
-            onUpdateTranslation(updated, { undoDeletesText: true });
+            updateDraftItem(updated, { undoDeletesText: true });
           }
         } else if (item.type === 'plural') {
+          const basePlurals = (
+            normalizePluralsForLanguage([item], targetLang)[0] as PluralStringItem
+          ).items;
           const updated = await Promise.all(
-            normalizedPluralItems.map(async (pi) => {
+            basePlurals.map(async (pi) => {
               const res = await suggestTranslation(
                 pi.source,
                 targetLang,
@@ -633,7 +1118,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
           if (cancelled) return;
           if (updated.some((pi) => pi.target.trim().length > 0)) {
             completed = true;
-            onUpdateTranslation(
+            updateDraftItem(
               {
                 ...item,
                 items: updated,
@@ -656,7 +1141,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
           if (cancelled) return;
           if (updated.some((ai) => ai.target.trim().length > 0)) {
             completed = true;
-            onUpdateTranslation(
+            updateDraftItem(
               {
                 ...item,
                 items: updated,
@@ -684,23 +1169,23 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
         autoTranslatedItemKeyRef.current = null;
       }
     };
-  }, [autoTranslate, item.id, item.status, targetLang, targetLocaleName, normalizedPluralItems, onUpdateTranslation]);
+  }, [autoTranslate, item, targetLang, targetLocaleName, updateDraftItem]);
 
   // Tools Actions
   const handleClearText = () => {
-    if (item.type === 'string') {
+    if (draftItem.type === 'string') {
       handleSingleTextChange('');
-    } else if (item.type === 'plural') {
-      onUpdateTranslation({
-        ...item,
+    } else if (draftItem.type === 'plural') {
+      updateDraftItem({
+        ...draftItem,
         items: normalizedPluralItems.map((pi) => ({ ...pi, target: '' })),
         status: 'untranslated',
         translationSource: undefined,
       });
-    } else if (item.type === 'array') {
-      onUpdateTranslation({
-        ...item,
-        items: item.items.map((ai) => ({ ...ai, target: '' })),
+    } else if (draftItem.type === 'array') {
+      updateDraftItem({
+        ...draftItem,
+        items: draftItem.items.map((ai) => ({ ...ai, target: '' })),
         status: 'untranslated',
         translationSource: undefined,
       });
@@ -709,11 +1194,16 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   };
 
   const handleWrapCData = () => {
-    if (item.type === 'string') {
-      handleSingleTextChange(`<![CDATA[${item.target || item.source}]]>`);
+    if (draftItem.type === 'string') {
+      handleSingleTextChange(`<![CDATA[${draftItem.target || draftItem.source}]]>`);
     }
     setShowToolsMenu(false);
   };
+
+  const effectiveCanUndo = draftPast.length > 0 || canUndo;
+  const effectiveCanRedo = draftFuture.length > 0 || canRedo;
+  const effectiveUndoCount = draftPast.length + undoCount;
+  const effectiveRedoCount = draftFuture.length + redoCount;
 
   // Max recommended character threshold
   const maxThreshold = 100;
@@ -843,17 +1333,17 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               {/* Toolbar Row 1: Punctuation & Typography */}
               <div className="flex items-center bg-[#171D27] border border-[#283242] rounded-lg overflow-x-auto divide-x divide-[#283242] rtl:divide-x-reverse no-scrollbar">
                 {[
-                  { label: '-', value: '-', title: 'Hyphen (-)' },
-                  { label: '_', value: '_', title: 'Underscore (_)' },
-                  { label: '( - )', value: '( - )', title: 'Parentheses ( - )' },
-                  { label: "'", value: "'", title: "Single quote (')" },
-                  { label: '‘', value: '‘', title: 'Arabic quote / comma (‘)' },
-                  { label: '"', value: '"', title: 'Double quote (")' },
-                  { label: '“', value: '“', title: 'Curly quote (“)' },
-                  { label: '...', value: '…', title: 'Horizontal Ellipsis (…)' },
-                  { label: 'NBS', value: '\u00A0', title: 'Non-Breaking Space (U+00A0)' },
-                  { label: '↵', value: '\\n', title: 'Newline (\\n)' },
-                  { label: '⇄', value: '\\t', title: 'Tabulation (\\t)' },
+                  { label: '-', value: '-', title: isAr ? 'شرطة (-)' : 'Hyphen (-)' },
+                  { label: '_', value: '_', title: isAr ? 'شرطة سفلية (_)' : 'Underscore (_)' },
+                  { label: '( - )', value: '( - )', title: isAr ? 'أقواس ( - )' : 'Parentheses ( - )' },
+                  { label: "'", value: "'", title: isAr ? "فاصلة علوية مفردة (')" : "Single quote (')" },
+                  { label: '‘', value: '‘', title: isAr ? 'علامة تنصيص مفردة (‘)' : 'Arabic quote / comma (‘)' },
+                  { label: '"', value: '"', title: isAr ? 'علامة تنصيص مزدوجة (")' : 'Double quote (")' },
+                  { label: '“', value: '“', title: isAr ? 'علامة تنصيص منحنية (“)' : 'Curly quote (“)' },
+                  { label: '...', value: '…', title: isAr ? 'نقاط حذف أفقية (…)' : 'Horizontal Ellipsis (…)' },
+                  { label: 'NBS', value: '\u00A0', title: isAr ? 'مسافة غير فاصلة (NBS)' : 'Non-Breaking Space (U+00A0)' },
+                  { label: '↵', value: '\\n', title: isAr ? 'سطر جديد (\\n)' : 'Newline (\\n)' },
+                  { label: '⇄', value: '\\t', title: isAr ? 'مسافة جدولة (\\t)' : 'Tabulation (\\t)' },
                 ].map((btn, idx) => (
                   <button
                     key={idx}
@@ -871,13 +1361,13 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               {/* Toolbar Row 2: BiDi Unicode Directional Controls */}
               <div className="flex items-center bg-[#171D27] border border-[#283242] rounded-lg overflow-x-auto divide-x divide-[#283242] rtl:divide-x-reverse no-scrollbar">
                 {[
-                  { label: 'PDF', value: '\u202C', title: 'Pop Directional Formatting (U+202C)' },
-                  { label: 'RLE', value: '\u202B', title: 'Right-to-Left Embedding (U+202B)' },
-                  { label: 'LRE', value: '\u202A', title: 'Left-to-Right Embedding (U+202A)' },
-                  { label: 'RLM', value: '\u200F', title: 'Right-to-Left Mark (U+200F)' },
-                  { label: 'LRM', value: '\u200E', title: 'Left-to-Right Mark (U+200E)' },
-                  { label: 'ZWJ', value: '\u200D', title: 'Zero-Width Joiner (U+200D)' },
-                  { label: 'ZWNJ', value: '\u200C', title: 'Zero-Width Non-Joiner (U+200C)' },
+                  { label: 'PDF', value: '\u202C', title: isAr ? 'إنهاء تنسيق الاتجاه (PDF)' : 'Pop Directional Formatting (U+202C)' },
+                  { label: 'RLE', value: '\u202B', title: isAr ? 'تضمين من اليمين إلى اليسار (RLE)' : 'Right-to-Left Embedding (U+202B)' },
+                  { label: 'LRE', value: '\u202A', title: isAr ? 'تضمين من اليسار إلى اليمين (LRE)' : 'Left-to-Right Embedding (U+202A)' },
+                  { label: 'RLM', value: '\u200F', title: isAr ? 'علامة من اليمين إلى اليسار (RLM)' : 'Right-to-Left Mark (U+200F)' },
+                  { label: 'LRM', value: '\u200E', title: isAr ? 'علامة من اليسار إلى اليمين (LRM)' : 'Left-to-Right Mark (U+200E)' },
+                  { label: 'ZWJ', value: '\u200D', title: isAr ? 'رابط بعرض صفري (ZWJ)' : 'Zero-Width Joiner (U+200D)' },
+                  { label: 'ZWNJ', value: '\u200C', title: isAr ? 'فاصل بعرض صفري (ZWNJ)' : 'Zero-Width Non-Joiner (U+200C)' },
                 ].map((btn, idx) => (
                   <button
                     key={idx}
@@ -894,14 +1384,15 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             </div>
 
             {/* Translation Textarea (Single String) */}
-            {item.type === 'string' && (
+            {draftItem.type === 'string' && (
               <div className="relative">
                 <textarea
                   id="weblate-translation-input"
                   ref={textareaRef}
                   dir={direction}
-                  value={item.target}
+                  value={draftItem.target}
                   onFocus={(e) => recordCursorPosition(e.currentTarget, 'string')}
+                  onBlur={(e) => handleTextareaBlur(e.currentTarget, 'string')}
                   onClick={(e) => recordCursorPosition(e.currentTarget, 'string')}
                   onKeyUp={(e) => recordCursorPosition(e.currentTarget, 'string')}
                   onSelect={(e) => recordCursorPosition(e.currentTarget, 'string')}
@@ -918,7 +1409,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             )}
 
             {/* Plural Support (if plural string) */}
-            {item.type === 'plural' && (
+            {draftItem.type === 'plural' && (
               <div className="space-y-2">
                 {normalizedPluralItems.map((pi) => (
                   <div key={pi.quantity} className="space-y-1">
@@ -955,6 +1446,9 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                       onFocus={(e) =>
                         recordCursorPosition(e.currentTarget, 'plural', { quantity: pi.quantity })
                       }
+                      onBlur={(e) =>
+                        handleTextareaBlur(e.currentTarget, 'plural', { quantity: pi.quantity })
+                      }
                       onClick={(e) =>
                         recordCursorPosition(e.currentTarget, 'plural', { quantity: pi.quantity })
                       }
@@ -982,9 +1476,9 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             )}
 
             {/* Array Support (if array string) */}
-            {item.type === 'array' && (
+            {draftItem.type === 'array' && (
               <div className="space-y-2">
-                {item.items.map((ai) => (
+                {draftItem.items.map((ai) => (
                   <div key={ai.index} className="space-y-1">
                     <div className="flex items-center justify-between text-xs">
                       <span className="font-mono font-semibold text-[#1EB996]">
@@ -1012,6 +1506,9 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                       onFocus={(e) =>
                         recordCursorPosition(e.currentTarget, 'array', { index: ai.index })
                       }
+                      onBlur={(e) =>
+                        handleTextareaBlur(e.currentTarget, 'array', { index: ai.index })
+                      }
                       onClick={(e) =>
                         recordCursorPosition(e.currentTarget, 'array', { index: ai.index })
                       }
@@ -1038,7 +1535,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
 
             {/* Below-Textarea Status Bar */}
             <div className="flex items-center justify-between gap-2 pt-0.5 text-xs flex-wrap">
-              {/* Left: LTR / RTL Pill Switcher & Character Counter */}
+              {/* Left: LTR / RTL Pill Switcher & Copy/Paste Buttons */}
               <div className="flex items-center gap-1.5">
                 <div className="flex items-center bg-[#171D27] border border-[#2B3544] rounded-lg p-0.5 select-none">
                   {/* LTR Button */}
@@ -1086,14 +1583,45 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                   </button>
                 </div>
 
-                {/* Character Counter: e.g. "8 · 8/100" */}
-                <div className="px-2 py-0.5 rounded-lg bg-[#171D27] border border-[#2B3544] font-mono text-[11px] text-slate-300 tabular-nums">
-                  <span>{sourceText.length}</span>
-                  <span className="mx-1 text-slate-500">·</span>
-                  <span>
-                    {currentTargetText.length}/{maxThreshold}
-                  </span>
-                </div>
+                {/* Copy & Paste Icon Buttons (replacing the 12/100 character indicator) */}
+                <button
+                  id="copy-target-text-btn"
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={handleCopyTarget}
+                  title={isAr ? 'نسخ نص الترجمة' : 'Copy translation text'}
+                  aria-label={isAr ? 'نسخ نص الترجمة' : 'Copy translation text'}
+                  className="p-1.5 rounded-lg bg-[#171D27] hover:bg-[#202A3A] active:bg-[#263246] border border-[#2B3544] text-slate-300 hover:text-white transition cursor-pointer flex items-center justify-center"
+                >
+                  {copiedTarget ? (
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  ) : (
+                    <Copy className="w-3.5 h-3.5" />
+                  )}
+                </button>
+
+                <button
+                  id="paste-target-text-btn"
+                  type="button"
+                  onPointerDown={() => {
+                    isInteractingWithToolbarOrPasteRef.current = true;
+                  }}
+                  onTouchStart={() => {
+                    isInteractingWithToolbarOrPasteRef.current = true;
+                  }}
+                  onMouseDown={(e) => {
+                    isInteractingWithToolbarOrPasteRef.current = true;
+                    e.preventDefault();
+                  }}
+                  onClick={() => {
+                    void handlePasteTarget();
+                  }}
+                  title={isAr ? 'لصق من الحافظة' : 'Paste from clipboard'}
+                  aria-label={isAr ? 'لصق من الحافظة' : 'Paste from clipboard'}
+                  className="p-1.5 rounded-lg bg-[#171D27] hover:bg-[#202A3A] active:bg-[#263246] border border-[#2B3544] text-slate-300 hover:text-white transition cursor-pointer flex items-center justify-center"
+                >
+                  <ClipboardPaste className="w-3.5 h-3.5" />
+                </button>
               </div>
 
               {/* Far Right: Bigger Undo / Redo Buttons */}
@@ -1102,13 +1630,13 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                   <button
                     id="editor-undo-btn"
                     type="button"
-                    onClick={onUndo}
-                    disabled={!canUndo}
+                    onClick={handleEditorUndo}
+                    disabled={!effectiveCanUndo}
                     className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-200 hover:text-white hover:bg-[#202A3A] disabled:opacity-35 disabled:pointer-events-none transition cursor-pointer"
                     title={
                       isAr
-                        ? `تراجع عن التعديل (Ctrl+Z)${undoCount > 0 ? ` — ${undoCount}` : ''}`
-                        : `Undo edit (Ctrl+Z)${undoCount > 0 ? ` — ${undoCount}` : ''}`
+                        ? `تراجع عن التعديل (Ctrl+Z)${effectiveUndoCount > 0 ? ` — ${effectiveUndoCount}` : ''}`
+                        : `Undo edit (Ctrl+Z)${effectiveUndoCount > 0 ? ` — ${effectiveUndoCount}` : ''}`
                     }
                     aria-label="Undo"
                   >
@@ -1118,13 +1646,13 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                   <button
                     id="editor-redo-btn"
                     type="button"
-                    onClick={onRedo}
-                    disabled={!canRedo}
+                    onClick={handleEditorRedo}
+                    disabled={!effectiveCanRedo}
                     className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-200 hover:text-white hover:bg-[#202A3A] disabled:opacity-35 disabled:pointer-events-none transition cursor-pointer"
                     title={
                       isAr
-                        ? `إعادة التعديل (Ctrl+Y)${redoCount > 0 ? ` — ${redoCount}` : ''}`
-                        : `Redo edit (Ctrl+Y)${redoCount > 0 ? ` — ${redoCount}` : ''}`
+                        ? `إعادة التعديل (Ctrl+Y)${effectiveRedoCount > 0 ? ` — ${effectiveRedoCount}` : ''}`
+                        : `Redo edit (Ctrl+Y)${effectiveRedoCount > 0 ? ` — ${effectiveRedoCount}` : ''}`
                     }
                     aria-label="Redo"
                   >
@@ -1156,7 +1684,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                 <button
                   id="weblate-skip-btn"
                   type="button"
-                  onClick={onNavigateNext}
+                  onClick={() => discardDraftAndNavigate(onNavigateNext)}
                   title={isAr ? 'تخطّي إلى السلسلة التالية' : 'Skip to next string'}
                   className="flex-1 min-w-0 h-9.5 sm:h-10 rounded-full bg-[#185F54] hover:bg-[#1C6F63] active:bg-[#144F46] text-white font-medium text-xs sm:text-sm flex items-center justify-center transition cursor-pointer shadow-xs"
                 >
@@ -1237,7 +1765,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
         <div className="flex items-center justify-between text-[11px] text-slate-400 px-2 py-0.5">
           <div className="flex items-center gap-1.5">
             <button
-              onClick={onNavigatePrevious}
+              onClick={() => discardDraftAndNavigate(onNavigatePrevious)}
               disabled={currentIndex === 0}
               className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border border-slate-700 hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none transition cursor-pointer"
             >
@@ -1245,7 +1773,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               <span>{isAr ? 'السابق' : 'Previous'}</span>
             </button>
             <button
-              onClick={onNavigateNext}
+              onClick={() => discardDraftAndNavigate(onNavigateNext)}
               disabled={currentIndex === totalCount - 1}
               className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border border-slate-700 hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none transition cursor-pointer"
             >
@@ -1259,7 +1787,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
           </div>
 
           <button
-            onClick={onNavigateNextUntranslated}
+            onClick={() => discardDraftAndNavigate(onNavigateNextUntranslated)}
             className="text-[#1EB996] hover:underline cursor-pointer"
           >
             {isAr ? 'التالي غير المترجم' : 'Next Untranslated'}
@@ -1275,6 +1803,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
         onSelectLanguage={(selected) => {
           onLanguageChange?.(selected.code);
         }}
+        appLang={appLang}
       />
     </div>
   );

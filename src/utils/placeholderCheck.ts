@@ -130,9 +130,12 @@ function checkHtmlTags(source: string, target: string): {
   const issuesAr: string[] = [];
   const tokens: string[] = [];
 
+  const safeSource = source || '';
+  const safeTarget = target || '';
+
   // 1. Check for broken/unclosed '<' or '>' brackets when tags are attempted
   // Strip valid XML entities &lt; and &gt; first
-  const cleanTarget = target.replace(/&(lt|gt|amp|quot|apos|#\d+|#x[0-9a-fA-F]+);/g, '');
+  const cleanTarget = safeTarget.replace(/&(lt|gt|amp|quot|apos|#\d+|#x[0-9a-fA-F]+);/g, '');
   const tagRegex = /<\/?([a-zA-Z0-9:_-]+)(?:\s+[^>]*)?\s*(\/?)>/g;
 
   // Check if there is a '<' that looks like an unclosed tag (e.g. "<b" without ">")
@@ -190,7 +193,7 @@ function checkHtmlTags(source: string, target: string): {
   }
 
   // 3. Compare with source HTML tags (ensure tags in source weren't lost)
-  const cleanSource = source.replace(/&(lt|gt|amp|quot|apos|#\d+|#x[0-9a-fA-F]+);/g, '');
+  const cleanSource = safeSource.replace(/&(lt|gt|amp|quot|apos|#\d+|#x[0-9a-fA-F]+);/g, '');
   const sourceTagCounts = new Map<string, number>();
   let srcMatch: RegExpExecArray | null;
   const srcTagRegex = /<\/?([a-zA-Z0-9:_-]+)(?:\s+[^>]*)?\s*(\/?)>/g;
@@ -316,28 +319,29 @@ function validateSourceTargetPair(
  * Runs QA checks on a single ResourceItem (string, plural, or array)
  */
 export function getItemQaIssues(item: ResourceItem): QaIssue[] {
+  if (!item) return [];
   if (item.type === 'string') {
-    return validateSourceTargetPair(item.id, item.name, item.source, item.target);
+    return validateSourceTargetPair(item.id, item.name, item.source || '', item.target || '');
   }
   if (item.type === 'plural') {
     const all: QaIssue[] = [];
-    for (const q of item.items) {
+    for (const q of item.items || []) {
       all.push(
-        ...validateSourceTargetPair(item.id, item.name, q.source, q.target, q.quantity)
+        ...validateSourceTargetPair(item.id, item.name, q.source || '', q.target || '', q.quantity)
       );
     }
     return all;
   }
   if (item.type === 'array') {
     const all: QaIssue[] = [];
-    for (const el of item.items) {
+    for (const el of item.items || []) {
       all.push(
         ...validateSourceTargetPair(
           item.id,
           item.name,
-          el.source,
-          el.target,
-          `#${el.index + 1}`
+          el.source || '',
+          el.target || '',
+          `#${(el.index ?? 0) + 1}`
         )
       );
     }
@@ -363,7 +367,7 @@ export function analyzeProjectQa(items: ResourceItem[]): {
   let placeholderIssueItemsCount = 0;
   let htmlIssueItemsCount = 0;
 
-  for (const item of items) {
+  for (const item of items || []) {
     const issues = getItemQaIssues(item);
     if (issues.length > 0) {
       const hasPlaceholderIssue = issues.some((i) => i.category === 'placeholder');

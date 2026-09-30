@@ -44,21 +44,27 @@ export function filterProjectItems(
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      const matchName = item.name.toLowerCase().includes(q);
+      const matchName = (item.name || '').toLowerCase().includes(q);
       let matchContent = false;
 
       if (item.type === 'string') {
         const s = item as SingleStringItem;
-        matchContent = s.source.toLowerCase().includes(q) || s.target.toLowerCase().includes(q);
+        matchContent =
+          (s.source || '').toLowerCase().includes(q) ||
+          (s.target || '').toLowerCase().includes(q);
       } else if (item.type === 'plural') {
         const p = item as PluralStringItem;
-        matchContent = p.items.some(
-          (pi) => pi.source.toLowerCase().includes(q) || pi.target.toLowerCase().includes(q)
+        matchContent = (p.items || []).some(
+          (pi) =>
+            (pi.source || '').toLowerCase().includes(q) ||
+            (pi.target || '').toLowerCase().includes(q)
         );
       } else if (item.type === 'array') {
         const a = item as ArrayStringItem;
-        matchContent = a.items.some(
-          (ai) => ai.source.toLowerCase().includes(q) || ai.target.toLowerCase().includes(q)
+        matchContent = (a.items || []).some(
+          (ai) =>
+            (ai.source || '').toLowerCase().includes(q) ||
+            (ai.target || '').toLowerCase().includes(q)
         );
       }
 

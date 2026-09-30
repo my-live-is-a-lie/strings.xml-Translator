@@ -348,7 +348,7 @@ export const StringList: React.FC<StringListProps> = ({
               ) : (
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
               )}
-              <span>{isAr ? 'فحوصات الجودة (QA Checks)' : 'QA Checks'}</span>
+              <span>{isAr ? 'فحوصات الجودة' : 'QA Checks'}</span>
             </div>
 
             <div className="flex items-center gap-1.5">
@@ -606,17 +606,18 @@ export const StringList: React.FC<StringListProps> = ({
             let targetSnippet = '';
             const trimmedQuery = searchQuery.trim().toLowerCase();
             if (item.type === 'string') {
-              sourceSnippet = item.source;
-              targetSnippet = item.target;
+              sourceSnippet = item.source || '';
+              targetSnippet = item.target || '';
             } else if (item.type === 'plural' || item.type === 'array') {
+              const subItems = item.items || [];
               const matchedSubItem = trimmedQuery
-                ? item.items.find(
+                ? subItems.find(
                     (sub) =>
-                      sub.source.toLowerCase().includes(trimmedQuery) ||
-                      sub.target.toLowerCase().includes(trimmedQuery)
+                      (sub.source || '').toLowerCase().includes(trimmedQuery) ||
+                      (sub.target || '').toLowerCase().includes(trimmedQuery)
                   )
                 : undefined;
-              const previewItem = matchedSubItem || item.items[0];
+              const previewItem = matchedSubItem || subItems[0];
               sourceSnippet = previewItem?.source || '';
               targetSnippet = previewItem?.target || '';
             }
@@ -643,7 +644,7 @@ export const StringList: React.FC<StringListProps> = ({
                         aria-checked={isChecked}
                         onClick={(e) => toggleItemChecked(item.id, e)}
                         className="p-0.5 -ml-1 rounded hover:bg-slate-200/70 dark:hover:bg-slate-700/70 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition shrink-0"
-                        title="Select for bulk translation"
+                        title={isAr ? 'تحديد للترجمة الجماعية' : 'Select for bulk translation'}
                       >
                         {isChecked ? (
                           <CheckSquare className="w-3.5 h-3.5 text-[#1EB996]" />
@@ -686,7 +687,9 @@ export const StringList: React.FC<StringListProps> = ({
                           <ShieldAlert className="w-2.5 h-2.5 shrink-0" />
                           <span>
                             {itemQa.hasPlaceholderIssue && itemQa.hasHtmlIssue
-                              ? 'QA'
+                              ? isAr
+                                ? 'جودة'
+                                : 'QA'
                               : itemQa.hasPlaceholderIssue
                                 ? '%s'
                                 : 'HTML'}
@@ -715,7 +718,7 @@ export const StringList: React.FC<StringListProps> = ({
                           {item.translationSource === 'ai' ? (
                             <>
                               <Sparkles className="w-2.5 h-2.5" />
-                              <span>AI</span>
+                              <span>{isAr ? 'ذكاء اصطناعي' : 'AI'}</span>
                             </>
                           ) : (
                             <span>{isAr ? 'يدوي' : 'Manual'}</span>
@@ -753,7 +756,7 @@ export const StringList: React.FC<StringListProps> = ({
                     {/* Clean unboxed type indicator */}
                     {item.type !== 'string' && (
                       <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 shrink-0">
-                        {item.type}
+                        {isAr ? (item.type === 'plural' ? 'جمع' : 'مصفوفة') : item.type}
                       </span>
                     )}
                   </div>
@@ -764,7 +767,7 @@ export const StringList: React.FC<StringListProps> = ({
                   {sourceSnippet ? (
                     highlightText(sourceSnippet, searchQuery)
                   ) : (
-                    <span className="italic text-slate-400">Empty string</span>
+                    <span className="italic text-slate-400">{isAr ? 'نص فارغ' : 'Empty string'}</span>
                   )}
                 </p>
 

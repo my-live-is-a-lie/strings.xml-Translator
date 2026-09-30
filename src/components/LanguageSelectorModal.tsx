@@ -1,12 +1,18 @@
 import React, { useState, useMemo } from 'react';
-import { X, Search, Globe, Check, Plus, ArrowRight } from 'lucide-react';
-import { SUPPORTED_LANGUAGES, LanguageOption, getLanguageOption } from '../utils/languages';
+import { X, Search, Globe, Check, Plus } from 'lucide-react';
+import {
+  SUPPORTED_LANGUAGES,
+  LanguageOption,
+  getLanguageOption,
+  getArabicLanguageName,
+} from '../utils/languages';
 
 interface LanguageSelectorModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentLang: string;
   onSelectLanguage: (lang: LanguageOption) => void;
+  appLang?: 'ar' | 'en';
 }
 
 export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
@@ -14,7 +20,9 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
   onClose,
   currentLang,
   onSelectLanguage,
+  appLang = 'ar',
 }) => {
+  const isAr = appLang === 'ar';
   const [search, setSearch] = useState('');
   const [customCode, setCustomCode] = useState('');
   const [customName, setCustomName] = useState('');
@@ -22,13 +30,16 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
   const filteredLanguages = useMemo(() => {
     if (!search.trim()) return SUPPORTED_LANGUAGES;
     const q = search.toLowerCase();
-    return SUPPORTED_LANGUAGES.filter(
-      (l) =>
+    return SUPPORTED_LANGUAGES.filter((l) => {
+      const arName = getArabicLanguageName(l.code, l.name).toLowerCase();
+      return (
         l.name.toLowerCase().includes(q) ||
         l.nativeName.toLowerCase().includes(q) ||
+        arName.includes(q) ||
         l.code.toLowerCase().includes(q) ||
         l.androidDir.toLowerCase().includes(q)
-    );
+      );
+    });
   }, [search]);
 
   if (!isOpen) return null;
@@ -63,10 +74,12 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-semibold text-slate-900 dark:text-white">
-                Switch Target Language
+                {isAr ? 'تغيير لغة الترجمة المستهدفة' : 'Switch Target Language'}
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Select an Android locale to translate your strings into
+                {isAr
+                  ? 'اختر لغة أندرويد لترجمة النصوص إليها'
+                  : 'Select an Android locale to translate your strings into'}
               </p>
             </div>
           </div>
@@ -84,7 +97,11 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
             <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 mr-2 shrink-0" />
             <input
               type="text"
-              placeholder="Search by language name, code (ar, es, fr), or folder..."
+              placeholder={
+                isAr
+                  ? 'ابحث باسم اللغة، الرمز (ar, es, fr)، أو المجلد...'
+                  : 'Search by language name, code (ar, es, fr), or folder...'
+              }
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full text-xs bg-transparent text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none"
@@ -105,11 +122,16 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
         <div className="flex-1 overflow-y-auto p-3 space-y-1">
           {filteredLanguages.length === 0 ? (
             <div className="py-8 text-center text-xs text-slate-400">
-              No matching languages found. You can add it below as a custom locale.
+              {isAr
+                ? 'لم يتم العثور على لغات مطابقة. يمكنك إضافتها أدناه كرمز لغة مخصص.'
+                : 'No matching languages found. You can add it below as a custom locale.'}
             </div>
           ) : (
             filteredLanguages.map((lang) => {
               const isSelected = currentLang.toLowerCase() === lang.code.toLowerCase();
+              const displayLangName = isAr
+                ? getArabicLanguageName(lang.code, lang.name)
+                : lang.name;
               return (
                 <button
                   key={lang.code}
@@ -126,13 +148,15 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs sm:text-sm font-semibold truncate">{lang.name}</span>
+                        <span className="text-xs sm:text-sm font-semibold truncate">
+                          {displayLangName}
+                        </span>
                         <span className="text-[11px] text-slate-400 dark:text-slate-400 truncate">
                           ({lang.nativeName})
                         </span>
                       </div>
                       <div className="text-[10px] font-mono text-slate-400 dark:text-slate-500">
-                        {lang.androidDir} {lang.isRtl && '· RTL'}
+                        {lang.androidDir} {lang.isRtl && (isAr ? '· من اليمين لليسار' : '· RTL')}
                       </div>
                     </div>
                   </div>
@@ -153,14 +177,19 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
         <div className="p-4 border-t border-slate-100 dark:border-[#242D3D] bg-slate-50/50 dark:bg-[#121620]">
           <form onSubmit={handleAddCustom} className="space-y-2">
             <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 block">
-              Or enter custom Android locale code:
+              {isAr
+                ? 'أو أدخل رمز لغة أندرويد مخصص:'
+                : 'Or enter custom Android locale code:'}
             </span>
             <div className="flex items-center gap-2">
               <input
                 type="text"
+                dir="ltr"
                 value={customCode}
                 onChange={(e) => setCustomCode(e.target.value)}
-                placeholder="e.g. es-rMX, zh-rHK, b+sr+Latn"
+                placeholder={
+                  isAr ? 'مثال: es-rMX, zh-rHK, b+sr+Latn' : 'e.g. es-rMX, zh-rHK, b+sr+Latn'
+                }
                 className="flex-1 px-3 py-1.5 text-xs rounded-xl bg-white dark:bg-[#1A202C] border border-slate-200 dark:border-[#2D384C] text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-[#1EB996]"
               />
               <button
@@ -169,7 +198,7 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
                 className="px-3 py-1.5 rounded-xl bg-[#1EB996] hover:bg-[#18A283] disabled:opacity-40 text-white text-xs font-semibold cursor-pointer transition inline-flex items-center gap-1 shrink-0"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>Switch</span>
+                <span>{isAr ? 'تبديل' : 'Switch'}</span>
               </button>
             </div>
           </form>

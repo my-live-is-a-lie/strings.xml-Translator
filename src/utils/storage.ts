@@ -3,8 +3,9 @@ import { TranslationProject } from '../types';
 const STORAGE_KEY = 'android_strings_translator_project_v1';
 const RECENT_PROJECTS_KEY = 'android_strings_translator_recents_v1';
 
-// In-memory fallback for sandboxed iframes or environments where localStorage is restricted
+// In-memory fallback for sandboxed iframes or environments where localStorage or clipboard read is restricted
 const memoryStore = new Map<string, string>();
+let lastCopiedClipboardText = '';
 
 function getSafeLocalStorage(): Storage | null {
   try {
@@ -22,7 +23,7 @@ function getSafeLocalStorage(): Storage | null {
   }
 }
 
-function getStoredItem(key: string): string | null {
+export function getStoredItem(key: string): string | null {
   try {
     const storage = getSafeLocalStorage();
     if (storage) {
@@ -34,7 +35,7 @@ function getStoredItem(key: string): string | null {
   return memoryStore.get(key) || null;
 }
 
-function setStoredItem(key: string, value: string): void {
+export function setStoredItem(key: string, value: string): void {
   try {
     const storage = getSafeLocalStorage();
     if (storage) {
@@ -47,7 +48,7 @@ function setStoredItem(key: string, value: string): void {
   memoryStore.set(key, value);
 }
 
-function removeStoredItem(key: string): void {
+export function removeStoredItem(key: string): void {
   try {
     const storage = getSafeLocalStorage();
     if (storage) {
@@ -58,6 +59,50 @@ function removeStoredItem(key: string): void {
     // Ignore and fallback
   }
   memoryStore.delete(key);
+}
+
+export async function copyTextToClipboard(text: string): Promise<boolean> {
+  lastCopiedClipboardText = text;
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // Fallback to textarea copy below
+  }
+
+  try {
+    if (typeof document === 'undefined') return false;
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    textarea.style.pointerEvents = 'none';
+    document.body.appendChild(textarea);
+    textarea.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(textarea);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function readTextFromClipboard(): Promise<string | null> {
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.readText) {
+      const text = await navigator.clipboard.readText();
+      if (typeof text === 'string') {
+        lastCopiedClipboardText = text;
+        return text;
+      }
+    }
+  } catch {
+    // Fallback to in-memory lastCopiedClipboardText if clipboard read permission is denied
+  }
+  return lastCopiedClipboardText || null;
 }
 
 export function saveCurrentProject(project: TranslationProject): void {

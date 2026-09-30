@@ -278,14 +278,14 @@ export const TableView: React.FC<TableViewProps> = ({
                   let sourceSnippet = '';
                   let targetSnippet = '';
                   if (item.type === 'string') {
-                    sourceSnippet = item.source;
-                    targetSnippet = item.target;
+                    sourceSnippet = item.source || '';
+                    targetSnippet = item.target || '';
                   } else if (item.type === 'plural') {
-                    sourceSnippet = item.items.map((i) => `[${i.quantity}] ${i.source}`).join('; ');
-                    targetSnippet = item.items.map((i) => `[${i.quantity}] ${i.target || '—'}`).join('; ');
+                    sourceSnippet = (item.items || []).map((i) => `[${i.quantity}] ${i.source || ''}`).join('; ');
+                    targetSnippet = (item.items || []).map((i) => `[${i.quantity}] ${i.target || '—'}`).join('; ');
                   } else if (item.type === 'array') {
-                    sourceSnippet = item.items.map((i) => `[${i.index}] ${i.source}`).join('; ');
-                    targetSnippet = item.items.map((i) => `[${i.index}] ${i.target || '—'}`).join('; ');
+                    sourceSnippet = (item.items || []).map((i) => `[${i.index}] ${i.source || ''}`).join('; ');
+                    targetSnippet = (item.items || []).map((i) => `[${i.index}] ${i.target || '—'}`).join('; ');
                   }
 
                   return (
@@ -304,7 +304,7 @@ export const TableView: React.FC<TableViewProps> = ({
                             onClick={() => toggleItemChecked(item.id)}
                             disabled={isBulkTranslating}
                             className="inline-flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
-                            title="Select row for bulk translation"
+                            title={isAr ? 'تحديد الصف للترجمة الجماعية' : 'Select row for bulk translation'}
                           >
                             {isChecked ? (
                               <CheckSquare className="w-4 h-4 text-[#1EB996]" />
@@ -328,7 +328,7 @@ export const TableView: React.FC<TableViewProps> = ({
                           <span className="truncate max-w-[200px]">{item.name}</span>
                           {item.type !== 'string' && (
                             <span className="text-[10px] text-slate-400 dark:text-slate-500 font-sans">
-                              ({item.type})
+                              ({isAr ? (item.type === 'plural' ? 'جمع' : 'مصفوفة') : item.type})
                             </span>
                           )}
                         </div>
@@ -350,7 +350,7 @@ export const TableView: React.FC<TableViewProps> = ({
                                 translationSource: val.trim() ? 'manual' : undefined,
                               });
                             }}
-                            placeholder="Type translation..."
+                            placeholder={isAr ? 'اكتب الترجمة...' : 'Type translation...'}
                             className="w-full px-3 py-1.5 text-xs rounded-lg bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 focus:bg-white dark:focus:bg-slate-800 border border-transparent focus:border-[#0B57D0] dark:focus:border-[#A8C7FA] focus:outline-none transition"
                           />
                         ) : (
@@ -361,7 +361,7 @@ export const TableView: React.FC<TableViewProps> = ({
                                 : 'text-slate-400 italic'
                             }
                           >
-                            {targetSnippet || 'Untranslated'}
+                            {targetSnippet || (isAr ? 'غير مترجم' : 'Untranslated')}
                           </span>
                         )}
                       </td>
@@ -369,7 +369,7 @@ export const TableView: React.FC<TableViewProps> = ({
                         <button
                           onClick={() => onSelectString(item.id)}
                           className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-[#0B57D0] dark:text-[#A8C7FA] transition cursor-pointer m3-state-layer"
-                          title="Open in Translation Editor"
+                          title={isAr ? 'فتح في محرّر الترجمة' : 'Open in Translation Editor'}
                         >
                           <Edit3 className="w-4 h-4" />
                         </button>

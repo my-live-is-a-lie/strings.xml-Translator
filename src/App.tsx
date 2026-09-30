@@ -8,7 +8,7 @@ import { ExportModal } from './components/ExportModal';
 import { TranslationProject, ResourceItem, FilterStatus, SourceFilter } from './types';
 import { parseAndroidXml, mergeTargetXml, normalizePluralsForLanguage } from './utils/xmlParser';
 import { SAMPLE_ANDROID_STRINGS_XML, SAMPLE_TARGET_ARABIC_XML, SAMPLE_TARGET_SPANISH_XML } from './utils/sampleData';
-import { saveCurrentProject, loadCurrentProject } from './utils/storage';
+import { saveCurrentProject, loadCurrentProject, getStoredItem, setStoredItem } from './utils/storage';
 import { LanguageSelectorModal } from './components/LanguageSelectorModal';
 import { getLanguageOption } from './utils/languages';
 import {
@@ -131,15 +131,20 @@ function createDefaultProject(): TranslationProject {
 
 export default function App() {
   const [editorState, setEditorState] = useState<EditorState>(() => {
-    const saved = loadCurrentProject();
-    const initialProject =
-      saved && saved.items && saved.items.length > 0
-        ? {
-            ...saved,
-            name: saved.name === 'OmniTask Android' ? 'XML Translator' : saved.name,
-            items: repairSavedProjectItems(saved.items, saved.targetLang || 'ar'),
-          }
-        : createDefaultProject();
+    let initialProject: TranslationProject;
+    try {
+      const saved = loadCurrentProject();
+      initialProject =
+        saved && Array.isArray(saved.items) && saved.items.length > 0
+          ? {
+              ...saved,
+              name: saved.name === 'OmniTask Android' ? 'XML Translator' : saved.name,
+              items: repairSavedProjectItems(saved.items, saved.targetLang || 'ar'),
+            }
+          : createDefaultProject();
+    } catch {
+      initialProject = createDefaultProject();
+    }
 
     const watchedItem = initialProject.items.find((i) => i.name === 'quick_action_watched');
     const initialSelectedId = watchedItem ? watchedItem.id : (initialProject.items[0]?.id || '');
@@ -177,7 +182,7 @@ export default function App() {
   const [isLanguageModalOpen, setIsLanguageModalOpen] = useState(false);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [appLang, setAppLang] = useState<'ar' | 'en'>(() => {
-    const saved = localStorage.getItem('app_ui_language');
+    const saved = getStoredItem('app_ui_language');
     return saved === 'en' ? 'en' : 'ar';
   });
   const [autoTranslate, setAutoTranslate] = useState<boolean>(() => getAutoTranslateEnabled());
@@ -188,7 +193,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('app_ui_language', appLang);
+    setStoredItem('app_ui_language', appLang);
   }, [appLang]);
 
   // Auto-save project locally on change
@@ -847,6 +852,7 @@ export default function App() {
           setSearchQuery('');
         }}
         onLoadSample={handleLoadSample}
+        appLang={appLang}
       />
 
       {/* Export Modal */}
@@ -859,6 +865,7 @@ export default function App() {
         sourceFilter={sourceFilter}
         onSourceFilterChange={setSourceFilter}
         searchQuery={searchQuery}
+        appLang={appLang}
       />
 
       {/* Global Target Language Switcher Dialog */}
@@ -867,6 +874,7 @@ export default function App() {
         onClose={() => setIsLanguageModalOpen(false)}
         currentLang={project.targetLang}
         onSelectLanguage={(lang) => handleLanguageChange(lang.code)}
+        appLang={appLang}
       />
     </div>
   );

@@ -30,6 +30,8 @@ import {
 } from 'lucide-react';
 import { TranslationProject } from '../types';
 import { analyzeProjectQa } from '../utils/placeholderCheck';
+import { getArabicLanguageName } from '../utils/languages';
+import { getStoredItem, setStoredItem } from '../utils/storage';
 import { PWAInstallButton } from './PWAInstallButton';
 import { OfflineBadge } from './OfflineBadge';
 import {
@@ -46,12 +48,12 @@ import {
 } from '../utils/translator';
 
 const ACCENT_COLORS = [
-  { id: 'teal', label: 'Teal', swatchClass: 'bg-emerald-500' },
-  { id: 'blue', label: 'Blue', swatchClass: 'bg-blue-500' },
-  { id: 'violet', label: 'Violet', swatchClass: 'bg-violet-500' },
-  { id: 'rose', label: 'Rose', swatchClass: 'bg-rose-500' },
-  { id: 'amber', label: 'Amber', swatchClass: 'bg-amber-500' },
-  { id: 'cyan', label: 'Cyan', swatchClass: 'bg-cyan-500' },
+  { id: 'teal', label: 'Teal', labelAr: 'زمردي', swatchClass: 'bg-emerald-500' },
+  { id: 'blue', label: 'Blue', labelAr: 'أزرق', swatchClass: 'bg-blue-500' },
+  { id: 'violet', label: 'Violet', labelAr: 'بنفسجي', swatchClass: 'bg-violet-500' },
+  { id: 'rose', label: 'Rose', labelAr: 'وردي', swatchClass: 'bg-rose-500' },
+  { id: 'amber', label: 'Amber', labelAr: 'كهرماني', swatchClass: 'bg-amber-500' },
+  { id: 'cyan', label: 'Cyan', labelAr: 'سماوي', swatchClass: 'bg-cyan-500' },
 ] as const;
 
 type AccentColorId = (typeof ACCENT_COLORS)[number]['id'];
@@ -62,14 +64,14 @@ const APP_LANGUAGES = [
 ];
 
 const ENGINE_OPTIONS: Array<{ value: string; nameEn: string; nameAr: string; labelAr: string; labelEn: string }> = [
-  { value: 'auto', nameEn: '', nameAr: '', labelAr: 'تعرف تلقائي على المزود (Auto-Detect)', labelEn: 'Auto-Detect Provider' },
-  { value: 'lara', nameEn: 'Lara Translate', nameAr: 'Lara Translate', labelAr: 'Lara Translate AI (Translated)', labelEn: 'Lara Translate AI (Translated)' },
-  { value: 'yandex', nameEn: 'Yandex AI', nameAr: 'Yandex AI', labelAr: 'Yandex AI / Translate', labelEn: 'Yandex AI / Translate' },
-  { value: 'deepl', nameEn: 'DeepL API', nameAr: 'DeepL API', labelAr: 'DeepL API', labelEn: 'DeepL API' },
-  { value: 'gemini', nameEn: 'Google Gemini AI', nameAr: 'Google Gemini AI', labelAr: 'Google Gemini AI', labelEn: 'Google Gemini AI' },
-  { value: 'openai', nameEn: 'OpenAI GPT', nameAr: 'OpenAI GPT', labelAr: 'OpenAI (GPT)', labelEn: 'OpenAI (GPT)' },
-  { value: 'google_cloud', nameEn: 'Google Cloud Translate', nameAr: 'Google Cloud Translate', labelAr: 'Google Cloud Translation', labelEn: 'Google Cloud Translation' },
-  { value: 'microsoft', nameEn: 'Microsoft Translator', nameAr: 'Microsoft Translator', labelAr: 'Microsoft Azure Translator', labelEn: 'Microsoft Azure Translator' },
+  { value: 'auto', nameEn: '', nameAr: '', labelAr: 'تعرف تلقائي على المزود', labelEn: 'Auto-Detect Provider' },
+  { value: 'lara', nameEn: 'Lara Translate', nameAr: 'ترجمة Lara الذكية', labelAr: 'ترجمة Lara الذكية', labelEn: 'Lara Translate AI (Translated)' },
+  { value: 'yandex', nameEn: 'Yandex AI', nameAr: 'ترجمة Yandex الذكية', labelAr: 'ترجمة Yandex الذكية', labelEn: 'Yandex AI / Translate' },
+  { value: 'deepl', nameEn: 'DeepL API', nameAr: 'ترجمة DeepL', labelAr: 'محرك DeepL للترجمة', labelEn: 'DeepL API' },
+  { value: 'gemini', nameEn: 'Google Gemini AI', nameAr: 'ذكاء Google Gemini', labelAr: 'ذكاء Google Gemini الاصطناعي', labelEn: 'Google Gemini AI' },
+  { value: 'openai', nameEn: 'OpenAI GPT', nameAr: 'ذكاء OpenAI GPT', labelAr: 'ذكاء OpenAI (GPT)', labelEn: 'OpenAI (GPT)' },
+  { value: 'google_cloud', nameEn: 'Google Cloud Translate', nameAr: 'ترجمة Google السحابية', labelAr: 'ترجمة Google السحابية', labelEn: 'Google Cloud Translation' },
+  { value: 'microsoft', nameEn: 'Microsoft Translator', nameAr: 'مترجم Microsoft', labelAr: 'مترجم Microsoft Azure', labelEn: 'Microsoft Azure Translator' },
 ];
 
 interface HeaderProps {
@@ -140,7 +142,7 @@ export const Header: React.FC<HeaderProps> = ({
     return true;
   });
   const [accentColor, setAccentColor] = useState<AccentColorId>(() => {
-    const saved = localStorage.getItem('app_accent_color') as AccentColorId | null;
+    const saved = getStoredItem('app_accent_color') as AccentColorId | null;
     if (saved && ACCENT_COLORS.some((c) => c.id === saved)) {
       return saved;
     }
@@ -179,7 +181,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   useEffect(() => {
     document.documentElement.setAttribute('data-accent', accentColor);
-    localStorage.setItem('app_accent_color', accentColor);
+    setStoredItem('app_accent_color', accentColor);
   }, [accentColor]);
 
   const handleCycleAccentColor = () => {
@@ -348,6 +350,16 @@ export const Header: React.FC<HeaderProps> = ({
   const activeProviderObj =
     providersList.find((p) => p.id === selectedProviderId) || providersList[0];
 
+  const getProviderDisplayName = (prov?: TranslationProviderConfig): string => {
+    if (!prov) return isAr ? 'ذكاء Gemini الاصطناعي' : 'Gemini AI';
+    if (!isAr || !prov.isBuiltIn) return prov.name;
+    if (prov.id === 'gemini') return 'ذكاء Gemini الاصطناعي';
+    if (prov.id === 'google') return 'ترجمة جوجل';
+    if (prov.id === 'yandex_builtin') return 'ترجمة Yandex الذكية';
+    if (prov.id === 'mymemory') return 'ذاكرة الترجمة (MyMemory)';
+    return prov.name;
+  };
+
   // Compute translation statistics
   const totalItems = project.items.length;
   let translatedCount = 0;
@@ -429,7 +441,11 @@ export const Header: React.FC<HeaderProps> = ({
                 title={isAr ? 'تغيير لغة الترجمة' : 'Switch Target Language'}
               >
                 <Globe className="w-3.5 h-3.5 text-[#0B57D0] dark:text-[#A8C7FA] group-hover:rotate-12 transition-transform" />
-                <span className="font-semibold">{project.targetLocaleName || project.targetLang}</span>
+                <span className="font-semibold">
+                  {isAr
+                    ? getArabicLanguageName(project.targetLang, project.targetLocaleName)
+                    : project.targetLocaleName || project.targetLang}
+                </span>
                 <span className="font-mono text-[10px] text-slate-400 bg-black/10 dark:bg-black/30 px-1.5 py-0.5 rounded">
                   values-{project.targetLang}
                 </span>
@@ -440,9 +456,9 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Right Actions - Far Right List Icon Button */}
           <div className="flex items-center gap-2 shrink-0">
-            <OfflineBadge />
+            <OfflineBadge appLang={appLang} />
 
-            <PWAInstallButton />
+            <PWAInstallButton appLang={appLang} />
 
             <button
               id="header-load-sample-btn"
@@ -606,7 +622,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Drawer Content on the Right Side */}
           <aside className="relative w-72 sm:w-80 max-w-[85vw] h-dvh max-h-dvh overflow-hidden bg-white dark:bg-[#161922] border-l border-slate-200 dark:border-[#252C3A] shadow-2xl z-10 flex flex-col animate-in slide-in-from-right duration-200">
             {/* Drawer Header: App Language Icon Button (Arabic/English only) + Icon-Only Accent Button & Swatches */}
-            <div className="relative flex items-center justify-between gap-2 px-4 py-3.5 border-b border-slate-200/80 dark:border-[#252C3A]">
+            <div className="relative flex items-center justify-between gap-2 px-4 pb-3.5 pt-[max(0.875rem,env(safe-area-inset-top))] border-b border-slate-200/80 dark:border-[#252C3A]">
               <div className="flex items-center gap-1.5 min-w-0">
                 {/* App Language Icon Button (Far Left) */}
                 <div className="relative">
@@ -678,8 +694,8 @@ export const Header: React.FC<HeaderProps> = ({
                             ? 'ring-2 ring-offset-1 ring-slate-900 dark:ring-white dark:ring-offset-[#161922] scale-110'
                             : 'opacity-75 hover:opacity-100 hover:scale-105'
                         }`}
-                        title={`${c.label} accent`}
-                        aria-label={`Set ${c.label} accent color`}
+                        title={isAr ? `لون ${c.labelAr}` : `${c.label} accent`}
+                        aria-label={isAr ? `اختيار اللون ${c.labelAr}` : `Set ${c.label} accent color`}
                       />
                     );
                   })}
@@ -745,10 +761,10 @@ export const Header: React.FC<HeaderProps> = ({
                     <Cpu className="w-4 h-4 text-[#1EB996] shrink-0" />
                     <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
                       <span className="w-full text-xs sm:text-sm font-semibold truncate">
-                        {isAr ? 'مزودو الترجمة (Suggest)' : 'Translate Providers'}
+                        {isAr ? 'مزودو الترجمة الآلية' : 'Translate Providers'}
                       </span>
                       <span className="w-full text-[11px] text-[#1EB996] font-medium truncate">
-                        {activeProviderObj?.name || 'Gemini AI'}
+                        {getProviderDisplayName(activeProviderObj)}
                       </span>
                     </div>
                   </div>
@@ -788,7 +804,9 @@ export const Header: React.FC<HeaderProps> = ({
                                 >
                                   <div className="flex flex-col min-w-0">
                                     <div className="flex items-center gap-1.5">
-                                      <span className="text-xs font-semibold truncate">{prov.name}</span>
+                                      <span className="text-xs font-semibold truncate">
+                                        {getProviderDisplayName(prov)}
+                                      </span>
                                       {!prov.isBuiltIn && (
                                         <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded bg-[#1EB996]/15 text-[#1EB996] border border-[#1EB996]/30 shrink-0">
                                           API
@@ -798,7 +816,7 @@ export const Header: React.FC<HeaderProps> = ({
                                     <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate">
                                       {prov.type === 'lara'
                                         ? isAr
-                                          ? 'محرك Lara AI للترجمة'
+                                          ? 'محرك Lara الذكي للترجمة'
                                           : 'Lara Translate AI'
                                         : prov.type === 'yandex_builtin' || prov.type === 'yandex'
                                           ? isAr
@@ -806,20 +824,26 @@ export const Header: React.FC<HeaderProps> = ({
                                             : 'Yandex AI Translator'
                                           : prov.type === 'gemini'
                                             ? isAr
-                                              ? 'ذكاء اصطناعي (Gemini)'
+                                              ? 'محرك ذكاء Gemini الاصطناعي'
                                               : 'Gemini AI Engine'
                                             : prov.type === 'google' || prov.type === 'google_cloud'
                                               ? isAr
-                                                ? 'ترجمة Google العصبية'
+                                                ? 'الترجمة العصبية من جوجل'
                                                 : 'Google Neural Translate'
                                               : prov.type === 'deepl'
-                                                ? 'DeepL Neural MT'
+                                                ? isAr
+                                                  ? 'الترجمة العصبية من DeepL'
+                                                  : 'DeepL Neural MT'
                                                 : prov.type === 'openai'
-                                                  ? 'OpenAI GPT Translator'
+                                                  ? isAr
+                                                    ? 'مترجم OpenAI GPT الذكي'
+                                                    : 'OpenAI GPT Translator'
                                                   : prov.type === 'microsoft'
-                                                    ? 'Microsoft Azure MT'
+                                                    ? isAr
+                                                      ? 'مترجم Microsoft Azure'
+                                                      : 'Microsoft Azure MT'
                                                     : isAr
-                                                      ? 'ذاكرة الترجمة (MyMemory)'
+                                                      ? 'ذاكرة الترجمة التشاركية'
                                                       : 'MyMemory TM'}
                                     </span>
                                   </div>
@@ -906,7 +930,7 @@ export const Header: React.FC<HeaderProps> = ({
                                       {prov.type === 'lara' ||
                                       inferEngineFromName(editProviderName, 'auto') === 'lara'
                                         ? isAr
-                                          ? 'معرّف مفتاح Lara (Access Key ID أو ID:Secret)'
+                                          ? 'معرّف مفتاح Lara (أو المعرّف:السر)'
                                           : 'Lara Access Key ID (or ID:Secret)'
                                         : isAr
                                           ? 'تعديل مفتاح API'
@@ -923,7 +947,7 @@ export const Header: React.FC<HeaderProps> = ({
                                         prov.type === 'lara' ||
                                         inferEngineFromName(editProviderName, 'auto') === 'lara'
                                           ? isAr
-                                            ? 'Access Key ID (أو ID:Secret)...'
+                                            ? 'معرّف المفتاح (أو المعرّف:السر)...'
                                             : 'Access Key ID (or ID:Secret)...'
                                           : isAr
                                             ? 'مفتاح API...'
@@ -939,7 +963,7 @@ export const Header: React.FC<HeaderProps> = ({
                                     <div className="flex flex-col gap-1">
                                       <label className="text-[10px] font-semibold text-slate-600 dark:text-slate-300">
                                         {isAr
-                                          ? 'سر مفتاح Lara (Access Key Secret)'
+                                          ? 'السر الخاص بمفتاح Lara'
                                           : 'Lara Access Key Secret'}
                                       </label>
                                       <input
@@ -951,7 +975,7 @@ export const Header: React.FC<HeaderProps> = ({
                                         onTouchStart={(e) => e.stopPropagation()}
                                         placeholder={
                                           isAr
-                                            ? 'Access Key Secret (اختياري إذا كان مدمجاً أعلاه)...'
+                                            ? 'السر الخاص بالمفتاح (اختياري إذا كان مدمجاً أعلاه)...'
                                             : 'Access Key Secret (optional if ID:Secret above)...'
                                         }
                                         className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
@@ -1143,7 +1167,7 @@ export const Header: React.FC<HeaderProps> = ({
                             >
                               {inferEngineFromName(newProviderName, newProviderEngine) === 'lara'
                                 ? isAr
-                                  ? 'معرّف مفتاح Lara (Access Key ID أو ID:Secret)'
+                                  ? 'معرّف مفتاح Lara (أو المعرّف:السر)'
                                   : 'Lara Access Key ID (or ID:Secret)'
                                 : isAr
                                   ? 'مفتاح API للمزود'
@@ -1160,7 +1184,7 @@ export const Header: React.FC<HeaderProps> = ({
                               placeholder={
                                 inferEngineFromName(newProviderName, newProviderEngine) === 'lara'
                                   ? isAr
-                                    ? 'الصق Access Key ID (أو ID:Secret)...'
+                                    ? 'الصق معرّف المفتاح (أو المعرّف:السر)...'
                                     : 'Paste Access Key ID (or ID:Secret)...'
                                   : isAr
                                     ? 'الصق مفتاح API هنا...'
@@ -1179,7 +1203,7 @@ export const Header: React.FC<HeaderProps> = ({
                                 className="text-[11px] font-semibold text-slate-700 dark:text-slate-300"
                               >
                                 {isAr
-                                  ? 'سر مفتاح Lara (Access Key Secret)'
+                                  ? 'السر الخاص بمفتاح Lara'
                                   : 'Lara Access Key Secret'}
                               </label>
                               <input
@@ -1192,7 +1216,7 @@ export const Header: React.FC<HeaderProps> = ({
                                 onTouchStart={(e) => e.stopPropagation()}
                                 placeholder={
                                   isAr
-                                    ? 'الصق Access Key Secret (اختياري إذا كتبت ID:Secret أعلاه)...'
+                                    ? 'الصق السر الخاص بالمفتاح (اختياري إذا كتبت المعرّف:السر أعلاه)...'
                                     : 'Paste Access Key Secret (optional if ID:Secret above)...'
                                 }
                                 className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
@@ -1269,7 +1293,9 @@ export const Header: React.FC<HeaderProps> = ({
                                   </div>
                                   {testResult.googleTranslation && (
                                     <div>
-                                      <span className="opacity-70">Google Translate: </span>
+                                      <span className="opacity-70">
+                                        {isAr ? 'ترجمة جوجل: ' : 'Google Translate: '}
+                                      </span>
                                       <span className="font-semibold">
                                         {testResult.googleTranslation}
                                       </span>
@@ -1327,7 +1353,7 @@ export const Header: React.FC<HeaderProps> = ({
                     </span>
                     <span className="w-full text-[11px] text-slate-500 dark:text-slate-400 leading-snug truncate">
                       {isAr
-                        ? `ترجمة تلقائية عبر ${activeProviderObj?.name || 'Gemini AI'}`
+                        ? `ترجمة تلقائية عبر ${getProviderDisplayName(activeProviderObj)}`
                         : `Auto-translate via ${activeProviderObj?.name || 'Gemini AI'}`}
                     </span>
                   </div>
@@ -1519,7 +1545,7 @@ export const Header: React.FC<HeaderProps> = ({
                                         : 'bg-[#1EB996]/15 text-emerald-700 dark:text-[#1EB996]'
                                     }`}
                                   >
-                                    {isAi ? 'AI' : isAr ? 'يدوي' : 'Manual'}
+                                    {isAi ? (isAr ? 'ذكاء اصطناعي' : 'AI') : isAr ? 'يدوي' : 'Manual'}
                                   </span>
                                 </div>
                                 <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate w-full">
@@ -1564,7 +1590,7 @@ export const Header: React.FC<HeaderProps> = ({
                       <ShieldCheck className="w-4 h-4 text-[#1EB996] shrink-0" />
                     )}
                     <span className="text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
-                      {isAr ? 'فحوصات الجودة (QA Checks)' : 'QA Checks'}
+                      {isAr ? 'فحوصات الجودة' : 'QA Checks'}
                     </span>
                   </div>
                   <span
