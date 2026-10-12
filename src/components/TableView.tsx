@@ -54,7 +54,7 @@ export const TableView: React.FC<TableViewProps> = ({
     else setLocalFilter(st);
   };
 
-  const filtered = filterProjectItems(items, filter, search, sourceFilter);
+  const filtered = filterProjectItems(items, filter, search, sourceFilter as SourceFilter);
 
   const filteredUntranslated = filtered.filter((i) => i.status === 'untranslated');
   const allFilteredSelected = filtered.length > 0 && filtered.every((i) => checkedIds.has(i.id));

@@ -8,7 +8,6 @@ import {
   LayoutList,
   Globe,
   ChevronDown,
-  List,
   X,
   Palette,
   Check,
@@ -27,6 +26,7 @@ import {
   ShieldCheck,
   Braces,
   Code2,
+  FolderOpen,
 } from 'lucide-react';
 import { TranslationProject } from '../types';
 import { analyzeProjectQa } from '../utils/placeholderCheck';
@@ -34,6 +34,7 @@ import { getArabicLanguageName } from '../utils/languages';
 import { getStoredItem, setStoredItem } from '../utils/storage';
 import { PWAInstallButton } from './PWAInstallButton';
 import { OfflineBadge } from './OfflineBadge';
+import { SidebarIcon } from './SidebarIcon';
 import {
   TranslationProviderConfig,
   ProviderEngineType,
@@ -95,6 +96,9 @@ interface HeaderProps {
   onToggleAutoTranslate?: (enabled: boolean) => void;
   onResetItemHistory?: (id: string) => void;
   onSelectString?: (id: string) => void;
+  onOpenFilesModal?: () => void;
+  savedFilesCount?: number;
+  currentFileName?: string;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -111,6 +115,9 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleAutoTranslate,
   onResetItemHistory,
   onSelectString,
+  onOpenFilesModal,
+  savedFilesCount = 0,
+  currentFileName,
 }) => {
   const [rightDrawerOpen, setRightDrawerOpen] = useState(false);
   const [appLangMenuOpen, setAppLangMenuOpen] = useState(false);
@@ -387,19 +394,35 @@ export const Header: React.FC<HeaderProps> = ({
       <header className="sticky top-0 z-30 bg-white/95 dark:bg-[#131314]/95 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80 transition-colors">
         {/* Material 3 Top App Bar */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-13 sm:h-14 flex items-center justify-between gap-4">
-          {/* Brand & File Information */}
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-xl bg-[#0B57D0] dark:bg-[#A8C7FA] flex items-center justify-center text-white dark:text-[#062E6F] shadow-xs shrink-0 transition-transform active:scale-95">
-              <Languages className="w-4.5 h-4.5 stroke-[2.25]" />
-            </div>
-
-            <div className="min-w-0 flex flex-col justify-center">
-              <div className="flex items-center gap-1.5">
-                <h1 className="text-xs sm:text-sm font-semibold text-slate-900 dark:text-slate-100 tracking-tight truncate">
-                  {isAr ? 'مترجم XML' : 'XML Translator'}
-                </h1>
+          {/* Files Button (replacing App Icon & Name at top left corner) */}
+          <div className="flex items-center gap-2 min-w-0">
+            <button
+              id="header-files-menu-btn"
+              type="button"
+              onClick={onOpenFilesModal}
+              className="flex items-center gap-2 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 dark:bg-[#1E2430] dark:hover:bg-[#283244] text-slate-800 dark:text-slate-100 transition cursor-pointer shadow-xs group"
+              title={isAr ? 'عرض وإدارة ملفات XML المستوردة' : 'View & manage imported XML files'}
+            >
+              <div className="w-6 h-6 rounded-lg bg-[#0B57D0]/10 dark:bg-[#1EB996]/15 flex items-center justify-center text-[#0B57D0] dark:text-[#1EB996] group-hover:scale-105 transition-transform shrink-0">
+                <FolderOpen className="w-3.5 h-3.5" />
               </div>
-            </div>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="font-semibold text-xs sm:text-sm text-slate-900 dark:text-white">
+                  {isAr ? 'الملفات' : 'Files'}
+                </span>
+                {currentFileName && (
+                  <span className="hidden sm:inline-block max-w-[110px] md:max-w-[150px] truncate text-xs text-slate-500 dark:text-slate-400 font-mono">
+                    ({currentFileName})
+                  </span>
+                )}
+              </div>
+              {savedFilesCount > 0 && (
+                <span className="text-[11px] font-bold text-white tabular-nums px-0.5">
+                  {savedFilesCount}
+                </span>
+              )}
+              <ChevronDown className="w-3 h-3 text-slate-400 group-hover:text-slate-200 transition-transform shrink-0" />
+            </button>
           </div>
 
           {/* Center / Navigation Controls */}
@@ -499,7 +522,7 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </button>
 
-            {/* Far Right List Icon Button to Open Right Drawer */}
+            {/* Far Right Sidebar Icon Button to Open Right Drawer */}
             <button
               id="header-right-drawer-btn"
               type="button"
@@ -511,57 +534,57 @@ export const Header: React.FC<HeaderProps> = ({
               title={isAr ? 'فتح القائمة الجانبية' : 'Open Sidebar Menu'}
               aria-label="Open Actions Menu"
             >
-              <List className="w-4.5 h-4.5 text-slate-700 dark:text-slate-200" />
+              <SidebarIcon className="w-4.5 h-4.5 text-slate-700 dark:text-slate-200" />
             </button>
           </div>
         </div>
 
         {/* Visual Progress Bar & Translated vs. Untranslated Breakdown */}
-        <div className="px-4 sm:px-6 py-2 bg-slate-50/80 dark:bg-[#171A21]/90 border-t border-slate-200/60 dark:border-slate-800/70">
-          <div className="max-w-7xl mx-auto flex flex-col gap-1.5">
-            {/* Segmented Progress Track (SVG avoids inline style while supporting exact dynamic percentages) */}
-            <div
-              role="progressbar"
-              aria-valuenow={translatedPercent}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-label={`Translation progress: ${translatedPercent}% translated, ${untranslatedPercent}% untranslated`}
-              className="w-full h-2 rounded-full bg-slate-200/90 dark:bg-slate-800 overflow-hidden shadow-inner"
+        <div className="bg-slate-50/80 dark:bg-[#171A21]/90 border-t border-slate-200/60 dark:border-slate-800/70">
+          {/* Segmented Progress Track - thin (h-1), edge-to-edge, touching spacer line above */}
+          <div
+            role="progressbar"
+            aria-valuenow={translatedPercent}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label={`Translation progress: ${translatedPercent}% translated, ${untranslatedPercent}% untranslated`}
+            className="w-full h-1 bg-slate-200/90 dark:bg-slate-800 overflow-hidden block"
+          >
+            <svg
+              viewBox="0 0 100 4"
+              preserveAspectRatio="none"
+              className="w-full h-full block"
             >
-              <svg
-                viewBox="0 0 100 8"
-                preserveAspectRatio="none"
-                className="w-full h-full block"
-              >
-                {/* Untranslated background track */}
+              {/* Untranslated background track */}
+              <rect
+                x={0}
+                y={0}
+                width={100}
+                height={4}
+                className="fill-slate-200 dark:fill-slate-800"
+              />
+              {/* Translated segment */}
+              <rect
+                x={0}
+                y={0}
+                width={exactTranslatedWidth}
+                height={4}
+                className="fill-[#1EB996] transition-all duration-300 ease-out"
+              />
+              {/* Needs Review segment */}
+              {exactReviewWidth > 0 && (
                 <rect
-                  x={0}
+                  x={exactTranslatedWidth}
                   y={0}
-                  width={100}
-                  height={8}
-                  className="fill-slate-200 dark:fill-slate-800"
+                  width={exactReviewWidth}
+                  height={4}
+                  className="fill-amber-400 transition-all duration-300 ease-out"
                 />
-                {/* Translated segment */}
-                <rect
-                  x={0}
-                  y={0}
-                  width={exactTranslatedWidth}
-                  height={8}
-                  className="fill-[#1EB996] transition-all duration-300 ease-out"
-                />
-                {/* Needs Review segment */}
-                {exactReviewWidth > 0 && (
-                  <rect
-                    x={exactTranslatedWidth}
-                    y={0}
-                    width={exactReviewWidth}
-                    height={8}
-                    className="fill-amber-400 transition-all duration-300 ease-out"
-                  />
-                )}
-              </svg>
-            </div>
+              )}
+            </svg>
+          </div>
 
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2">
             {/* Breakdown Legend & Mobile View Switcher */}
             <div className="flex items-center justify-between gap-2 text-[11px] sm:text-xs text-slate-600 dark:text-slate-400 flex-wrap">
               <div className="flex items-center gap-3 flex-wrap">
@@ -717,6 +740,30 @@ export const Header: React.FC<HeaderProps> = ({
 
             {/* Drawer Body: Import, Export, and Translate Providers Button */}
             <div className="p-5 pb-28 flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y flex flex-col gap-3">
+              {/* Files Manager Button */}
+              {onOpenFilesModal && (
+                <button
+                  id="drawer-files-btn"
+                  type="button"
+                  onClick={() => {
+                    setAppLangMenuOpen(false);
+                    setRightDrawerOpen(false);
+                    onOpenFilesModal();
+                  }}
+                  className="w-full flex items-center justify-between px-4 py-3 rounded-2xl bg-[#0B57D0]/10 dark:bg-[#1EB996]/10 hover:bg-[#0B57D0]/15 dark:hover:bg-[#1EB996]/20 border border-[#0B57D0]/20 dark:border-[#1EB996]/20 text-[#0B57D0] dark:text-[#1EB996] text-sm font-semibold transition cursor-pointer shadow-xs shrink-0"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <FolderOpen className="w-4 h-4" />
+                    <span>{isAr ? 'الملفات المحفوظة' : 'Saved Files'}</span>
+                  </div>
+                  {savedFilesCount > 0 && (
+                    <span className="px-1.5 py-0.5 rounded-md text-xs font-bold bg-[#0B57D0]/20 dark:bg-[#1EB996]/20 text-[#0B57D0] dark:text-[#1EB996]">
+                      {savedFilesCount}
+                    </span>
+                  )}
+                </button>
+              )}
+
               {/* Import Button */}
               <button
                 id="drawer-import-btn"

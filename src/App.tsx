@@ -5,10 +5,22 @@ import { TranslationEditor } from './components/TranslationEditor';
 import { TableView } from './components/TableView';
 import { ImportModal } from './components/ImportModal';
 import { ExportModal } from './components/ExportModal';
-import { TranslationProject, ResourceItem, FilterStatus, SourceFilter } from './types';
+import { FilesModal } from './components/FilesModal';
+import { TranslationProject, ResourceItem, FilterStatus, SourceFilter, StoredXmlFile } from './types';
 import { parseAndroidXml, mergeTargetXml, normalizePluralsForLanguage } from './utils/xmlParser';
 import { SAMPLE_ANDROID_STRINGS_XML, SAMPLE_TARGET_ARABIC_XML, SAMPLE_TARGET_SPANISH_XML } from './utils/sampleData';
 import { saveCurrentProject, loadCurrentProject, getStoredItem, setStoredItem } from './utils/storage';
+import {
+  getStoredFiles,
+  saveStoredFiles,
+  getActiveFileId,
+  setActiveFileId,
+  hasItemsChanged,
+  deleteStoredFile,
+  renameStoredFile,
+  resetStoredFileToOriginal,
+  extractAppNameFromItems,
+} from './utils/filesStorage';
 import { LanguageSelectorModal } from './components/LanguageSelectorModal';
 import { getLanguageOption } from './utils/languages';
 import {
@@ -130,20 +142,32 @@ function createDefaultProject(): TranslationProject {
 }
 
 export default function App() {
+  const [storedFiles, setStoredFiles] = useState<StoredXmlFile[]>(() => getStoredFiles());
+  const [isFilesModalOpen, setIsFilesModalOpen] = useState(false);
+
   const [editorState, setEditorState] = useState<EditorState>(() => {
+    const initialStored = getStoredFiles();
+    const savedActiveId = getActiveFileId();
     let initialProject: TranslationProject;
-    try {
-      const saved = loadCurrentProject();
-      initialProject =
-        saved && Array.isArray(saved.items) && saved.items.length > 0
-          ? {
-              ...saved,
-              name: saved.name === 'OmniTask Android' ? 'XML Translator' : saved.name,
-              items: repairSavedProjectItems(saved.items, saved.targetLang || 'ar'),
-            }
-          : createDefaultProject();
-    } catch {
-      initialProject = createDefaultProject();
+    let initialActiveFile: StoredXmlFile | undefined;
+
+    if (initialStored.length > 0) {
+      initialActiveFile = initialStored.find((f) => f.id === savedActiveId) || initialStored[0];
+      initialProject = initialActiveFile.project;
+    } else {
+      try {
+        const saved = loadCurrentProject();
+        initialProject =
+          saved && Array.isArray(saved.items) && saved.items.length > 0
+            ? {
+                ...saved,
+                name: saved.name === 'OmniTask Android' ? 'XML Translator' : saved.name,
+                items: repairSavedProjectItems(saved.items, saved.targetLang || 'ar'),
+              }
+            : createDefaultProject();
+      } catch {
+        initialProject = createDefaultProject();
+      }
     }
 
     const watchedItem = initialProject.items.find((i) => i.name === 'quick_action_watched');
@@ -158,6 +182,33 @@ export default function App() {
   });
 
   const { project, selectedId, past, future } = editorState;
+
+  // Track original unedited state of the active file for reset & edit detection
+  const originalFileStateRef = useRef<{ fileId: string; rawXml?: string; items: ResourceItem[] }>({
+    fileId: project.id,
+    rawXml: project.rawSourceXml,
+    items: JSON.parse(JSON.stringify(project.items)),
+  });
+
+  // Keep originalFileStateRef synchronized with current project when project.id changes
+  useEffect(() => {
+    if (originalFileStateRef.current.fileId !== project.id) {
+      const stored = getStoredFiles().find((f) => f.id === project.id);
+      if (stored) {
+        originalFileStateRef.current = {
+          fileId: stored.id,
+          rawXml: stored.originalRawXml,
+          items: JSON.parse(JSON.stringify(stored.originalItems)),
+        };
+      } else {
+        originalFileStateRef.current = {
+          fileId: project.id,
+          rawXml: project.rawSourceXml,
+          items: JSON.parse(JSON.stringify(project.items)),
+        };
+      }
+    }
+  }, [project.id, project.rawSourceXml, project.items]);
 
   // Track last typing edit metadata for smart coalescing of continuous keystrokes
   const lastEditRef = useRef<{ itemId: string; timestamp: number }>({
@@ -196,9 +247,70 @@ export default function App() {
     setStoredItem('app_ui_language', appLang);
   }, [appLang]);
 
-  // Auto-save project locally on change
+  // Auto-save project locally on change and sync to stored files if modified
   useEffect(() => {
     saveCurrentProject(project);
+
+    // Check if user has made any changes compared to original imported file
+    const origItems = originalFileStateRef.current.fileId === project.id
+      ? originalFileStateRef.current.items
+      : [];
+    const hasChanges = origItems.length > 0 && hasItemsChanged(project.items, origItems);
+
+    if (hasChanges) {
+      setStoredFiles((prev) => {
+        const existingIndex = prev.findIndex((f) => f.id === project.id);
+        const baseOrigItems = origItems.length > 0
+          ? origItems
+          : (existingIndex >= 0 ? prev[existingIndex].originalItems : JSON.parse(JSON.stringify(project.items)));
+
+        // Extract app_name key if present in original items or project items
+        const existingAppName = existingIndex >= 0 ? prev[existingIndex].appName : undefined;
+        const detectedAppName = existingAppName || extractAppNameFromItems(baseOrigItems) || extractAppNameFromItems(project.items);
+
+        const updatedFile: StoredXmlFile = {
+          id: project.id,
+          name: project.sourceFileName || project.name || 'strings.xml',
+          appName: detectedAppName,
+          importedAt: existingIndex >= 0 ? prev[existingIndex].importedAt : Date.now(),
+          lastModified: Date.now(),
+          originalRawXml: originalFileStateRef.current.rawXml,
+          originalItems: baseOrigItems,
+          project: project,
+          hasUserEdits: true,
+        };
+
+        let next: StoredXmlFile[];
+        if (existingIndex >= 0) {
+          next = [...prev];
+          next[existingIndex] = updatedFile;
+        } else {
+          next = [updatedFile, ...prev];
+        }
+        saveStoredFiles(next);
+        setActiveFileId(project.id);
+        return next;
+      });
+    } else {
+      // If this file was already in storedFiles, keep its project in sync
+      setStoredFiles((prev) => {
+        const existingIndex = prev.findIndex((f) => f.id === project.id);
+        if (existingIndex >= 0) {
+          const next = [...prev];
+          const curr = next[existingIndex];
+          const appName = curr.appName || extractAppNameFromItems(curr.originalItems) || extractAppNameFromItems(project.items);
+          next[existingIndex] = {
+            ...curr,
+            appName,
+            project: project,
+            lastModified: Date.now(),
+          };
+          saveStoredFiles(next);
+          return next;
+        }
+        return prev;
+      });
+    }
   }, [project]);
 
   // If selectedId is invalid, default to first item
@@ -560,6 +672,12 @@ export default function App() {
   const handleLoadSample = useCallback(() => {
     const sample = createDefaultProject();
     lastEditRef.current = { itemId: '', timestamp: 0 };
+    originalFileStateRef.current = {
+      fileId: sample.id,
+      rawXml: sample.rawSourceXml,
+      items: JSON.parse(JSON.stringify(sample.items)),
+    };
+    setActiveFileId(sample.id);
     setEditorState({
       project: sample,
       selectedId: sample.items[0]?.id || '',
@@ -570,6 +688,87 @@ export default function App() {
     setSourceFilter('all');
     setSearchQuery('');
   }, []);
+
+  // File management actions: Switch, Rename, Reset, Delete
+  const handleSelectFile = useCallback((fileId: string) => {
+    const targetFile = storedFiles.find((f) => f.id === fileId);
+    if (!targetFile) return;
+
+    lastEditRef.current = { itemId: '', timestamp: 0 };
+    originalFileStateRef.current = {
+      fileId: targetFile.id,
+      rawXml: targetFile.originalRawXml,
+      items: JSON.parse(JSON.stringify(targetFile.originalItems)),
+    };
+    setActiveFileId(targetFile.id);
+
+    setEditorState({
+      project: targetFile.project,
+      selectedId: targetFile.project.items[0]?.id || '',
+      past: [],
+      future: [],
+    });
+    setFilterStatus('all');
+    setSourceFilter('all');
+    setSearchQuery('');
+  }, [storedFiles]);
+
+  const handleRenameFile = useCallback((fileId: string, newName: string) => {
+    const updated = renameStoredFile(fileId, newName);
+    setStoredFiles(updated);
+    if (project.id === fileId) {
+      setEditorState((prev) => ({
+        ...prev,
+        project: {
+          ...prev.project,
+          name: newName,
+          sourceFileName: newName,
+        },
+      }));
+    }
+  }, [project.id]);
+
+  const handleResetFile = useCallback((fileId: string) => {
+    const { files: updated, resetFile } = resetStoredFileToOriginal(fileId);
+    setStoredFiles(updated);
+    if (resetFile && project.id === fileId) {
+      originalFileStateRef.current = {
+        fileId: resetFile.id,
+        rawXml: resetFile.originalRawXml,
+        items: JSON.parse(JSON.stringify(resetFile.originalItems)),
+      };
+      setEditorState({
+        project: resetFile.project,
+        selectedId: resetFile.project.items[0]?.id || '',
+        past: [],
+        future: [],
+      });
+    }
+  }, [project.id]);
+
+  const handleDeleteFile = useCallback((fileId: string) => {
+    const updated = deleteStoredFile(fileId);
+    setStoredFiles(updated);
+    if (project.id === fileId) {
+      if (updated.length > 0) {
+        handleSelectFile(updated[0].id);
+      } else {
+        const defaultProj = createDefaultProject();
+        originalFileStateRef.current = {
+          fileId: defaultProj.id,
+          rawXml: defaultProj.rawSourceXml,
+          items: JSON.parse(JSON.stringify(defaultProj.items)),
+        };
+        setActiveFileId(defaultProj.id);
+        setEditorState({
+          project: defaultProj,
+          selectedId: defaultProj.items[0]?.id || '',
+          past: [],
+          future: [],
+        });
+      }
+    }
+  }, [project.id, handleSelectFile]);
 
   // Handle Locale Change with translations caching per language so nothing is lost!
   const handleLanguageChange = useCallback((newLocale: string) => {
@@ -684,6 +883,9 @@ export default function App() {
           setSelectedId(id);
           setActiveView('editor');
         }}
+        onOpenFilesModal={() => setIsFilesModalOpen(true)}
+        savedFilesCount={storedFiles.length}
+        currentFileName={project.sourceFileName || project.name}
       />
 
       {/* Main Workspace Area */}
@@ -841,6 +1043,12 @@ export default function App() {
         onClose={() => setIsImportOpen(false)}
         onImportComplete={(newProject) => {
           lastEditRef.current = { itemId: '', timestamp: 0 };
+          originalFileStateRef.current = {
+            fileId: newProject.id,
+            rawXml: newProject.rawSourceXml,
+            items: JSON.parse(JSON.stringify(newProject.items)),
+          };
+          setActiveFileId(newProject.id);
           setEditorState({
             project: newProject,
             selectedId: newProject.items[0]?.id || '',
@@ -852,6 +1060,21 @@ export default function App() {
           setSearchQuery('');
         }}
         onLoadSample={handleLoadSample}
+        appLang={appLang}
+      />
+
+      {/* Stored XML Files Modal */}
+      <FilesModal
+        isOpen={isFilesModalOpen}
+        onClose={() => setIsFilesModalOpen(false)}
+        storedFiles={storedFiles}
+        activeFileId={project.id}
+        currentProject={project}
+        onSelectFile={handleSelectFile}
+        onRenameFile={handleRenameFile}
+        onDeleteFile={handleDeleteFile}
+        onResetFile={handleResetFile}
+        onOpenImport={() => setIsImportOpen(true)}
         appLang={appLang}
       />
 

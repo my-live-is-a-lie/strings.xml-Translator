@@ -20,7 +20,8 @@ import {
   FastForward,
   Undo2,
   Redo2,
-  ClipboardPaste
+  ClipboardPaste,
+  AlertCircle
 } from 'lucide-react';
 import {
   ResourceItem,
@@ -30,6 +31,7 @@ import {
   TranslationStatus
 } from '../types';
 import { LanguageSelectorModal } from './LanguageSelectorModal';
+import { HighlightedTextarea } from './HighlightedTextarea';
 import { getArabicLanguageName, getLanguageOption } from '../utils/languages';
 import { suggestTranslation } from '../utils/translator';
 import { normalizePluralsForLanguage } from '../utils/xmlParser';
@@ -322,10 +324,12 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   const adjustTextareaHeight = (targetEl?: HTMLTextAreaElement | null) => {
     const el = targetEl || textareaRef.current;
     if (!el) return;
+    const currentMin = parseFloat(el.style.minHeight) || 0;
     el.style.height = 'auto';
     // Include border-box offset so content never clips
     const borderOffset = el.offsetHeight - el.clientHeight;
-    el.style.height = `${el.scrollHeight + borderOffset}px`;
+    const naturalHeight = el.scrollHeight + borderOffset;
+    el.style.height = `${Math.max(naturalHeight, currentMin)}px`;
   };
 
   useEffect(() => {
@@ -1200,6 +1204,46 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     setShowToolsMenu(false);
   };
 
+  // Check if target text currently contains multiple consecutive spaces (typing mistake)
+  const hasMultipleSpaces = React.useMemo(() => {
+    if (draftItem.type === 'string') {
+      return / {2,}/.test(draftItem.target || '');
+    }
+    if (draftItem.type === 'plural') {
+      return normalizedPluralItems.some((pi) => / {2,}/.test(pi.target || ''));
+    }
+    if (draftItem.type === 'array') {
+      return draftItem.items.some((ai) => / {2,}/.test(ai.target || ''));
+    }
+    return false;
+  }, [draftItem, normalizedPluralItems]);
+
+  // Fix typing mistake: replace multiple consecutive spaces with a single space
+  const handleFixMultipleSpaces = () => {
+    if (draftItem.type === 'string') {
+      const fixed = (draftItem.target || '').replace(/ {2,}/g, ' ');
+      handleSingleTextChange(fixed);
+    } else if (draftItem.type === 'plural') {
+      const fixedPlurals = normalizedPluralItems.map((pi) => ({
+        ...pi,
+        target: (pi.target || '').replace(/ {2,}/g, ' '),
+      }));
+      updateDraftItem({
+        ...draftItem,
+        items: fixedPlurals,
+      });
+    } else if (draftItem.type === 'array') {
+      const fixedItems = draftItem.items.map((ai) => ({
+        ...ai,
+        target: (ai.target || '').replace(/ {2,}/g, ' '),
+      }));
+      updateDraftItem({
+        ...draftItem,
+        items: fixedItems,
+      });
+    }
+  };
+
   const effectiveCanUndo = draftPast.length > 0 || canUndo;
   const effectiveCanRedo = draftFuture.length > 0 || canRedo;
   const effectiveUndoCount = draftPast.length + undoCount;
@@ -1281,9 +1325,9 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               </div>
             </div>
 
-            {/* Target Language Name on Right + Translation Source & Reset on Left */}
+            {/* Target Language Name on Right + Translation Source, Alert & Reset on Left */}
             <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1.5 min-w-0">
+              <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                 {item.status !== 'untranslated' && (
                   <>
                     <span
@@ -1383,32 +1427,57 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               </div>
             </div>
 
-            {/* Translation Textarea (Single String) */}
-            {draftItem.type === 'string' && (
-              <div className="relative">
-                <textarea
-                  id="weblate-translation-input"
-                  ref={textareaRef}
-                  dir={direction}
-                  value={draftItem.target}
-                  onFocus={(e) => recordCursorPosition(e.currentTarget, 'string')}
-                  onBlur={(e) => handleTextareaBlur(e.currentTarget, 'string')}
-                  onClick={(e) => recordCursorPosition(e.currentTarget, 'string')}
-                  onKeyUp={(e) => recordCursorPosition(e.currentTarget, 'string')}
-                  onSelect={(e) => recordCursorPosition(e.currentTarget, 'string')}
-                  onChange={(e) => {
-                    recordCursorPosition(e.currentTarget, 'string');
-                    adjustTextareaHeight(e.currentTarget);
-                    handleSingleTextChange(e.target.value);
-                  }}
-                  placeholder={isAr ? 'اكتب الترجمة هنا...' : 'Type translation here...'}
-                  rows={1}
-                  className="w-full px-3.5 pt-2 pb-3.5 sm:pt-2.5 sm:pb-4 rounded-xl bg-[#0E121A] border-2 border-[#16695E] focus:border-[#1EB996] focus:ring-2 focus:ring-[#1EB996]/20 text-slate-100 placeholder-slate-500 text-xs sm:text-sm leading-relaxed focus:outline-none transition-colors resize-none overflow-hidden block"
-                />
+            {/* Single Multiple Consecutive Spaces Typing Mistake Warning Banner */}
+            {hasMultipleSpaces && (
+              <div className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-rose-500/15 border border-rose-500/40 text-rose-200 text-xs font-medium animate-in fade-in duration-150 gap-2">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span className="truncate">
+                    {isAr
+                      ? 'مسافات متتالية زائدة بين الكلمات'
+                      : 'Multiple spaces detected between words'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleFixMultipleSpaces}
+                  className="px-2.5 py-0.5 rounded-md bg-rose-600 hover:bg-rose-500 text-white font-bold text-[11px] shadow-xs transition cursor-pointer shrink-0"
+                >
+                  {isAr ? 'إصلاح المسافات' : 'Fix spaces'}
+                </button>
               </div>
             )}
 
-            {/* Plural Support (if plural string) */}
+            {/* Translation Textarea (Single String) with Visual Typing Mistake Indicator */}
+            {draftItem.type === 'string' && (
+              <HighlightedTextarea
+                id="weblate-translation-input"
+                ref={textareaRef}
+                dir={direction}
+                value={draftItem.target}
+                resetKey={draftItem.id}
+                onValueChange={(val) => {
+                  handleSingleTextChange(val);
+                }}
+                onFocus={(e) => recordCursorPosition(e.currentTarget, 'string')}
+                onBlur={(e) => handleTextareaBlur(e.currentTarget, 'string')}
+                onClick={(e) => recordCursorPosition(e.currentTarget, 'string')}
+                onKeyUp={(e) => recordCursorPosition(e.currentTarget, 'string')}
+                onSelect={(e) => recordCursorPosition(e.currentTarget, 'string')}
+                onChange={(e) => {
+                  recordCursorPosition(e.currentTarget, 'string');
+                  adjustTextareaHeight(e.currentTarget);
+                  handleSingleTextChange(e.target.value);
+                }}
+                placeholder={isAr ? 'اكتب الترجمة هنا...' : 'Type translation here...'}
+                rows={1}
+                containerClassName="rounded-xl bg-[#0E121A]"
+                backdropClassName="border-2 border-transparent px-3.5 pt-2 pb-3.5 sm:pt-2.5 sm:pb-4 text-xs sm:text-sm leading-relaxed"
+                className="px-3.5 pt-2 pb-3.5 sm:pt-2.5 sm:pb-4 rounded-xl border-2 border-[#16695E] focus:border-[#1EB996] focus:ring-2 focus:ring-[#1EB996]/20 text-slate-100 placeholder-slate-500 text-xs sm:text-sm leading-relaxed focus:outline-none transition-colors resize-none overflow-hidden block"
+              />
+            )}
+
+            {/* Plural Support (if plural string) with Visual Typing Mistake Indicator */}
             {draftItem.type === 'plural' && (
               <div className="space-y-2">
                 {normalizedPluralItems.map((pi) => (
@@ -1431,16 +1500,21 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                         })}
                       </span>
                     </div>
-                    <textarea
+                    <HighlightedTextarea
                       rows={1}
                       dir={direction}
                       value={pi.target}
+                      resetKey={`${draftItem.id}-${pi.quantity}`}
+                      onValueChange={(val) => {
+                        handlePluralQuantityChange(pi.quantity, val);
+                      }}
                       ref={(el) => {
                         pluralTextareaRefs.current[pi.quantity] = el;
                         if (el) {
+                          const currentMin = parseFloat(el.style.minHeight) || 0;
                           el.style.height = 'auto';
                           const borderOffset = el.offsetHeight - el.clientHeight;
-                          el.style.height = `${el.scrollHeight + borderOffset}px`;
+                          el.style.height = `${Math.max(el.scrollHeight + borderOffset, currentMin)}px`;
                         }
                       }}
                       onFocus={(e) =>
@@ -1468,14 +1542,16 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                           ? `ترجمة صيغة ${pi.quantity} (${pluralLabels[pi.quantity] || pi.quantity})...`
                           : `Translate ${pi.quantity} form (${pluralLabels[pi.quantity] || pi.quantity})...`
                       }
-                      className="w-full px-3.5 pt-1.5 pb-3 text-xs sm:text-sm leading-relaxed rounded-lg bg-[#0E121A] border border-[#283242] focus:border-[#1EB996] text-slate-100 focus:outline-none transition resize-none overflow-hidden block"
+                      containerClassName="rounded-lg bg-[#0E121A]"
+                      backdropClassName="border border-transparent px-3.5 pt-1.5 pb-3 text-xs sm:text-sm leading-relaxed"
+                      className="px-3.5 pt-1.5 pb-3 text-xs sm:text-sm leading-relaxed rounded-lg border border-[#283242] focus:border-[#1EB996] text-slate-100 focus:outline-none transition resize-none overflow-hidden block"
                     />
                   </div>
                 ))}
               </div>
             )}
 
-            {/* Array Support (if array string) */}
+            {/* Array Support (if array string) with Visual Typing Mistake Indicator */}
             {draftItem.type === 'array' && (
               <div className="space-y-2">
                 {draftItem.items.map((ai) => (
@@ -1491,16 +1567,21 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                         })}
                       </span>
                     </div>
-                    <textarea
+                    <HighlightedTextarea
                       rows={1}
                       dir={direction}
                       value={ai.target}
+                      resetKey={`${draftItem.id}-${ai.index}`}
+                      onValueChange={(val) => {
+                        handleArrayItemChange(ai.index, val);
+                      }}
                       ref={(el) => {
                         arrayTextareaRefs.current[ai.index] = el;
                         if (el) {
+                          const currentMin = parseFloat(el.style.minHeight) || 0;
                           el.style.height = 'auto';
                           const borderOffset = el.offsetHeight - el.clientHeight;
-                          el.style.height = `${el.scrollHeight + borderOffset}px`;
+                          el.style.height = `${Math.max(el.scrollHeight + borderOffset, currentMin)}px`;
                         }
                       }}
                       onFocus={(e) =>
@@ -1526,7 +1607,9 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                       placeholder={
                         isAr ? `ترجمة العنصر ${ai.index}...` : `Translate item ${ai.index}...`
                       }
-                      className="w-full px-3.5 pt-1.5 pb-3 text-xs sm:text-sm leading-relaxed rounded-lg bg-[#0E121A] border border-[#283242] focus:border-[#1EB996] text-slate-100 focus:outline-none transition resize-none overflow-hidden block"
+                      containerClassName="rounded-lg bg-[#0E121A]"
+                      backdropClassName="border border-transparent px-3.5 pt-1.5 pb-3 text-xs sm:text-sm leading-relaxed"
+                      className="px-3.5 pt-1.5 pb-3 text-xs sm:text-sm leading-relaxed rounded-lg border border-[#283242] focus:border-[#1EB996] text-slate-100 focus:outline-none transition resize-none overflow-hidden block"
                     />
                   </div>
                 ))}
@@ -1591,7 +1674,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                   onClick={handleCopyTarget}
                   title={isAr ? 'نسخ نص الترجمة' : 'Copy translation text'}
                   aria-label={isAr ? 'نسخ نص الترجمة' : 'Copy translation text'}
-                  className="p-1.5 rounded-lg bg-[#171D27] hover:bg-[#202A3A] active:bg-[#263246] border border-[#2B3544] text-slate-300 hover:text-white transition cursor-pointer flex items-center justify-center"
+                  className="p-1.5 rounded-lg hover:bg-[#202A3A] active:bg-[#263246] text-slate-300 hover:text-white transition cursor-pointer flex items-center justify-center focus:outline-none"
                 >
                   {copiedTarget ? (
                     <Check className="w-3.5 h-3.5 text-emerald-400" />
@@ -1618,7 +1701,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                   }}
                   title={isAr ? 'لصق من الحافظة' : 'Paste from clipboard'}
                   aria-label={isAr ? 'لصق من الحافظة' : 'Paste from clipboard'}
-                  className="p-1.5 rounded-lg bg-[#171D27] hover:bg-[#202A3A] active:bg-[#263246] border border-[#2B3544] text-slate-300 hover:text-white transition cursor-pointer flex items-center justify-center"
+                  className="p-1.5 rounded-lg hover:bg-[#202A3A] active:bg-[#263246] text-slate-300 hover:text-white transition cursor-pointer flex items-center justify-center focus:outline-none"
                 >
                   <ClipboardPaste className="w-3.5 h-3.5" />
                 </button>

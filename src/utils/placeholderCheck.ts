@@ -312,6 +312,21 @@ function validateSourceTargetPair(
     });
   }
 
+  // 3. Multiple consecutive spaces check (مسافات متعددة متتالية)
+  if (/ {2,}/.test(target)) {
+    issues.push({
+      id: `${itemId}_${subKey || 'main'}_multiple_spaces`,
+      itemId,
+      itemName,
+      subKey,
+      category: 'formatting',
+      severity: 'warning',
+      messageEn: `${prefix}Multiple consecutive spaces detected between words`,
+      messageAr: `${prefix}تم رصد مسافات متتالية متعددة بين الكلمات`,
+      tokens: ['  '],
+    });
+  }
+
   return issues;
 }
 

@@ -1,4 +1,4 @@
-import React, { StrictMode } from 'react';
+import React, { Component, ReactNode, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
@@ -20,16 +20,18 @@ if (typeof window !== 'undefined') {
   });
 }
 
-class AppErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  { hasError: boolean }
-> {
-  constructor(props: { children: React.ReactNode }) {
-    super(props);
-    this.state = { hasError: false };
-  }
+interface AppErrorBoundaryProps {
+  children: ReactNode;
+}
 
-  static getDerivedStateFromError() {
+interface AppErrorBoundaryState {
+  hasError: boolean;
+}
+
+class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorBoundaryState> {
+  state: AppErrorBoundaryState = { hasError: false };
+
+  static getDerivedStateFromError(): AppErrorBoundaryState {
     return { hasError: true };
   }
 

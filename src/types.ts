@@ -68,3 +68,15 @@ export type FilterStatus = 'all' | 'untranslated' | 'translated' | 'needs_review
 
 export type SourceFilter = 'all' | 'ai' | 'manual';
 
+export interface StoredXmlFile {
+  id: string; // Unique file ID
+  name: string; // File name, e.g. "strings.xml" (editable / renameable)
+  appName?: string; // App name found in app_name string resource
+  importedAt: number; // Timestamp when imported
+  lastModified: number; // Timestamp when last modified
+  originalRawXml?: string; // Original XML string before any edits
+  originalItems: ResourceItem[]; // Original items before any edits for reset capability
+  project: TranslationProject; // Current translation project with all user edits
+  hasUserEdits: boolean; // Flag indicating if changes were made
+}
+
