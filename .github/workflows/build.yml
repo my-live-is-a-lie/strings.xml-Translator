@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - master
+      - android
   pull_request:
     branches:
       - main
@@ -22,6 +23,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Restore Android binary assets
+        run: |
+          python3 scripts/restore-android-binaries.py
+          chmod +x android/gradlew
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -44,8 +50,10 @@ jobs:
       - name: Build web project
         run: npm run build
 
-      - name: Add Capacitor Android platform
-        run: npx cap add android
+      # On the android branch the native platform is committed to the repo,
+      # so we sync the fresh web build into it instead of re-adding it.
+      - name: Sync Capacitor Android platform
+        run: npx cap sync android
 
       - name: Build Android Debug APK
         working-directory: android
