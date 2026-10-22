@@ -1,9 +1,18 @@
 node_modules/
 build/
 dist/
-android/
 coverage/
 .DS_Store
 *.log
 .env*
 !.env.example
+# Capacitor Android platform is committed on this branch (native customizations live here).
+# Only build outputs stay ignored:
+android/app/build/
+android/.gradle/
+android/local.properties
+# Copied web build output (refreshed by `npx cap sync android`):
+android/app/src/main/assets/
+# Binaries restored locally from *.b64 (see scripts/restore-android-binaries.py):
+android/app/src/main/res/**/*.png
+android/gradle/wrapper/gradle-wrapper.jar
