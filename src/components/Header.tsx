@@ -121,6 +121,9 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const [rightDrawerOpen, setRightDrawerOpen] = useState(false);
   const [appLangMenuOpen, setAppLangMenuOpen] = useState(false);
+  const [drawerSwipeX, setDrawerSwipeX] = useState(0);
+  const [isSwipingDrawer, setIsSwipingDrawer] = useState(false);
+  const drawerTouchStartRef = useRef<{ x: number; y: number } | null>(null);
   const [historyListExpanded, setHistoryListExpanded] = useState(false);
   const [historyFilter, setHistoryFilter] = useState<'all' | 'ai' | 'manual'>('all');
   const [qaDrawerExpanded, setQaDrawerExpanded] = useState(false);
@@ -136,18 +139,32 @@ export const Header: React.FC<HeaderProps> = ({
     });
   }, [qaSummary.allIssues, qaDrawerFilter]);
 
-  const translatedItems = project.items.filter((i) => i.status !== 'untranslated');
-  const aiTranslatedCount = translatedItems.filter((i) => i.translationSource === 'ai').length;
-  const manualTranslatedCount = translatedItems.filter((i) => i.translationSource !== 'ai').length;
-  const totalTranslatedCount = translatedItems.length;
-  const aiPercent =
-    totalTranslatedCount > 0 ? Math.round((aiTranslatedCount / totalTranslatedCount) * 100) : 0;
-  const manualPercent = totalTranslatedCount > 0 ? 100 - aiPercent : 0;
-  const filteredHistoryItems = translatedItems.filter((item) => {
-    if (historyFilter === 'ai') return item.translationSource === 'ai';
-    if (historyFilter === 'manual') return item.translationSource !== 'ai';
-    return true;
-  });
+  const { translatedItems, aiTranslatedCount, manualTranslatedCount, totalTranslatedCount, aiPercent, manualPercent, filteredHistoryItems } = useMemo(() => {
+    const translated = project.items.filter((i) => i.status !== 'untranslated');
+    let ai = 0;
+    let manual = 0;
+    for (const item of translated) {
+      if (item.translationSource === 'ai') ai++;
+      else manual++;
+    }
+    const total = translated.length;
+    const aiPct = total > 0 ? Math.round((ai / total) * 100) : 0;
+    const manualPct = total > 0 ? 100 - aiPct : 0;
+    const history = translated.filter((item) => {
+      if (historyFilter === 'ai') return item.translationSource === 'ai';
+      if (historyFilter === 'manual') return item.translationSource !== 'ai';
+      return true;
+    });
+    return {
+      translatedItems: translated,
+      aiTranslatedCount: ai,
+      manualTranslatedCount: manual,
+      totalTranslatedCount: total,
+      aiPercent: aiPct,
+      manualPercent: manualPct,
+      filteredHistoryItems: history,
+    };
+  }, [project.items, historyFilter]);
   const [accentColor, setAccentColor] = useState<AccentColorId>(() => {
     const saved = getStoredItem('app_accent_color') as AccentColorId | null;
     if (saved && ACCENT_COLORS.some((c) => c.id === saved)) {
@@ -643,7 +660,47 @@ export const Header: React.FC<HeaderProps> = ({
           />
 
           {/* Drawer Content on the Right Side */}
-          <aside className="relative w-72 sm:w-80 max-w-[85vw] h-dvh max-h-dvh overflow-hidden bg-white dark:bg-[#161922] border-l border-slate-200 dark:border-[#252C3A] shadow-2xl z-10 flex flex-col animate-in slide-in-from-right duration-200">
+          <aside
+            onTouchStart={(e) => {
+              if (e.touches.length === 1) {
+                drawerTouchStartRef.current = {
+                  x: e.touches[0].clientX,
+                  y: e.touches[0].clientY,
+                };
+                setIsSwipingDrawer(false);
+              }
+            }}
+            onTouchMove={(e) => {
+              if (!drawerTouchStartRef.current || e.touches.length !== 1) return;
+              const deltaX = e.touches[0].clientX - drawerTouchStartRef.current.x;
+              const deltaY = e.touches[0].clientY - drawerTouchStartRef.current.y;
+              // Swiping to the right (positive deltaX): if horizontal movement is dominant, track swipe
+              if (deltaX > 8 && Math.abs(deltaX) > Math.abs(deltaY) * 0.8) {
+                setIsSwipingDrawer(true);
+                setDrawerSwipeX(Math.max(0, deltaX));
+              }
+            }}
+            onTouchEnd={() => {
+              if (isSwipingDrawer && drawerSwipeX > 60) {
+                // Sufficient swipe to the right -> close drawer
+                setAppLangMenuOpen(false);
+                setRightDrawerOpen(false);
+              }
+              setDrawerSwipeX(0);
+              setIsSwipingDrawer(false);
+              drawerTouchStartRef.current = null;
+            }}
+            onTouchCancel={() => {
+              setDrawerSwipeX(0);
+              setIsSwipingDrawer(false);
+              drawerTouchStartRef.current = null;
+            }}
+            style={{
+              transform: drawerSwipeX > 0 ? `translateX(${drawerSwipeX}px)` : undefined,
+              transition: isSwipingDrawer ? 'none' : 'transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+            }}
+            className="relative w-72 sm:w-80 max-w-[85vw] h-dvh max-h-dvh overflow-hidden bg-white dark:bg-[#161922] border-l border-slate-200 dark:border-[#252C3A] shadow-2xl z-10 flex flex-col animate-in slide-in-from-right duration-200"
+          >
             {/* Drawer Header: App Language Icon Button (Arabic/English only) + Icon-Only Accent Button & Swatches */}
             <div className="relative flex items-center justify-between gap-2 px-4 pb-3.5 pt-[max(0.875rem,env(safe-area-inset-top))] border-b border-slate-200/80 dark:border-[#252C3A]">
               <div className="flex items-center gap-1.5 min-w-0">
@@ -740,30 +797,6 @@ export const Header: React.FC<HeaderProps> = ({
 
             {/* Drawer Body: Import, Export, and Translate Providers Button */}
             <div className="p-5 pb-28 flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y flex flex-col gap-3">
-              {/* Files Manager Button */}
-              {onOpenFilesModal && (
-                <button
-                  id="drawer-files-btn"
-                  type="button"
-                  onClick={() => {
-                    setAppLangMenuOpen(false);
-                    setRightDrawerOpen(false);
-                    onOpenFilesModal();
-                  }}
-                  className="w-full flex items-center justify-between px-4 py-3 rounded-2xl bg-[#0B57D0]/10 dark:bg-[#1EB996]/10 hover:bg-[#0B57D0]/15 dark:hover:bg-[#1EB996]/20 border border-[#0B57D0]/20 dark:border-[#1EB996]/20 text-[#0B57D0] dark:text-[#1EB996] text-sm font-semibold transition cursor-pointer shadow-xs shrink-0"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <FolderOpen className="w-4 h-4" />
-                    <span>{isAr ? 'الملفات المحفوظة' : 'Saved Files'}</span>
-                  </div>
-                  {savedFilesCount > 0 && (
-                    <span className="px-1.5 py-0.5 rounded-md text-xs font-bold bg-[#0B57D0]/20 dark:bg-[#1EB996]/20 text-[#0B57D0] dark:text-[#1EB996]">
-                      {savedFilesCount}
-                    </span>
-                  )}
-                </button>
-              )}
-
               {/* Import Button */}
               <button
                 id="drawer-import-btn"

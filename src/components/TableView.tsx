@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { ResourceItem, FilterStatus, SourceFilter, SingleStringItem, PluralStringItem, ArrayStringItem } from '../types';
-import { Search, CheckCircle2, Circle, AlertCircle, Edit3, Check, Sparkles, CheckSquare, Square, Loader2 } from 'lucide-react';
+import { Search, CheckCircle2, Circle, AlertCircle, Edit3, Check, Sparkles, CheckSquare, Square, Loader2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { bulkTranslateItems } from '../utils/translator';
 import { filterProjectItems } from '../utils/xmlExporter';
 
@@ -54,10 +54,29 @@ export const TableView: React.FC<TableViewProps> = ({
     else setLocalFilter(st);
   };
 
-  const filtered = filterProjectItems(items, filter, search, sourceFilter as SourceFilter);
+  const filtered = useMemo(
+    () => filterProjectItems(items, filter, search, sourceFilter as SourceFilter),
+    [items, filter, search, sourceFilter]
+  );
 
-  const filteredUntranslated = filtered.filter((i) => i.status === 'untranslated');
-  const allFilteredSelected = filtered.length > 0 && filtered.every((i) => checkedIds.has(i.id));
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(50);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, filter, sourceFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+
+  const pagedItems = useMemo(() => {
+    if (pageSize >= 10000) return filtered;
+    const start = (currentPage - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, currentPage, pageSize]);
+
+  const filteredUntranslated = useMemo(() => filtered.filter((i) => i.status === 'untranslated'), [filtered]);
+  const allPagedSelected = pagedItems.length > 0 && pagedItems.every((i) => checkedIds.has(i.id));
   const allFilteredUntranslatedSelected =
     filteredUntranslated.length > 0 && filteredUntranslated.every((i) => checkedIds.has(i.id));
 
@@ -73,17 +92,17 @@ export const TableView: React.FC<TableViewProps> = ({
     });
   };
 
-  const handleToggleSelectAllFiltered = () => {
-    if (allFilteredSelected) {
+  const handleToggleSelectAllPaged = () => {
+    if (allPagedSelected) {
       setCheckedIds((prev) => {
         const next = new Set(prev);
-        filtered.forEach((i) => next.delete(i.id));
+        pagedItems.forEach((i) => next.delete(i.id));
         return next;
       });
     } else {
       setCheckedIds((prev) => {
         const next = new Set(prev);
-        filtered.forEach((i) => next.add(i.id));
+        pagedItems.forEach((i) => next.add(i.id));
         return next;
       });
     }
@@ -245,12 +264,12 @@ export const TableView: React.FC<TableViewProps> = ({
                   <th className="py-3 px-3 w-10 text-center">
                     <button
                       type="button"
-                      onClick={handleToggleSelectAllFiltered}
-                      disabled={filtered.length === 0 || isBulkTranslating}
+                      onClick={handleToggleSelectAllPaged}
+                      disabled={pagedItems.length === 0 || isBulkTranslating}
                       className="inline-flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer disabled:opacity-40"
-                      title={isAr ? 'تحديد كل الصفوف المعروضة' : 'Select all visible rows'}
+                      title={isAr ? 'تحديد كل الصفوف المعروضة في الصفحة' : 'Select all rows on this page'}
                     >
-                      {allFilteredSelected ? (
+                      {allPagedSelected ? (
                         <CheckSquare className="w-4 h-4 text-[#1EB996]" />
                       ) : (
                         <Square className="w-4 h-4" />
@@ -273,7 +292,7 @@ export const TableView: React.FC<TableViewProps> = ({
                   </td>
                 </tr>
               ) : (
-                filtered.map((item) => {
+                pagedItems.map((item) => {
                   const isChecked = checkedIds.has(item.id);
                   let sourceSnippet = '';
                   let targetSnippet = '';
@@ -380,6 +399,81 @@ export const TableView: React.FC<TableViewProps> = ({
               )}
             </tbody>
           </table>
+
+          {/* Pagination Toolbar */}
+          {filtered.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-white dark:bg-[#1A1C20] border-t border-slate-200/80 dark:border-slate-800/80 text-xs text-slate-600 dark:text-slate-400">
+              <div className="flex items-center gap-2">
+                <span>
+                  {isAr
+                    ? `عرض ${((currentPage - 1) * pageSize) + 1}–${Math.min(currentPage * pageSize, filtered.length)} من ${filtered.length} نص`
+                    : `Showing ${((currentPage - 1) * pageSize) + 1}–${Math.min(currentPage * pageSize, filtered.length)} of ${filtered.length} strings`}
+                </span>
+                <div className="flex items-center gap-1.5 ml-2 border-l border-slate-200 dark:border-slate-700 pl-2">
+                  <span className="text-[11px] text-slate-400">{isAr ? 'لكل صفحة:' : 'Per page:'}</span>
+                  <select
+                    value={pageSize}
+                    onChange={(e) => {
+                      setPageSize(Number(e.target.value));
+                      setPage(1);
+                    }}
+                    className="bg-slate-100 dark:bg-slate-800 rounded px-1.5 py-0.5 text-xs text-slate-800 dark:text-slate-200 border-none outline-none cursor-pointer"
+                  >
+                    <option value={25}>25</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                    <option value={200}>200</option>
+                  </select>
+                </div>
+              </div>
+
+              {totalPages > 1 && (
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setPage(1)}
+                    disabled={currentPage === 1}
+                    className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+                    title={isAr ? 'الصفحة الأولى' : 'First page'}
+                  >
+                    <ChevronsLeft className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+                    title={isAr ? 'الصفحة السابقة' : 'Previous page'}
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+
+                  <span className="px-2 font-medium tabular-nums text-slate-800 dark:text-slate-200">
+                    {isAr ? `${currentPage} من ${totalPages}` : `${currentPage} of ${totalPages}`}
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+                    title={isAr ? 'الصفحة التالية' : 'Next page'}
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPage(totalPages)}
+                    disabled={currentPage === totalPages}
+                    className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+                    title={isAr ? 'الصفحة الأخيرة' : 'Last page'}
+                  >
+                    <ChevronsRight className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

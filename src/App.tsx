@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Header } from './components/Header';
 import { StringList } from './components/StringList';
+import { StringsListDrawer } from './components/StringsListDrawer';
 import { TranslationEditor } from './components/TranslationEditor';
 import { TableView } from './components/TableView';
 import { ImportModal } from './components/ImportModal';
@@ -966,51 +967,28 @@ export default function App() {
               )}
             </main>
 
-            {/* Mobile M3 Modal Drawer */}
-            {mobileDrawerOpen && (
-              <div className="fixed inset-0 z-40 md:hidden flex">
-                <div
-                  className="fixed inset-0 bg-black/40 backdrop-blur-xs transition-opacity"
-                  onClick={() => setMobileDrawerOpen(false)}
-                />
-                <div className="relative w-4/5 max-w-sm h-full bg-white dark:bg-[#131314] z-50 flex flex-col shadow-2xl rounded-r-3xl overflow-hidden animate-in slide-in-from-left duration-200">
-                  <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                      {appLang === 'ar'
-                        ? `دليل النصوص (${project.items.length})`
-                        : `Strings Directory (${project.items.length})`}
-                    </span>
-                    <button
-                      onClick={() => setMobileDrawerOpen(false)}
-                      className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                    >
-                      <X className="w-5 h-5" />
-                    </button>
-                  </div>
-                  <div className="flex-1 overflow-hidden">
-                    <StringList
-                      items={project.items}
-                      selectedId={selectedId}
-                      onSelect={(id) => {
-                        setSelectedId(id);
-                        setMobileDrawerOpen(false);
-                      }}
-                      searchQuery={searchQuery}
-                      onSearchChange={setSearchQuery}
-                      filterStatus={filterStatus}
-                      onFilterChange={setFilterStatus}
-                      sourceFilter={sourceFilter}
-                      onSourceFilterChange={setSourceFilter}
-                      targetLang={project.targetLang}
-                      targetLocaleName={project.targetLocaleName}
-                      appLang={appLang}
-                      onBulkUpdateTranslations={handleBulkUpdateTranslations}
-                      onResetItemHistory={handleResetItemHistory}
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
+            {/* Mobile Strings List Drawer - identical snappy 200ms motion & feel matching the side drawer */}
+            <StringsListDrawer
+              isOpen={mobileDrawerOpen}
+              onClose={() => setMobileDrawerOpen(false)}
+              items={project.items}
+              selectedId={selectedId}
+              onSelect={(id) => {
+                setSelectedId(id);
+                setActiveView('editor');
+              }}
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              filterStatus={filterStatus}
+              onFilterChange={setFilterStatus}
+              sourceFilter={sourceFilter}
+              onSourceFilterChange={setSourceFilter}
+              targetLang={project.targetLang}
+              targetLocaleName={project.targetLocaleName}
+              appLang={appLang}
+              onBulkUpdateTranslations={handleBulkUpdateTranslations}
+              onResetItemHistory={handleResetItemHistory}
+            />
           </>
         ) : (
           /* Table View */

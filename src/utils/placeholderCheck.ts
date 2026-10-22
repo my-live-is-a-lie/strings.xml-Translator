@@ -365,6 +365,23 @@ export function getItemQaIssues(item: ResourceItem): QaIssue[] {
   return [];
 }
 
+const itemQaCache = new Map<string, ItemQaResult | null>();
+
+function getItemCacheKey(item: ResourceItem): string {
+  if (item.type === 'string') {
+    return `${item.id}_${item.name}_${item.source || ''}_${item.target || ''}`;
+  }
+  if (item.type === 'plural') {
+    const sub = (item.items || []).map((q) => `${q.quantity}:${q.source || ''}:${q.target || ''}`).join('|');
+    return `${item.id}_${item.name}_p_${sub}`;
+  }
+  if (item.type === 'array') {
+    const sub = (item.items || []).map((el) => `${el.index}:${el.source || ''}:${el.target || ''}`).join('|');
+    return `${item.id}_${item.name}_a_${sub}`;
+  }
+  return '';
+}
+
 /**
  * Runs QA checks across all items in the project and returns a summary + lookup map
  */
@@ -382,27 +399,41 @@ export function analyzeProjectQa(items: ResourceItem[]): {
   let placeholderIssueItemsCount = 0;
   let htmlIssueItemsCount = 0;
 
+  if (itemQaCache.size > 10000) {
+    itemQaCache.clear();
+  }
+
   for (const item of items || []) {
-    const issues = getItemQaIssues(item);
-    if (issues.length > 0) {
-      const hasPlaceholderIssue = issues.some((i) => i.category === 'placeholder');
-      const hasHtmlIssue = issues.some((i) => i.category === 'html');
-      const hasFormattingIssue = issues.some((i) => i.category === 'formatting');
+    const cacheKey = getItemCacheKey(item);
+    let cachedResult = itemQaCache.get(cacheKey);
 
-      if (hasPlaceholderIssue) placeholderIssueItemsCount++;
-      if (hasHtmlIssue) htmlIssueItemsCount++;
+    if (cachedResult === undefined) {
+      const issues = getItemQaIssues(item);
+      if (issues.length > 0) {
+        const hasPlaceholderIssue = issues.some((i) => i.category === 'placeholder');
+        const hasHtmlIssue = issues.some((i) => i.category === 'html');
+        const hasFormattingIssue = issues.some((i) => i.category === 'formatting');
 
-      const result: ItemQaResult = {
-        itemId: item.id,
-        itemName: item.name,
-        issues,
-        hasPlaceholderIssue,
-        hasHtmlIssue,
-        hasFormattingIssue,
-      };
-      allIssues.push(...issues);
-      itemResults.push(result);
-      byItemId.set(item.id, result);
+        cachedResult = {
+          itemId: item.id,
+          itemName: item.name,
+          issues,
+          hasPlaceholderIssue,
+          hasHtmlIssue,
+          hasFormattingIssue,
+        };
+      } else {
+        cachedResult = null;
+      }
+      itemQaCache.set(cacheKey, cachedResult);
+    }
+
+    if (cachedResult) {
+      if (cachedResult.hasPlaceholderIssue) placeholderIssueItemsCount++;
+      if (cachedResult.hasHtmlIssue) htmlIssueItemsCount++;
+      allIssues.push(...cachedResult.issues);
+      itemResults.push(cachedResult);
+      byItemId.set(item.id, cachedResult);
     }
   }
 

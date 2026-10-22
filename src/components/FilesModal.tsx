@@ -212,14 +212,14 @@ export const FilesModal: React.FC<FilesModalProps> = ({
                         onClose();
                       }
                     }}
-                    className={`relative rounded-xl border transition p-3 sm:p-3.5 group ${
+                    className={`relative rounded-xl border transition px-3 sm:px-3.5 pt-2.5 pb-2.5 overflow-hidden group ${
                       isActive
                         ? 'border-[#0B57D0] dark:border-[#1EB996] bg-[#0B57D0]/5 dark:bg-[#1EB996]/5 ring-1 ring-[#0B57D0]/30 dark:ring-[#1EB996]/30'
                         : 'border-slate-200 dark:border-[#263143] bg-slate-50/70 dark:bg-[#1B2230] hover:border-[#0B57D0]/60 dark:hover:border-[#1EB996]/60 hover:bg-slate-100/80 dark:hover:bg-[#1F2737] cursor-pointer'
                     }`}
                   >
                     {/* Top Row: File Name & Quick Icon Actions */}
-                    <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="flex items-start justify-between gap-2 mb-1.5">
                       <div className="flex items-start gap-2 min-w-0 flex-1">
                         {isEditingThis ? (
                           <div
@@ -274,10 +274,11 @@ export const FilesModal: React.FC<FilesModalProps> = ({
                           </div>
                         ) : (
                           <div className="min-w-0 flex-1">
-                            <div className="flex items-start gap-1.5 min-w-0">
+                            <div className="inline-flex items-center gap-1.5 max-w-full min-w-0">
                               <span
-                                className="font-semibold text-xs sm:text-sm text-slate-900 dark:text-white line-clamp-2 break-words [word-break:break-word] leading-snug"
+                                className="font-semibold text-xs sm:text-sm text-slate-900 dark:text-white truncate max-w-fit leading-tight"
                                 title={file.name}
+                                dir="auto"
                               >
                                 {file.name}
                               </span>
@@ -287,7 +288,7 @@ export const FilesModal: React.FC<FilesModalProps> = ({
                                   e.stopPropagation();
                                   handleStartRename(file);
                                 }}
-                                className="p-1 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-[#263143] transition cursor-pointer shrink-0 mt-0.5"
+                                className="p-1 -my-0.5 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-[#263143] transition cursor-pointer shrink-0"
                                 title={isAr ? 'إعادة التسمية' : 'Rename'}
                                 aria-label={isAr ? 'إعادة تسمية' : 'Rename'}
                               >
@@ -296,7 +297,7 @@ export const FilesModal: React.FC<FilesModalProps> = ({
                             </div>
                             {appName && (
                               <div
-                                className="text-[11px] text-[#0B57D0] dark:text-[#1EB996] font-medium truncate mt-0.5 tracking-tight"
+                                className="text-[11px] text-[#0B57D0] dark:text-[#1EB996] font-medium truncate tracking-tight leading-tight mt-0.5"
                                 title={appName}
                               >
                                 {appName}
@@ -317,11 +318,21 @@ export const FilesModal: React.FC<FilesModalProps> = ({
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setConfirmResetId(file.id);
+                              setConfirmResetId((prev) => (prev === file.id ? null : file.id));
                               setConfirmDeleteId(null);
                             }}
-                            className="p-1.5 rounded-lg text-amber-600 dark:text-amber-400 hover:bg-amber-500/15 transition cursor-pointer"
-                            title={isAr ? 'استعادة الحالة الأصلية للملف' : 'Reset to original state'}
+                            className={`p-1.5 rounded-lg text-amber-600 dark:text-amber-400 hover:bg-amber-500/15 transition cursor-pointer ${
+                              isConfirmingReset ? 'bg-amber-500/20 ring-1 ring-amber-500/40' : ''
+                            }`}
+                            title={
+                              isConfirmingReset
+                                ? isAr
+                                  ? 'إغلاق تأكيد الاستعادة'
+                                  : 'Cancel reset confirmation'
+                                : isAr
+                                  ? 'استعادة الحالة الأصلية للملف'
+                                  : 'Reset to original state'
+                            }
                             aria-label={isAr ? 'استعادة الأصل' : 'Reset to original'}
                           >
                             <RotateCcw className="w-3.5 h-3.5" />
@@ -332,11 +343,21 @@ export const FilesModal: React.FC<FilesModalProps> = ({
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setConfirmDeleteId(file.id);
+                              setConfirmDeleteId((prev) => (prev === file.id ? null : file.id));
                               setConfirmResetId(null);
                             }}
-                            className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-500/15 transition cursor-pointer"
-                            title={isAr ? 'حذف الملف' : 'Delete file'}
+                            className={`p-1.5 rounded-lg text-rose-500 hover:bg-rose-500/15 transition cursor-pointer ${
+                              isConfirmingDelete ? 'bg-rose-500/20 ring-1 ring-rose-500/40' : ''
+                            }`}
+                            title={
+                              isConfirmingDelete
+                                ? isAr
+                                  ? 'إغلاق تأكيد الحذف'
+                                  : 'Cancel delete confirmation'
+                                : isAr
+                                  ? 'حذف الملف'
+                                  : 'Delete file'
+                            }
                             aria-label={isAr ? 'حذف' : 'Delete'}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -346,37 +367,37 @@ export const FilesModal: React.FC<FilesModalProps> = ({
                     </div>
 
                     {/* Progress Bar & Stats */}
-                    <div className="mt-1">
-                      <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 mb-1">
-                        <div className="flex items-center gap-2">
-                          <span>
-                            {isAr
-                              ? `${stats.translated} من ${stats.total}`
-                              : `${stats.translated} of ${stats.total}`}
+                    <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                      <div className="flex items-center gap-2">
+                        <span>
+                          {isAr
+                            ? `${stats.translated} من ${stats.total}`
+                            : `${stats.translated} of ${stats.total}`}
+                        </span>
+                        {isActive && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-[#0B57D0]/10 dark:bg-[#1EB996]/20 text-[#0B57D0] dark:text-[#1EB996]">
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#0B57D0] dark:bg-[#1EB996]" />
+                            <span>{isAr ? 'النشط' : 'Active'}</span>
                           </span>
-                          {isActive && (
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-[#0B57D0]/10 dark:bg-[#1EB996]/20 text-[#0B57D0] dark:text-[#1EB996]">
-                              <span className="w-1.5 h-1.5 rounded-full bg-[#0B57D0] dark:bg-[#1EB996]" />
-                              <span>{isAr ? 'النشط' : 'Active'}</span>
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-white">
-                            {stats.percent}%
-                          </span>
-                          <span className="text-[10px] text-slate-400 flex items-center gap-1">
-                            <Clock className="w-2.5 h-2.5" />
-                            <span>{formatTimeAgo(file.lastModified)}</span>
-                          </span>
-                        </div>
+                        )}
                       </div>
-                      <div className="w-full h-1.5 bg-slate-200 dark:bg-[#283244] rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-[#0B57D0] dark:bg-[#1EB996] rounded-full transition-all duration-300"
-                          style={{ width: `${stats.percent}%` }}
-                        />
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-white">
+                          {stats.percent}%
+                        </span>
+                        <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                          <Clock className="w-2.5 h-2.5" />
+                          <span>{formatTimeAgo(file.lastModified)}</span>
+                        </span>
                       </div>
+                    </div>
+
+                    {/* Thin progress bar touching the card bottom edge */}
+                    <div className="absolute bottom-0 inset-x-0 h-1 bg-slate-200/60 dark:bg-[#263143] overflow-hidden">
+                      <div
+                        className="h-full bg-[#0B57D0] dark:bg-[#1EB996] transition-all duration-300"
+                        style={{ width: `${stats.percent}%` }}
+                      />
                     </div>
 
                     {/* Inline Confirmation Prompts */}

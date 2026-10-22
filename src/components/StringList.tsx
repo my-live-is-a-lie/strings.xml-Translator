@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   Search,
   CheckCircle2,
@@ -101,29 +101,66 @@ export const StringList: React.FC<StringListProps> = ({
     }
   };
 
-  // Counts
-  const counts = {
-    all: items.length,
-    untranslated: items.filter((i) => i.status === 'untranslated').length,
-    translated: items.filter((i) => i.status === 'translated').length,
-    needs_review: items.filter((i) => i.status === 'needs_review').length,
-    ai: items.filter((i) => i.status !== 'untranslated' && i.translationSource === 'ai').length,
-    manual: items.filter((i) => i.status !== 'untranslated' && i.translationSource !== 'ai').length,
-  };
+  // Counts (single-pass loop memoized for maximum performance with 1000+ keys)
+  const counts = useMemo(() => {
+    let untranslated = 0;
+    let translated = 0;
+    let needs_review = 0;
+    let ai = 0;
+    let manual = 0;
+
+    for (const i of items) {
+      if (i.status === 'untranslated') untranslated++;
+      else if (i.status === 'translated') translated++;
+      else if (i.status === 'needs_review') needs_review++;
+
+      if (i.status !== 'untranslated') {
+        if (i.translationSource === 'ai') ai++;
+        else manual++;
+      }
+    }
+    return { all: items.length, untranslated, translated, needs_review, ai, manual };
+  }, [items]);
+
   const totalTranslatedCount = counts.ai + counts.manual;
   const aiPercent = totalTranslatedCount > 0 ? Math.round((counts.ai / totalTranslatedCount) * 100) : 0;
   const manualPercent = totalTranslatedCount > 0 ? 100 - aiPercent : 0;
 
-  // Filter items
-  const baseFilteredItems = filterProjectItems(items, filterStatus, searchQuery, sourceFilter);
-  const filteredItems = baseFilteredItems.filter((item) => {
-    if (qaFilter === 'all') return true;
-    const itemQa = qaSummary.byItemId.get(item.id);
-    if (!itemQa) return false;
-    if (qaFilter === 'placeholder') return itemQa.hasPlaceholderIssue;
-    if (qaFilter === 'html') return itemQa.hasHtmlIssue;
-    return true;
-  });
+  // Filter items (memoized to prevent redundant array operations)
+  const filteredItems = useMemo(() => {
+    const base = filterProjectItems(items, filterStatus, searchQuery, sourceFilter);
+    if (qaFilter === 'all') return base;
+    return base.filter((item) => {
+      const itemQa = qaSummary.byItemId.get(item.id);
+      if (!itemQa) return false;
+      if (qaFilter === 'placeholder') return itemQa.hasPlaceholderIssue;
+      if (qaFilter === 'html') return itemQa.hasHtmlIssue;
+      return true;
+    });
+  }, [items, filterStatus, searchQuery, sourceFilter, qaFilter, qaSummary]);
+
+  // Incremental rendering limit (renders 25 items initially for ultra-fast instant mount, loads more on scroll)
+  const [displayLimit, setDisplayLimit] = useState(25);
+
+  useEffect(() => {
+    setDisplayLimit(25);
+  }, [searchQuery, filterStatus, sourceFilter, qaFilter]);
+
+  useEffect(() => {
+    if (selectedId) {
+      const idx = filteredItems.findIndex((i) => i.id === selectedId);
+      if (idx >= 0 && idx >= displayLimit) {
+        setDisplayLimit((prev) => Math.max(prev, idx + 20));
+      }
+    }
+  }, [selectedId, filteredItems, displayLimit]);
+
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    if (target.scrollTop + target.clientHeight >= target.scrollHeight - 250) {
+      setDisplayLimit((prev) => (prev < filteredItems.length ? Math.min(filteredItems.length, prev + 30) : prev));
+    }
+  }, [filteredItems.length]);
 
   const filteredUntranslated = filteredItems.filter((i) => i.status === 'untranslated');
   const allFilteredUntranslatedSelected =
@@ -586,7 +623,7 @@ export const StringList: React.FC<StringListProps> = ({
       </div>
 
       {/* String Items List */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-1">
+      <div onScroll={handleScroll} className="flex-1 overflow-y-auto p-2 space-y-1">
         {filteredItems.length === 0 ? (
           <div className="py-12 px-4 text-center text-xs text-slate-500 dark:text-slate-400 space-y-1.5">
             <p className="font-medium text-slate-700 dark:text-slate-300">
@@ -597,7 +634,8 @@ export const StringList: React.FC<StringListProps> = ({
             </p>
           </div>
         ) : (
-          filteredItems.map((item) => {
+          <>
+            {filteredItems.slice(0, displayLimit).map((item) => {
             const isSelected = item.id === selectedId;
             const isChecked = checkedIds.has(item.id);
 
@@ -785,16 +823,31 @@ export const StringList: React.FC<StringListProps> = ({
                 </p>
               </button>
             );
-          })
-        )}
+          })}
+
+          {displayLimit < filteredItems.length && (
+            <div className="py-2.5 text-center">
+              <button
+                type="button"
+                onClick={() => setDisplayLimit((prev) => Math.min(filteredItems.length, prev + 100))}
+                className="text-xs text-[#0B57D0] dark:text-[#A8C7FA] hover:underline px-3 py-1 font-medium cursor-pointer"
+              >
+                {isAr
+                  ? `عرض المزيد (${displayLimit} من ${filteredItems.length})`
+                  : `Show more (${displayLimit} of ${filteredItems.length})`}
+              </button>
+            </div>
+          )}
+        </>
+      )}
       </div>
 
       {/* Footer count indicator */}
       <div className="px-4 py-2 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/50 text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between">
         <span className="tabular-nums">
           {isAr
-            ? `عرض ${filteredItems.length} من ${items.length}`
-            : `Showing ${filteredItems.length} of ${items.length}`}
+            ? `عرض ${Math.min(displayLimit, filteredItems.length)} من ${filteredItems.length}${filteredItems.length !== items.length ? ` (الإجمالي ${items.length})` : ''}`
+            : `Showing ${Math.min(displayLimit, filteredItems.length)} of ${filteredItems.length}${filteredItems.length !== items.length ? ` (Total ${items.length})` : ''}`}
         </span>
         <span className="font-mono text-[10px] text-slate-400">
           {isAr ? 'Ctrl+↵ حفظ' : 'Ctrl+↵ Save'}
