@@ -30,7 +30,9 @@ npx cap sync android  # نسخ أحدث بناء ويب إلى المنصة
   native (مثل `AndroidManifest.xml`، الأيقونات، ألوان شريط الحالة) يبقى محفوظًا.
 - **الملفات الثنائية مخزنة كنص base64** (ملفات `*.b64`: أيقونات اللانشر، شاشات
   البداية، و`gradle-wrapper.jar`) لأن قناة الدفع المستخدمة لهذا الفرع لا تنقل
-  ملفات binary. بعد أي clone نفّذ:
+  ملفات binary. وهي محفوظة تحت `android/binary-assets/` (بنفس البنية الداخلية
+  لمجلد `android/`) — **وليس** داخل `app/src/main/res/` لأن دمج موارد أندرويد
+  يرفض أي ملف هناك لا ينتهي بـ `.xml` أو `.png`. بعد أي clone نفّذ:
   `python3 scripts/restore-android-binaries.py`
   (الـ CI يفعل ذلك تلقائيًا قبل البناء).
 - لا تشغّل `npx cap add android` فوق هذا الفرع — المنصة موجودة أصلًا.
