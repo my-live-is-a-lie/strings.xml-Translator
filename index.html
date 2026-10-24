@@ -23,12 +23,12 @@
         try {
           var t = localStorage.getItem('app_theme') || 'night';
           var isDay = t === 'day';
-          var scheme = isDay ? 'light' : 'dark';
+          var scheme = isDay ? 'only light' : 'dark';
           var root = document.documentElement;
           if (isDay) {
             root.classList.remove('dark');
             root.setAttribute('data-theme', 'day');
-            root.style.colorScheme = 'light';
+            root.style.colorScheme = 'only light';
           } else {
             root.classList.add('dark');
             root.setAttribute('data-theme', t === 'black_hole' ? 'black-hole' : 'night');

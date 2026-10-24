@@ -47,7 +47,7 @@
 
   /* Explicit Day / Light Theme on :root */
   :root[data-theme="day"] {
-    --color-scheme: light;
+    --color-scheme: only light;
     --app-bg: #f8f9fa;
     --app-text: #1f1f1f;
     --app-surface: #ffffff;
@@ -362,7 +362,7 @@ html:not(.dark) {
   --md-sys-color-on-surface-variant: #444746;
   --md-sys-color-outline: #747775;
   --md-sys-color-outline-variant: #c4c7c5;
-  color-scheme: light !important;
+  color-scheme: only light !important;
 }
 
 html[data-theme="day"] body,

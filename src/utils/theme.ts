@@ -13,7 +13,10 @@ export function applyAppTheme(theme: AppTheme): void {
   const root = document.documentElement;
   const isDay = theme === 'day';
   const isBlackHole = theme === 'black_hole';
-  const scheme = isDay ? 'light' : 'dark';
+  // 'only light' (not plain 'light') opts out of the browser's automatic dark
+  // mode (Brave / Chrome "Force dark" and similar), which otherwise inverts the
+  // light theme into a dark one.
+  const scheme = isDay ? 'only light' : 'dark';
 
   if (isDay) {
     root.classList.remove('dark');
