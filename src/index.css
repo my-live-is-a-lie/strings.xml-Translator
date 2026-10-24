@@ -317,24 +317,112 @@ html[data-theme="black-hole"] body {
   background-color: #000000 !important;
 }
 
-html[data-theme="black-hole"] .dark\:bg-\[\#111318\],
-html[data-theme="black-hole"] .dark\:bg-\[\#131314\],
-html[data-theme="black-hole"] .dark\:bg-\[\#161922\],
-html[data-theme="black-hole"] .dark\:bg-\[\#151922\],
-html[data-theme="black-hole"] .dark\:bg-\[\#0E1015\],
-html[data-theme="black-hole"] .dark\:bg-\[\#0E121A\],
-html[data-theme="black-hole"] .dark\:bg-\[\#141822\],
-html[data-theme="black-hole"] .dark\:bg-\[\#171A21\],
-html[data-theme="black-hole"] .dark\:bg-\[\#1B2230\] {
+/* Black Hole: unified AMOLED palette.
+   Two neutral tiers only: pure black for surfaces (header, bars, cards, panels)
+   and a barely lifted #0d0d0d for controls (buttons, chips, pills). */
+html[data-theme="black-hole"] header,
+html[data-theme="black-hole"] aside {
   background-color: #000000 !important;
 }
 
-html[data-theme="black-hole"] .dark\:bg-\[\#202634\],
+html[data-theme="black-hole"] .dark\:bg-\[\#0E1015\],
+html[data-theme="black-hole"] .dark\:bg-\[\#0E121A\],
+html[data-theme="black-hole"] .dark\:bg-\[\#111318\],
+html[data-theme="black-hole"] .dark\:bg-\[\#121620\],
+html[data-theme="black-hole"] .dark\:bg-\[\#131314\],
+html[data-theme="black-hole"] .dark\:bg-\[\#131314\]\/95,
+html[data-theme="black-hole"] .dark\:bg-\[\#13161C\],
+html[data-theme="black-hole"] .dark\:bg-\[\#131720\],
+html[data-theme="black-hole"] .dark\:bg-\[\#131722\],
+html[data-theme="black-hole"] .dark\:bg-\[\#141821\],
+html[data-theme="black-hole"] .dark\:bg-\[\#141822\],
+html[data-theme="black-hole"] .dark\:bg-\[\#141822\]\/60,
+html[data-theme="black-hole"] .dark\:bg-\[\#151922\],
+html[data-theme="black-hole"] .dark\:bg-\[\#151A24\],
+html[data-theme="black-hole"] .dark\:bg-\[\#161922\],
+html[data-theme="black-hole"] .dark\:bg-\[\#161A23\],
+html[data-theme="black-hole"] .dark\:bg-\[\#161B26\],
+html[data-theme="black-hole"] .dark\:bg-\[\#171A21\]\/90,
+html[data-theme="black-hole"] .dark\:bg-\[\#191C24\],
+html[data-theme="black-hole"] .dark\:bg-\[\#1A1C20\],
+html[data-theme="black-hole"] .dark\:bg-\[\#1E1F20\],
+html[data-theme="black-hole"] .dark\:bg-slate-950 {
+  background-color: #000000 !important;
+}
+
+html[data-theme="black-hole"] .dark\:bg-\[\#171C27\],
 html[data-theme="black-hole"] .dark\:bg-\[\#171D27\],
+html[data-theme="black-hole"] .dark\:bg-\[\#1A202C\],
+html[data-theme="black-hole"] .dark\:bg-\[\#1A212E\]\/50,
+html[data-theme="black-hole"] .dark\:bg-\[\#1B212E\],
+html[data-theme="black-hole"] .dark\:bg-\[\#1B2230\],
+html[data-theme="black-hole"] .dark\:bg-\[\#1C2330\],
+html[data-theme="black-hole"] .dark\:bg-\[\#1C2333\],
 html[data-theme="black-hole"] .dark\:bg-\[\#1C2534\],
+html[data-theme="black-hole"] .dark\:bg-\[\#1E2430\],
+html[data-theme="black-hole"] .dark\:bg-\[\#1E2633\],
+html[data-theme="black-hole"] .dark\:bg-\[\#1E293B\],
+html[data-theme="black-hole"] .dark\:bg-\[\#202634\],
+html[data-theme="black-hole"] .dark\:bg-\[\#202938\],
+html[data-theme="black-hole"] .dark\:bg-\[\#222938\],
+html[data-theme="black-hole"] .dark\:bg-\[\#252D3D\],
+html[data-theme="black-hole"] .dark\:bg-\[\#252E3E\],
+html[data-theme="black-hole"] .dark\:bg-\[\#252F42\],
+html[data-theme="black-hole"] .dark\:bg-\[\#262E3B\],
+html[data-theme="black-hole"] .dark\:bg-\[\#263042\],
+html[data-theme="black-hole"] .dark\:bg-\[\#263143\],
+html[data-theme="black-hole"] .dark\:bg-\[\#282B30\],
+html[data-theme="black-hole"] .dark\:bg-\[\#283244\],
+html[data-theme="black-hole"] .dark\:bg-\[\#2B2E35\],
+html[data-theme="black-hole"] .dark\:bg-\[\#2B3544\],
 html[data-theme="black-hole"] .dark\:bg-slate-800,
-html[data-theme="black-hole"] .dark\:bg-slate-900 {
-  background-color: #090b10 !important;
+html[data-theme="black-hole"] .dark\:bg-slate-800\/20,
+html[data-theme="black-hole"] .dark\:bg-slate-800\/30,
+html[data-theme="black-hole"] .dark\:bg-slate-800\/40,
+html[data-theme="black-hole"] .dark\:bg-slate-800\/50,
+html[data-theme="black-hole"] .dark\:bg-slate-800\/80,
+html[data-theme="black-hole"] .dark\:bg-slate-800\/90,
+html[data-theme="black-hole"] .dark\:bg-slate-900,
+html[data-theme="black-hole"] .dark\:bg-slate-900\/50 {
+  background-color: #0d0d0d !important;
+}
+
+html[data-theme="black-hole"] .dark\:focus\:bg-slate-800:focus,
+html[data-theme="black-hole"] .dark\:hover\:bg-\[\#1C2330\]:hover,
+html[data-theme="black-hole"] .dark\:hover\:bg-\[\#1E2533\]:hover,
+html[data-theme="black-hole"] .dark\:hover\:bg-\[\#1E2534\]:hover,
+html[data-theme="black-hole"] .dark\:hover\:bg-\[\#1F2737\]:hover,
+html[data-theme="black-hole"] .dark\:hover\:bg-\[\#202634\]:hover,
+html[data-theme="black-hole"] .dark\:hover\:bg-\[\#202736\]:hover,
+html[data-theme="black-hole"] .dark\:hover\:bg-\[\#202938\]:hover,
+html[data-theme="black-hole"] .dark\:hover\:bg-\[\#202A3A\]:hover,
+html[data-theme="black-hole"] .dark\:hover\:bg-\[\#232C3A\]:hover,
+html[data-theme="black-hole"] .dark\:hover\:bg-\[\#242E40\]:hover,
+html[data-theme="black-hole"] .dark\:hover\:bg-\[\#252E3E\]:hover,
+html[data-theme="black-hole"] .dark\:hover\:bg-\[\#252E40\]:hover,
+html[data-theme="black-hole"] .dark\:hover\:bg-\[\#263143\]:hover,
+html[data-theme="black-hole"] .dark\:hover\:bg-\[\#283244\]:hover,
+html[data-theme="black-hole"] .dark\:hover\:bg-\[\#2A3244\]:hover,
+html[data-theme="black-hole"] .dark\:hover\:bg-\[\#2D374B\]:hover,
+html[data-theme="black-hole"] .dark\:hover\:bg-\[\#2E384B\]:hover,
+html[data-theme="black-hole"] .dark\:hover\:bg-\[\#323D4E\]:hover,
+html[data-theme="black-hole"] .dark\:hover\:bg-\[\#363B46\]:hover,
+html[data-theme="black-hole"] .dark\:hover\:bg-slate-600:hover,
+html[data-theme="black-hole"] .dark\:hover\:bg-slate-700:hover,
+html[data-theme="black-hole"] .dark\:hover\:bg-slate-700\/60:hover,
+html[data-theme="black-hole"] .dark\:hover\:bg-slate-700\/70:hover,
+html[data-theme="black-hole"] .dark\:hover\:bg-slate-800:hover,
+html[data-theme="black-hole"] .dark\:hover\:bg-slate-800\/40:hover,
+html[data-theme="black-hole"] .dark\:hover\:bg-slate-800\/60:hover {
+  background-color: #161616 !important;
+}
+
+html[data-theme="black-hole"] .dark\:active\:bg-\[\#1E2530\]:active,
+html[data-theme="black-hole"] .dark\:active\:bg-\[\#263246\]:active,
+html[data-theme="black-hole"] .dark\:active\:bg-\[\#2C3748\]:active,
+html[data-theme="black-hole"] .dark\:active\:bg-\[\#2C374A\]:active,
+html[data-theme="black-hole"] .dark\:active\:bg-\[\#404654\]:active {
+  background-color: #1c1c1c !important;
 }
 
 html[data-theme="black-hole"] .dark\:border-\[\#252C3A\],
