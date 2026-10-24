@@ -796,10 +796,10 @@ export const HighlightedTextarea = forwardRef<HTMLTextAreaElement, HighlightedTe
             <div
               className={`h-[2.5px] rounded-full transition-all duration-200 ${
                 isDragging
-                  ? 'w-14 bg-[#334155]'
+                  ? 'w-14 bg-slate-500 dark:bg-[#334155]'
                   : isExpanded
-                    ? 'w-11 bg-[#252E3E] group-hover/inputbox:bg-[#323D50]'
-                    : 'w-8 bg-[#1E2633] group-hover/inputbox:bg-[#252E3E] group-hover/inputbox:w-10'
+                    ? 'w-11 bg-slate-400 dark:bg-[#252E3E] group-hover/inputbox:bg-slate-500 dark:group-hover/inputbox:bg-[#323D50]'
+                    : 'w-8 bg-slate-300 dark:bg-[#1E2633] group-hover/inputbox:bg-slate-400 dark:group-hover/inputbox:bg-[#252E3E] group-hover/inputbox:w-10'
               }`}
             />
           </div>

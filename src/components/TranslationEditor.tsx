@@ -650,7 +650,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                 insertAtCursor(part, targetField);
               }
             }}
-            className="inline-block font-sans px-[1px] py-0.5 bg-[#2B2E35] hover:bg-[#363B46] active:bg-[#404654] rounded-[2px] text-slate-100 cursor-pointer select-none transition-colors leading-tight"
+            className="inline-block font-sans px-[1px] py-0.5 bg-slate-200 hover:bg-slate-300 active:bg-slate-400 dark:bg-[#2B2E35] dark:hover:bg-[#363B46] dark:active:bg-[#404654] rounded-[2px] text-slate-800 dark:text-slate-100 cursor-pointer select-none transition-colors leading-tight"
           >
             {part}
           </span>
