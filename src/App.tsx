@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Header } from './components/Header';
+import { applyAppTheme, getInitialAppTheme, AppTheme } from './utils/theme';
 import { StringList } from './components/StringList';
 import { StringsListDrawer } from './components/StringsListDrawer';
 import { TranslationEditor } from './components/TranslationEditor';
@@ -237,6 +238,12 @@ export default function App() {
     const saved = getStoredItem('app_ui_language');
     return saved === 'en' ? 'en' : 'ar';
   });
+  const [appTheme, setAppTheme] = useState<AppTheme>(() => getInitialAppTheme());
+
+  useEffect(() => {
+    applyAppTheme(appTheme);
+  }, [appTheme]);
+
   const [autoTranslate, setAutoTranslate] = useState<boolean>(() => getAutoTranslateEnabled());
 
   const handleToggleAutoTranslate = useCallback((enabled: boolean) => {
@@ -858,7 +865,7 @@ export default function App() {
   const canRedo = future.length > 0;
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#F8F9FA] dark:bg-[#111318] text-slate-900 dark:text-slate-100 font-sans antialiased">
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-app text-app font-sans antialiased">
       {/* Material 3 Top Header */}
       <Header
         project={project}
@@ -871,6 +878,8 @@ export default function App() {
         onOpenLanguageModal={() => setIsLanguageModalOpen(true)}
         appLang={appLang}
         onAppLangChange={setAppLang}
+        appTheme={appTheme}
+        onAppThemeChange={setAppTheme}
         canUndo={canUndo}
         canRedo={canRedo}
         onUndo={handleUndo}
@@ -916,7 +925,7 @@ export default function App() {
             {/* Center: Translation Editor */}
             <main className="flex-1 h-full min-w-0 flex flex-col overflow-hidden relative">
               {/* Mobile Quick Bar for Drawer toggle */}
-              <div className="md:hidden flex items-center justify-between px-4 py-2 bg-white dark:bg-[#131314] border-b border-slate-200/80 dark:border-slate-800/80 text-xs">
+              <div className="md:hidden flex items-center justify-between px-4 py-2 bg-slate-50/80 dark:bg-[#171A21]/90 text-xs">
                 <button
                   id="mobile-drawer-btn"
                   onClick={() => setMobileDrawerOpen(true)}

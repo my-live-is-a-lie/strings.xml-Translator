@@ -25,25 +25,23 @@ function getSafeLocalStorage(): Storage | null {
 
 export function getStoredItem(key: string): string | null {
   try {
-    const storage = getSafeLocalStorage();
-    if (storage) {
-      return storage.getItem(key);
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const val = window.localStorage.getItem(key);
+      if (val !== null) return val;
     }
   } catch {
-    // Ignore and fallback
+    // Ignore and fallback to memoryStore
   }
   return memoryStore.get(key) || null;
 }
 
 export function setStoredItem(key: string, value: string): void {
   try {
-    const storage = getSafeLocalStorage();
-    if (storage) {
-      storage.setItem(key, value);
-      return;
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem(key, value);
     }
   } catch {
-    // Ignore and fallback
+    // Ignore and fallback to memoryStore
   }
   memoryStore.set(key, value);
 }

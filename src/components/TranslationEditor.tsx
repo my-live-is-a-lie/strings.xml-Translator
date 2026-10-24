@@ -1253,23 +1253,23 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   const maxThreshold = 100;
 
   return (
-    <div className="flex flex-col h-full bg-[#0E1015] text-slate-100 overflow-y-auto p-2 sm:p-3">
+    <div className="flex flex-col h-full bg-[#F8F9FA] dark:bg-[#0E1015] text-slate-800 dark:text-slate-100 overflow-y-auto p-2 sm:p-3">
       <div className="max-w-2xl w-full mx-auto flex flex-col gap-2">
         {/* Weblate / M3 Main Card Frame */}
-        <div className="bg-[#151922] rounded-2xl border border-[#232936] shadow-lg overflow-hidden">
+        <div className="bg-white dark:bg-[#151922] rounded-2xl border border-slate-200/80 dark:border-transparent shadow-sm dark:shadow-lg overflow-hidden">
           <div className="p-3 sm:p-3.5 space-y-2.5">
             {/* Top row: Key name + "مفاتيح" on Left, "الإنجليزية" on Right */}
             <div className="flex items-center justify-between gap-2 text-xs sm:text-sm">
               <div className="flex items-center gap-1.5 min-w-0">
-                <span className="font-mono text-xs sm:text-sm font-semibold text-slate-100 truncate select-all">
+                <span className="font-mono text-xs sm:text-sm font-semibold text-slate-900 dark:text-slate-100 truncate select-all">
                   {item.name}
                 </span>
-                <span className="text-slate-400 text-[11px] sm:text-xs font-medium">
+                <span className="text-slate-400 dark:text-slate-500 text-[11px] sm:text-xs font-medium">
                   {isAr ? 'مفاتيح' : 'Keys'}
                 </span>
               </div>
 
-              <span className="text-slate-300 text-xs sm:text-sm font-medium shrink-0">
+              <span className="text-slate-600 dark:text-slate-300 text-xs sm:text-sm font-medium shrink-0">
                 {isAr ? 'الإنجليزية' : 'English'}
               </span>
             </div>
@@ -1280,7 +1280,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               <button
                 id="weblate-clone-to-target-btn"
                 onClick={handleCloneSourceToTarget}
-                className="pl-1.5 pr-1 py-1 rounded-md text-slate-300 hover:text-white hover:bg-[#1C2330] transition cursor-pointer shrink-0"
+                className="pl-1.5 pr-1 py-1 rounded-md text-slate-500 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-[#1C2330] transition cursor-pointer shrink-0"
                 title={isAr ? 'نسخ المصدر إلى حقل الترجمة' : 'Clone source to translation'}
               >
                 {/* Exact Weblate clone-to-translation icon: back sheet + right arrow into front sheet */}
@@ -1303,12 +1303,12 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               </button>
 
               {/* Source content container */}
-              <div className="flex-1 min-h-[38px] px-3 py-1.5 rounded-lg bg-[#141822] border border-[#283140] flex items-center justify-between gap-2.5">
+              <div className="flex-1 min-h-[38px] px-3 py-1.5 rounded-lg bg-slate-100/90 dark:bg-[#141822] border border-slate-200/90 dark:border-[#283140] flex items-center justify-between gap-2.5">
                 {/* Left: Copy button */}
                 <button
                   id="copy-source-text-btn"
                   onClick={handleCopySource}
-                  className="p-1 rounded-md text-slate-300 hover:text-white hover:bg-[#202736] transition cursor-pointer shrink-0"
+                  className="p-1 rounded-md text-slate-500 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-[#202736] transition cursor-pointer shrink-0"
                   title={isAr ? 'نسخ النص الإنجليزي' : 'Copy English source text'}
                 >
                   {copiedSource ? (
@@ -1319,7 +1319,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                 </button>
 
                 {/* English source text with interactive Android syntax highlights */}
-                <span className="flex-1 text-xs sm:text-sm font-normal text-slate-100 select-text break-words leading-relaxed">
+                <span className="flex-1 text-xs sm:text-sm font-normal text-slate-800 dark:text-slate-100 select-text break-words leading-relaxed">
                   {renderSourceWithSyntaxHighlights(sourceText)}
                 </span>
               </div>
@@ -1355,7 +1355,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                             ? 'إعادة تعيين سجل وترجمة هذا النص'
                             : 'Reset translation & history for this string'
                         }
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-[#1C2330] hover:bg-rose-950/50 text-slate-300 hover:text-rose-300 border border-[#2B3545] hover:border-rose-800/60 transition cursor-pointer"
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-slate-100 dark:bg-[#1C2330] hover:bg-rose-100 dark:hover:bg-rose-950/50 text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-300 border border-slate-200/90 dark:border-[#2B3545] hover:border-rose-400 dark:hover:border-rose-800/60 transition cursor-pointer"
                       >
                         <RotateCcw className="w-2.5 h-2.5" />
                         <span>{isAr ? 'إعادة تعيين' : 'Reset'}</span>
@@ -1365,7 +1365,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                 )}
               </div>
 
-              <span className="text-slate-300 text-xs sm:text-sm font-medium shrink-0">
+              <span className="text-slate-600 dark:text-slate-300 text-xs sm:text-sm font-medium shrink-0">
                 {isAr
                   ? getArabicLanguageName(targetLang, targetLocaleName)
                   : getLanguageOption(targetLang).name || targetLocaleName}
@@ -1375,7 +1375,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             {/* Two Connected Typographic / Formatting Toolbars */}
             <div className="space-y-1 select-none">
               {/* Toolbar Row 1: Punctuation & Typography */}
-              <div className="flex items-center bg-[#171D27] border border-[#283242] rounded-lg overflow-x-auto divide-x divide-[#283242] rtl:divide-x-reverse no-scrollbar">
+              <div className="flex items-center bg-slate-100 dark:bg-[#171D27] border border-slate-200/90 dark:border-[#283242] rounded-lg overflow-x-auto divide-x divide-slate-200 dark:divide-[#283242] rtl:divide-x-reverse no-scrollbar">
                 {[
                   { label: '-', value: '-', title: isAr ? 'شرطة (-)' : 'Hyphen (-)' },
                   { label: '_', value: '_', title: isAr ? 'شرطة سفلية (_)' : 'Underscore (_)' },
@@ -1395,7 +1395,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => insertAtCursor(btn.value)}
                     title={btn.title}
-                    className="flex-1 min-w-[30px] sm:min-w-[38px] h-7 sm:h-7.5 flex items-center justify-center text-xs font-mono font-medium text-slate-300 hover:text-white hover:bg-[#232C3A] active:bg-[#2C3748] transition cursor-pointer"
+                    className="flex-1 min-w-[30px] sm:min-w-[38px] h-7 sm:h-7.5 flex items-center justify-center text-xs font-mono font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-[#232C3A] active:bg-slate-300 dark:active:bg-[#2C3748] transition cursor-pointer"
                   >
                     {btn.label}
                   </button>
@@ -1403,7 +1403,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               </div>
 
               {/* Toolbar Row 2: BiDi Unicode Directional Controls */}
-              <div className="flex items-center bg-[#171D27] border border-[#283242] rounded-lg overflow-x-auto divide-x divide-[#283242] rtl:divide-x-reverse no-scrollbar">
+              <div className="flex items-center bg-slate-100 dark:bg-[#171D27] border border-slate-200/90 dark:border-[#283242] rounded-lg overflow-x-auto divide-x divide-slate-200 dark:divide-[#283242] rtl:divide-x-reverse no-scrollbar">
                 {[
                   { label: 'PDF', value: '\u202C', title: isAr ? 'إنهاء تنسيق الاتجاه (PDF)' : 'Pop Directional Formatting (U+202C)' },
                   { label: 'RLE', value: '\u202B', title: isAr ? 'تضمين من اليمين إلى اليسار (RLE)' : 'Right-to-Left Embedding (U+202B)' },
@@ -1419,7 +1419,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => insertAtCursor(btn.value)}
                     title={btn.title}
-                    className="flex-1 min-w-[40px] sm:min-w-[48px] h-7 sm:h-7.5 flex items-center justify-center text-[10px] sm:text-[11px] font-mono font-semibold text-slate-300 hover:text-white hover:bg-[#232C3A] active:bg-[#2C3748] transition cursor-pointer tracking-wider"
+                    className="flex-1 min-w-[40px] sm:min-w-[48px] h-7 sm:h-7.5 flex items-center justify-center text-[10px] sm:text-[11px] font-mono font-semibold text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-[#232C3A] active:bg-slate-300 dark:active:bg-[#2C3748] transition cursor-pointer tracking-wider"
                   >
                     {btn.label}
                   </button>
@@ -1471,9 +1471,9 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                 }}
                 placeholder={isAr ? 'اكتب الترجمة هنا...' : 'Type translation here...'}
                 rows={1}
-                containerClassName="rounded-xl bg-[#0E121A]"
-                backdropClassName="border-2 border-transparent px-3.5 pt-2 pb-3.5 sm:pt-2.5 sm:pb-4 text-xs sm:text-sm leading-relaxed"
-                className="px-3.5 pt-2 pb-3.5 sm:pt-2.5 sm:pb-4 rounded-xl border-2 border-[#16695E] focus:border-[#1EB996] focus:ring-2 focus:ring-[#1EB996]/20 text-slate-100 placeholder-slate-500 text-xs sm:text-sm leading-relaxed focus:outline-none transition-colors resize-none overflow-hidden block"
+                containerClassName="rounded-xl bg-slate-100/90 dark:bg-[#0E121A] border border-slate-200/90 dark:border-transparent"
+                backdropClassName="border-0 border-b-2 border-transparent px-3.5 pt-2 pb-3.5 sm:pt-2.5 sm:pb-4 text-xs sm:text-sm leading-relaxed"
+                className="px-3.5 pt-2 pb-3.5 sm:pt-2.5 sm:pb-4 rounded-xl border-0 border-b-2 border-[#16695E] focus:border-[#1EB996] text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 text-xs sm:text-sm leading-relaxed focus:outline-none transition-colors resize-none overflow-hidden block"
               />
             )}
 
@@ -1542,9 +1542,9 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                           ? `ترجمة صيغة ${pi.quantity} (${pluralLabels[pi.quantity] || pi.quantity})...`
                           : `Translate ${pi.quantity} form (${pluralLabels[pi.quantity] || pi.quantity})...`
                       }
-                      containerClassName="rounded-lg bg-[#0E121A]"
-                      backdropClassName="border border-transparent px-3.5 pt-1.5 pb-3 text-xs sm:text-sm leading-relaxed"
-                      className="px-3.5 pt-1.5 pb-3 text-xs sm:text-sm leading-relaxed rounded-lg border border-[#283242] focus:border-[#1EB996] text-slate-100 focus:outline-none transition resize-none overflow-hidden block"
+                      containerClassName="rounded-lg bg-slate-100/90 dark:bg-[#0E121A] border border-slate-200/90 dark:border-transparent"
+                      backdropClassName="border-0 border-b-2 border-transparent px-3.5 pt-1.5 pb-3 text-xs sm:text-sm leading-relaxed"
+                      className="px-3.5 pt-1.5 pb-3 text-xs sm:text-sm leading-relaxed rounded-lg border-0 border-b-2 border-[#16695E] focus:border-[#1EB996] text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none transition resize-none overflow-hidden block"
                     />
                   </div>
                 ))}
@@ -1607,9 +1607,9 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                       placeholder={
                         isAr ? `ترجمة العنصر ${ai.index}...` : `Translate item ${ai.index}...`
                       }
-                      containerClassName="rounded-lg bg-[#0E121A]"
-                      backdropClassName="border border-transparent px-3.5 pt-1.5 pb-3 text-xs sm:text-sm leading-relaxed"
-                      className="px-3.5 pt-1.5 pb-3 text-xs sm:text-sm leading-relaxed rounded-lg border border-[#283242] focus:border-[#1EB996] text-slate-100 focus:outline-none transition resize-none overflow-hidden block"
+                      containerClassName="rounded-lg bg-slate-100/90 dark:bg-[#0E121A] border border-slate-200/90 dark:border-transparent"
+                      backdropClassName="border-0 border-b-2 border-transparent px-3.5 pt-1.5 pb-3 text-xs sm:text-sm leading-relaxed"
+                      className="px-3.5 pt-1.5 pb-3 text-xs sm:text-sm leading-relaxed rounded-lg border-0 border-b-2 border-[#16695E] focus:border-[#1EB996] text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none transition resize-none overflow-hidden block"
                     />
                   </div>
                 ))}
@@ -1620,15 +1620,15 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             <div className="flex items-center justify-between gap-2 pt-0.5 text-xs flex-wrap">
               {/* Left: LTR / RTL Pill Switcher & Copy/Paste Buttons */}
               <div className="flex items-center gap-1.5">
-                <div className="flex items-center bg-[#171D27] border border-[#2B3544] rounded-lg p-0.5 select-none">
+                <div className="flex items-center bg-slate-100 dark:bg-[#171D27] border border-slate-200/80 dark:border-transparent rounded-lg p-0.5 select-none">
                   {/* LTR Button */}
                   <button
                     type="button"
                     onClick={() => setDirection('ltr')}
                     className={`flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold cursor-pointer transition ${
                       direction === 'ltr'
-                        ? 'bg-[#1C2534] text-white shadow-xs'
-                        : 'text-slate-400 hover:text-slate-200'
+                        ? 'bg-white dark:bg-[#1C2534] text-slate-900 dark:text-white shadow-xs'
+                        : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
                     }`}
                   >
                     <span>LTR</span>
@@ -1636,7 +1636,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                       className={`w-3 h-3 rounded-full border flex items-center justify-center ${
                         direction === 'ltr'
                           ? 'border-[#1EB996] bg-[#1EB996]/20'
-                          : 'border-slate-500'
+                          : 'border-slate-400 dark:border-slate-500'
                       }`}
                     >
                       {direction === 'ltr' && <span className="w-1 h-1 rounded-full bg-[#1EB996]" />}
@@ -1649,8 +1649,8 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                     onClick={() => setDirection('rtl')}
                     className={`flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold cursor-pointer transition ${
                       direction === 'rtl'
-                        ? 'bg-[#1C2534] text-white shadow-xs'
-                        : 'text-slate-400 hover:text-slate-200'
+                        ? 'bg-white dark:bg-[#1C2534] text-slate-900 dark:text-white shadow-xs'
+                        : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
                     }`}
                   >
                     <span>RTL</span>
@@ -1658,7 +1658,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                       className={`w-3 h-3 rounded-full border flex items-center justify-center ${
                         direction === 'rtl'
                           ? 'border-[#1EB996] bg-[#1EB996]/20'
-                          : 'border-slate-500'
+                          : 'border-slate-400 dark:border-slate-500'
                       }`}
                     >
                       {direction === 'rtl' && <span className="w-1 h-1 rounded-full bg-[#1EB996]" />}
@@ -1666,7 +1666,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                   </button>
                 </div>
 
-                {/* Copy & Paste Icon Buttons (replacing the 12/100 character indicator) */}
+                {/* Copy & Paste Icon Buttons */}
                 <button
                   id="copy-target-text-btn"
                   type="button"
@@ -1674,10 +1674,10 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                   onClick={handleCopyTarget}
                   title={isAr ? 'نسخ نص الترجمة' : 'Copy translation text'}
                   aria-label={isAr ? 'نسخ نص الترجمة' : 'Copy translation text'}
-                  className="p-1.5 rounded-lg hover:bg-[#202A3A] active:bg-[#263246] text-slate-300 hover:text-white transition cursor-pointer flex items-center justify-center focus:outline-none"
+                  className="p-1.5 rounded-lg hover:bg-slate-200/90 dark:hover:bg-[#202A3A] active:bg-slate-300 dark:active:bg-[#263246] text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white transition cursor-pointer flex items-center justify-center focus:outline-none"
                 >
                   {copiedTarget ? (
-                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <Check className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" />
                   ) : (
                     <Copy className="w-3.5 h-3.5" />
                   )}
@@ -1701,7 +1701,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                   }}
                   title={isAr ? 'لصق من الحافظة' : 'Paste from clipboard'}
                   aria-label={isAr ? 'لصق من الحافظة' : 'Paste from clipboard'}
-                  className="p-1.5 rounded-lg hover:bg-[#202A3A] active:bg-[#263246] text-slate-300 hover:text-white transition cursor-pointer flex items-center justify-center focus:outline-none"
+                  className="p-1.5 rounded-lg hover:bg-slate-200/90 dark:hover:bg-[#202A3A] active:bg-slate-300 dark:active:bg-[#263246] text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white transition cursor-pointer flex items-center justify-center focus:outline-none"
                 >
                   <ClipboardPaste className="w-3.5 h-3.5" />
                 </button>
@@ -1709,13 +1709,13 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
 
               {/* Far Right: Bigger Undo / Redo Buttons */}
               {onUndo && onRedo && (
-                <div className="inline-flex items-center bg-[#171D27] border border-[#2B3544] rounded-xl p-1 select-none gap-0.5 ml-auto">
+                <div className="inline-flex items-center bg-slate-100 dark:bg-[#171D27] border border-slate-200/80 dark:border-transparent rounded-xl p-1 select-none gap-0.5 ml-auto">
                   <button
                     id="editor-undo-btn"
                     type="button"
                     onClick={handleEditorUndo}
                     disabled={!effectiveCanUndo}
-                    className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-200 hover:text-white hover:bg-[#202A3A] disabled:opacity-35 disabled:pointer-events-none transition cursor-pointer"
+                    className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-[#202A3A] disabled:opacity-35 disabled:pointer-events-none transition cursor-pointer"
                     title={
                       isAr
                         ? `تراجع عن التعديل (Ctrl+Z)${effectiveUndoCount > 0 ? ` — ${effectiveUndoCount}` : ''}`
@@ -1725,13 +1725,13 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                   >
                     <Undo2 className="w-4 h-4 text-[#1EB996]" />
                   </button>
-                  <div className="w-px h-4 bg-[#2B3544]" />
+                  <div className="w-px h-4 bg-slate-300 dark:bg-[#2B3544]" />
                   <button
                     id="editor-redo-btn"
                     type="button"
                     onClick={handleEditorRedo}
                     disabled={!effectiveCanRedo}
-                    className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-200 hover:text-white hover:bg-[#202A3A] disabled:opacity-35 disabled:pointer-events-none transition cursor-pointer"
+                    className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-[#202A3A] disabled:opacity-35 disabled:pointer-events-none transition cursor-pointer"
                     title={
                       isAr
                         ? `إعادة التعديل (Ctrl+Y)${effectiveRedoCount > 0 ? ` — ${effectiveRedoCount}` : ''}`
@@ -1747,7 +1747,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
           </div>
 
           {/* Action Buttons Section */}
-          <div className="px-3 sm:px-4 py-2.5 sm:py-3 bg-[#131720] border-t border-[#232936] space-y-2">
+          <div className="px-3 sm:px-4 py-2.5 sm:py-3 bg-slate-50 dark:bg-[#131720] border-t border-slate-200 dark:border-[#232936] space-y-2">
             {/* Row 1: Quick delete & Skip button on left, "حفظ ومتابعة" on right */}
             <div className="grid grid-cols-2 gap-2 sm:gap-2.5">
               {/* Left: Quick Delete Icon Button on far left + Skip Button */}
@@ -1758,7 +1758,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                   type="button"
                   onClick={handleClearText}
                   title={isAr ? 'مسح حقل الترجمة' : 'Clear translation field'}
-                  className="w-9.5 sm:w-10 h-9.5 sm:h-10 rounded-full bg-[#1C2330] hover:bg-rose-950/40 active:bg-rose-900/60 border border-[#2B3545] hover:border-rose-800/60 text-slate-300 hover:text-rose-400 flex items-center justify-center shrink-0 transition cursor-pointer shadow-xs group"
+                  className="w-9.5 sm:w-10 h-9.5 sm:h-10 rounded-full bg-slate-100 hover:bg-rose-100 active:bg-rose-200 dark:bg-[#1C2330] dark:hover:bg-rose-950/40 dark:active:bg-rose-900/60 border border-slate-300 hover:border-rose-300 dark:border-[#2B3545] dark:hover:border-rose-800/60 text-slate-600 hover:text-rose-600 dark:text-slate-300 dark:hover:text-rose-400 flex items-center justify-center shrink-0 transition cursor-pointer shadow-xs group"
                 >
                   <Trash2 className="w-4 h-4 group-hover:scale-110 transition-transform" />
                 </button>
@@ -1799,7 +1799,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                       ? `تغيير لغة الترجمة المستهدفة (${getArabicLanguageName(targetLang, targetLocaleName)} / values-${targetLang})`
                       : `Switch target language (${getLanguageOption(targetLang).name} / values-${targetLang})`
                   }
-                  className="w-9.5 sm:w-10 h-9.5 sm:h-10 rounded-full bg-[#1C2330] hover:bg-[#252E3E] active:bg-[#2C374A] border border-[#2B3545] hover:border-[#1EB996]/60 text-[#1EB996] flex items-center justify-center shrink-0 transition cursor-pointer shadow-xs group"
+                  className="w-9.5 sm:w-10 h-9.5 sm:h-10 rounded-full bg-slate-100 hover:bg-slate-200 active:bg-slate-300 dark:bg-[#1C2330] dark:hover:bg-[#252E3E] dark:active:bg-[#2C374A] border border-slate-300 dark:border-[#2B3545] text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex items-center justify-center shrink-0 transition cursor-pointer shadow-xs group"
                 >
                   <Globe className="w-4 h-4 group-hover:rotate-12 transition-transform" />
                 </button>
@@ -1809,7 +1809,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                   type="button"
                   onClick={handleSuggest}
                   disabled={isSuggesting}
-                  className="flex-1 min-w-0 h-9.5 sm:h-10 rounded-full bg-[#262E3B] hover:bg-[#323D4E] active:bg-[#1E2530] text-white font-medium text-xs sm:text-sm flex items-center justify-center gap-1.5 transition cursor-pointer disabled:opacity-50"
+                  className="flex-1 min-w-0 h-9.5 sm:h-10 rounded-full bg-slate-200 hover:bg-slate-300 active:bg-slate-400 dark:bg-[#262E3B] dark:hover:bg-[#323D4E] dark:active:bg-[#1E2530] text-slate-800 dark:text-white font-medium text-xs sm:text-sm flex items-center justify-center gap-1.5 transition cursor-pointer disabled:opacity-50"
                 >
                   <Sparkles className="w-3.5 h-3.5 text-amber-400" />
                   <span>
@@ -1850,7 +1850,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             <button
               onClick={() => discardDraftAndNavigate(onNavigatePrevious)}
               disabled={currentIndex === 0}
-              className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border border-slate-700 hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none transition cursor-pointer"
+              className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full hover:bg-slate-800/60 disabled:opacity-30 disabled:pointer-events-none transition cursor-pointer"
             >
               <ChevronRight className="w-3 h-3" />
               <span>{isAr ? 'السابق' : 'Previous'}</span>
@@ -1858,7 +1858,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             <button
               onClick={() => discardDraftAndNavigate(onNavigateNext)}
               disabled={currentIndex === totalCount - 1}
-              className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border border-slate-700 hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none transition cursor-pointer"
+              className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full hover:bg-slate-800/60 disabled:opacity-30 disabled:pointer-events-none transition cursor-pointer"
             >
               <span>{isAr ? 'التالي' : 'Next'}</span>
               <ChevronLeft className="w-3 h-3" />

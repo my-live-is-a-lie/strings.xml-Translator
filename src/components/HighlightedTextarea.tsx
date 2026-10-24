@@ -715,7 +715,7 @@ export const HighlightedTextarea = forwardRef<HTMLTextAreaElement, HighlightedTe
     return (
       <div
         ref={containerRef}
-        className={`relative w-full rounded-xl bg-[#0E121A] overflow-hidden group/inputbox select-text ${containerClassName}`}
+        className={`relative w-full rounded-xl bg-slate-100 dark:bg-[#0E121A] overflow-hidden group/inputbox select-text ${containerClassName}`}
       >
         {/* Real interactive textarea */}
         <textarea

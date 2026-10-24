@@ -10,6 +10,8 @@ import {
   ChevronDown,
   X,
   Palette,
+  Contrast,
+  Paintbrush,
   Check,
   KeyRound,
   Trash2,
@@ -32,6 +34,7 @@ import { TranslationProject } from '../types';
 import { analyzeProjectQa } from '../utils/placeholderCheck';
 import { getArabicLanguageName } from '../utils/languages';
 import { getStoredItem, setStoredItem } from '../utils/storage';
+import { applyAppTheme, getInitialAppTheme, AppTheme } from '../utils/theme';
 import { PWAInstallButton } from './PWAInstallButton';
 import { OfflineBadge } from './OfflineBadge';
 import { SidebarIcon } from './SidebarIcon';
@@ -64,6 +67,14 @@ const APP_LANGUAGES = [
   { code: 'en' as const, label: 'English' },
 ];
 
+export type { AppTheme };
+
+const THEME_OPTIONS: Array<{ id: AppTheme; label: string; labelAr: string }> = [
+  { id: 'day', label: 'Day', labelAr: 'نهار' },
+  { id: 'night', label: 'Night', labelAr: 'ليل' },
+  { id: 'black_hole', label: 'Black Hole', labelAr: 'ثقب أسود' },
+];
+
 const ENGINE_OPTIONS: Array<{ value: string; nameEn: string; nameAr: string; labelAr: string; labelEn: string }> = [
   { value: 'auto', nameEn: '', nameAr: '', labelAr: 'تعرف تلقائي على المزود', labelEn: 'Auto-Detect Provider' },
   { value: 'lara', nameEn: 'Lara Translate', nameAr: 'ترجمة Lara الذكية', labelAr: 'ترجمة Lara الذكية', labelEn: 'Lara Translate AI (Translated)' },
@@ -86,6 +97,8 @@ interface HeaderProps {
   onOpenLanguageModal?: () => void;
   appLang?: 'ar' | 'en';
   onAppLangChange?: (lang: 'ar' | 'en') => void;
+  appTheme?: AppTheme;
+  onAppThemeChange?: (theme: AppTheme) => void;
   canUndo?: boolean;
   canRedo?: boolean;
   onUndo?: () => void;
@@ -111,6 +124,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenLanguageModal,
   appLang = 'ar',
   onAppLangChange,
+  appTheme: propAppTheme,
+  onAppThemeChange,
   autoTranslate = false,
   onToggleAutoTranslate,
   onResetItemHistory,
@@ -203,10 +218,40 @@ export const Header: React.FC<HeaderProps> = ({
   const [editTestResult, setEditTestResult] = useState<ProviderTestResult | null>(null);
   const editNameInputRef = useRef<HTMLInputElement | null>(null);
 
+  const [themeSubmenuOpen, setThemeSubmenuOpen] = useState(false);
+  const [paletteSubmenuOpen, setPaletteSubmenuOpen] = useState(false);
+
+  const [localAppTheme, setLocalAppTheme] = useState<AppTheme>(() => getInitialAppTheme());
+
+  const appTheme = propAppTheme ?? localAppTheme;
+
+  const handleSelectTheme = (newTheme: AppTheme) => {
+    applyAppTheme(newTheme);
+    setLocalAppTheme(newTheme);
+    if (onAppThemeChange) {
+      onAppThemeChange(newTheme);
+    }
+  };
+
+  useEffect(() => {
+    applyAppTheme(appTheme);
+  }, [appTheme]);
+
   useEffect(() => {
     document.documentElement.setAttribute('data-accent', accentColor);
     setStoredItem('app_accent_color', accentColor);
   }, [accentColor]);
+
+  const handleRandomAccentColor = () => {
+    const remaining = ACCENT_COLORS.filter((c) => c.id !== accentColor);
+    const randomPick = remaining[Math.floor(Math.random() * remaining.length)] || ACCENT_COLORS[0];
+    setAccentColor(randomPick.id);
+    if (window.navigator?.vibrate) {
+      try {
+        window.navigator.vibrate(12);
+      } catch {}
+    }
+  };
 
   const handleCycleAccentColor = () => {
     const currentIndex = ACCENT_COLORS.findIndex((c) => c.id === accentColor);
@@ -408,7 +453,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <>
-      <header className="sticky top-0 z-30 bg-white/95 dark:bg-[#131314]/95 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80 transition-colors">
+      <header className="sticky top-0 z-30 bg-white/95 dark:bg-[#131314]/95 backdrop-blur-md md:border-b border-slate-200/80 dark:border-slate-800/80 transition-colors">
         {/* Material 3 Top App Bar */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-13 sm:h-14 flex items-center justify-between gap-4">
           {/* Files Button (replacing App Icon & Name at top left corner) */}
@@ -701,99 +746,174 @@ export const Header: React.FC<HeaderProps> = ({
             }}
             className="relative w-72 sm:w-80 max-w-[85vw] h-dvh max-h-dvh overflow-hidden bg-white dark:bg-[#161922] border-l border-slate-200 dark:border-[#252C3A] shadow-2xl z-10 flex flex-col animate-in slide-in-from-right duration-200"
           >
-            {/* Drawer Header: App Language Icon Button (Arabic/English only) + Icon-Only Accent Button & Swatches */}
-            <div className="relative flex items-center justify-between gap-2 px-4 pb-3.5 pt-[max(0.875rem,env(safe-area-inset-top))] border-b border-slate-200/80 dark:border-[#252C3A]">
-              <div className="flex items-center gap-1.5 min-w-0">
-                {/* App Language Icon Button (Far Left) */}
-                <div className="relative">
-                  <button
-                    id="drawer-language-btn"
-                    type="button"
-                    onClick={() => setAppLangMenuOpen((prev) => !prev)}
-                    className="w-8 h-8 inline-flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200/80 dark:bg-[#202634] dark:hover:bg-[#2A3244] border border-slate-200/80 dark:border-[#2F384B] text-slate-800 dark:text-slate-100 transition cursor-pointer shrink-0"
-                    title={isAr ? 'تغيير لغة التطبيق (العربية / English)' : 'Change App Language (العربية / English)'}
-                    aria-label="Change app language"
-                  >
-                    <Languages className="w-4 h-4 text-[#1EB996]" />
-                  </button>
-
-                  {/* App Language Dropdown Menu (Only Arabic & English) */}
-                  {appLangMenuOpen && (
-                    <div className="absolute left-0 top-full mt-2 w-40 rounded-xl bg-white dark:bg-[#1B2230] border border-slate-200 dark:border-[#2F384B] shadow-xl py-1.5 z-30">
-                      <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 border-b border-slate-100 dark:border-[#262E3E] mb-1">
-                        {isAr ? 'لغة التطبيق' : 'App Language'}
-                      </div>
-                      {APP_LANGUAGES.map((lang) => {
-                        const isSelected = appLang === lang.code;
-                        return (
-                          <button
-                            key={lang.code}
-                            type="button"
-                            onClick={() => {
-                              onAppLangChange?.(lang.code);
-                              setAppLangMenuOpen(false);
-                            }}
-                            className={`w-full px-3 py-2 text-xs flex items-center justify-between transition cursor-pointer ${
-                              isSelected
-                                ? 'bg-slate-100 dark:bg-[#252F42] text-slate-900 dark:text-white font-semibold'
-                                : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-[#212A3A]'
-                            }`}
-                          >
-                            <span>{lang.label}</span>
-                            {isSelected && <Check className="w-3.5 h-3.5 text-[#1EB996]" />}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                {/* Icon-Only Accent Color Button */}
+            {/* Drawer Header: 4 Squircle Buttons (Language, Theme, Random Accent, Palette) + Close Button */}
+            <div className="relative flex items-center justify-between gap-2 px-3.5 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] border-b border-slate-200/80 dark:border-[#252C3A]">
+              <div className="flex items-center gap-2 min-w-0">
+                {/* 1. App Language Button */}
                 <button
-                  id="drawer-accent-color-btn"
+                  id="drawer-language-btn"
                   type="button"
-                  onClick={handleCycleAccentColor}
-                  className="w-8 h-8 inline-flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200/80 dark:bg-[#202634] dark:hover:bg-[#2A3244] border border-slate-200/80 dark:border-[#2F384B] text-slate-800 dark:text-slate-100 transition cursor-pointer shrink-0"
-                  title={isAr ? 'تغيير لون التمييز' : 'Change app accent color'}
-                  aria-label="Change app accent color"
+                  onClick={() => {
+                    setAppLangMenuOpen((prev) => !prev);
+                    setThemeSubmenuOpen(false);
+                    setPaletteSubmenuOpen(false);
+                  }}
+                  className={`w-9.5 h-9.5 rounded-2xl flex items-center justify-center transition cursor-pointer shrink-0 border ${
+                    appLangMenuOpen
+                      ? 'bg-slate-200 dark:bg-[#252F42] border-[var(--accent-primary)]/70 shadow-xs'
+                      : 'bg-slate-100 hover:bg-slate-200/80 dark:bg-[#1C2333] dark:hover:bg-[#242E40] border-slate-200/80 dark:border-[#2A3446]'
+                  }`}
+                  title={isAr ? 'تغيير لغة التطبيق' : 'Change App Language'}
+                  aria-label="Change app language"
                 >
-                  <Palette className="w-4 h-4 text-[#1EB996]" />
+                  <Languages style={{ color: 'var(--accent-primary)' }} className="w-5 h-5" />
                 </button>
 
-                {/* Direct Accent Color Swatches */}
-                <div className="flex items-center gap-1 ml-0.5">
-                  {ACCENT_COLORS.map((c) => {
-                    const isSelected = accentColor === c.id;
-                    return (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => setAccentColor(c.id)}
-                        className={`w-4.5 h-4.5 rounded-full ${c.swatchClass} transition-transform cursor-pointer flex items-center justify-center ${
-                          isSelected
-                            ? 'ring-2 ring-offset-1 ring-slate-900 dark:ring-white dark:ring-offset-[#161922] scale-110'
-                            : 'opacity-75 hover:opacity-100 hover:scale-105'
-                        }`}
-                        title={isAr ? `لون ${c.labelAr}` : `${c.label} accent`}
-                        aria-label={isAr ? `اختيار اللون ${c.labelAr}` : `Set ${c.label} accent color`}
-                      />
-                    );
-                  })}
-                </div>
+                {/* 2. Theme Mode Button (Day, Night, Black Hole) */}
+                <button
+                  id="drawer-theme-btn"
+                  type="button"
+                  onClick={() => {
+                    setThemeSubmenuOpen((prev) => !prev);
+                    setAppLangMenuOpen(false);
+                    setPaletteSubmenuOpen(false);
+                  }}
+                  className={`w-9.5 h-9.5 rounded-2xl flex items-center justify-center transition cursor-pointer shrink-0 border ${
+                    themeSubmenuOpen
+                      ? 'bg-slate-200 dark:bg-[#252F42] border-[var(--accent-primary)]/70 shadow-xs'
+                      : 'bg-slate-100 hover:bg-slate-200/80 dark:bg-[#1C2333] dark:hover:bg-[#242E40] border-slate-200/80 dark:border-[#2A3446]'
+                  }`}
+                  title={isAr ? 'تغيير مظهر التطبيق (نهار / ليل / ثقب أسود)' : 'Change app theme (Day / Night / Black Hole)'}
+                  aria-label="Change app theme"
+                >
+                  <Contrast style={{ color: 'var(--accent-primary)' }} className="w-5 h-5" />
+                </button>
+
+                {/* 3. Random Accent Color Picker */}
+                <button
+                  id="drawer-random-accent-btn"
+                  type="button"
+                  onClick={handleRandomAccentColor}
+                  className="w-9.5 h-9.5 rounded-2xl flex items-center justify-center transition cursor-pointer shrink-0 border bg-slate-100 hover:bg-slate-200/80 dark:bg-[#1C2333] dark:hover:bg-[#242E40] border-slate-200/80 dark:border-[#2A3446] active:scale-95"
+                  title={isAr ? 'اختيار لون عشوائي للتمييز' : 'Pick random accent color'}
+                  aria-label="Pick random accent color"
+                >
+                  <Paintbrush style={{ color: 'var(--accent-primary)' }} className="w-5 h-5" />
+                </button>
+
+                {/* 4. Accent Color Palette Picker */}
+                <button
+                  id="drawer-accent-palette-btn"
+                  type="button"
+                  onClick={() => {
+                    setPaletteSubmenuOpen((prev) => !prev);
+                    setThemeSubmenuOpen(false);
+                    setAppLangMenuOpen(false);
+                  }}
+                  className={`w-9.5 h-9.5 rounded-2xl flex items-center justify-center transition cursor-pointer shrink-0 border ${
+                    paletteSubmenuOpen
+                      ? 'bg-slate-200 dark:bg-[#252F42] border-[var(--accent-primary)]/70 shadow-xs'
+                      : 'bg-slate-100 hover:bg-slate-200/80 dark:bg-[#1C2333] dark:hover:bg-[#242E40] border-slate-200/80 dark:border-[#2A3446]'
+                  }`}
+                  title={isAr ? 'لوحة ألوان التمييز' : 'Accent color palette'}
+                  aria-label="Choose accent color"
+                >
+                  <Palette style={{ color: 'var(--accent-primary)' }} className="w-5 h-5" />
+                </button>
               </div>
 
+              {/* Close Drawer Button */}
               <button
                 type="button"
                 onClick={() => {
                   setAppLangMenuOpen(false);
+                  setThemeSubmenuOpen(false);
+                  setPaletteSubmenuOpen(false);
                   setRightDrawerOpen(false);
                 }}
-                className="p-1.5 rounded-full text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer shrink-0"
+                className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#1E2533] transition cursor-pointer shrink-0"
                 aria-label="Close drawer"
               >
-                <X className="w-4 h-4" />
+                <X className="w-4.5 h-4.5" />
               </button>
             </div>
+
+            {/* Sub-menu Row: Language Options */}
+            {appLangMenuOpen && (
+              <div className="px-4 py-2.5 flex items-center gap-6 border-b border-slate-200/80 dark:border-[#252C3A] bg-slate-50/70 dark:bg-[#141822]/60 animate-in fade-in duration-150">
+                {APP_LANGUAGES.map((lang) => {
+                  const isSelected = appLang === lang.code;
+                  return (
+                    <button
+                      key={lang.code}
+                      type="button"
+                      onClick={() => {
+                        onAppLangChange?.(lang.code);
+                      }}
+                      className={`relative pb-1 text-sm font-medium transition cursor-pointer ${
+                        isSelected
+                          ? 'text-slate-900 dark:text-white font-semibold'
+                          : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+                      }`}
+                    >
+                      <span>{lang.label}</span>
+                      {isSelected && (
+                        <span className="absolute bottom-0 inset-x-0 h-0.5 bg-slate-900 dark:bg-white rounded-full" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Sub-menu Row: Theme Options (نهار / ليل / ثقب أسود) matching mockup */}
+            {themeSubmenuOpen && (
+              <div className="px-4 py-2.5 flex items-center gap-6 border-b border-slate-200/80 dark:border-[#252C3A] bg-slate-50/70 dark:bg-[#141822]/60 animate-in fade-in duration-150">
+                {THEME_OPTIONS.map((theme) => {
+                  const isSelected = appTheme === theme.id;
+                  return (
+                    <button
+                      key={theme.id}
+                      type="button"
+                      onClick={() => handleSelectTheme(theme.id)}
+                      className={`relative pb-1 text-sm font-medium transition cursor-pointer ${
+                        isSelected
+                          ? 'text-slate-900 dark:text-white font-semibold'
+                          : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+                      }`}
+                    >
+                      <span>{isAr ? theme.labelAr : theme.label}</span>
+                      {isSelected && (
+                        <span className="absolute bottom-0 inset-x-0 h-0.5 bg-slate-900 dark:bg-white rounded-full" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Sub-menu Row: Accent Color Palette Swatches matching mockup */}
+            {paletteSubmenuOpen && (
+              <div className="px-4 py-2.5 flex items-center justify-between sm:justify-start sm:gap-4 border-b border-slate-200/80 dark:border-[#252C3A] bg-slate-50/70 dark:bg-[#141822]/60 animate-in fade-in duration-150">
+                {ACCENT_COLORS.map((c) => {
+                  const isSelected = accentColor === c.id;
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => setAccentColor(c.id)}
+                      className={`w-6.5 h-6.5 rounded-full ${c.swatchClass} transition cursor-pointer flex items-center justify-center shrink-0 ${
+                        isSelected
+                          ? 'scale-115 ring-2.5 ring-slate-900 dark:ring-white ring-offset-2 ring-offset-white dark:ring-offset-[#161922]'
+                          : 'opacity-85 hover:opacity-100 hover:scale-105'
+                      }`}
+                      title={isAr ? `لون ${c.labelAr}` : `${c.label} accent`}
+                      aria-label={isAr ? `اختيار اللون ${c.labelAr}` : `Set ${c.label} accent color`}
+                    />
+                  );
+                })}
+              </div>
+            )}
 
             {/* Drawer Body: Import, Export, and Translate Providers Button */}
             <div className="p-5 pb-28 flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y flex flex-col gap-3">

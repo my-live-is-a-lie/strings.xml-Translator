@@ -8,7 +8,8 @@
     <meta property="og:title" content="XML Translator" />
     <meta property="og:description" content="Offline Android strings.xml translation tool inspired by Weblate. Import strings.xml, translate string keys with formatted preview, and export target XML." />
     <meta property="og:type" content="website" />
-    <meta name="theme-color" content="#2563eb" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#111318" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -16,8 +17,32 @@
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;600&family=Roboto:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <meta name="twitter:card" content="summary_large_image" />
+    <script>
+      (function() {
+        try {
+          var t = localStorage.getItem('app_theme') || 'night';
+          var isDay = t === 'day';
+          var scheme = isDay ? 'light' : 'dark';
+          var root = document.documentElement;
+          if (isDay) {
+            root.classList.remove('dark');
+            root.setAttribute('data-theme', 'day');
+            root.style.colorScheme = 'light';
+          } else {
+            root.classList.add('dark');
+            root.setAttribute('data-theme', t === 'black_hole' ? 'black-hole' : 'night');
+            root.style.colorScheme = 'dark';
+          }
+          var metaScheme = document.querySelector('meta[name="color-scheme"]');
+          if (metaScheme) metaScheme.setAttribute('content', scheme);
+          var metaTheme = document.querySelector('meta[name="theme-color"]');
+          if (metaTheme) metaTheme.setAttribute('content', isDay ? '#f8f9fa' : (t === 'black_hole' ? '#000000' : '#111318'));
+          var a = localStorage.getItem('app_accent_color') || 'teal';
+          root.setAttribute('data-accent', a);
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
