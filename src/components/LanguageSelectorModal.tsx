@@ -72,16 +72,9 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
             <div className="w-9 h-9 rounded-2xl bg-[#0B57D0]/10 dark:bg-[#1EB996]/20 flex items-center justify-center text-[#0B57D0] dark:text-[#1EB996]">
               <Globe className="w-5 h-5" />
             </div>
-            <div>
-              <h2 className="text-base font-semibold text-slate-900 dark:text-white">
-                {isAr ? 'تغيير لغة الترجمة المستهدفة' : 'Switch Target Language'}
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                {isAr
-                  ? 'اختر لغة أندرويد لترجمة النصوص إليها'
-                  : 'Select an Android locale to translate your strings into'}
-              </p>
-            </div>
+            <h2 className="text-base font-semibold text-slate-900 dark:text-white">
+              {isAr ? 'لغة الترجمة' : 'Target language'}
+            </h2>
           </div>
           <button
             onClick={onClose}
@@ -97,11 +90,7 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
             <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 mr-2 shrink-0" />
             <input
               type="text"
-              placeholder={
-                isAr
-                  ? 'ابحث باسم اللغة، الرمز (ar, es, fr)، أو المجلد...'
-                  : 'Search by language name, code (ar, es, fr), or folder...'
-              }
+              placeholder={isAr ? 'ابحث عن لغة' : 'Search language'}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full text-xs bg-transparent text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none"
@@ -122,9 +111,7 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
         <div className="flex-1 overflow-y-auto p-3 space-y-1">
           {filteredLanguages.length === 0 ? (
             <div className="py-8 text-center text-xs text-slate-400">
-              {isAr
-                ? 'لم يتم العثور على لغات مطابقة. يمكنك إضافتها أدناه كرمز لغة مخصص.'
-                : 'No matching languages found. You can add it below as a custom locale.'}
+              {isAr ? 'لا توجد نتائج. جرّب رمزًا آخر أدناه.' : 'No results. Try a custom code below.'}
             </div>
           ) : (
             filteredLanguages.map((lang) => {
@@ -142,31 +129,24 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
                       : 'hover:bg-slate-100 dark:hover:bg-[#1E2534] text-slate-800 dark:text-slate-200'
                   }`}
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-7 h-7 rounded-xl bg-slate-200/70 dark:bg-[#263042] flex items-center justify-center font-mono text-[11px] font-semibold shrink-0 uppercase">
-                      {lang.code.substring(0, 2)}
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs sm:text-sm font-semibold truncate">
+                        {displayLangName}
+                      </span>
+                      <span className="text-[11px] text-slate-400 dark:text-slate-400 truncate">
+                        ({lang.nativeName})
+                      </span>
                     </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs sm:text-sm font-semibold truncate">
-                          {displayLangName}
-                        </span>
-                        <span className="text-[11px] text-slate-400 dark:text-slate-400 truncate">
-                          ({lang.nativeName})
-                        </span>
-                      </div>
-                      <div className="text-[10px] font-mono text-slate-400 dark:text-slate-500">
-                        {lang.androidDir} {lang.isRtl && (isAr ? '· من اليمين لليسار' : '· RTL')}
-                      </div>
+                    <div className="text-[10px] font-mono text-slate-400 dark:text-slate-500">
+                      {lang.androidDir}
+                      {lang.isRtl && ' · RTL'}
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
-                    <code className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-slate-100 dark:bg-[#131722] text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-[#2C374A]">
-                      {lang.code}
-                    </code>
-                    {isSelected && <Check className="w-4 h-4 text-[#1EB996] stroke-[2.5]" />}
-                  </div>
+                  {isSelected && (
+                    <Check className="w-4 h-4 text-[#1EB996] stroke-[2.5] shrink-0" />
+                  )}
                 </button>
               );
             })
@@ -177,9 +157,7 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
         <div className="p-4 border-t border-slate-100 dark:border-[#242D3D] bg-slate-50/50 dark:bg-[#121620]">
           <form onSubmit={handleAddCustom} className="space-y-2">
             <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 block">
-              {isAr
-                ? 'أو أدخل رمز لغة أندرويد مخصص:'
-                : 'Or enter custom Android locale code:'}
+              {isAr ? 'رمز آخر' : 'Other code'}
             </span>
             <div className="flex items-center gap-2">
               <input
@@ -187,9 +165,7 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
                 dir="ltr"
                 value={customCode}
                 onChange={(e) => setCustomCode(e.target.value)}
-                placeholder={
-                  isAr ? 'مثال: es-rMX, zh-rHK, b+sr+Latn' : 'e.g. es-rMX, zh-rHK, b+sr+Latn'
-                }
+                placeholder="es-rMX"
                 className="flex-1 px-3 py-1.5 text-xs rounded-xl bg-white dark:bg-[#1A202C] border border-slate-200 dark:border-[#2D384C] text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-[#1EB996]"
               />
               <button
@@ -198,7 +174,7 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
                 className="px-3 py-1.5 rounded-xl bg-[#1EB996] hover:bg-[#18A283] disabled:opacity-40 text-white text-xs font-semibold cursor-pointer transition inline-flex items-center gap-1 shrink-0"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>{isAr ? 'تبديل' : 'Switch'}</span>
+                <span>{isAr ? 'استخدام' : 'Use'}</span>
               </button>
             </div>
           </form>
