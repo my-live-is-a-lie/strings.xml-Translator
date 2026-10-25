@@ -881,12 +881,6 @@ export function setAutoTranslateEnabled(enabled: boolean): void {
 
 export const BUILTIN_TRANSLATION_PROVIDERS: TranslationProviderConfig[] = [
   {
-    id: 'gemini',
-    name: 'Gemini AI',
-    type: 'gemini',
-    isBuiltIn: true,
-  },
-  {
     id: 'google',
     name: 'Google Translate',
     type: 'google',
@@ -923,54 +917,52 @@ export function saveCustomProviders(providers: TranslationProviderConfig[]): voi
   }
 }
 
-const USER_GEMINI_KEY_STORAGE = 'user_gemini_api_key_v1';
+// Legacy: Gemini used to be a built-in provider whose key lived in its own storage slot.
+// It is now a regular custom provider (type 'gemini') added from "Add API key".
+// Any key saved the old way is migrated once into a custom provider.
+const LEGACY_GEMINI_KEY_STORAGE = 'user_gemini_api_key_v1';
 
-export function getGeminiApiKey(): string {
+function migrateLegacyGeminiKey(): void {
   try {
-    return getStoredItem(USER_GEMINI_KEY_STORAGE) || '';
-  } catch {
-    return '';
-  }
-}
+    const legacyKey = (getStoredItem(LEGACY_GEMINI_KEY_STORAGE) || '').trim();
+    if (!legacyKey) return;
 
-export function setGeminiApiKey(key: string): void {
-  try {
-    const trimmed = key.trim();
-    if (trimmed) {
-      setStoredItem(USER_GEMINI_KEY_STORAGE, trimmed);
-    } else {
-      removeStoredItem(USER_GEMINI_KEY_STORAGE);
+    const current = getCustomProviders();
+    let migrated = current.find(
+      (p) => p.type === 'gemini' && (p.apiKey || '').trim() === legacyKey
+    );
+    if (!migrated) {
+      migrated = {
+        id: `custom_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        name: 'Gemini AI',
+        type: 'gemini',
+        apiKey: legacyKey,
+        isBuiltIn: false,
+        verifiedAt: Date.now(),
+      };
+      saveCustomProviders([...current, migrated]);
     }
+
+    // If Gemini was the selected provider, keep it selected under its new id
+    if (getStoredItem(ACTIVE_PROVIDER_STORAGE_KEY) === 'gemini') {
+      setStoredItem(ACTIVE_PROVIDER_STORAGE_KEY, migrated.id);
+    }
+    removeStoredItem(LEGACY_GEMINI_KEY_STORAGE);
   } catch (e) {
-    console.error('Failed to save Gemini API key:', e);
+    console.error('Failed to migrate legacy Gemini API key:', e);
   }
 }
 
-export function removeGeminiApiKey(): void {
-  try {
-    removeStoredItem(USER_GEMINI_KEY_STORAGE);
-  } catch (e) {
-    console.error('Failed to remove Gemini API key:', e);
-  }
-}
-
-export function hasGeminiApiKey(): boolean {
-  return Boolean(getGeminiApiKey());
+/** Returns the key of the first saved Gemini provider (used as a fallback for other providers). */
+export function getGeminiApiKey(): string {
+  migrateLegacyGeminiKey();
+  const geminiProvider = getCustomProviders().find((p) => p.type === 'gemini' && p.apiKey);
+  return geminiProvider?.apiKey || '';
 }
 
 export function getAllTranslationProviders(): TranslationProviderConfig[] {
-  const geminiKey = getGeminiApiKey();
-  const builtins: TranslationProviderConfig[] = BUILTIN_TRANSLATION_PROVIDERS.map((p) => {
-    if (p.id === 'gemini') {
-      return {
-        ...p,
-        apiKey: geminiKey || undefined,
-        verifiedAt: geminiKey ? (p.verifiedAt || Date.now()) : undefined,
-      };
-    }
-    return p;
-  });
-  return [...builtins, ...getCustomProviders()];
+  migrateLegacyGeminiKey();
+  return [...BUILTIN_TRANSLATION_PROVIDERS, ...getCustomProviders()];
 }
 
 export function getActiveProviderId(): string {
@@ -983,8 +975,8 @@ export function getActiveProviderId(): string {
   } catch {
     // Ignore storage read errors
   }
-  // Default to Gemini if key entered, else Google Translate which works out-of-the-box
-  return getGeminiApiKey() ? 'gemini' : 'google';
+  // Google Translate works out-of-the-box
+  return 'google';
 }
 
 export function setActiveProviderId(id: string): void {
@@ -998,7 +990,7 @@ export function setActiveProviderId(id: string): void {
 export function getActiveProvider(): TranslationProviderConfig {
   const id = getActiveProviderId();
   const all = getAllTranslationProviders();
-  return all.find((p) => p.id === id) || BUILTIN_TRANSLATION_PROVIDERS[1] || BUILTIN_TRANSLATION_PROVIDERS[0];
+  return all.find((p) => p.id === id) || BUILTIN_TRANSLATION_PROVIDERS[0];
 }
 
 export function addCustomProvider(input: {
@@ -1058,7 +1050,7 @@ export function removeCustomProvider(id: string): void {
   const updated = current.filter((p) => p.id !== id);
   saveCustomProviders(updated);
   if (getActiveProviderId() === id) {
-    setActiveProviderId('gemini');
+    setActiveProviderId('google');
   }
 }
 
@@ -1128,7 +1120,7 @@ export function stripMetadataLabels(text: string, sourceText: string): string {
 
 /**
  * Translate a single segment (without newline separators) via glossary, the selected Translation Provider
- * (Custom API Key Provider, Gemini AI, Google Translate, or MyMemory),
+ * (Custom API Key Provider such as Gemini AI, Google Translate, or MyMemory),
  * while preserving 100% of Android syntax tokens (%s, %d, %1$s, etc.).
  */
 async function translateSingleSegment(
@@ -1249,7 +1241,7 @@ async function translateSingleSegment(
     return null;
   };
 
-  // Gemini AI: called straight from this browser with the user's own key (never via our server).
+  // Gemini AI (added as an API key provider): called straight from this browser with the user's own key (never via our server).
   const tryGeminiDirect = async (): Promise<string | null> => {
     // Only ever use a Gemini key here. Another provider's key (DeepL, OpenAI, ...) must never be sent to Google.
     const userGeminiKey =
@@ -1373,7 +1365,7 @@ async function translateSingleSegment(
   const strategies: Array<() => Promise<string | null>> = [];
 
   if (!activeProvider.isBuiltIn && activeProvider.type === 'gemini') {
-    // Legacy custom provider that holds a Gemini key: handled in the browser like the built-in one
+    // Gemini API key provider: handled directly in the browser
     strategies.push(tryGeminiDirect, tryGoogleGtx, tryMyMemory);
   } else if (!activeProvider.isBuiltIn) {
     strategies.push(tryCustomProvider, tryGeminiDirect, tryGoogleGtx, tryMyMemory);
@@ -1382,8 +1374,8 @@ async function translateSingleSegment(
   } else if (activeProvider.type === 'mymemory') {
     strategies.push(tryMyMemory, tryGoogleGtx, tryGeminiDirect);
   } else {
-    // Default: Gemini AI first
-    strategies.push(tryGeminiDirect, tryGoogleGtx, tryMyMemory);
+    // Default: Google Translate first
+    strategies.push(tryGoogleGtx, tryGeminiDirect, tryMyMemory);
   }
 
   for (const runStrategy of strategies) {

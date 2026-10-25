@@ -53,10 +53,6 @@ import {
   updateCustomProvider,
   removeCustomProvider,
   testProviderApiKey,
-  getGeminiApiKey,
-  setGeminiApiKey,
-  removeGeminiApiKey,
-  hasGeminiApiKey,
 } from '../utils/translator';
 
 const ACCENT_COLORS = [
@@ -85,6 +81,7 @@ const THEME_OPTIONS: Array<{ id: AppTheme; label: string; labelAr: string }> = [
 
 const ENGINE_OPTIONS: Array<{ value: string; nameEn: string; nameAr: string; labelAr: string; labelEn: string }> = [
   { value: 'auto', nameEn: '', nameAr: '', labelAr: 'تعرف تلقائي على المزود', labelEn: 'Auto-Detect Provider' },
+  { value: 'gemini', nameEn: 'Gemini AI', nameAr: 'ذكاء Gemini الاصطناعي', labelAr: 'ذكاء Gemini (Google)', labelEn: 'Gemini AI (Google)' },
   { value: 'lara', nameEn: 'Lara Translate', nameAr: 'ترجمة Lara الذكية', labelAr: 'ترجمة Lara الذكية', labelEn: 'Lara Translate AI (Translated)' },
   { value: 'yandex', nameEn: 'Yandex AI', nameAr: 'ترجمة Yandex الذكية', labelAr: 'ترجمة Yandex الذكية', labelEn: 'Yandex AI / Translate' },
   { value: 'deepl', nameEn: 'DeepL API', nameAr: 'ترجمة DeepL', labelAr: 'محرك DeepL للترجمة', labelEn: 'DeepL API' },
@@ -268,66 +265,9 @@ export const Header: React.FC<HeaderProps> = ({
     setAccentColor(ACCENT_COLORS[nextIndex].id);
   };
 
-  // Gemini API Key Modal state
-  const [geminiModalOpen, setGeminiModalOpen] = useState(false);
-  const [geminiKeyInput, setGeminiKeyInput] = useState('');
-  const [isTestingGeminiKey, setIsTestingGeminiKey] = useState(false);
-  const [geminiTestResult, setGeminiTestResult] = useState<ProviderTestResult | null>(null);
-  const [showGeminiKeyPlain, setShowGeminiKeyPlain] = useState(false);
-
-  const handleOpenGeminiModal = () => {
-    setGeminiKeyInput(getGeminiApiKey());
-    setGeminiTestResult(null);
-    setShowGeminiKeyPlain(false);
-    setGeminiModalOpen(true);
-  };
-
-  const handleSaveGeminiKey = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = geminiKeyInput.trim();
-    if (!trimmed) {
-      removeGeminiApiKey();
-      setProvidersList(getAllTranslationProviders());
-      setGeminiModalOpen(false);
-      return;
-    }
-
-    setIsTestingGeminiKey(true);
-    setGeminiTestResult(null);
-
-    const result = await testGeminiKeyDirect(trimmed);
-    setIsTestingGeminiKey(false);
-    setGeminiTestResult(result);
-
-    if (result.success && result.matched) {
-      setGeminiApiKey(trimmed);
-      setProvidersList(getAllTranslationProviders());
-      setSelectedProviderId('gemini');
-      setActiveProviderId('gemini');
-      setTimeout(() => {
-        setGeminiModalOpen(false);
-      }, 700);
-    }
-  };
-
-  const handleRemoveGeminiKey = () => {
-    removeGeminiApiKey();
-    setGeminiKeyInput('');
-    setGeminiTestResult(null);
-    setProvidersList(getAllTranslationProviders());
-    if (selectedProviderId === 'gemini') {
-      setSelectedProviderId('google');
-      setActiveProviderId('google');
-    }
-    setGeminiModalOpen(false);
-  };
-
   const handleSelectProvider = (id: string) => {
     setActiveProviderId(id);
     setSelectedProviderId(id);
-    if (id === 'gemini' && !hasGeminiApiKey()) {
-      handleOpenGeminiModal();
-    }
   };
 
   const inferEngineFromName = (typedName: string, selectedEngine: string): string => {
@@ -342,6 +282,14 @@ export const Header: React.FC<HeaderProps> = ({
     if (lower.includes('google') || lower.includes('جوجل')) return 'google_cloud';
     return 'auto';
   };
+
+  // Gemini keys are verified straight from the browser; every other provider goes through the server
+  const testEngineKey = (
+    engine: string,
+    key: string,
+    folderId?: string
+  ): Promise<ProviderTestResult> =>
+    engine === 'gemini' ? testGeminiKeyDirect(key) : testProviderApiKey(engine, key, folderId);
 
   const handleTestAndAddProvider = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -358,21 +306,8 @@ export const Header: React.FC<HeaderProps> = ({
         ? `${rawKey}:${rawSecret}`
         : rawKey;
 
-    if (effectiveEngine === 'gemini') {
-      // Gemini keys are managed (and sent straight from the browser) through the dedicated Gemini key card.
-      setIsTestingKey(false);
-      setTestResult({
-        success: false,
-        matched: false,
-        error: isAr
-          ? 'مفاتيح Gemini تُضاف من بطاقة «مفتاح Gemini» وليس كمزود مخصص.'
-          : 'Add Gemini keys from the "Gemini API Key" card, not as a custom provider.',
-      });
-      return;
-    }
-
     const folderId = newFolderId.trim();
-    const result = await testProviderApiKey(effectiveEngine, combinedApiKey, folderId);
+    const result = await testEngineKey(effectiveEngine, combinedApiKey, folderId);
     setIsTestingKey(false);
     setTestResult(result);
 
@@ -474,7 +409,7 @@ export const Header: React.FC<HeaderProps> = ({
     setIsTestingEditKey(true);
     setEditTestResult(null);
 
-    const result = await testProviderApiKey(targetEngine, combinedKey, editedFolderId);
+    const result = await testEngineKey(targetEngine, combinedKey, editedFolderId);
     setIsTestingEditKey(false);
     setEditTestResult(result);
 
@@ -507,9 +442,8 @@ export const Header: React.FC<HeaderProps> = ({
     providersList.find((p) => p.id === selectedProviderId) || providersList[0];
 
   const getProviderDisplayName = (prov?: TranslationProviderConfig): string => {
-    if (!prov) return isAr ? 'ذكاء Gemini الاصطناعي' : 'Gemini AI';
+    if (!prov) return isAr ? 'ترجمة جوجل' : 'Google Translate';
     if (!isAr || !prov.isBuiltIn) return prov.name;
-    if (prov.id === 'gemini') return 'ذكاء Gemini الاصطناعي';
     if (prov.id === 'google') return 'ترجمة جوجل';
     if (prov.id === 'mymemory') return 'ذاكرة الترجمة (MyMemory)';
     return prov.name;
@@ -1136,36 +1070,6 @@ export const Header: React.FC<HeaderProps> = ({
                                   {isSelected && <Check className="w-4 h-4 text-[#1EB996] shrink-0" />}
                                 </button>
 
-                                {/* Gemini Provider Key Actions */}
-                                {prov.id === 'gemini' && (
-                                  <div className="flex items-center gap-1 shrink-0">
-                                    <span
-                                      className={`text-[9px] font-medium px-1.5 py-0.5 rounded-full flex items-center gap-1 ${
-                                        hasGeminiApiKey()
-                                          ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
-                                          : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
-                                      }`}
-                                    >
-                                      <KeyRound className="w-2.5 h-2.5" />
-                                      {hasGeminiApiKey()
-                                        ? (isAr ? 'مفعّل' : 'Active')
-                                        : (isAr ? 'مطلوب مفتاح' : 'Key Needed')}
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleOpenGeminiModal();
-                                      }}
-                                      className="p-1.5 rounded-lg text-slate-400 hover:text-[#1EB996] hover:bg-[#1EB996]/10 transition cursor-pointer shrink-0"
-                                      title={isAr ? 'إعداد مفتاح Gemini API' : 'Configure Gemini API Key'}
-                                      aria-label="Configure Gemini API Key"
-                                    >
-                                      <Pencil className="w-3.5 h-3.5" />
-                                    </button>
-                                  </div>
-                                )}
-
                                 {/* Edit & Trash Icons for custom API key providers */}
                                 {!prov.isBuiltIn && (
                                   <div className="flex items-center gap-0.5 shrink-0">
@@ -1200,25 +1104,6 @@ export const Header: React.FC<HeaderProps> = ({
                                   </div>
                                 )}
                               </div>
-
-                              {/* Prompt to enter key if Gemini has no key */}
-                              {prov.id === 'gemini' && !hasGeminiApiKey() && (
-                                <div className="mt-2 pt-1.5 border-t border-slate-200/60 dark:border-[#262E3E]/60 flex items-center justify-between gap-2 text-[11px]">
-                                  <span className="text-amber-600 dark:text-amber-400 text-[10px] leading-tight">
-                                    {isAr ? 'أدخل مفتاحك الخاص لتفعيل Gemini' : 'Insert key to translate with Gemini AI'}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleOpenGeminiModal();
-                                    }}
-                                    className="px-2 py-0.5 rounded-md bg-[#1EB996] hover:bg-[#199E80] text-white text-[10px] font-semibold transition cursor-pointer shrink-0"
-                                  >
-                                    {isAr ? 'إدخال المفتاح' : 'Insert Key'}
-                                  </button>
-                                </div>
-                              )}
 
                               {/* Inline Edit Form for Custom Provider Name & API Key */}
                               {!prov.isBuiltIn && isEditing && (
@@ -1744,7 +1629,7 @@ export const Header: React.FC<HeaderProps> = ({
                     <span className="w-full text-[11px] text-slate-500 dark:text-slate-400 leading-snug truncate">
                       {isAr
                         ? `ترجمة تلقائية عبر ${getProviderDisplayName(activeProviderObj)}`
-                        : `Auto-translate via ${activeProviderObj?.name || 'Gemini AI'}`}
+                        : `Auto-translate via ${activeProviderObj?.name || 'Google Translate'}`}
                     </span>
                   </div>
                 </div>
@@ -2210,175 +2095,6 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       )}
 
-      {/* Gemini API Key Configuration Modal */}
-      {geminiModalOpen && (
-        <div className="fixed inset-0 z-[65] flex items-center justify-center p-4">
-          <div
-            className="fixed inset-0 bg-black/60 backdrop-blur-xs"
-            onClick={() => setGeminiModalOpen(false)}
-          />
-          <div className="relative z-10 w-full max-w-md rounded-2xl bg-white dark:bg-[#1B212E] border border-slate-200 dark:border-[#2F384B] p-5 shadow-2xl flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-xl bg-[#1EB996]/15 border border-[#1EB996]/30 flex items-center justify-center text-[#1EB996] shrink-0">
-                  <KeyRound className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                    {isAr ? 'مفتاح Google Gemini API' : 'Google Gemini API Key'}
-                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[#1EB996]/15 text-[#1EB996] border border-[#1EB996]/30">
-                      BYOK
-                    </span>
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    {isAr
-                      ? 'أدخل مفتاحك الخاص للترجمة. يُحفظ في متصفحك بدون تشفير، ويُرسل مباشرة من المتصفح إلى Google دون المرور بخادم التطبيق.'
-                      : 'Bring your own key. It is kept in this browser unencrypted and sent straight from the browser to Google, never through the app server.'}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setGeminiModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
-                aria-label="Close modal"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="bg-slate-50 dark:bg-[#151A24] rounded-xl p-3 border border-slate-200/80 dark:border-[#262E3E] text-xs text-slate-600 dark:text-slate-300 leading-relaxed flex flex-col gap-2">
-              <p>
-                {isAr
-                  ? 'لا يحتوي التطبيق على أي مفتاح Gemini مدمج بالخادم لحماية خصوصيتك ورصيدك. لاستخدام ذكاء Google Gemini الاصطناعي في ترجمة النصوص، يرجى لصق مفتاح API الخاص بك أدناه.'
-                  : 'This application contains no bundled API keys on the server. To translate strings with Google Gemini AI, please paste your personal Gemini API key below.'}
-              </p>
-              <a
-                href="https://aistudio.google.com/app/apikey"
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#1EB996] hover:underline w-fit"
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-                {isAr
-                  ? 'احصل على مفتاح API مجاناً من Google AI Studio'
-                  : 'Get a free Gemini API key from Google AI Studio'}
-              </a>
-            </div>
-
-            <form onSubmit={handleSaveGeminiKey} className="flex flex-col gap-3">
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-slate-700 dark:text-slate-200 flex items-center justify-between">
-                  <span>{isAr ? 'مفتاح Gemini API' : 'Gemini API Key'}</span>
-                  {hasGeminiApiKey() && (
-                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3" />
-                      {isAr ? 'المفتاح مفعل ومحفوظ' : 'Key active & saved'}
-                    </span>
-                  )}
-                </label>
-                <div className="relative flex items-center">
-                  <input
-                    type={showGeminiKeyPlain ? 'text' : 'password'}
-                    autoComplete="off"
-                    value={geminiKeyInput}
-                    onChange={(e) => setGeminiKeyInput(e.target.value)}
-                    placeholder="AIzaSy..."
-                    required
-                    className="w-full pl-3 pr-10 py-2 rounded-xl bg-white dark:bg-[#141822] border border-slate-300 dark:border-[#2E384D] text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowGeminiKeyPlain(!showGeminiKeyPlain)}
-                    className="absolute right-2.5 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
-                    title={showGeminiKeyPlain ? 'Hide key' : 'Show key'}
-                    aria-label="Toggle password visibility"
-                  >
-                    {showGeminiKeyPlain ? (
-                      <EyeOff className="w-4 h-4" />
-                    ) : (
-                      <Eye className="w-4 h-4" />
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              {/* Test Result Message */}
-              {geminiTestResult && (
-                <div
-                  className={`rounded-xl p-2.5 text-xs flex items-start gap-2 border ${
-                    geminiTestResult.success && geminiTestResult.matched
-                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300'
-                      : 'bg-rose-500/10 border-rose-500/30 text-rose-700 dark:text-rose-300'
-                  }`}
-                >
-                  {geminiTestResult.success && geminiTestResult.matched ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                  ) : (
-                    <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-                  )}
-                  <div className="flex-1 flex flex-col gap-0.5">
-                    <span className="font-semibold">
-                      {geminiTestResult.success && geminiTestResult.matched
-                        ? isAr
-                          ? 'المفتاح صالح وتم التحقق من الاتصال بنجاح!'
-                          : 'Valid key! Connection verified successfully.'
-                        : isAr
-                          ? 'فشل التحقق من المفتاح'
-                          : 'Key verification failed'}
-                    </span>
-                    {geminiTestResult.error && (
-                      <span className="text-[11px] opacity-90">{geminiTestResult.error}</span>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-200/80 dark:border-[#262E3E]">
-                <div>
-                  {hasGeminiApiKey() && (
-                    <button
-                      type="button"
-                      onClick={handleRemoveGeminiKey}
-                      className="px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 text-xs font-semibold transition cursor-pointer"
-                    >
-                      {isAr ? 'حذف المفتاح' : 'Remove Key'}
-                    </button>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setGeminiModalOpen(false)}
-                    className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-[#252D3D] dark:hover:bg-[#2E384B] text-slate-700 dark:text-slate-200 text-xs font-semibold transition cursor-pointer"
-                  >
-                    {isAr ? 'إلغاء' : 'Cancel'}
-                  </button>
-
-                  <button
-                    type="submit"
-                    disabled={isTestingGeminiKey || !geminiKeyInput.trim()}
-                    className="px-4 py-1.5 rounded-xl bg-[#1EB996] hover:bg-[#199E80] disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 shadow-xs"
-                  >
-                    {isTestingGeminiKey ? (
-                      <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span>{isAr ? 'جاري التحقق...' : 'Verifying...'}</span>
-                      </>
-                    ) : (
-                      <>
-                        <Check className="w-3.5 h-3.5" />
-                        <span>{isAr ? 'تحقق وحفظ' : 'Verify & Save'}</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </>
   );
 };
