@@ -1,6 +1,7 @@
 // Robust translation engine for Android strings with offline glossary, format token protection, and machine translation
 import { ResourceItem, SingleStringItem, PluralStringItem, ArrayStringItem } from '../types';
 import { normalizePluralsForLanguage } from './xmlParser';
+import { getStoredItem, setStoredItem, removeStoredItem } from './storage';
 
 // Comprehensive Android UI terminology glossary for instant offline translations
 export const ANDROID_LOCALIZATION_DICTIONARY: Record<string, Record<string, string>> = {
@@ -837,7 +838,6 @@ function restoreSegmentSyntax(
 
 export type ProviderEngineType =
   | 'google'
-  | 'yandex_builtin'
   | 'gemini'
   | 'mymemory'
   | 'yandex'
@@ -862,7 +862,7 @@ const AUTO_TRANSLATE_STORAGE_KEY = 'auto_translate_untranslated_v1';
 
 export function getAutoTranslateEnabled(): boolean {
   try {
-    return localStorage.getItem(AUTO_TRANSLATE_STORAGE_KEY) === 'true';
+    return getStoredItem(AUTO_TRANSLATE_STORAGE_KEY) === 'true';
   } catch {
     return false;
   }
@@ -870,7 +870,7 @@ export function getAutoTranslateEnabled(): boolean {
 
 export function setAutoTranslateEnabled(enabled: boolean): void {
   try {
-    localStorage.setItem(AUTO_TRANSLATE_STORAGE_KEY, enabled ? 'true' : 'false');
+    setStoredItem(AUTO_TRANSLATE_STORAGE_KEY, enabled ? 'true' : 'false');
   } catch (e) {
     console.error('Failed to save auto-translate setting:', e);
   }
@@ -890,12 +890,6 @@ export const BUILTIN_TRANSLATION_PROVIDERS: TranslationProviderConfig[] = [
     isBuiltIn: true,
   },
   {
-    id: 'yandex_builtin',
-    name: 'Yandex AI',
-    type: 'yandex_builtin',
-    isBuiltIn: true,
-  },
-  {
     id: 'mymemory',
     name: 'MyMemory TM',
     type: 'mymemory',
@@ -905,7 +899,7 @@ export const BUILTIN_TRANSLATION_PROVIDERS: TranslationProviderConfig[] = [
 
 export function getCustomProviders(): TranslationProviderConfig[] {
   try {
-    const raw = localStorage.getItem(CUSTOM_PROVIDERS_STORAGE_KEY);
+    const raw = getStoredItem(CUSTOM_PROVIDERS_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -920,7 +914,7 @@ export function getCustomProviders(): TranslationProviderConfig[] {
 
 export function saveCustomProviders(providers: TranslationProviderConfig[]): void {
   try {
-    localStorage.setItem(CUSTOM_PROVIDERS_STORAGE_KEY, JSON.stringify(providers));
+    setStoredItem(CUSTOM_PROVIDERS_STORAGE_KEY, JSON.stringify(providers));
   } catch (e) {
     console.error('Failed to save custom providers:', e);
   }
@@ -930,7 +924,7 @@ const USER_GEMINI_KEY_STORAGE = 'user_gemini_api_key_v1';
 
 export function getGeminiApiKey(): string {
   try {
-    return localStorage.getItem(USER_GEMINI_KEY_STORAGE) || '';
+    return getStoredItem(USER_GEMINI_KEY_STORAGE) || '';
   } catch {
     return '';
   }
@@ -940,9 +934,9 @@ export function setGeminiApiKey(key: string): void {
   try {
     const trimmed = key.trim();
     if (trimmed) {
-      localStorage.setItem(USER_GEMINI_KEY_STORAGE, trimmed);
+      setStoredItem(USER_GEMINI_KEY_STORAGE, trimmed);
     } else {
-      localStorage.removeItem(USER_GEMINI_KEY_STORAGE);
+      removeStoredItem(USER_GEMINI_KEY_STORAGE);
     }
   } catch (e) {
     console.error('Failed to save Gemini API key:', e);
@@ -951,7 +945,7 @@ export function setGeminiApiKey(key: string): void {
 
 export function removeGeminiApiKey(): void {
   try {
-    localStorage.removeItem(USER_GEMINI_KEY_STORAGE);
+    removeStoredItem(USER_GEMINI_KEY_STORAGE);
   } catch (e) {
     console.error('Failed to remove Gemini API key:', e);
   }
@@ -978,7 +972,7 @@ export function getAllTranslationProviders(): TranslationProviderConfig[] {
 
 export function getActiveProviderId(): string {
   try {
-    const saved = localStorage.getItem(ACTIVE_PROVIDER_STORAGE_KEY);
+    const saved = getStoredItem(ACTIVE_PROVIDER_STORAGE_KEY);
     const all = getAllTranslationProviders();
     if (saved && all.some((p) => p.id === saved)) {
       return saved;
@@ -992,7 +986,7 @@ export function getActiveProviderId(): string {
 
 export function setActiveProviderId(id: string): void {
   try {
-    localStorage.setItem(ACTIVE_PROVIDER_STORAGE_KEY, id);
+    setStoredItem(ACTIVE_PROVIDER_STORAGE_KEY, id);
   } catch (e) {
     console.error('Failed to save active provider ID:', e);
   }
@@ -1125,7 +1119,7 @@ export function stripMetadataLabels(text: string, sourceText: string): string {
 
 /**
  * Translate a single segment (without newline separators) via glossary, the selected Translation Provider
- * (Yandex AI, Custom API Key Provider, Gemini AI, Google Translate, or MyMemory),
+ * (Custom API Key Provider, Gemini AI, Google Translate, or MyMemory),
  * while preserving 100% of Android syntax tokens (%s, %d, %1$s, etc.).
  */
 async function translateSingleSegment(
@@ -1212,9 +1206,9 @@ async function translateSingleSegment(
     return false;
   };
 
-  // Helper for custom API key provider or Yandex built-in
-  const tryCustomOrYandexProvider = async (): Promise<string | null> => {
-    if (!activeProvider.apiKey && activeProvider.type !== 'yandex_builtin') {
+  // Helper for custom API key providers (Yandex, DeepL, OpenAI, ...). Always needs the user's key.
+  const tryCustomProvider = async (): Promise<string | null> => {
+    if (!activeProvider.apiKey) {
       return null;
     }
     try {
@@ -1376,8 +1370,8 @@ async function translateSingleSegment(
   // Order of execution based on the user's selected Translation Provider
   const strategies: Array<() => Promise<string | null>> = [];
 
-  if (!activeProvider.isBuiltIn || activeProvider.type === 'yandex_builtin') {
-    strategies.push(tryCustomOrYandexProvider, tryGeminiServer, tryGoogleGtx, tryMyMemory);
+  if (!activeProvider.isBuiltIn) {
+    strategies.push(tryCustomProvider, tryGeminiServer, tryGoogleGtx, tryMyMemory);
   } else if (activeProvider.type === 'google') {
     strategies.push(tryGoogleGtx, tryGeminiServer, tryMyMemory);
   } else if (activeProvider.type === 'mymemory') {

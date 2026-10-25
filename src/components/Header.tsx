@@ -488,7 +488,6 @@ export const Header: React.FC<HeaderProps> = ({
     if (!isAr || !prov.isBuiltIn) return prov.name;
     if (prov.id === 'gemini') return 'ذكاء Gemini الاصطناعي';
     if (prov.id === 'google') return 'ترجمة جوجل';
-    if (prov.id === 'yandex_builtin') return 'ترجمة Yandex الذكية';
     if (prov.id === 'mymemory') return 'ذاكرة الترجمة (MyMemory)';
     return prov.name;
   };
@@ -1082,7 +1081,7 @@ export const Header: React.FC<HeaderProps> = ({
                                         ? isAr
                                           ? 'محرك Lara الذكي للترجمة'
                                           : 'Lara Translate AI'
-                                        : prov.type === 'yandex_builtin' || prov.type === 'yandex'
+                                        : prov.type === 'yandex'
                                           ? isAr
                                             ? 'محرك Yandex الذكي'
                                             : 'Yandex AI Translator'
@@ -2155,8 +2154,8 @@ export const Header: React.FC<HeaderProps> = ({
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                     {isAr
-                      ? 'أدخل مفتاحك الخاص للترجمة (يُحفظ محلياً على جهازك فقط)'
-                      : 'Bring Your Own Key (stored securely in browser only)'}
+                      ? 'أدخل مفتاحك الخاص للترجمة. يُحفظ في متصفحك بدون تشفير، ويُرسل إلى خادم التطبيق فقط لتمرير الطلب إلى Gemini ولا يُخزَّن هناك.'
+                      : 'Bring your own key. It is kept in this browser unencrypted and is sent to the app server only to forward the request to Gemini; the server does not store it.'}
                   </p>
                 </div>
               </div>

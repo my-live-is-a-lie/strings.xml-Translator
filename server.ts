@@ -664,13 +664,6 @@ async function startServer() {
         return;
       }
 
-      // Built-in Yandex AI (via neural translation fallback or custom key)
-      if (providerType === 'yandex_builtin') {
-        const fallback = await fetchGoogleTranslate(sourceText, targetLang);
-        res.json({ translatedText: fallback });
-        return;
-      }
-
       if (!apiKey) {
         res.status(400).json({ error: 'Missing API key for translation provider' });
         return;
