@@ -926,8 +926,54 @@ export function saveCustomProviders(providers: TranslationProviderConfig[]): voi
   }
 }
 
+const USER_GEMINI_KEY_STORAGE = 'user_gemini_api_key_v1';
+
+export function getGeminiApiKey(): string {
+  try {
+    return localStorage.getItem(USER_GEMINI_KEY_STORAGE) || '';
+  } catch {
+    return '';
+  }
+}
+
+export function setGeminiApiKey(key: string): void {
+  try {
+    const trimmed = key.trim();
+    if (trimmed) {
+      localStorage.setItem(USER_GEMINI_KEY_STORAGE, trimmed);
+    } else {
+      localStorage.removeItem(USER_GEMINI_KEY_STORAGE);
+    }
+  } catch (e) {
+    console.error('Failed to save Gemini API key:', e);
+  }
+}
+
+export function removeGeminiApiKey(): void {
+  try {
+    localStorage.removeItem(USER_GEMINI_KEY_STORAGE);
+  } catch (e) {
+    console.error('Failed to remove Gemini API key:', e);
+  }
+}
+
+export function hasGeminiApiKey(): boolean {
+  return Boolean(getGeminiApiKey());
+}
+
 export function getAllTranslationProviders(): TranslationProviderConfig[] {
-  return [...BUILTIN_TRANSLATION_PROVIDERS, ...getCustomProviders()];
+  const geminiKey = getGeminiApiKey();
+  const builtins: TranslationProviderConfig[] = BUILTIN_TRANSLATION_PROVIDERS.map((p) => {
+    if (p.id === 'gemini') {
+      return {
+        ...p,
+        apiKey: geminiKey || undefined,
+        verifiedAt: geminiKey ? (p.verifiedAt || Date.now()) : undefined,
+      };
+    }
+    return p;
+  });
+  return [...builtins, ...getCustomProviders()];
 }
 
 export function getActiveProviderId(): string {
@@ -940,7 +986,8 @@ export function getActiveProviderId(): string {
   } catch {
     // Ignore storage read errors
   }
-  return 'gemini';
+  // Default to Gemini if key entered, else Google Translate which works out-of-the-box
+  return getGeminiApiKey() ? 'gemini' : 'google';
 }
 
 export function setActiveProviderId(id: string): void {
@@ -954,7 +1001,7 @@ export function setActiveProviderId(id: string): void {
 export function getActiveProvider(): TranslationProviderConfig {
   const id = getActiveProviderId();
   const all = getAllTranslationProviders();
-  return all.find((p) => p.id === id) || BUILTIN_TRANSLATION_PROVIDERS[0];
+  return all.find((p) => p.id === id) || BUILTIN_TRANSLATION_PROVIDERS[1] || BUILTIN_TRANSLATION_PROVIDERS[0];
 }
 
 export function addCustomProvider(input: {
@@ -1198,13 +1245,20 @@ async function translateSingleSegment(
     return null;
   };
 
-  // Helper for Server-Side Gemini AI Suggestion (/api/translate)
+  // Helper for Server-Side Gemini AI Suggestion (/api/translate) using user-supplied key
   const tryGeminiServer = async (): Promise<string | null> => {
+    const userGeminiKey = activeProvider.apiKey || getGeminiApiKey();
+    if (!userGeminiKey) {
+      // User has not entered a Gemini API key yet; skip Gemini and fall back to Google Translate
+      return null;
+    }
+
     try {
       const aiRes = await fetch('/api/translate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          apiKey: userGeminiKey,
           sourceText: coreText,
           targetLang: directLang,
           targetLocaleName,

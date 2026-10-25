@@ -2,7 +2,7 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
-import { GoogleGenAI, ThinkingLevel } from '@google/genai';
+import { GoogleGenAI } from '@google/genai';
 import { AccessKey, AuthToken, Translator as LaraTranslator } from '@translated/lara';
 import dotenv from 'dotenv';
 
@@ -11,14 +11,8 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    },
-  },
-});
+// No static/server-side Gemini key is stored or initialized.
+// All Gemini translations dynamically use the client-supplied user API key.
 
 const SYSTEM_INSTRUCTION = `You are an expert Android strings.xml localization engine.
 Follow these strict rules for every translation:
@@ -246,28 +240,35 @@ async function callProviderWithKey(
     return stripMetadataWrappers(content, sourceText);
   };
 
+  const tryGemini = async (): Promise<string> => {
+    const customAi = new GoogleGenAI({
+      apiKey: trimmedKey,
+      httpOptions: {
+        headers: { 'User-Agent': 'aistudio-build' },
+      },
+    });
+    const langLabel = targetLocaleName ? `${targetLocaleName} (${targetLang})` : targetLang;
+    const pluralContext = pluralQuantity
+      ? `\nPlural quantity category: "${pluralQuantity}".`
+      : '';
+    const response = await customAi.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: `Translate the following Android strings.xml value from English to ${langLabel}.${pluralContext}\nReturn ONLY the final translated text without any metadata labels and preserve all placeholders (%s, %d, %1$s, \\n, HTML tags) exactly:\n${sourceText}`,
+      config: {
+        systemInstruction: SYSTEM_INSTRUCTION,
+        temperature: 0.1,
+      },
+    });
+    if (response.text) {
+      return stripMetadataWrappers(response.text, sourceText);
+    }
+    throw new Error('Gemini API returned an empty translation response');
+  };
+
   const tryGoogleOrGeminiKey = async (): Promise<string> => {
     // 1. Try Gemini API with user-supplied key
     try {
-      const customAi = new GoogleGenAI({
-        apiKey: trimmedKey,
-        httpOptions: {
-          headers: { 'User-Agent': 'aistudio-build' },
-        },
-      });
-      const langLabel = targetLocaleName ? `${targetLocaleName} (${targetLang})` : targetLang;
-      const response = await customAi.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: `Translate the following Android strings.xml value from English to ${langLabel}. Return ONLY the translated text:\n${sourceText}`,
-        config: {
-          systemInstruction: SYSTEM_INSTRUCTION,
-          temperature: 0.1,
-          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-        },
-      });
-      if (response.text) {
-        return stripMetadataWrappers(response.text, sourceText);
-      }
+      return await tryGemini();
     } catch {
       // Fall through to Google Cloud Translation v2 API
     }
@@ -494,7 +495,10 @@ async function callProviderWithKey(
   if (providerType === 'openai') {
     return { translatedText: await tryOpenAI(), detectedType: 'openai' };
   }
-  if (providerType === 'google_cloud' || providerType === 'gemini_custom') {
+  if (providerType === 'gemini' || providerType === 'gemini_custom') {
+    return { translatedText: await tryGemini(), detectedType: 'gemini' };
+  }
+  if (providerType === 'google_cloud') {
     return { translatedText: await tryGoogleOrGeminiKey(), detectedType: 'google_cloud' };
   }
   if (providerType === 'microsoft') {
@@ -503,6 +507,7 @@ async function callProviderWithKey(
 
   // Auto-detect provider from key format or sequential probing
   const probes: Array<{ type: string; fn: () => Promise<string> }> = [
+    { type: 'gemini', fn: tryGemini },
     { type: 'lara', fn: tryLara },
     { type: 'yandex', fn: tryYandex },
     { type: 'deepl', fn: tryDeepL },
@@ -512,12 +517,12 @@ async function callProviderWithKey(
   ];
 
   // Prioritize based on key prefix heuristics
-  if (trimmedKey.startsWith('sk-')) {
+  if (trimmedKey.startsWith('AIza') || trimmedKey.startsWith('AQ.')) {
+    probes.sort((a) => (a.type === 'gemini' ? -1 : 1));
+  } else if (trimmedKey.startsWith('sk-')) {
     probes.sort((a) => (a.type === 'openai' ? -1 : 1));
   } else if (trimmedKey.endsWith(':fx')) {
     probes.sort((a) => (a.type === 'deepl' ? -1 : 1));
-  } else if (trimmedKey.startsWith('AIza')) {
-    probes.sort((a) => (a.type === 'google_cloud' ? -1 : 1));
   } else if (trimmedKey.startsWith('AQVN') || trimmedKey.startsWith('trnsl.')) {
     probes.sort((a) => (a.type === 'yandex' ? -1 : 1));
   } else if (
@@ -659,35 +664,15 @@ async function startServer() {
         return;
       }
 
-      // Built-in Yandex AI (via server-side AI with Yandex terminology style or custom key)
+      // Built-in Yandex AI (via neural translation fallback or custom key)
       if (providerType === 'yandex_builtin') {
-        if (process.env.GEMINI_API_KEY) {
-          const langLabel = targetLocaleName ? `${targetLocaleName} (${targetLang})` : targetLang;
-          const pluralContext = pluralQuantity
-            ? `\nPlural quantity category: "${pluralQuantity}".`
-            : '';
-          const response = await ai.models.generateContent({
-            model: 'gemini-3.8-flash',
-            contents: `[Yandex Translate Engine Mode] Translate the following Android strings.xml value from English to ${langLabel}.${pluralContext}\nReturn ONLY the translated text without any metadata labels and preserve all placeholders (%s, %d, %1$s, \\n, HTML tags) exactly:\n${sourceText}`,
-            config: {
-              systemInstruction: SYSTEM_INSTRUCTION,
-              temperature: 0.1,
-              thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-            },
-          });
-          const cleaned = stripMetadataWrappers(response.text || '', sourceText);
-          if (cleaned) {
-            res.json({ translatedText: cleaned });
-            return;
-          }
-        }
         const fallback = await fetchGoogleTranslate(sourceText, targetLang);
         res.json({ translatedText: fallback });
         return;
       }
 
       if (!apiKey) {
-        res.status(400).json({ error: 'Missing API key for custom provider' });
+        res.status(400).json({ error: 'Missing API key for translation provider' });
         return;
       }
 
@@ -711,7 +696,8 @@ async function startServer() {
 
   app.post('/api/translate', async (req, res) => {
     try {
-      const { sourceText, targetLang, targetLocaleName, pluralQuantity } = req.body as {
+      const { apiKey, sourceText, targetLang, targetLocaleName, pluralQuantity } = req.body as {
+        apiKey?: string;
         sourceText?: string;
         targetLang?: string;
         targetLocaleName?: string;
@@ -723,8 +709,11 @@ async function startServer() {
         return;
       }
 
-      if (!process.env.GEMINI_API_KEY) {
-        res.status(503).json({ error: 'GEMINI_API_KEY is not configured on the server.' });
+      const effectiveKey = apiKey?.trim();
+      if (!effectiveKey) {
+        res.status(400).json({
+          error: 'Gemini API key is required. Please insert your personal Gemini API key in Provider Settings.',
+        });
         return;
       }
 
@@ -739,13 +728,19 @@ Return ONLY the translated text without any metadata labels (never output "[تر
 Source string:
 ${sourceText}`;
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
+      const userAi = new GoogleGenAI({
+        apiKey: effectiveKey,
+        httpOptions: {
+          headers: { 'User-Agent': 'aistudio-build' },
+        },
+      });
+
+      const response = await userAi.models.generateContent({
+        model: 'gemini-2.5-flash',
         contents: prompt,
         config: {
           systemInstruction: SYSTEM_INSTRUCTION,
           temperature: 0.1,
-          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
         },
       });
 
