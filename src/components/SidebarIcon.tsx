@@ -23,7 +23,7 @@ export const SidebarIcon: React.FC<SidebarIconProps> = ({
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className={className}
+      className={`${className} rtl:-scale-x-100`}
       aria-hidden="true"
     >
       {/* Outer rounded rectangular frame */}

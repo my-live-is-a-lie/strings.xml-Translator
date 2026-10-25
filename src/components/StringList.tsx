@@ -221,12 +221,12 @@ export const StringList: React.FC<StringListProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-[#131314] border-r border-slate-200/80 dark:border-slate-800/80 select-none">
+    <div className="flex flex-col h-full bg-white dark:bg-[#131314] border-e border-slate-200/80 dark:border-slate-800/80 select-none">
       {/* Search & Filter Header */}
       <div className="p-3.5 space-y-2.5 border-b border-slate-100 dark:border-slate-800/80">
         {/* M3 Search Bar */}
         <div className="relative flex items-center bg-slate-100 dark:bg-slate-800/80 rounded-full px-3.5 py-2 ring-1 ring-slate-200/60 dark:ring-slate-700/60 focus-within:ring-2 focus-within:ring-[#0B57D0] dark:focus-within:ring-[#A8C7FA] focus-within:bg-white dark:focus-within:bg-[#1E1F20] transition-all">
-          <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 shrink-0 mr-2.5" />
+          <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 shrink-0 me-2.5" />
           <input
             id="string-search-input"
             type="text"
@@ -308,7 +308,7 @@ export const StringList: React.FC<StringListProps> = ({
                   ? 'انقر لتصفية النصوص المترجمة بالذكاء الاصطناعي'
                   : 'Click to filter strings translated by AI'
               }
-              className={`flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg border text-left transition cursor-pointer ${
+              className={`flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg border text-start transition cursor-pointer ${
                 sourceFilter === 'ai'
                   ? 'bg-amber-500/15 border-amber-500/50 text-amber-800 dark:text-amber-200 ring-1 ring-amber-500/30'
                   : 'bg-white dark:bg-[#13161C] border-slate-200/70 dark:border-slate-800 hover:border-amber-500/40 text-slate-700 dark:text-slate-200'
@@ -335,7 +335,7 @@ export const StringList: React.FC<StringListProps> = ({
                   ? 'انقر لتصفية النصوص المترجمة يدوياً'
                   : 'Click to filter strings translated manually'
               }
-              className={`flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg border text-left transition cursor-pointer ${
+              className={`flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg border text-start transition cursor-pointer ${
                 sourceFilter === 'manual'
                   ? 'bg-[#1EB996]/15 border-[#1EB996]/50 text-emerald-900 dark:text-emerald-200 ring-1 ring-[#1EB996]/30'
                   : 'bg-white dark:bg-[#13161C] border-slate-200/70 dark:border-slate-800 hover:border-[#1EB996]/40 text-slate-700 dark:text-slate-200'
@@ -437,7 +437,7 @@ export const StringList: React.FC<StringListProps> = ({
                   ? 'انقر لتصفية النصوص التي تحتوي على أخطاء في العناصر النائبة (%s, %d)'
                   : 'Click to filter strings with missing or mismatched placeholders (%s, %d)'
               }
-              className={`flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg border text-left transition cursor-pointer ${
+              className={`flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg border text-start transition cursor-pointer ${
                 qaFilter === 'placeholder'
                   ? 'bg-rose-500/15 border-rose-500/50 text-rose-800 dark:text-rose-200 ring-1 ring-rose-500/30'
                   : 'bg-white dark:bg-[#13161C] border-slate-200/70 dark:border-slate-800 hover:border-rose-500/40 text-slate-700 dark:text-slate-200'
@@ -477,7 +477,7 @@ export const StringList: React.FC<StringListProps> = ({
                   ? 'انقر لتصفية النصوص التي تحتوي على أخطاء في وسوم HTML'
                   : 'Click to filter strings with invalid or missing HTML tags'
               }
-              className={`flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg border text-left transition cursor-pointer ${
+              className={`flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg border text-start transition cursor-pointer ${
                 qaFilter === 'html'
                   ? 'bg-amber-500/15 border-amber-500/50 text-amber-800 dark:text-amber-200 ring-1 ring-amber-500/30'
                   : 'bg-white dark:bg-[#13161C] border-slate-200/70 dark:border-slate-800 hover:border-amber-500/40 text-slate-700 dark:text-slate-200'
@@ -521,7 +521,7 @@ export const StringList: React.FC<StringListProps> = ({
               </button>
 
               {qaListExpanded && (
-                <div className="mt-1.5 space-y-1 max-h-36 overflow-y-auto pr-0.5">
+                <div className="mt-1.5 space-y-1 max-h-36 overflow-y-auto pe-0.5">
                   {qaSummary.allIssues
                     .filter((iss) => {
                       if (qaFilter === 'placeholder') return iss.category === 'placeholder';
@@ -533,7 +533,7 @@ export const StringList: React.FC<StringListProps> = ({
                         key={iss.id}
                         type="button"
                         onClick={() => onSelect(iss.itemId)}
-                        className="w-full text-left px-2 py-1.5 rounded-lg bg-white dark:bg-[#13161C] border border-rose-200/70 dark:border-rose-900/40 hover:border-rose-400 transition cursor-pointer flex flex-col gap-0.5"
+                        className="w-full text-start px-2 py-1.5 rounded-lg bg-white dark:bg-[#13161C] border border-rose-200/70 dark:border-rose-900/40 hover:border-rose-400 transition cursor-pointer flex flex-col gap-0.5"
                       >
                         <div className="flex items-center justify-between gap-1">
                           <span className="font-mono text-[10px] font-semibold text-slate-800 dark:text-slate-100 truncate">
@@ -665,7 +665,7 @@ export const StringList: React.FC<StringListProps> = ({
                 key={item.id}
                 id={`string-item-${item.name}`}
                 onClick={() => onSelect(item.id)}
-                className={`w-full text-left px-3.5 py-2.5 rounded-2xl transition-all cursor-pointer flex flex-col gap-1 m3-state-layer ${
+                className={`w-full text-start px-3.5 py-2.5 rounded-2xl transition-all cursor-pointer flex flex-col gap-1 m3-state-layer ${
                   isSelected
                     ? 'bg-[#E8F0FE] dark:bg-[#1E293B] shadow-xs ring-1 ring-[#0B57D0]/30 dark:ring-[#A8C7FA]/30'
                     : isChecked
@@ -681,7 +681,7 @@ export const StringList: React.FC<StringListProps> = ({
                         role="checkbox"
                         aria-checked={isChecked}
                         onClick={(e) => toggleItemChecked(item.id, e)}
-                        className="p-0.5 -ml-1 rounded hover:bg-slate-200/70 dark:hover:bg-slate-700/70 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition shrink-0"
+                        className="p-0.5 -ms-1 rounded hover:bg-slate-200/70 dark:hover:bg-slate-700/70 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition shrink-0"
                         title={isAr ? 'تحديد للترجمة الجماعية' : 'Select for bulk translation'}
                       >
                         {isChecked ? (
@@ -705,7 +705,7 @@ export const StringList: React.FC<StringListProps> = ({
                           : 'font-medium text-slate-800 dark:text-slate-200'
                       }`}
                     >
-                      {highlightText(item.name, searchQuery)}
+                      <bdi>{highlightText(item.name, searchQuery)}</bdi>
                     </span>
                   </div>
 
@@ -801,19 +801,19 @@ export const StringList: React.FC<StringListProps> = ({
                 </div>
 
                 {/* Source English preview */}
-                <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-1 pl-5.5">
+                <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-1 ps-5.5">
                   {sourceSnippet ? (
-                    highlightText(sourceSnippet, searchQuery)
+                    <bdi>{highlightText(sourceSnippet, searchQuery)}</bdi>
                   ) : (
                     <span className="italic text-slate-400">{isAr ? 'نص فارغ' : 'Empty string'}</span>
                   )}
                 </p>
 
                 {/* Target translation preview */}
-                <p className="text-[11px] line-clamp-1 pl-5.5">
+                <p className="text-[11px] line-clamp-1 ps-5.5">
                   {targetSnippet ? (
                     <span className="text-emerald-700 dark:text-emerald-300 font-medium">
-                      {highlightText(targetSnippet, searchQuery)}
+                      <bdi>{highlightText(targetSnippet, searchQuery)}</bdi>
                     </span>
                   ) : (
                     <span className="text-slate-400 dark:text-slate-500 italic">

@@ -1,6 +1,7 @@
 import React, { useRef } from 'react';
 import { X } from 'lucide-react';
 import { StringList } from './StringList';
+import { inlineSign } from '../utils/direction';
 import { ResourceItem, FilterStatus, SourceFilter } from '../types';
 
 interface StringsListDrawerProps {
@@ -51,7 +52,7 @@ export const StringsListDrawer: React.FC<StringsListDrawerProps> = ({
   const handleDismiss = () => {
     if (asideRef.current) {
       asideRef.current.style.transition = 'transform 0.18s cubic-bezier(0.16, 1, 0.3, 1)';
-      asideRef.current.style.transform = 'translateX(-100%)';
+      asideRef.current.style.transform = `translateX(${-100 * inlineSign()}%)`;
     }
     if (backdropRef.current) {
       backdropRef.current.style.transition = 'opacity 0.18s ease-out';
@@ -92,8 +93,10 @@ export const StringsListDrawer: React.FC<StringsListDrawerProps> = ({
           const deltaX = touch.clientX - touchStartRef.current.x;
           const deltaY = touch.clientY - touchStartRef.current.y;
 
-          // Only track leftward movement (negative deltaX)
-          if (deltaX < 0) {
+          // Only track movement towards the drawer's own edge
+          // (leftward in LTR, rightward in RTL); `shift` is negative in that direction.
+          const shift = deltaX * inlineSign();
+          if (shift < 0) {
             // Horizontal movement check (allows natural diagonal swipe)
             if (Math.abs(deltaX) > Math.abs(deltaY) * 0.4 || isDraggingRef.current) {
               isDraggingRef.current = true;
@@ -106,7 +109,7 @@ export const StringsListDrawer: React.FC<StringsListDrawerProps> = ({
               }
               if (backdropRef.current) {
                 backdropRef.current.style.transition = 'none';
-                backdropRef.current.style.opacity = `${Math.max(0.1, 1 + deltaX / 220)}`;
+                backdropRef.current.style.opacity = `${Math.max(0.1, 1 + shift / 220)}`;
               }
             }
           }
@@ -119,12 +122,13 @@ export const StringsListDrawer: React.FC<StringsListDrawerProps> = ({
           const deltaY = endY - touchStartRef.current.y;
           const duration = Math.max(1, Date.now() - touchStartRef.current.time);
           const velocity = Math.abs(deltaX) / duration;
+          const shiftEnd = deltaX * inlineSign();
 
           // Small swipe & quick flick detection:
           // Closes on a small flick (deltaX < -15px within 350ms or velocity > 0.15)
           // or a gentle small drag of just -22px
-          const isQuickFlick = deltaX < -15 && (duration < 350 || velocity > 0.15);
-          const isSmallSwipe = deltaX < -22;
+          const isQuickFlick = shiftEnd < -15 && (duration < 350 || velocity > 0.15);
+          const isSmallSwipe = shiftEnd < -22;
           const isHorizontal = Math.abs(deltaX) > Math.abs(deltaY) * 0.35;
 
           if ((isQuickFlick || isSmallSwipe) && isHorizontal) {
@@ -158,7 +162,7 @@ export const StringsListDrawer: React.FC<StringsListDrawerProps> = ({
           isDraggingRef.current = false;
           currentDeltaXRef.current = 0;
         }}
-        className="relative w-72 sm:w-80 max-w-[85vw] h-dvh max-h-dvh overflow-hidden bg-white dark:bg-[#161922] border-r border-slate-200 dark:border-[#252C3A] shadow-2xl z-10 flex flex-col animate-in slide-in-from-left duration-200 touch-pan-y will-change-transform"
+        className="relative w-72 sm:w-80 max-w-[85vw] h-dvh max-h-dvh overflow-hidden bg-white dark:bg-[#161922] border-e border-slate-200 dark:border-[#252C3A] shadow-2xl z-10 flex flex-col animate-in slide-in-from-left rtl:slide-in-from-right duration-200 touch-pan-y will-change-transform"
       >
         {/* Drawer Header */}
         <div className="relative flex items-center justify-between gap-2 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] border-b border-slate-200/80 dark:border-[#252C3A]">

@@ -201,7 +201,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 />
                 <span>
                   {isAr
-                    ? "تهريب الفواصل العلوية تلقائياً (\\')"
+                    ? "تهريب الفواصل العلوية تلقائياً \u2066(\\')\u2069"
                     : "Auto-escape apostrophes (\\') for AAPT2"}
                 </span>
               </label>

@@ -42,6 +42,7 @@ import { testGeminiKeyDirect } from '../utils/geminiDirect';
 import { PWAInstallButton } from './PWAInstallButton';
 import { OfflineBadge } from './OfflineBadge';
 import { SidebarIcon } from './SidebarIcon';
+import { inlineSign } from '../utils/direction';
 import {
   TranslationProviderConfig,
   ProviderEngineType,
@@ -740,9 +741,11 @@ export const Header: React.FC<HeaderProps> = ({
               const deltaX = e.touches[0].clientX - drawerTouchStartRef.current.x;
               const deltaY = e.touches[0].clientY - drawerTouchStartRef.current.y;
               // Swiping to the right (positive deltaX): if horizontal movement is dominant, track swipe
-              if (deltaX > 8 && Math.abs(deltaX) > Math.abs(deltaY) * 0.8) {
+              // (measured towards the drawer's own edge: right in LTR, left in RTL)
+              const edgeDelta = deltaX * inlineSign();
+              if (edgeDelta > 8 && Math.abs(deltaX) > Math.abs(deltaY) * 0.8) {
                 setIsSwipingDrawer(true);
-                setDrawerSwipeX(Math.max(0, deltaX));
+                setDrawerSwipeX(Math.max(0, edgeDelta));
               }
             }}
             onTouchEnd={() => {
@@ -761,10 +764,10 @@ export const Header: React.FC<HeaderProps> = ({
               drawerTouchStartRef.current = null;
             }}
             style={{
-              transform: drawerSwipeX > 0 ? `translateX(${drawerSwipeX}px)` : undefined,
+              transform: drawerSwipeX > 0 ? `translateX(${drawerSwipeX * inlineSign()}px)` : undefined,
               transition: isSwipingDrawer ? 'none' : 'transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
             }}
-            className="relative w-72 sm:w-80 max-w-[85vw] h-dvh max-h-dvh overflow-hidden bg-white dark:bg-[#161922] border-l border-slate-200 dark:border-[#252C3A] shadow-2xl z-10 flex flex-col animate-in slide-in-from-right duration-200"
+            className="relative w-72 sm:w-80 max-w-[85vw] h-dvh max-h-dvh overflow-hidden bg-white dark:bg-[#161922] border-s border-slate-200 dark:border-[#252C3A] shadow-2xl z-10 flex flex-col animate-in slide-in-from-right rtl:slide-in-from-left duration-200"
           >
             {/* Drawer Header: 4 Squircle Buttons (Language, Theme, Random Accent, Palette) + Close Button */}
             <div className="relative flex items-center justify-between gap-2 px-3.5 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] border-b border-slate-200/80 dark:border-[#252C3A]">
@@ -1003,7 +1006,7 @@ export const Header: React.FC<HeaderProps> = ({
                         {isAr ? 'اختر مزود الترجمة لزر الاقتراح' : 'Select Provider for Suggest'}
                       </span>
 
-                      <div className="flex flex-col gap-1.5 pr-0.5">
+                      <div className="flex flex-col gap-1.5 pe-0.5">
                         {providersList.map((prov) => {
                           const isSelected = prov.id === selectedProviderId;
                           const isEditing = editingProviderId === prov.id;
@@ -1020,7 +1023,7 @@ export const Header: React.FC<HeaderProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => handleSelectProvider(prov.id)}
-                                  className="flex-1 flex items-center justify-between gap-2 text-left min-w-0 cursor-pointer"
+                                  className="flex-1 flex items-center justify-between gap-2 text-start min-w-0 cursor-pointer"
                                 >
                                   <div className="flex flex-col min-w-0">
                                     <div className="flex items-center gap-1.5">
@@ -1136,7 +1139,7 @@ export const Header: React.FC<HeaderProps> = ({
                                             setEditProviderName('');
                                             editNameInputRef.current?.focus();
                                           }}
-                                          className="absolute right-2 p-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                                          className="absolute end-2 p-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
                                           aria-label="Clear edited provider name"
                                         >
                                           <X className="w-3 h-3" />
@@ -1356,7 +1359,7 @@ export const Header: React.FC<HeaderProps> = ({
                                     setNewProviderName('');
                                     providerNameInputRef.current?.focus();
                                   }}
-                                  className="absolute right-2 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                                  className="absolute end-2 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
                                   aria-label="Clear provider name"
                                 >
                                   <X className="w-3.5 h-3.5" />
@@ -1390,7 +1393,7 @@ export const Header: React.FC<HeaderProps> = ({
                                         }
                                       }
                                     }}
-                                    className={`w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-md text-xs text-left transition cursor-pointer shrink-0 ${
+                                    className={`w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-md text-xs text-start transition cursor-pointer shrink-0 ${
                                       isSelectedEngine
                                         ? 'bg-[#1EB996]/15 text-[#1EB996] font-semibold border border-[#1EB996]/40'
                                         : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-[#252E40]'
@@ -1610,7 +1613,7 @@ export const Header: React.FC<HeaderProps> = ({
                 role="switch"
                 aria-checked={autoTranslate}
                 id="drawer-auto-translate-toggle"
-                className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-2xl border transition cursor-pointer shrink-0 select-none text-left ${
+                className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-2xl border transition cursor-pointer shrink-0 select-none text-start ${
                   autoTranslate
                     ? 'bg-[#1EB996]/12 border-[#1EB996]/50 text-slate-900 dark:text-white'
                     : 'bg-slate-100/90 hover:bg-slate-200/70 dark:bg-[#202634] dark:hover:bg-[#2A3244] border-slate-200/90 dark:border-[#2F384B] text-slate-800 dark:text-slate-100'
@@ -1636,7 +1639,6 @@ export const Header: React.FC<HeaderProps> = ({
 
                 {/* Toggle Pill Switch */}
                 <div
-                  dir="ltr"
                   className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition-colors duration-200 ${
                     autoTranslate
                       ? 'bg-[#1EB996]'
@@ -1645,7 +1647,7 @@ export const Header: React.FC<HeaderProps> = ({
                 >
                   <span
                     className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${
-                      autoTranslate ? 'translate-x-5' : 'translate-x-0'
+                      autoTranslate ? 'translate-x-5 rtl:-translate-x-5' : 'translate-x-0'
                     }`}
                   />
                 </div>
@@ -1681,7 +1683,7 @@ export const Header: React.FC<HeaderProps> = ({
                         setHistoryListExpanded(true);
                       }
                     }}
-                    className={`flex flex-col gap-1 p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                    className={`flex flex-col gap-1 p-2.5 rounded-xl border text-start transition cursor-pointer ${
                       historyFilter === 'ai' && historyListExpanded
                         ? 'bg-amber-500/15 border-amber-500/50 ring-1 ring-amber-500/30'
                         : 'bg-white dark:bg-[#171C27] border-slate-200/80 dark:border-[#2B3346] hover:border-amber-500/40'
@@ -1712,7 +1714,7 @@ export const Header: React.FC<HeaderProps> = ({
                         setHistoryListExpanded(true);
                       }
                     }}
-                    className={`flex flex-col gap-1 p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                    className={`flex flex-col gap-1 p-2.5 rounded-xl border text-start transition cursor-pointer ${
                       historyFilter === 'manual' && historyListExpanded
                         ? 'bg-[#1EB996]/15 border-[#1EB996]/50 ring-1 ring-[#1EB996]/30'
                         : 'bg-white dark:bg-[#171C27] border-slate-200/80 dark:border-[#2B3346] hover:border-[#1EB996]/40'
@@ -1783,7 +1785,7 @@ export const Header: React.FC<HeaderProps> = ({
                   </button>
 
                   {historyListExpanded && (
-                    <div className="mt-2 space-y-1.5 max-h-52 overflow-y-auto pr-0.5">
+                    <div className="mt-2 space-y-1.5 max-h-52 overflow-y-auto pe-0.5">
                       {filteredHistoryItems.length === 0 ? (
                         <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center py-3">
                           {isAr ? 'لا توجد نصوص مترجمة حالياً' : 'No translated strings yet'}
@@ -1807,7 +1809,7 @@ export const Header: React.FC<HeaderProps> = ({
                                   onSelectString?.(tItem.id);
                                   setRightDrawerOpen(false);
                                 }}
-                                className="flex flex-col flex-1 min-w-0 overflow-hidden text-left cursor-pointer"
+                                className="flex flex-col flex-1 min-w-0 overflow-hidden text-start cursor-pointer"
                               >
                                 <div className="flex items-center gap-1.5 w-full">
                                   <span className="font-mono text-[11px] font-semibold text-slate-800 dark:text-slate-100 truncate">
@@ -1898,7 +1900,7 @@ export const Header: React.FC<HeaderProps> = ({
                         setQaDrawerExpanded(true);
                       }
                     }}
-                    className={`flex flex-col gap-1 p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                    className={`flex flex-col gap-1 p-2.5 rounded-xl border text-start transition cursor-pointer ${
                       qaDrawerFilter === 'placeholder' && qaDrawerExpanded
                         ? 'bg-rose-500/15 border-rose-500/50 ring-1 ring-rose-500/30'
                         : 'bg-white dark:bg-[#171C27] border-slate-200/80 dark:border-[#2B3346] hover:border-rose-500/40'
@@ -1934,7 +1936,7 @@ export const Header: React.FC<HeaderProps> = ({
                         setQaDrawerExpanded(true);
                       }
                     }}
-                    className={`flex flex-col gap-1 p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                    className={`flex flex-col gap-1 p-2.5 rounded-xl border text-start transition cursor-pointer ${
                       qaDrawerFilter === 'html' && qaDrawerExpanded
                         ? 'bg-amber-500/15 border-amber-500/50 ring-1 ring-amber-500/30'
                         : 'bg-white dark:bg-[#171C27] border-slate-200/80 dark:border-[#2B3346] hover:border-amber-500/40'
@@ -1990,7 +1992,7 @@ export const Header: React.FC<HeaderProps> = ({
                   </button>
 
                   {qaDrawerExpanded && (
-                    <div className="mt-2 space-y-1.5 max-h-52 overflow-y-auto pr-0.5">
+                    <div className="mt-2 space-y-1.5 max-h-52 overflow-y-auto pe-0.5">
                       {filteredQaIssues.length === 0 ? (
                         <p className="text-[11px] text-emerald-600 dark:text-emerald-400 text-center py-3">
                           {isAr
@@ -2006,7 +2008,7 @@ export const Header: React.FC<HeaderProps> = ({
                               onSelectString?.(iss.itemId);
                               setRightDrawerOpen(false);
                             }}
-                            className="w-full flex flex-col gap-1 px-2.5 py-2 rounded-xl bg-white dark:bg-[#171C27] border border-rose-200/80 dark:border-rose-900/40 hover:border-rose-400 text-left transition cursor-pointer"
+                            className="w-full flex flex-col gap-1 px-2.5 py-2 rounded-xl bg-white dark:bg-[#171C27] border border-rose-200/80 dark:border-rose-900/40 hover:border-rose-400 text-start transition cursor-pointer"
                           >
                             <div className="flex items-center justify-between gap-2 w-full">
                               <span className="font-mono text-[11px] font-semibold text-slate-800 dark:text-slate-100 truncate">

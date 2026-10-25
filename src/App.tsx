@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Header } from './components/Header';
 import { applyAppTheme, getInitialAppTheme, AppTheme } from './utils/theme';
+import { applyAppDirection, isDocumentRtl } from './utils/direction';
 import { StringList } from './components/StringList';
 import { StringsListDrawer } from './components/StringsListDrawer';
 import { TranslationEditor } from './components/TranslationEditor';
@@ -253,6 +254,8 @@ export default function App() {
 
   useEffect(() => {
     setStoredItem('app_ui_language', appLang);
+    // Mirror the whole layout for right-to-left interface languages (Arabic).
+    applyAppDirection(appLang);
   }, [appLang]);
 
   // Auto-save project locally on change and sync to stored files if modified
@@ -655,13 +658,15 @@ export default function App() {
         e.preventDefault();
         handleNavigateNext();
       }
-      // Alt+ArrowRight: Next string
-      if (e.altKey && e.key === 'ArrowRight') {
+      // Alt+Arrow towards the "next" side: Next string (→ in LTR, ← in RTL, matching the mirrored buttons)
+      const nextKey = isDocumentRtl() ? 'ArrowLeft' : 'ArrowRight';
+      const prevKey = isDocumentRtl() ? 'ArrowRight' : 'ArrowLeft';
+      if (e.altKey && e.key === nextKey) {
         e.preventDefault();
         handleNavigateNext();
       }
-      // Alt+ArrowLeft: Previous string
-      if (e.altKey && e.key === 'ArrowLeft') {
+      // Alt+Arrow towards the "previous" side: Previous string
+      if (e.altKey && e.key === prevKey) {
         e.preventDefault();
         handleNavigatePrevious();
       }

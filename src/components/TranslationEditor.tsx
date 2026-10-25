@@ -1280,7 +1280,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               <button
                 id="weblate-clone-to-target-btn"
                 onClick={handleCloneSourceToTarget}
-                className="pl-1.5 pr-1 py-1 rounded-md text-slate-500 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-[#1C2330] transition cursor-pointer shrink-0"
+                className="ps-1.5 pe-1 py-1 rounded-md text-slate-500 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-[#1C2330] transition cursor-pointer shrink-0"
                 title={isAr ? 'نسخ المصدر إلى حقل الترجمة' : 'Clone source to translation'}
               >
                 {/* Exact Weblate clone-to-translation icon: back sheet + right arrow into front sheet */}
@@ -1319,7 +1319,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                 </button>
 
                 {/* English source text with interactive Android syntax highlights */}
-                <span className="flex-1 text-xs sm:text-sm font-normal text-slate-800 dark:text-slate-100 select-text break-words leading-relaxed">
+                <span dir="auto" className="flex-1 text-xs sm:text-sm font-normal text-slate-800 dark:text-slate-100 select-text break-words leading-relaxed">
                   {renderSourceWithSyntaxHighlights(sourceText)}
                 </span>
               </div>
@@ -1375,7 +1375,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             {/* Two Connected Typographic / Formatting Toolbars */}
             <div className="space-y-1 select-none">
               {/* Toolbar Row 1: Punctuation & Typography */}
-              <div className="flex items-center bg-slate-100 dark:bg-[#171D27] border border-slate-200/90 dark:border-[#283242] rounded-lg overflow-x-auto divide-x divide-slate-200 dark:divide-[#283242] rtl:divide-x-reverse no-scrollbar">
+              <div dir="ltr" className="flex items-center bg-slate-100 dark:bg-[#171D27] border border-slate-200/90 dark:border-[#283242] rounded-lg overflow-x-auto divide-x divide-slate-200 dark:divide-[#283242] rtl:divide-x-reverse no-scrollbar">
                 {[
                   { label: '-', value: '-', title: isAr ? 'شرطة (-)' : 'Hyphen (-)' },
                   { label: '_', value: '_', title: isAr ? 'شرطة سفلية (_)' : 'Underscore (_)' },
@@ -1395,7 +1395,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => insertAtCursor(btn.value)}
                     title={btn.title}
-                    className="flex-1 min-w-[30px] sm:min-w-[38px] h-7 sm:h-7.5 flex items-center justify-center text-xs font-mono font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-[#232C3A] active:bg-slate-300 dark:active:bg-[#2C3748] transition cursor-pointer"
+                    className="flex-1 min-w-[30px] sm:min-w-[38px] h-7 sm:h-7.5 whitespace-nowrap px-1 flex items-center justify-center text-xs font-mono font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-[#232C3A] active:bg-slate-300 dark:active:bg-[#2C3748] transition cursor-pointer"
                   >
                     {btn.label}
                   </button>
@@ -1403,7 +1403,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               </div>
 
               {/* Toolbar Row 2: BiDi Unicode Directional Controls */}
-              <div className="flex items-center bg-slate-100 dark:bg-[#171D27] border border-slate-200/90 dark:border-[#283242] rounded-lg overflow-x-auto divide-x divide-slate-200 dark:divide-[#283242] rtl:divide-x-reverse no-scrollbar">
+              <div dir="ltr" className="flex items-center bg-slate-100 dark:bg-[#171D27] border border-slate-200/90 dark:border-[#283242] rounded-lg overflow-x-auto divide-x divide-slate-200 dark:divide-[#283242] rtl:divide-x-reverse no-scrollbar">
                 {[
                   { label: 'PDF', value: '\u202C', title: isAr ? 'إنهاء تنسيق الاتجاه (PDF)' : 'Pop Directional Formatting (U+202C)' },
                   { label: 'RLE', value: '\u202B', title: isAr ? 'تضمين من اليمين إلى اليسار (RLE)' : 'Right-to-Left Embedding (U+202B)' },
@@ -1709,7 +1709,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
 
               {/* Far Right: Bigger Undo / Redo Buttons */}
               {onUndo && onRedo && (
-                <div className="inline-flex items-center bg-slate-100 dark:bg-[#171D27] border border-slate-200/80 dark:border-transparent rounded-xl p-1 select-none gap-0.5 ml-auto">
+                <div className="inline-flex items-center bg-slate-100 dark:bg-[#171D27] border border-slate-200/80 dark:border-transparent rounded-xl p-1 select-none gap-0.5 ms-auto">
                   <button
                     id="editor-undo-btn"
                     type="button"
@@ -1723,7 +1723,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                     }
                     aria-label="Undo"
                   >
-                    <Undo2 className="w-4 h-4 text-[#1EB996]" />
+                    <Undo2 className="w-4 h-4 text-[#1EB996] rtl:-scale-x-100" />
                   </button>
                   <div className="w-px h-4 bg-slate-300 dark:bg-[#2B3544]" />
                   <button
@@ -1739,7 +1739,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                     }
                     aria-label="Redo"
                   >
-                    <Redo2 className="w-4 h-4 text-[#1EB996]" />
+                    <Redo2 className="w-4 h-4 text-[#1EB996] rtl:-scale-x-100" />
                   </button>
                 </div>
               )}
@@ -1852,7 +1852,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               disabled={currentIndex === 0}
               className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full hover:bg-slate-800/60 disabled:opacity-30 disabled:pointer-events-none transition cursor-pointer"
             >
-              <ChevronRight className="w-3 h-3" />
+              <ChevronLeft className="w-3 h-3 rtl:rotate-180" />
               <span>{isAr ? 'السابق' : 'Previous'}</span>
             </button>
             <button
@@ -1861,7 +1861,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full hover:bg-slate-800/60 disabled:opacity-30 disabled:pointer-events-none transition cursor-pointer"
             >
               <span>{isAr ? 'التالي' : 'Next'}</span>
-              <ChevronLeft className="w-3 h-3" />
+              <ChevronRight className="w-3 h-3 rtl:rotate-180" />
             </button>
           </div>
 

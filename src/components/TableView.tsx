@@ -3,6 +3,7 @@ import { ResourceItem, FilterStatus, SourceFilter, SingleStringItem, PluralStrin
 import { Search, CheckCircle2, Circle, AlertCircle, Edit3, Check, Sparkles, CheckSquare, Square, Loader2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp } from 'lucide-react';
 import { bulkTranslateItems } from '../utils/translator';
 import { filterProjectItems } from '../utils/xmlExporter';
+import { getLanguageOption } from '../utils/languages';
 
 interface TableViewProps {
   items: ResourceItem[];
@@ -250,6 +251,8 @@ export const TableView: React.FC<TableViewProps> = ({
     return { sourceSnippet, targetSnippet };
   };
 
+  const targetIsRtl = !!getLanguageOption(targetLang).isRtl;
+
   const renderTarget = (
     item: ResourceItem,
     targetSnippet: string,
@@ -271,7 +274,8 @@ export const TableView: React.FC<TableViewProps> = ({
     }
     const value = (item as SingleStringItem).target;
     const commonProps = {
-      dir: 'auto' as const,
+      // Empty fields follow the target language's direction so the caret and placeholder start on the right side for Arabic.
+      dir: (value ? 'auto' : targetIsRtl ? 'rtl' : 'ltr') as 'auto' | 'rtl' | 'ltr',
       value,
       onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const val = e.target.value;
@@ -314,7 +318,7 @@ export const TableView: React.FC<TableViewProps> = ({
       <div className="p-4 sm:p-5 border-b border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-[#131314] flex flex-wrap items-center justify-between gap-3">
         {/* M3 Search Bar */}
         <div className="relative flex-1 min-w-[240px] max-w-md flex items-center bg-slate-100 dark:bg-slate-800/80 rounded-full px-4 py-2 ring-1 ring-slate-200/60 dark:ring-slate-700/60 focus-within:ring-2 focus-within:ring-[#0B57D0] dark:focus-within:ring-[#A8C7FA] focus-within:bg-white dark:focus-within:bg-[#1E1F20] transition-all">
-          <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 mr-2.5 shrink-0" />
+          <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 me-2.5 shrink-0" />
           <input
             id="table-search-input"
             type="text"
@@ -485,16 +489,15 @@ export const TableView: React.FC<TableViewProps> = ({
                           <div key={v.label} className="flex items-start gap-2.5">
                             {renderVariantBadge(v.label)}
                             <div className="min-w-0 flex-1 space-y-0.5 text-xs leading-relaxed">
-                              <p dir="auto" className="text-slate-600 dark:text-slate-400 break-words">
-                                {highlightText(v.source, q)}
+                              <p className="text-slate-600 dark:text-slate-400 break-words">
+                                <bdi>{highlightText(v.source, q)}</bdi>
                               </p>
                               <p
-                                dir="auto"
                                 className={`break-words ${
                                   v.target ? 'text-emerald-700 dark:text-emerald-300 font-medium' : 'text-slate-400 italic'
                                 }`}
                               >
-                                {v.target ? highlightText(v.target, q) : isAr ? 'غير مترجم' : 'Untranslated'}
+                                <bdi>{v.target ? highlightText(v.target, q) : isAr ? 'غير مترجم' : 'Untranslated'}</bdi>
                               </p>
                             </div>
                           </div>
@@ -503,25 +506,23 @@ export const TableView: React.FC<TableViewProps> = ({
                     ) : (
                       <>
                     <p
-                      dir="auto"
                       className={`text-xs leading-relaxed text-slate-600 dark:text-slate-400 break-words whitespace-pre-wrap ${
                         expanded ? '' : 'line-clamp-3'
                       }`}
                     >
-                      {highlightText(sourceSnippet, q)}
+                      <bdi>{highlightText(sourceSnippet, q)}</bdi>
                     </p>
 
                     <div className={`text-xs ${item.type !== 'string' && !expanded ? 'line-clamp-3' : ''}`}>
                       {item.type === 'string' && q && targetSnippet.toLowerCase().includes(q) && editingId !== item.id ? (
                         // Search hit inside the translation: show it highlighted; tap to edit.
                         <div
-                          dir="auto"
                           onClick={() => setEditingId(item.id)}
                           className={`${mobileTargetClass} leading-relaxed whitespace-pre-wrap break-words cursor-text ${
                             expanded ? '' : 'line-clamp-3'
                           }`}
                         >
-                          {highlightText(targetSnippet, q)}
+                          <bdi>{highlightText(targetSnippet, q)}</bdi>
                         </div>
                       ) : (
                         renderTarget(
@@ -564,7 +565,7 @@ export const TableView: React.FC<TableViewProps> = ({
             )}
           </div>
 
-          <table className="hidden md:table w-full text-left border-collapse text-xs">
+          <table className="hidden md:table w-full text-start border-collapse text-xs">
             <thead className="bg-slate-50 dark:bg-[#1A1C20] text-slate-600 dark:text-slate-400 font-semibold border-b border-slate-200/80 dark:border-slate-800/80 uppercase tracking-wider text-[11px]">
               <tr>
                 {onBulkUpdateTranslations && (
@@ -634,7 +635,7 @@ export const TableView: React.FC<TableViewProps> = ({
                       </td>
                       <td className="py-3 px-4 font-mono font-medium text-slate-900 dark:text-slate-100">
                         <div className="flex items-center gap-1.5">
-                          <span className="truncate max-w-[200px]">{item.name}</span>
+                          <span dir="ltr" className="truncate max-w-[200px]">{item.name}</span>
                           {item.type !== 'string' && (
                             <span className="text-[10px] text-slate-400 dark:text-slate-500 font-sans">
                               ({isAr ? (item.type === 'plural' ? 'جمع' : 'مصفوفة') : item.type})
@@ -643,7 +644,7 @@ export const TableView: React.FC<TableViewProps> = ({
                         </div>
                       </td>
                       <td className="py-3 px-4 text-slate-700 dark:text-slate-300 max-w-xs sm:max-w-md break-words">
-                        {item.type === 'string' ? sourceSnippet : renderVariantLines(item, 'source')}
+                        {item.type === 'string' ? <bdi>{sourceSnippet}</bdi> : renderVariantLines(item, 'source')}
                       </td>
                       <td className="py-3 px-4 max-w-xs sm:max-w-md break-words">
                         {item.type !== 'string'
@@ -679,7 +680,7 @@ export const TableView: React.FC<TableViewProps> = ({
                     ? `عرض ${((currentPage - 1) * pageSize) + 1}–${Math.min(currentPage * pageSize, filtered.length)} من ${filtered.length} نص`
                     : `Showing ${((currentPage - 1) * pageSize) + 1}–${Math.min(currentPage * pageSize, filtered.length)} of ${filtered.length} strings`}
                 </span>
-                <div className="flex items-center gap-1.5 ml-2 border-l border-slate-200 dark:border-slate-700 pl-2">
+                <div className="flex items-center gap-1.5 ms-2 border-s border-slate-200 dark:border-slate-700 ps-2">
                   <span className="text-[11px] text-slate-400">{isAr ? 'لكل صفحة:' : 'Per page:'}</span>
                   <select
                     value={pageSize}
@@ -706,7 +707,7 @@ export const TableView: React.FC<TableViewProps> = ({
                     className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
                     title={isAr ? 'الصفحة الأولى' : 'First page'}
                   >
-                    <ChevronsLeft className="w-4 h-4" />
+                    <ChevronsLeft className="w-4 h-4 rtl:rotate-180" />
                   </button>
                   <button
                     type="button"
@@ -715,7 +716,7 @@ export const TableView: React.FC<TableViewProps> = ({
                     className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
                     title={isAr ? 'الصفحة السابقة' : 'Previous page'}
                   >
-                    <ChevronLeft className="w-4 h-4" />
+                    <ChevronLeft className="w-4 h-4 rtl:rotate-180" />
                   </button>
 
                   <span className="px-2 font-medium tabular-nums text-slate-800 dark:text-slate-200">
@@ -729,7 +730,7 @@ export const TableView: React.FC<TableViewProps> = ({
                     className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
                     title={isAr ? 'الصفحة التالية' : 'Next page'}
                   >
-                    <ChevronRight className="w-4 h-4" />
+                    <ChevronRight className="w-4 h-4 rtl:rotate-180" />
                   </button>
                   <button
                     type="button"
@@ -738,7 +739,7 @@ export const TableView: React.FC<TableViewProps> = ({
                     className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
                     title={isAr ? 'الصفحة الأخيرة' : 'Last page'}
                   >
-                    <ChevronsRight className="w-4 h-4" />
+                    <ChevronsRight className="w-4 h-4 rtl:rotate-180" />
                   </button>
                 </div>
               )}

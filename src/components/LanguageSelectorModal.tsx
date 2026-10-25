@@ -94,7 +94,7 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
         {/* Search input */}
         <div className="p-4 pb-2 border-b border-slate-100 dark:border-[#242D3D]">
           <div className="relative flex items-center bg-slate-100 dark:bg-[#121620] rounded-2xl px-3.5 py-2 ring-1 ring-slate-200/80 dark:ring-[#2A3448] focus-within:ring-2 focus-within:ring-[#1EB996]">
-            <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 mr-2 shrink-0" />
+            <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 me-2 shrink-0" />
             <input
               type="text"
               placeholder={
@@ -134,7 +134,7 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
                 <button
                   key={lang.code}
                   onClick={() => handleSelect(lang)}
-                  className={`w-full text-left px-3.5 py-2.5 rounded-2xl transition cursor-pointer flex items-center justify-between gap-3 ${
+                  className={`w-full text-start px-3.5 py-2.5 rounded-2xl transition cursor-pointer flex items-center justify-between gap-3 ${
                     isSelected
                       ? 'bg-[#1EB996]/15 text-[#1EB996] border border-[#1EB996]/40 dark:bg-[#1EB996]/20'
                       : 'hover:bg-slate-100 dark:hover:bg-[#1E2534] text-slate-800 dark:text-slate-200'
@@ -182,9 +182,7 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
                 dir="ltr"
                 value={customCode}
                 onChange={(e) => setCustomCode(e.target.value)}
-                placeholder={
-                  isAr ? 'مثال: es-rMX' : 'e.g. es-rMX'
-                }
+                placeholder={isAr ? 'es-rMX' : 'e.g. es-rMX'}
                 className="flex-1 px-3 py-1.5 text-xs rounded-xl bg-white dark:bg-[#1A202C] border border-slate-200 dark:border-[#2D384C] text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-[#1EB996]"
               />
               <button
