@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { ResourceItem, FilterStatus, SourceFilter, SingleStringItem, PluralStringItem, ArrayStringItem } from '../types';
-import { Search, CheckCircle2, Circle, AlertCircle, Edit3, Check, Sparkles, CheckSquare, Square, Loader2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { Search, CheckCircle2, Circle, AlertCircle, Edit3, Check, Sparkles, CheckSquare, Square, Loader2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp } from 'lucide-react';
 import { bulkTranslateItems } from '../utils/translator';
 import { filterProjectItems } from '../utils/xmlExporter';
 
@@ -40,6 +40,8 @@ export const TableView: React.FC<TableViewProps> = ({
   const [localFilter, setLocalFilter] = useState<FilterStatus>('all');
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [isBulkTranslating, setIsBulkTranslating] = useState(false);
+  const [expandChoice, setExpandChoice] = useState<Record<string, boolean>>({});
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [bulkProgress, setBulkProgress] = useState<{ completed: number; total: number } | null>(null);
 
   const search = controlledSearch !== undefined ? controlledSearch : localSearch;
@@ -47,6 +49,10 @@ export const TableView: React.FC<TableViewProps> = ({
     if (onSearchChange) onSearchChange(q);
     else setLocalSearch(q);
   };
+
+  useEffect(() => {
+    setEditingId(null);
+  }, [search]);
 
   const filter = controlledFilter !== undefined ? controlledFilter : localFilter;
   const setFilter = (st: FilterStatus) => {
@@ -148,6 +154,159 @@ export const TableView: React.FC<TableViewProps> = ({
       setBulkProgress(null);
     }
   };
+
+  const highlightText = (text: string, q: string): React.ReactNode => {
+    if (!q) return text;
+    const lower = text.toLowerCase();
+    const parts: React.ReactNode[] = [];
+    let i = 0;
+    while (true) {
+      const idx = lower.indexOf(q, i);
+      if (idx === -1) break;
+      if (idx > i) parts.push(text.slice(i, idx));
+      parts.push(
+        <mark key={idx} className="rounded px-0.5 bg-amber-300/70 dark:bg-amber-400/30 text-inherit">
+          {text.slice(idx, idx + q.length)}
+        </mark>
+      );
+      i = idx + q.length;
+    }
+    parts.push(text.slice(i));
+    return parts;
+  };
+
+  const mobileTargetClass =
+    'w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60 focus:border-[#0B57D0] dark:focus:border-[#A8C7FA] focus:outline-none transition';
+
+  const QUANTITY_STYLES: Record<string, string> = {
+    zero: 'bg-slate-200 text-slate-700 dark:bg-slate-500/20 dark:text-slate-300',
+    one: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
+    two: 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300',
+    few: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
+    many: 'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300',
+    other: 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300',
+  };
+
+  // One entry per plural form / array element, so each can be shown on its own line.
+  const getVariants = (item: ResourceItem) => {
+    if (item.type === 'plural') {
+      return (item.items || []).map((i) => ({ label: String(i.quantity), source: i.source || '', target: i.target || '' }));
+    }
+    if (item.type === 'array') {
+      return (item.items || []).map((i) => ({ label: String(i.index), source: i.source || '', target: i.target || '' }));
+    }
+    return [];
+  };
+
+  const renderVariantBadge = (label: string) => (
+    <span
+      className={`shrink-0 inline-flex items-center justify-center min-w-[2.75rem] px-1.5 py-0.5 rounded-md font-mono text-[10px] font-semibold leading-none ${
+        QUANTITY_STYLES[label] ?? 'bg-slate-200 text-slate-700 dark:bg-slate-500/20 dark:text-slate-300'
+      }`}
+    >
+      {label}
+    </span>
+  );
+
+  // Table cells: one line per variant, badge + text.
+  const renderVariantLines = (item: ResourceItem, side: 'source' | 'target') => (
+    <div className="space-y-1.5">
+      {getVariants(item).map((v) => {
+        const text = side === 'source' ? v.source : v.target;
+        return (
+          <div key={v.label} className="flex items-start gap-2">
+            {renderVariantBadge(v.label)}
+            <span
+              dir="auto"
+              className={
+                side === 'source'
+                  ? ''
+                  : text
+                    ? 'text-emerald-700 dark:text-emerald-300 font-medium'
+                    : 'text-slate-400 italic'
+              }
+            >
+              {text || (side === 'target' ? (isAr ? 'غير مترجم' : 'Untranslated') : '')}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  const getSnippets = (item: ResourceItem) => {
+    let sourceSnippet = '';
+    let targetSnippet = '';
+    if (item.type === 'string') {
+      sourceSnippet = item.source || '';
+      targetSnippet = item.target || '';
+    } else if (item.type === 'plural') {
+      sourceSnippet = (item.items || []).map((i) => `[${i.quantity}] ${i.source || ''}`).join('; ');
+      targetSnippet = (item.items || []).map((i) => `[${i.quantity}] ${i.target || '—'}`).join('; ');
+    } else if (item.type === 'array') {
+      sourceSnippet = (item.items || []).map((i) => `[${i.index}] ${i.source || ''}`).join('; ');
+      targetSnippet = (item.items || []).map((i) => `[${i.index}] ${i.target || '—'}`).join('; ');
+    }
+    return { sourceSnippet, targetSnippet };
+  };
+
+  const renderTarget = (
+    item: ResourceItem,
+    targetSnippet: string,
+    inputClassName: string,
+    multiline = false,
+    onFocus?: () => void,
+    autoFocus = false
+  ) => {
+    if (item.type !== 'string') {
+      return (
+        <span
+          className={
+            targetSnippet ? 'text-emerald-700 dark:text-emerald-300 font-medium' : 'text-slate-400 italic'
+          }
+        >
+          {targetSnippet || (isAr ? 'غير مترجم' : 'Untranslated')}
+        </span>
+      );
+    }
+    const value = (item as SingleStringItem).target;
+    const commonProps = {
+      dir: 'auto' as const,
+      value,
+      onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+        const val = e.target.value;
+        onUpdateTranslation({
+          ...item,
+          target: val,
+          status: val.trim() ? 'translated' : 'untranslated',
+          translationSource: val.trim() ? 'manual' : undefined,
+        });
+      },
+      placeholder: isAr ? 'اكتب الترجمة...' : 'Type translation...',
+      className: inputClassName,
+    };
+    // Multi-line (mobile cards): grows with the text so long translations are fully readable.
+    return multiline ? (
+      <textarea
+        {...commonProps}
+        onFocus={onFocus}
+        autoFocus={autoFocus}
+        rows={Math.min(8, Math.max(1, Math.ceil(value.length / 34)))}
+        className={`${inputClassName} resize-none field-sizing-content leading-relaxed`}
+      />
+    ) : (
+      <input type="text" {...commonProps} />
+    );
+  };
+
+  const renderStatusIcon = (item: ResourceItem) =>
+    item.status === 'translated' ? (
+      <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 mx-auto" />
+    ) : item.status === 'needs_review' ? (
+      <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 mx-auto" />
+    ) : (
+      <Circle className="w-4 h-4 text-slate-300 dark:text-slate-600 mx-auto" />
+    );
 
   return (
     <div className="flex flex-col h-full bg-[#F8F9FA] dark:bg-[#111318] overflow-hidden">
@@ -257,7 +416,155 @@ export const TableView: React.FC<TableViewProps> = ({
       {/* Table Container */}
       <div className="flex-1 overflow-auto p-4 sm:p-6">
         <div className="bg-white dark:bg-[#1E1F20] rounded-2xl border border-slate-200/80 dark:border-slate-800/80 m3-elevation-1 overflow-hidden">
-          <table className="w-full text-left border-collapse text-xs">
+          {/* Mobile: one stacked card per string (the 6-column table is too wide for phones) */}
+          <div className="md:hidden divide-y divide-slate-100 dark:divide-slate-800/60">
+            {filtered.length === 0 ? (
+              <div className="py-16 text-center text-slate-400 text-xs">
+                {isAr ? 'لا توجد نصوص مطابقة.' : 'No strings match the filter.'}
+              </div>
+            ) : (
+              pagedItems.map((item) => {
+                const isChecked = checkedIds.has(item.id);
+                const { sourceSnippet, targetSnippet } = getSnippets(item);
+                const q = search.trim().toLowerCase();
+                const variants = getVariants(item);
+                const isLong =
+                  item.type === 'string'
+                    ? sourceSnippet.length > 110 || targetSnippet.length > 110
+                    : variants.length > 2;
+                const matchInText =
+                  !!q && (sourceSnippet.toLowerCase().includes(q) || targetSnippet.toLowerCase().includes(q));
+                // A search hit inside long text opens the card automatically (unless the user chose otherwise).
+                const expanded = !isLong || (expandChoice[item.id] ?? matchInText);
+                const setExpanded = (v: boolean) => setExpandChoice((prev) => ({ ...prev, [item.id]: v }));
+                return (
+                  <div
+                    key={item.id}
+                    className={`p-3.5 space-y-2.5 ${isChecked ? 'bg-emerald-50/60 dark:bg-emerald-950/20' : ''}`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      {onBulkUpdateTranslations && (
+                        <button
+                          type="button"
+                          onClick={() => toggleItemChecked(item.id)}
+                          disabled={isBulkTranslating}
+                          className="shrink-0 inline-flex items-center justify-center text-slate-400 cursor-pointer"
+                          title={isAr ? 'تحديد الصف للترجمة الجماعية' : 'Select row for bulk translation'}
+                        >
+                          {isChecked ? (
+                            <CheckSquare className="w-4 h-4 text-[#1EB996]" />
+                          ) : (
+                            <Square className="w-4 h-4" />
+                          )}
+                        </button>
+                      )}
+                      <span className="shrink-0">{renderStatusIcon(item)}</span>
+                      <span
+                        dir="ltr"
+                        className="flex-1 min-w-0 truncate font-mono text-xs font-medium text-slate-900 dark:text-slate-100 text-start"
+                      >
+                        {item.name}
+                        {item.type !== 'string' && (
+                          <span className="ms-1 text-[10px] text-slate-400 dark:text-slate-500 font-sans">
+                            ({isAr ? (item.type === 'plural' ? 'جمع' : 'مصفوفة') : item.type})
+                          </span>
+                        )}
+                      </span>
+                      <button
+                        onClick={() => onSelectString(item.id)}
+                        className="shrink-0 p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-[#0B57D0] dark:text-[#A8C7FA] transition cursor-pointer m3-state-layer"
+                        title={isAr ? 'فتح في محرّر الترجمة' : 'Open in Translation Editor'}
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {item.type !== 'string' ? (
+                      <div className="space-y-2.5">
+                        {(expanded ? variants : variants.slice(0, 2)).map((v) => (
+                          <div key={v.label} className="flex items-start gap-2.5">
+                            {renderVariantBadge(v.label)}
+                            <div className="min-w-0 flex-1 space-y-0.5 text-xs leading-relaxed">
+                              <p dir="auto" className="text-slate-600 dark:text-slate-400 break-words">
+                                {highlightText(v.source, q)}
+                              </p>
+                              <p
+                                dir="auto"
+                                className={`break-words ${
+                                  v.target ? 'text-emerald-700 dark:text-emerald-300 font-medium' : 'text-slate-400 italic'
+                                }`}
+                              >
+                                {v.target ? highlightText(v.target, q) : isAr ? 'غير مترجم' : 'Untranslated'}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <>
+                    <p
+                      dir="auto"
+                      className={`text-xs leading-relaxed text-slate-600 dark:text-slate-400 break-words whitespace-pre-wrap ${
+                        expanded ? '' : 'line-clamp-3'
+                      }`}
+                    >
+                      {highlightText(sourceSnippet, q)}
+                    </p>
+
+                    <div className={`text-xs ${item.type !== 'string' && !expanded ? 'line-clamp-3' : ''}`}>
+                      {item.type === 'string' && q && targetSnippet.toLowerCase().includes(q) && editingId !== item.id ? (
+                        // Search hit inside the translation: show it highlighted; tap to edit.
+                        <div
+                          dir="auto"
+                          onClick={() => setEditingId(item.id)}
+                          className={`${mobileTargetClass} leading-relaxed whitespace-pre-wrap break-words cursor-text ${
+                            expanded ? '' : 'line-clamp-3'
+                          }`}
+                        >
+                          {highlightText(targetSnippet, q)}
+                        </div>
+                      ) : (
+                        renderTarget(
+                          item,
+                          targetSnippet,
+                          mobileTargetClass + (expanded ? '' : ' max-h-[4.3rem] overflow-hidden'),
+                          true,
+                          () => isLong && setExpanded(true),
+                          editingId === item.id
+                        )
+                      )}
+                    </div>
+
+                      </>
+                    )}
+
+                    {isLong && (
+                      <button
+                        type="button"
+                        onClick={() => setExpanded(!expanded)}
+                        className="inline-flex items-center gap-1 text-[11px] font-medium text-[#0B57D0] dark:text-[#A8C7FA] cursor-pointer"
+                      >
+                        {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                        {expanded
+                          ? isAr
+                            ? 'عرض أقل'
+                            : 'Show less'
+                          : item.type === 'string'
+                            ? isAr
+                              ? 'عرض المزيد'
+                              : 'Show more'
+                            : isAr
+                              ? `عرض ${variants.length - 2} صيغ أخرى`
+                              : `Show ${variants.length - 2} more`}
+                      </button>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          <table className="hidden md:table w-full text-left border-collapse text-xs">
             <thead className="bg-slate-50 dark:bg-[#1A1C20] text-slate-600 dark:text-slate-400 font-semibold border-b border-slate-200/80 dark:border-slate-800/80 uppercase tracking-wider text-[11px]">
               <tr>
                 {onBulkUpdateTranslations && (
@@ -294,18 +601,7 @@ export const TableView: React.FC<TableViewProps> = ({
               ) : (
                 pagedItems.map((item) => {
                   const isChecked = checkedIds.has(item.id);
-                  let sourceSnippet = '';
-                  let targetSnippet = '';
-                  if (item.type === 'string') {
-                    sourceSnippet = item.source || '';
-                    targetSnippet = item.target || '';
-                  } else if (item.type === 'plural') {
-                    sourceSnippet = (item.items || []).map((i) => `[${i.quantity}] ${i.source || ''}`).join('; ');
-                    targetSnippet = (item.items || []).map((i) => `[${i.quantity}] ${i.target || '—'}`).join('; ');
-                  } else if (item.type === 'array') {
-                    sourceSnippet = (item.items || []).map((i) => `[${i.index}] ${i.source || ''}`).join('; ');
-                    targetSnippet = (item.items || []).map((i) => `[${i.index}] ${i.target || '—'}`).join('; ');
-                  }
+                  const { sourceSnippet, targetSnippet } = getSnippets(item);
 
                   return (
                     <tr
@@ -334,13 +630,7 @@ export const TableView: React.FC<TableViewProps> = ({
                         </td>
                       )}
                       <td className="py-3 px-3 text-center">
-                        {item.status === 'translated' ? (
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 mx-auto" />
-                        ) : item.status === 'needs_review' ? (
-                          <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 mx-auto" />
-                        ) : (
-                          <Circle className="w-4 h-4 text-slate-300 dark:text-slate-600 mx-auto" />
-                        )}
+                        {renderStatusIcon(item)}
                       </td>
                       <td className="py-3 px-4 font-mono font-medium text-slate-900 dark:text-slate-100">
                         <div className="flex items-center gap-1.5">
@@ -353,35 +643,15 @@ export const TableView: React.FC<TableViewProps> = ({
                         </div>
                       </td>
                       <td className="py-3 px-4 text-slate-700 dark:text-slate-300 max-w-xs sm:max-w-md break-words">
-                        {sourceSnippet}
+                        {item.type === 'string' ? sourceSnippet : renderVariantLines(item, 'source')}
                       </td>
                       <td className="py-3 px-4 max-w-xs sm:max-w-md break-words">
-                        {item.type === 'string' ? (
-                          <input
-                            type="text"
-                            value={(item as SingleStringItem).target}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              onUpdateTranslation({
-                                ...item,
-                                target: val,
-                                status: val.trim() ? 'translated' : 'untranslated',
-                                translationSource: val.trim() ? 'manual' : undefined,
-                              });
-                            }}
-                            placeholder={isAr ? 'اكتب الترجمة...' : 'Type translation...'}
-                            className="w-full px-3 py-1.5 text-xs rounded-lg bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 focus:bg-white dark:focus:bg-slate-800 border border-transparent focus:border-[#0B57D0] dark:focus:border-[#A8C7FA] focus:outline-none transition"
-                          />
-                        ) : (
-                          <span
-                            className={
-                              targetSnippet
-                                ? 'text-emerald-700 dark:text-emerald-300 font-medium'
-                                : 'text-slate-400 italic'
-                            }
-                          >
-                            {targetSnippet || (isAr ? 'غير مترجم' : 'Untranslated')}
-                          </span>
+                        {item.type !== 'string'
+                          ? renderVariantLines(item, 'target')
+                          : renderTarget(
+                          item,
+                          targetSnippet,
+                          'w-full px-3 py-1.5 text-xs rounded-lg bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 focus:bg-white dark:focus:bg-slate-800 border border-transparent focus:border-[#0B57D0] dark:focus:border-[#A8C7FA] focus:outline-none transition'
                         )}
                       </td>
                       <td className="py-3 px-3 text-center">
