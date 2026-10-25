@@ -2,6 +2,7 @@
 import { ResourceItem, SingleStringItem, PluralStringItem, ArrayStringItem } from '../types';
 import { normalizePluralsForLanguage } from './xmlParser';
 import { getStoredItem, setStoredItem, removeStoredItem } from './storage';
+import { geminiTranslateDirect } from './geminiDirect';
 
 // Comprehensive Android UI terminology glossary for instant offline translations
 export const ANDROID_LOCALIZATION_DICTIONARY: Record<string, Record<string, string>> = {
@@ -852,6 +853,8 @@ export interface TranslationProviderConfig {
   name: string;
   type: ProviderEngineType;
   apiKey?: string;
+  /** Yandex Cloud folder ID; needed with an IAM token (personal account), not with a service-account API key. */
+  folderId?: string;
   isBuiltIn?: boolean;
   verifiedAt?: number;
 }
@@ -1002,6 +1005,7 @@ export function addCustomProvider(input: {
   name: string;
   type: ProviderEngineType;
   apiKey: string;
+  folderId?: string;
 }): TranslationProviderConfig {
   const current = getCustomProviders();
   const newProvider: TranslationProviderConfig = {
@@ -1009,6 +1013,7 @@ export function addCustomProvider(input: {
     name: input.name.trim(),
     type: input.type,
     apiKey: input.apiKey.trim(),
+    folderId: input.folderId?.trim() || undefined,
     isBuiltIn: false,
     verifiedAt: Date.now(),
   };
@@ -1024,6 +1029,7 @@ export function updateCustomProvider(
     name?: string;
     type?: ProviderEngineType;
     apiKey?: string;
+    folderId?: string;
   }
 ): TranslationProviderConfig | null {
   const current = getCustomProviders();
@@ -1036,6 +1042,8 @@ export function updateCustomProvider(
     name: updates.name !== undefined ? updates.name.trim() || existing.name : existing.name,
     type: updates.type !== undefined ? updates.type : existing.type,
     apiKey: updates.apiKey !== undefined ? updates.apiKey.trim() : existing.apiKey,
+    folderId:
+      updates.folderId !== undefined ? updates.folderId.trim() || undefined : existing.folderId,
     verifiedAt: Date.now(),
   };
 
@@ -1066,13 +1074,14 @@ export interface ProviderTestResult {
 
 export async function testProviderApiKey(
   providerType: string,
-  apiKey: string
+  apiKey: string,
+  folderId?: string
 ): Promise<ProviderTestResult> {
   try {
     const res = await fetch('/api/providers/test', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ providerType, apiKey: apiKey.trim() }),
+      body: JSON.stringify({ providerType, apiKey: apiKey.trim(), folderId: folderId?.trim() || undefined }),
     });
     const data = (await res.json()) as ProviderTestResult;
     return data;
@@ -1218,6 +1227,7 @@ async function translateSingleSegment(
         body: JSON.stringify({
           providerType: activeProvider.type,
           apiKey: activeProvider.apiKey,
+          folderId: activeProvider.folderId,
           sourceText: coreText,
           targetLang: directLang,
           targetLocaleName,
@@ -1239,35 +1249,27 @@ async function translateSingleSegment(
     return null;
   };
 
-  // Helper for Server-Side Gemini AI Suggestion (/api/translate) using user-supplied key
-  const tryGeminiServer = async (): Promise<string | null> => {
-    const userGeminiKey = activeProvider.apiKey || getGeminiApiKey();
+  // Gemini AI: called straight from this browser with the user's own key (never via our server).
+  const tryGeminiDirect = async (): Promise<string | null> => {
+    // Only ever use a Gemini key here. Another provider's key (DeepL, OpenAI, ...) must never be sent to Google.
+    const userGeminiKey =
+      (activeProvider.type === 'gemini' && activeProvider.apiKey) || getGeminiApiKey();
     if (!userGeminiKey) {
-      // User has not entered a Gemini API key yet; skip Gemini and fall back to Google Translate
+      // No Gemini key yet: skip Gemini and fall back to Google Translate
       return null;
     }
 
     try {
-      const aiRes = await fetch('/api/translate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          apiKey: userGeminiKey,
-          sourceText: coreText,
-          targetLang: directLang,
-          targetLocaleName,
-          pluralQuantity,
-        }),
+      const translated = await geminiTranslateDirect({
+        apiKey: userGeminiKey,
+        sourceText: coreText,
+        targetLang: directLang,
+        targetLocaleName,
+        pluralQuantity,
       });
-
-      if (aiRes.ok) {
-        const aiData = (await aiRes.json()) as { translatedText?: string };
-        if (aiData && typeof aiData.translatedText === 'string' && aiData.translatedText.trim()) {
-          const cleanedAi = stripMetadataLabels(aiData.translatedText, coreText);
-          if (cleanedAi && !isPollutedTranslation(cleanedAi)) {
-            return restoreSegmentSyntax(cleanedAi, tokens, usesEscapedDoubleQuotes);
-          }
-        }
+      const cleanedAi = stripMetadataLabels(translated, coreText);
+      if (cleanedAi && !isPollutedTranslation(cleanedAi)) {
+        return restoreSegmentSyntax(cleanedAi, tokens, usesEscapedDoubleQuotes);
       }
     } catch {
       // Fallback
@@ -1370,15 +1372,18 @@ async function translateSingleSegment(
   // Order of execution based on the user's selected Translation Provider
   const strategies: Array<() => Promise<string | null>> = [];
 
-  if (!activeProvider.isBuiltIn) {
-    strategies.push(tryCustomProvider, tryGeminiServer, tryGoogleGtx, tryMyMemory);
+  if (!activeProvider.isBuiltIn && activeProvider.type === 'gemini') {
+    // Legacy custom provider that holds a Gemini key: handled in the browser like the built-in one
+    strategies.push(tryGeminiDirect, tryGoogleGtx, tryMyMemory);
+  } else if (!activeProvider.isBuiltIn) {
+    strategies.push(tryCustomProvider, tryGeminiDirect, tryGoogleGtx, tryMyMemory);
   } else if (activeProvider.type === 'google') {
-    strategies.push(tryGoogleGtx, tryGeminiServer, tryMyMemory);
+    strategies.push(tryGoogleGtx, tryGeminiDirect, tryMyMemory);
   } else if (activeProvider.type === 'mymemory') {
-    strategies.push(tryMyMemory, tryGoogleGtx, tryGeminiServer);
+    strategies.push(tryMyMemory, tryGoogleGtx, tryGeminiDirect);
   } else {
     // Default: Gemini AI first
-    strategies.push(tryGeminiServer, tryGoogleGtx, tryMyMemory);
+    strategies.push(tryGeminiDirect, tryGoogleGtx, tryMyMemory);
   }
 
   for (const runStrategy of strategies) {

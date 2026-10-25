@@ -2,7 +2,6 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
-import { GoogleGenAI } from '@google/genai';
 import { AccessKey, AuthToken, Translator as LaraTranslator } from '@translated/lara';
 import dotenv from 'dotenv';
 
@@ -11,8 +10,8 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// No static/server-side Gemini key is stored or initialized.
-// All Gemini translations dynamically use the client-supplied user API key.
+// Gemini is NOT handled by this server: the browser calls the Gemini API directly with the
+// user's own key (see src/utils/geminiDirect.ts), so that key never reaches this server.
 
 const SYSTEM_INSTRUCTION = `You are an expert Android strings.xml localization engine.
 Follow these strict rules for every translation:
@@ -106,10 +105,12 @@ async function callProviderWithKey(
   sourceText: string,
   targetLang: string,
   targetLocaleName?: string,
-  pluralQuantity?: string
+  pluralQuantity?: string,
+  folderId?: string
 ): Promise<{ translatedText: string; detectedType: string }> {
   const baseLang = targetLang.split('-')[0].toLowerCase();
   const trimmedKey = apiKey.trim();
+  const trimmedFolderId = folderId?.trim() || '';
 
   const tryYandex = async (): Promise<string> => {
     // 1. Try Yandex Cloud Translate v2 API (supports Api-Key or IAM Bearer token)
@@ -123,6 +124,9 @@ async function callProviderWithKey(
         sourceLanguageCode: 'en',
         targetLanguageCode: baseLang,
         texts: [sourceText],
+        // Required with an IAM token (personal Yandex account); a service-account API key
+        // already knows its folder, so this is omitted when empty.
+        ...(trimmedFolderId ? { folderId: trimmedFolderId } : {}),
       }),
     });
 
@@ -149,10 +153,11 @@ async function callProviderWithKey(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Api-Key ${trimmedKey}`,
+        Authorization: trimmedKey.startsWith('t1.') ? `Bearer ${trimmedKey}` : `Api-Key ${trimmedKey}`,
+        ...(trimmedFolderId ? { 'x-folder-id': trimmedFolderId } : {}),
       },
       body: JSON.stringify({
-        modelUri: 'gpt://b1g/yandexgpt-lite/latest',
+        modelUri: `gpt://${trimmedFolderId || 'b1g'}/yandexgpt-lite/latest`,
         completionOptions: { stream: false, temperature: 0.1, maxTokens: '200' },
         messages: [
           { role: 'system', text: SYSTEM_INSTRUCTION },
@@ -172,7 +177,11 @@ async function callProviderWithKey(
       if (yText) return stripMetadataWrappers(yText, sourceText);
     }
 
-    throw new Error('Yandex API key authentication failed');
+    throw new Error(
+      trimmedFolderId
+        ? 'Yandex authentication failed. Check the API key / IAM token and the folder ID.'
+        : 'Yandex authentication failed. With an IAM token (personal account) a folder ID is required.'
+    );
   };
 
   const tryDeepL = async (): Promise<string> => {
@@ -240,40 +249,8 @@ async function callProviderWithKey(
     return stripMetadataWrappers(content, sourceText);
   };
 
-  const tryGemini = async (): Promise<string> => {
-    const customAi = new GoogleGenAI({
-      apiKey: trimmedKey,
-      httpOptions: {
-        headers: { 'User-Agent': 'aistudio-build' },
-      },
-    });
-    const langLabel = targetLocaleName ? `${targetLocaleName} (${targetLang})` : targetLang;
-    const pluralContext = pluralQuantity
-      ? `\nPlural quantity category: "${pluralQuantity}".`
-      : '';
-    const response = await customAi.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: `Translate the following Android strings.xml value from English to ${langLabel}.${pluralContext}\nReturn ONLY the final translated text without any metadata labels and preserve all placeholders (%s, %d, %1$s, \\n, HTML tags) exactly:\n${sourceText}`,
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
-        temperature: 0.1,
-      },
-    });
-    if (response.text) {
-      return stripMetadataWrappers(response.text, sourceText);
-    }
-    throw new Error('Gemini API returned an empty translation response');
-  };
-
-  const tryGoogleOrGeminiKey = async (): Promise<string> => {
-    // 1. Try Gemini API with user-supplied key
-    try {
-      return await tryGemini();
-    } catch {
-      // Fall through to Google Cloud Translation v2 API
-    }
-
-    // 2. Try Google Cloud Translation v2 REST API
+  const tryGoogleCloudKey = async (): Promise<string> => {
+    // Google Cloud Translation v2 REST API
     const gUrl = `https://translation.googleapis.com/language/translate/v2?key=${encodeURIComponent(trimmedKey)}`;
     const gRes = await fetch(gUrl, {
       method: 'POST',
@@ -292,7 +269,7 @@ async function callProviderWithKey(
       const t = gData.data?.translations?.[0]?.translatedText;
       if (t) return stripMetadataWrappers(t, sourceText);
     }
-    throw new Error('Google / Gemini API key authentication failed');
+    throw new Error('Google Cloud Translation API key authentication failed');
   };
 
   const tryMicrosoft = async (): Promise<string> => {
@@ -495,11 +472,8 @@ async function callProviderWithKey(
   if (providerType === 'openai') {
     return { translatedText: await tryOpenAI(), detectedType: 'openai' };
   }
-  if (providerType === 'gemini' || providerType === 'gemini_custom') {
-    return { translatedText: await tryGemini(), detectedType: 'gemini' };
-  }
   if (providerType === 'google_cloud') {
-    return { translatedText: await tryGoogleOrGeminiKey(), detectedType: 'google_cloud' };
+    return { translatedText: await tryGoogleCloudKey(), detectedType: 'google_cloud' };
   }
   if (providerType === 'microsoft') {
     return { translatedText: await tryMicrosoft(), detectedType: 'microsoft' };
@@ -507,23 +481,26 @@ async function callProviderWithKey(
 
   // Auto-detect provider from key format or sequential probing
   const probes: Array<{ type: string; fn: () => Promise<string> }> = [
-    { type: 'gemini', fn: tryGemini },
     { type: 'lara', fn: tryLara },
     { type: 'yandex', fn: tryYandex },
     { type: 'deepl', fn: tryDeepL },
-    { type: 'google_cloud', fn: tryGoogleOrGeminiKey },
+    { type: 'google_cloud', fn: tryGoogleCloudKey },
     { type: 'openai', fn: tryOpenAI },
     { type: 'microsoft', fn: tryMicrosoft },
   ];
 
   // Prioritize based on key prefix heuristics
-  if (trimmedKey.startsWith('AIza') || trimmedKey.startsWith('AQ.')) {
-    probes.sort((a) => (a.type === 'gemini' ? -1 : 1));
+  if (trimmedKey.startsWith('AIza')) {
+    probes.sort((a) => (a.type === 'google_cloud' ? -1 : 1));
   } else if (trimmedKey.startsWith('sk-')) {
     probes.sort((a) => (a.type === 'openai' ? -1 : 1));
   } else if (trimmedKey.endsWith(':fx')) {
     probes.sort((a) => (a.type === 'deepl' ? -1 : 1));
-  } else if (trimmedKey.startsWith('AQVN') || trimmedKey.startsWith('trnsl.')) {
+  } else if (
+    trimmedKey.startsWith('AQVN') ||
+    trimmedKey.startsWith('trnsl.') ||
+    trimmedKey.startsWith('t1.')
+  ) {
     probes.sort((a) => (a.type === 'yandex' ? -1 : 1));
   } else if (
     (trimmedKey.includes(':') && !trimmedKey.endsWith(':fx')) ||
@@ -555,9 +532,10 @@ async function startServer() {
   // Test & verify a custom translation provider API key by comparing its output to Google Translate
   app.post('/api/providers/test', async (req, res) => {
     try {
-      const { providerType = 'auto', apiKey = '' } = req.body as {
+      const { providerType = 'auto', apiKey = '', folderId } = req.body as {
         providerType?: string;
         apiKey?: string;
+        folderId?: string;
       };
 
       if (!apiKey || !apiKey.trim()) {
@@ -586,7 +564,9 @@ async function startServer() {
         apiKey,
         testSource,
         testTargetLang,
-        'Arabic'
+        'Arabic',
+        undefined,
+        folderId
       );
 
       // 3. Compare normalized outputs against Google Translate reference (and accepted Arabic equivalents for "Install")
@@ -646,6 +626,7 @@ async function startServer() {
       const {
         providerType,
         apiKey,
+        folderId,
         sourceText,
         targetLang = 'ar',
         targetLocaleName,
@@ -653,6 +634,7 @@ async function startServer() {
       } = req.body as {
         providerType: string;
         apiKey?: string;
+        folderId?: string;
         sourceText: string;
         targetLang?: string;
         targetLocaleName?: string;
@@ -675,7 +657,8 @@ async function startServer() {
         sourceText,
         targetLang,
         targetLocaleName,
-        pluralQuantity
+        pluralQuantity,
+        folderId
       );
 
       res.json({ translatedText });
@@ -683,68 +666,6 @@ async function startServer() {
       console.error('Provider translation error:', error);
       res.status(500).json({
         error: error instanceof Error ? error.message : 'Provider translation failed',
-      });
-    }
-  });
-
-  app.post('/api/translate', async (req, res) => {
-    try {
-      const { apiKey, sourceText, targetLang, targetLocaleName, pluralQuantity } = req.body as {
-        apiKey?: string;
-        sourceText?: string;
-        targetLang?: string;
-        targetLocaleName?: string;
-        pluralQuantity?: string;
-      };
-
-      if (!sourceText || typeof sourceText !== 'string' || !sourceText.trim()) {
-        res.json({ translatedText: sourceText || '' });
-        return;
-      }
-
-      const effectiveKey = apiKey?.trim();
-      if (!effectiveKey) {
-        res.status(400).json({
-          error: 'Gemini API key is required. Please insert your personal Gemini API key in Provider Settings.',
-        });
-        return;
-      }
-
-      const langLabel = targetLocaleName ? `${targetLocaleName} (${targetLang})` : targetLang || 'ar';
-      const pluralContext = pluralQuantity
-        ? `\nPlural quantity category: "${pluralQuantity}" (CLDR plural form for ${langLabel}).`
-        : '';
-
-      const prompt = `Translate the following Android strings.xml value from English to ${langLabel}.${pluralContext}
-Return ONLY the translated text without any metadata labels (never output "[ترجمة المصطلح: ...]") and preserve all placeholders (%s, %d, %1$s, %2$d, \\n, HTML tags) exactly as they appear.
-
-Source string:
-${sourceText}`;
-
-      const userAi = new GoogleGenAI({
-        apiKey: effectiveKey,
-        httpOptions: {
-          headers: { 'User-Agent': 'aistudio-build' },
-        },
-      });
-
-      const response = await userAi.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: prompt,
-        config: {
-          systemInstruction: SYSTEM_INSTRUCTION,
-          temperature: 0.1,
-        },
-      });
-
-      const rawOutput = response.text || '';
-      const cleanedOutput = stripMetadataWrappers(rawOutput, sourceText);
-
-      res.json({ translatedText: cleanedOutput });
-    } catch (error) {
-      console.error('Gemini translation error:', error);
-      res.status(500).json({
-        error: error instanceof Error ? error.message : 'Failed to generate translation suggestion',
       });
     }
   });

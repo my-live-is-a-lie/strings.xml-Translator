@@ -38,6 +38,7 @@ import { analyzeProjectQa } from '../utils/placeholderCheck';
 import { getArabicLanguageName } from '../utils/languages';
 import { getStoredItem, setStoredItem } from '../utils/storage';
 import { applyAppTheme, getInitialAppTheme, AppTheme } from '../utils/theme';
+import { testGeminiKeyDirect } from '../utils/geminiDirect';
 import { PWAInstallButton } from './PWAInstallButton';
 import { OfflineBadge } from './OfflineBadge';
 import { SidebarIcon } from './SidebarIcon';
@@ -87,7 +88,6 @@ const ENGINE_OPTIONS: Array<{ value: string; nameEn: string; nameAr: string; lab
   { value: 'lara', nameEn: 'Lara Translate', nameAr: 'ترجمة Lara الذكية', labelAr: 'ترجمة Lara الذكية', labelEn: 'Lara Translate AI (Translated)' },
   { value: 'yandex', nameEn: 'Yandex AI', nameAr: 'ترجمة Yandex الذكية', labelAr: 'ترجمة Yandex الذكية', labelEn: 'Yandex AI / Translate' },
   { value: 'deepl', nameEn: 'DeepL API', nameAr: 'ترجمة DeepL', labelAr: 'محرك DeepL للترجمة', labelEn: 'DeepL API' },
-  { value: 'gemini', nameEn: 'Google Gemini AI', nameAr: 'ذكاء Google Gemini', labelAr: 'ذكاء Google Gemini الاصطناعي', labelEn: 'Google Gemini AI' },
   { value: 'openai', nameEn: 'OpenAI GPT', nameAr: 'ذكاء OpenAI GPT', labelAr: 'ذكاء OpenAI (GPT)', labelEn: 'OpenAI (GPT)' },
   { value: 'google_cloud', nameEn: 'Google Cloud Translate', nameAr: 'ترجمة Google السحابية', labelAr: 'ترجمة Google السحابية', labelEn: 'Google Cloud Translation' },
   { value: 'microsoft', nameEn: 'Microsoft Translator', nameAr: 'مترجم Microsoft', labelAr: 'مترجم Microsoft Azure', labelEn: 'Microsoft Azure Translator' },
@@ -208,6 +208,7 @@ export const Header: React.FC<HeaderProps> = ({
   const [newProviderEngine, setNewProviderEngine] = useState<string>('auto');
   const [newApiKey, setNewApiKey] = useState('');
   const [newApiSecret, setNewApiSecret] = useState('');
+  const [newFolderId, setNewFolderId] = useState('');
   const [isTestingKey, setIsTestingKey] = useState(false);
   const [testResult, setTestResult] = useState<ProviderTestResult | null>(null);
   const addKeyFormRef = useRef<HTMLFormElement | null>(null);
@@ -221,6 +222,7 @@ export const Header: React.FC<HeaderProps> = ({
   const [editProviderName, setEditProviderName] = useState('');
   const [editApiKey, setEditApiKey] = useState('');
   const [editApiSecret, setEditApiSecret] = useState('');
+  const [editFolderId, setEditFolderId] = useState('');
   const [isTestingEditKey, setIsTestingEditKey] = useState(false);
   const [editTestResult, setEditTestResult] = useState<ProviderTestResult | null>(null);
   const editNameInputRef = useRef<HTMLInputElement | null>(null);
@@ -293,7 +295,7 @@ export const Header: React.FC<HeaderProps> = ({
     setIsTestingGeminiKey(true);
     setGeminiTestResult(null);
 
-    const result = await testProviderApiKey('gemini', trimmed);
+    const result = await testGeminiKeyDirect(trimmed);
     setIsTestingGeminiKey(false);
     setGeminiTestResult(result);
 
@@ -356,7 +358,21 @@ export const Header: React.FC<HeaderProps> = ({
         ? `${rawKey}:${rawSecret}`
         : rawKey;
 
-    const result = await testProviderApiKey(effectiveEngine, combinedApiKey);
+    if (effectiveEngine === 'gemini') {
+      // Gemini keys are managed (and sent straight from the browser) through the dedicated Gemini key card.
+      setIsTestingKey(false);
+      setTestResult({
+        success: false,
+        matched: false,
+        error: isAr
+          ? 'مفاتيح Gemini تُضاف من بطاقة «مفتاح Gemini» وليس كمزود مخصص.'
+          : 'Add Gemini keys from the "Gemini API Key" card, not as a custom provider.',
+      });
+      return;
+    }
+
+    const folderId = newFolderId.trim();
+    const result = await testProviderApiKey(effectiveEngine, combinedApiKey, folderId);
     setIsTestingKey(false);
     setTestResult(result);
 
@@ -382,6 +398,7 @@ export const Header: React.FC<HeaderProps> = ({
         name: finalName,
         type: detectedType,
         apiKey: combinedApiKey,
+        folderId: detectedType === 'yandex' ? folderId : undefined,
       });
 
       setProvidersList(getAllTranslationProviders());
@@ -389,6 +406,7 @@ export const Header: React.FC<HeaderProps> = ({
       setNewProviderName('');
       setNewApiKey('');
       setNewApiSecret('');
+      setNewFolderId('');
     }
   };
 
@@ -409,6 +427,7 @@ export const Header: React.FC<HeaderProps> = ({
       setEditApiKey(savedKey);
       setEditApiSecret('');
     }
+    setEditFolderId(prov.folderId || '');
     setEditTestResult(null);
     setTimeout(() => {
       editNameInputRef.current?.focus();
@@ -434,7 +453,10 @@ export const Header: React.FC<HeaderProps> = ({
         ? `${rawKey}:${rawSecret}`
         : rawKey;
 
-    const keyChanged = combinedKey !== (prov.apiKey || '').trim();
+    const editedFolderId = editFolderId.trim();
+    const keyChanged =
+      combinedKey !== (prov.apiKey || '').trim() ||
+      (targetEngine === 'yandex' && editedFolderId !== (prov.folderId || '').trim());
 
     // If only the provider name was changed, save immediately without re-running network verification
     if (!keyChanged) {
@@ -452,7 +474,7 @@ export const Header: React.FC<HeaderProps> = ({
     setIsTestingEditKey(true);
     setEditTestResult(null);
 
-    const result = await testProviderApiKey(targetEngine, combinedKey);
+    const result = await testProviderApiKey(targetEngine, combinedKey, editedFolderId);
     setIsTestingEditKey(false);
     setEditTestResult(result);
 
@@ -462,6 +484,7 @@ export const Header: React.FC<HeaderProps> = ({
         name: trimmedName,
         apiKey: combinedKey,
         type: detectedType,
+        folderId: detectedType === 'yandex' ? editedFolderId : '',
       });
       setProvidersList(getAllTranslationProviders());
       setEditingProviderId(null);
@@ -1295,6 +1318,31 @@ export const Header: React.FC<HeaderProps> = ({
                                     </div>
                                   )}
 
+                                  {(prov.type === 'yandex' ||
+                                    inferEngineFromName(editProviderName, 'auto') === 'yandex' ||
+                                    editApiKey.trim().startsWith('t1.')) && (
+                                    <div className="flex flex-col gap-1">
+                                      <label className="text-[10px] font-semibold text-slate-600 dark:text-slate-300">
+                                        {isAr ? 'معرّف المجلد (Folder ID)' : 'Folder ID'}
+                                      </label>
+                                      <input
+                                        type="text"
+                                        dir="ltr"
+                                        autoComplete="off"
+                                        value={editFolderId}
+                                        onChange={(e) => setEditFolderId(e.target.value)}
+                                        onKeyDown={(e) => e.stopPropagation()}
+                                        onTouchStart={(e) => e.stopPropagation()}
+                                        placeholder={
+                                          isAr
+                                            ? 'b1g... (مع رمز IAM لحساب شخصي)'
+                                            : 'b1g... (with a personal-account IAM token)'
+                                        }
+                                        className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
+                                      />
+                                    </div>
+                                  )}
+
                                   {editTestResult && !editTestResult.matched && (
                                     <div className="p-2 rounded-lg border bg-rose-500/10 border-rose-500/30 text-rose-700 dark:text-rose-300 text-[10px] flex flex-col gap-1">
                                       <div className="flex items-center gap-1 font-semibold">
@@ -1533,6 +1581,36 @@ export const Header: React.FC<HeaderProps> = ({
                                 }
                                 className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
                               />
+                            </div>
+                          )}
+
+                          {/* Yandex Cloud folder ID: needed with an IAM token (personal account) */}
+                          {(inferEngineFromName(newProviderName, newProviderEngine) === 'yandex' ||
+                            newApiKey.trim().startsWith('t1.')) && (
+                            <div className="flex flex-col gap-1.5">
+                              <label
+                                htmlFor="provider-folder-id-input"
+                                className="text-[11px] font-semibold text-slate-700 dark:text-slate-300"
+                              >
+                                {isAr ? 'معرّف المجلد (Folder ID)' : 'Folder ID'}
+                              </label>
+                              <input
+                                id="provider-folder-id-input"
+                                type="text"
+                                dir="ltr"
+                                autoComplete="off"
+                                value={newFolderId}
+                                onChange={(e) => setNewFolderId(e.target.value)}
+                                onKeyDown={(e) => e.stopPropagation()}
+                                onTouchStart={(e) => e.stopPropagation()}
+                                placeholder="b1g..."
+                                className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
+                              />
+                              <p className="text-[10px] leading-snug text-slate-500 dark:text-slate-400">
+                                {isAr
+                                  ? 'مطلوب مع رمز IAM لحساب Yandex شخصي. الرمز يبدأ بـ t1 وصلاحيته 12 ساعة كحد أقصى. غير مطلوب مع مفتاح API لحساب خدمة.'
+                                  : 'Required with an IAM token from a personal Yandex account (starts with t1., valid for at most 12 hours). Not needed with a service-account API key.'}
+                              </p>
                             </div>
                           )}
 
@@ -2154,8 +2232,8 @@ export const Header: React.FC<HeaderProps> = ({
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                     {isAr
-                      ? 'أدخل مفتاحك الخاص للترجمة. يُحفظ في متصفحك بدون تشفير، ويُرسل إلى خادم التطبيق فقط لتمرير الطلب إلى Gemini ولا يُخزَّن هناك.'
-                      : 'Bring your own key. It is kept in this browser unencrypted and is sent to the app server only to forward the request to Gemini; the server does not store it.'}
+                      ? 'أدخل مفتاحك الخاص للترجمة. يُحفظ في متصفحك بدون تشفير، ويُرسل مباشرة من المتصفح إلى Google دون المرور بخادم التطبيق.'
+                      : 'Bring your own key. It is kept in this browser unencrypted and sent straight from the browser to Google, never through the app server.'}
                   </p>
                 </div>
               </div>
