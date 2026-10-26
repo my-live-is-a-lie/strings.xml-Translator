@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertCircle, Check, CheckCircle2, ChevronDown, Cpu, KeyRound, Loader2, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { ENGINE_OPTIONS } from './headerOptions';
@@ -8,6 +8,8 @@ import {
   ProviderEngineType,
   ProviderTestResult,
   getAllTranslationProviders,
+  GTX_STATUS_EVENT,
+  gtxLooksUnavailable,
   getActiveProviderId,
   setActiveProviderId,
   addCustomProvider,
@@ -63,6 +65,14 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   const [editTestResult, setEditTestResult] = useState<ProviderTestResult | null>(null);
   const editNameInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Warn when the free Google engine keeps failing, since it relies on an unofficial endpoint
+  const [gtxDown, setGtxDown] = useState(() => gtxLooksUnavailable());
+  useEffect(() => {
+    const onChange = () => setGtxDown(gtxLooksUnavailable());
+    window.addEventListener(GTX_STATUS_EVENT, onChange);
+    return () => window.removeEventListener(GTX_STATUS_EVENT, onChange);
+  }, []);
+
   const refresh = () => {
     setProvidersList(getAllTranslationProviders());
     onChanged();
@@ -77,6 +87,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   const inferEngineFromName = (typedName: string, selectedEngine: string): string => {
     if (selectedEngine && selectedEngine !== 'auto') return selectedEngine;
     const lower = typedName.trim().toLowerCase();
+    if (lower.includes('libre') || lower.includes('ليبر')) return 'libretranslate';
     if (lower.includes('lara') || lower.includes('لارا') || lower.includes('translated')) return 'lara';
     if (lower.includes('yandex') || lower.includes('ياندكس')) return 'yandex';
     if (lower.includes('deepl') || lower.includes('ديب')) return 'deepl';
@@ -97,13 +108,14 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
 
   const handleTestAndAddProvider = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newApiKey.trim()) return;
+    const pendingEngine = inferEngineFromName(newProviderName, newProviderEngine);
+    if (!newApiKey.trim() && pendingEngine !== 'libretranslate') return;
 
     setIsTestingKey(true);
     setTestResult(null);
 
     const effectiveEngine = inferEngineFromName(newProviderName, newProviderEngine);
-    const rawKey = newApiKey.trim();
+    const rawKey = newApiKey.trim() || (effectiveEngine === 'libretranslate' ? 'none' : '');
     const rawSecret = newApiSecret.trim();
     const combinedApiKey =
       effectiveEngine === 'lara' && rawSecret && !rawKey.includes(':')
@@ -137,7 +149,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
         name: finalName,
         type: detectedType,
         apiKey: combinedApiKey,
-        folderId: detectedType === 'yandex' ? folderId : undefined,
+        folderId: detectedType === 'yandex' || detectedType === 'libretranslate' ? folderId : undefined,
       });
 
       refresh();
@@ -179,7 +191,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   ) => {
     e.preventDefault();
     const trimmedName = editProviderName.trim() || prov.name;
-    const rawKey = editApiKey.trim();
+    const rawKey = editApiKey.trim() || (prov.type === 'libretranslate' ? 'none' : '');
     const rawSecret = editApiSecret.trim();
     if (!rawKey) return;
 
@@ -195,7 +207,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
     const editedFolderId = editFolderId.trim();
     const keyChanged =
       combinedKey !== (prov.apiKey || '').trim() ||
-      (targetEngine === 'yandex' && editedFolderId !== (prov.folderId || '').trim());
+      ((targetEngine === 'yandex' || targetEngine === 'libretranslate') && editedFolderId !== (prov.folderId || '').trim());
 
     // If only the provider name was changed, save immediately without re-running network verification
     if (!keyChanged) {
@@ -223,7 +235,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
         name: trimmedName,
         apiKey: combinedKey,
         type: detectedType,
-        folderId: detectedType === 'yandex' ? editedFolderId : '',
+        folderId: detectedType === 'yandex' || detectedType === 'libretranslate' ? editedFolderId : '',
       });
       refresh();
       setEditingProviderId(null);
@@ -278,6 +290,17 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
 
           {providersPanelOpen && (
             <div className="p-3 flex flex-col gap-3 border-t border-slate-200/80 dark:border-[#2A3244]">
+              {gtxDown && (
+                <p
+                  role="status"
+                  className="text-[11px] leading-snug rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 px-2.5 py-2"
+                >
+                  {isAr
+                    ? 'محرك جوجل المجاني لا يستجيب حالياً. أضف مزوداً بمفتاح أو خادم LibreTranslate لضمان استمرار الترجمة.'
+                    : 'The free Google engine is not responding. Add a provider with a key, or a LibreTranslate server, to keep translating.'}
+                </p>
+              )}
+
               {/* Providers Selection List */}
               <div className="flex flex-col gap-1.5">
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-1">
@@ -484,6 +507,25 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                               </div>
                             )}
 
+                            {prov.type === 'libretranslate' && (
+                              <div className="flex flex-col gap-1">
+                                <label className="text-[10px] font-semibold text-slate-600 dark:text-slate-300">
+                                  {isAr ? 'عنوان الخادم' : 'Server URL'}
+                                </label>
+                                <input
+                                  type="url"
+                                  dir="ltr"
+                                  autoComplete="off"
+                                  value={editFolderId}
+                                  onChange={(e) => setEditFolderId(e.target.value)}
+                                  onKeyDown={(e) => e.stopPropagation()}
+                                  onTouchStart={(e) => e.stopPropagation()}
+                                  placeholder="https://libretranslate.example.com"
+                                  className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
+                                />
+                              </div>
+                            )}
+
                             {(prov.type === 'yandex' ||
                               inferEngineFromName(editProviderName, 'auto') === 'yandex' ||
                               editApiKey.trim().startsWith('t1.')) && (
@@ -541,7 +583,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                 disabled={
                                   isTestingEditKey ||
                                   !editProviderName.trim() ||
-                                  !editApiKey.trim()
+                                  (!editApiKey.trim() && prov.type !== 'libretranslate')
                                 }
                                 className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#1EB996] hover:bg-[#19A585] disabled:opacity-50 text-white text-[11px] font-semibold transition cursor-pointer shadow-xs"
                               >
@@ -757,6 +799,35 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                         : 'Keys are encrypted on this device and sent only to the provider you choose. Restrict the key in your provider console.'}
                     </p>
 
+                    {/* LibreTranslate: the instance to use (self-hosted or public) */}
+                    {inferEngineFromName(newProviderName, newProviderEngine) === 'libretranslate' && (
+                      <div className="flex flex-col gap-1.5">
+                        <label
+                          htmlFor="provider-server-url-input"
+                          className="text-[11px] font-semibold text-slate-700 dark:text-slate-300"
+                        >
+                          {isAr ? 'عنوان الخادم' : 'Server URL'}
+                        </label>
+                        <input
+                          id="provider-server-url-input"
+                          type="url"
+                          dir="ltr"
+                          autoComplete="off"
+                          value={newFolderId}
+                          onChange={(e) => setNewFolderId(e.target.value)}
+                          onKeyDown={(e) => e.stopPropagation()}
+                          onTouchStart={(e) => e.stopPropagation()}
+                          placeholder="https://libretranslate.example.com"
+                          className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
+                        />
+                        <p className="text-[10px] leading-snug text-slate-500 dark:text-slate-400">
+                          {isAr
+                            ? 'يجب أن يبدأ بـ https. مفتاح API اختياري: اتركه فارغاً إذا كان الخادم لا يطلبه.'
+                            : 'Must start with https. The API key is optional: leave it empty if the server does not require one.'}
+                        </p>
+                      </div>
+                    )}
+
                     {/* Yandex Cloud folder ID: needed with an IAM token (personal account) */}
                     {(inferEngineFromName(newProviderName, newProviderEngine) === 'yandex' ||
                       newApiKey.trim().startsWith('t1.')) && (
@@ -791,7 +862,10 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                     <button
                       id="provider-verify-add-btn"
                       type="submit"
-                      disabled={isTestingKey || !newApiKey.trim()}
+                      disabled={
+                        isTestingKey ||
+                        (!newApiKey.trim() && inferEngineFromName(newProviderName, newProviderEngine) !== 'libretranslate')
+                      }
                       className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg bg-[#1EB996] hover:bg-[#19A585] disabled:opacity-50 text-white text-xs font-semibold transition cursor-pointer shadow-xs shrink-0"
                     >
                       {isTestingKey ? (

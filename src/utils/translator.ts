@@ -195,14 +195,15 @@ export type ProviderEngineType =
   | 'deepl'
   | 'openai'
   | 'google_cloud'
-  | 'microsoft';
+  | 'microsoft'
+  | 'libretranslate';
 
 export interface TranslationProviderConfig {
   id: string;
   name: string;
   type: ProviderEngineType;
   apiKey?: string;
-  /** Yandex Cloud folder ID; needed with an IAM token (personal account), not with a service-account API key. */
+  /** Yandex Cloud folder ID (needed with an IAM token). For LibreTranslate this field holds the instance URL. */
   folderId?: string;
   isBuiltIn?: boolean;
   verifiedAt?: number;
@@ -578,9 +579,29 @@ const ENGINE_LABELS: Record<string, string> = {
   openai: 'OpenAI',
   google_cloud: 'Google Cloud',
   microsoft: 'Microsoft',
+  libretranslate: 'LibreTranslate',
   glossary: 'Glossary',
   heuristic: 'Heuristic',
 };
+
+// The free Google engine uses an unofficial endpoint that can stop working without notice. After a few failures
+// in a row the UI is told so it can suggest an official or self-hosted provider.
+const GTX_FAILURE_THRESHOLD = 3;
+let gtxConsecutiveFailures = 0;
+export const GTX_STATUS_EVENT = 'gtx-status-change';
+
+function noteGtxResult(ok: boolean): void {
+  const wasUnavailable = gtxConsecutiveFailures >= GTX_FAILURE_THRESHOLD;
+  gtxConsecutiveFailures = ok ? 0 : gtxConsecutiveFailures + 1;
+  const isUnavailable = gtxConsecutiveFailures >= GTX_FAILURE_THRESHOLD;
+  if (wasUnavailable !== isUnavailable && typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(GTX_STATUS_EVENT));
+  }
+}
+
+export function gtxLooksUnavailable(): boolean {
+  return gtxConsecutiveFailures >= GTX_FAILURE_THRESHOLD;
+}
 
 /** Human-readable name of the engine that produced a suggestion. */
 export function engineLabel(engine: string | undefined): string {
@@ -761,11 +782,13 @@ async function translateSingleSegmentUncached(
       const combined = await fetchGoogleGtxRaw(cleanText, directLang, 5000);
       const decoded = stripMetadataLabels(decodeHtmlEntities(combined), coreText);
       if (decoded && !isPollutedTranslation(decoded)) {
+        noteGtxResult(true);
         return restoreSegmentSyntax(decoded, tokens, usesEscapedDoubleQuotes);
       }
     } catch (err) {
       logFallback('google', err);
     }
+    noteGtxResult(false);
     return null;
   };
 

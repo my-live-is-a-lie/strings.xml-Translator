@@ -241,7 +241,13 @@ export function generateAndroidXml(
   );
 
   // If rawSourceXml is available, comments are included, and we are exporting all items, perform 1-to-1 in-place replacement on rawSourceXml
-  if (project?.rawSourceXml && options.includeComments && !isPartialSubset) {
+  // In-place replacement needs every resource tag to start its own line; compact one-line files are rebuilt instead
+  const rawTagLines = project?.rawSourceXml
+    ? (project.rawSourceXml.match(/^[ \t]*<(?:string|plurals|string-array)\s/gm) || []).length
+    : 0;
+  const rawIsLineBased = rawTagLines >= items.length;
+
+  if (project?.rawSourceXml && options.includeComments && !isPartialSubset && rawIsLineBased) {
     let output = project.rawSourceXml;
 
     // 1. Replace <string name="...">...</string>

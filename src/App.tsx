@@ -7,6 +7,10 @@ import { StringsListDrawer } from './components/StringsListDrawer';
 import { TranslationEditor } from './components/TranslationEditor';
 import { TableView } from './components/TableView';
 import { ImportModal } from './components/ImportModal';
+import { ShortcutsModal } from './components/ShortcutsModal';
+import { UpdateSourceModal } from './components/UpdateSourceModal';
+import { MultiLanguageModal } from './components/MultiLanguageModal';
+import { applySourceUpdate } from './utils/sourceDiff';
 import { ExportModal } from './components/ExportModal';
 import { FilesModal } from './components/FilesModal';
 import { TranslationProject, ResourceItem, FilterStatus, SourceFilter, StoredXmlFile } from './types';
@@ -218,6 +222,15 @@ export default function App() {
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
   const [isImportOpen, setIsImportOpen] = useState(false);
+  const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
+  const [isMultiLangOpen, setIsMultiLangOpen] = useState(false);
+  const openMultiLang = useCallback(() => setIsMultiLangOpen(true), []);
+  const closeMultiLang = useCallback(() => setIsMultiLangOpen(false), []);
+  const [isUpdateSourceOpen, setIsUpdateSourceOpen] = useState(false);
+  const openUpdateSource = useCallback(() => setIsUpdateSourceOpen(true), []);
+  const closeUpdateSource = useCallback(() => setIsUpdateSourceOpen(false), []);
+  const openShortcuts = useCallback(() => setIsShortcutsOpen(true), []);
+  const closeShortcuts = useCallback(() => setIsShortcutsOpen(false), []);
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [isLanguageModalOpen, setIsLanguageModalOpen] = useState(false);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
@@ -491,6 +504,50 @@ export default function App() {
   }, []);
 
   // Bulk update multiple items in a single undoable snapshot
+  // Keep languages translated in bulk so they can be opened later from the language picker
+  const handleSaveLanguages = useCallback((byLang: Record<string, ResourceItem[]>) => {
+    setEditorState((curr) => {
+      const cache = { ...(curr.project.translationsByLang || {}) };
+      for (const [code, items] of Object.entries(byLang)) {
+        if (code.toLowerCase() === curr.project.targetLang.toLowerCase()) continue; // the open language is edited live
+        cache[code] = items;
+      }
+      return { ...curr, project: { ...curr.project, translationsByLang: cache, lastModified: Date.now() } };
+    });
+  }, []);
+
+  // Apply a newer source file: keep translations, flag changed strings for review, drop removed ones
+  const handleApplySourceUpdate = useCallback(
+    (parsed: { items: ResourceItem[]; resourcesAttributes?: string; indentStyle?: string; itemIndentStyle?: string }, rawXml: string) => {
+      lastEditRef.current = { itemId: '', timestamp: 0 };
+      setEditorState((curr) => {
+        const prev = curr.project;
+        const snapshot: HistorySnapshot = {
+          items: prev.items,
+          targetLang: prev.targetLang,
+          targetLocaleName: prev.targetLocaleName,
+          translationsByLang: prev.translationsByLang,
+          selectedId: curr.selectedId,
+        };
+        const next = applySourceUpdate(prev, parsed.items, {
+          rawSourceXml: rawXml,
+          resourcesAttributes: parsed.resourcesAttributes,
+          indentStyle: parsed.indentStyle,
+          itemIndentStyle: parsed.itemIndentStyle,
+        });
+        const stillThere = next.items.some((i) => i.id === curr.selectedId);
+        return {
+          ...curr,
+          project: next,
+          selectedId: stillThere ? curr.selectedId : next.items[0]?.id ?? '',
+          past: [...curr.past.slice(-(MAX_HISTORY_STEPS - 1)), snapshot],
+          future: [],
+        };
+      });
+    },
+    []
+  );
+
   const handleBulkUpdateTranslations = useCallback((updatedItems: ResourceItem[]) => {
     if (!updatedItems || updatedItems.length === 0) return;
     lastEditRef.current = { itemId: '', timestamp: 0 };
@@ -618,6 +675,16 @@ export default function App() {
   // Global keyboard shortcuts (Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z, Ctrl+Enter, Alt+Left, Alt+Right, Ctrl+J)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // "?" opens the shortcut list, unless the user is typing somewhere
+      if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const el = e.target as HTMLElement | null;
+        const typing = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
+        if (!typing) {
+          e.preventDefault();
+          setIsShortcutsOpen(true);
+          return;
+        }
+      }
       // Undo: Ctrl+Z / Cmd+Z (without Shift)
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
         e.preventDefault();
@@ -892,6 +959,9 @@ export default function App() {
         onResetItemHistory={handleResetItemHistory}
         onSelectString={selectItemInEditor}
         onOpenFilesModal={openFilesModal}
+        onOpenShortcuts={openShortcuts}
+        onOpenUpdateSource={openUpdateSource}
+        onOpenMultiLang={openMultiLang}
         savedFilesCount={storedFiles.length}
         currentFileName={project.sourceFileName || project.name}
       />
@@ -1017,6 +1087,21 @@ export default function App() {
       </div>
 
       {/* Import Modal */}
+      <MultiLanguageModal
+        isOpen={isMultiLangOpen}
+        onClose={closeMultiLang}
+        project={project}
+        onSaveLanguages={handleSaveLanguages}
+        appLang={appLang}
+      />
+      <UpdateSourceModal
+        isOpen={isUpdateSourceOpen}
+        onClose={closeUpdateSource}
+        project={project}
+        onApply={handleApplySourceUpdate}
+        appLang={appLang}
+      />
+      <ShortcutsModal isOpen={isShortcutsOpen} onClose={closeShortcuts} appLang={appLang} />
       <ImportModal
         isOpen={isImportOpen}
         onClose={() => setIsImportOpen(false)}

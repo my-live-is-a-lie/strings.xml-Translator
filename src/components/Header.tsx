@@ -1,6 +1,6 @@
 import { debugIgnored } from '../utils/debug';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Upload, Download, Sparkles, Languages, Layers, LayoutList, Globe, ChevronDown, X, Palette, Contrast, Paintbrush, FolderOpen } from 'lucide-react';
+import { Archive, Upload, Download, Sparkles, Languages, Layers, LayoutList, Globe, FileDiff, Keyboard, ChevronDown, X, Palette, Contrast, Paintbrush, FolderOpen } from 'lucide-react';
 import { TranslationProject } from '../types';
 
 import { getArabicLanguageName } from '../utils/languages';
@@ -52,6 +52,9 @@ interface HeaderProps {
   onResetItemHistory?: (id: string) => void;
   onSelectString?: (id: string) => void;
   onOpenFilesModal?: () => void;
+  onOpenShortcuts?: () => void;
+  onOpenUpdateSource?: () => void;
+  onOpenMultiLang?: () => void;
   savedFilesCount?: number;
   currentFileName?: string;
 }
@@ -74,6 +77,9 @@ const HeaderBase: React.FC<HeaderProps> = ({
   onResetItemHistory,
   onSelectString,
   onOpenFilesModal,
+  onOpenShortcuts,
+  onOpenUpdateSource,
+  onOpenMultiLang,
   savedFilesCount = 0,
   currentFileName,
 }) => {
@@ -657,6 +663,38 @@ const HeaderBase: React.FC<HeaderProps> = ({
                 <span>{isAr ? 'تصدير XML' : 'Export XML'}</span>
               </button>
 
+              {onOpenMultiLang && (
+                <button
+                  id="drawer-multilang-btn"
+                  type="button"
+                  onClick={() => {
+                    setAppLangMenuOpen(false);
+                    setRightDrawerOpen(false);
+                    onOpenMultiLang();
+                  }}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl border border-slate-200/90 dark:border-[#2F384B] text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#202634] text-xs font-medium transition cursor-pointer shrink-0"
+                >
+                  <Archive className="w-4 h-4" aria-hidden="true" />
+                  <span>{isAr ? 'ترجمة عدة لغات (ZIP)' : 'Multi-language ZIP'}</span>
+                </button>
+              )}
+
+              {onOpenUpdateSource && (
+                <button
+                  id="drawer-update-source-btn"
+                  type="button"
+                  onClick={() => {
+                    setAppLangMenuOpen(false);
+                    setRightDrawerOpen(false);
+                    onOpenUpdateSource();
+                  }}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl border border-slate-200/90 dark:border-[#2F384B] text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#202634] text-xs font-medium transition cursor-pointer shrink-0"
+                >
+                  <FileDiff className="w-4 h-4" aria-hidden="true" />
+                  <span>{isAr ? 'تحديث ملف المصدر' : 'Update source file'}</span>
+                </button>
+              )}
+
               <ProvidersPanel isAr={isAr} onChanged={() => setProvidersRevision((r) => r + 1)} />
 
               {/* Auto-Translate Option Toggle (Under Translate Providers) */}
@@ -708,6 +746,21 @@ const HeaderBase: React.FC<HeaderProps> = ({
 
               <TranslationStatsSection project={project} isAr={isAr} onSelectString={onSelectString} onResetItemHistory={onResetItemHistory} onClose={() => setRightDrawerOpen(false)} />
               <QaSection project={project} isAr={isAr} onSelectString={onSelectString} onClose={() => setRightDrawerOpen(false)} />
+
+              {onOpenShortcuts && (
+                <button
+                  id="drawer-shortcuts-btn"
+                  type="button"
+                  onClick={() => {
+                    setRightDrawerOpen(false);
+                    onOpenShortcuts();
+                  }}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl border border-slate-200/90 dark:border-[#2F384B] text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#202634] text-xs font-medium transition cursor-pointer shrink-0"
+                >
+                  <Keyboard className="w-4 h-4" aria-hidden="true" />
+                  <span>{isAr ? 'اختصارات لوحة المفاتيح (?)' : 'Keyboard shortcuts (?)'}</span>
+                </button>
+              )}
             </div>
           </aside>
         </div>

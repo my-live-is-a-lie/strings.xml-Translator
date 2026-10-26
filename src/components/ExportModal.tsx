@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { X, Download, Copy, Check, Sliders, Folder, Filter } from 'lucide-react';
+import { X, Download, Copy, Check, Sliders, Folder, Filter, ShieldAlert } from 'lucide-react';
 import { FilterStatus, SourceFilter, TranslationProject } from '../types';
 import { copyTextToClipboard } from '../utils/storage';
+import { analyzeProjectQa } from '../utils/placeholderCheck';
 import {
   generateAndroidXml,
   downloadXmlFile,
@@ -64,6 +65,17 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
   const itemsToExport = options.onlyMatchingFilter ? filteredItems : project.items;
 
+  // Wrong or missing placeholders (%s, %1$d, tags) crash or garble the app at runtime, so exporting them needs a deliberate OK
+  const [allowBroken, setAllowBroken] = useState(false);
+  const blockingIssues = useMemo(
+    () =>
+      analyzeProjectQa(itemsToExport).allIssues.filter(
+        (iss) => iss.severity === 'error' && (iss.category === 'placeholder' || iss.category === 'html')
+      ),
+    [itemsToExport]
+  );
+  const exportBlocked = blockingIssues.length > 0 && !allowBroken;
+
   // Generate XML dynamically based on options and active filter
   const generatedXml = useMemo(() => {
     return generateAndroidXml(itemsToExport, options, project);
@@ -72,11 +84,13 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   if (!isOpen) return null;
 
   const handleDownload = () => {
+    if (exportBlocked) return;
     const filename = `strings.xml`;
     downloadXmlFile(generatedXml, filename);
   };
 
   const handleCopy = () => {
+    if (exportBlocked) return;
     void copyTextToClipboard(generatedXml);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -364,10 +378,47 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         </div>
 
         {/* Footer Actions */}
+        {blockingIssues.length > 0 && (
+          <div
+            role="alert"
+            className="mx-6 mb-3 rounded-2xl border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-700 dark:text-rose-300"
+          >
+            <div className="flex items-center gap-2 font-semibold">
+              <ShieldAlert className="w-4 h-4 shrink-0" aria-hidden="true" />
+              <span>
+                {isAr
+                  ? `${blockingIssues.length} خطأ في المتغيرات أو الوسوم قد يُعطّل التطبيق`
+                  : `${blockingIssues.length} placeholder/tag error(s) may break the app`}
+              </span>
+            </div>
+            <ul className="mt-2 space-y-0.5 ps-5 list-disc">
+              {blockingIssues.slice(0, 5).map((iss) => (
+                <li key={iss.id}>
+                  <span className="font-mono">{iss.itemName}</span>: {isAr ? iss.messageAr : iss.messageEn}
+                </li>
+              ))}
+              {blockingIssues.length > 5 && (
+                <li>{isAr ? `و${blockingIssues.length - 5} أخرى…` : `and ${blockingIssues.length - 5} more…`}</li>
+              )}
+            </ul>
+            <label className="mt-2 flex items-center gap-2 cursor-pointer select-none">
+              <input
+                id="export-allow-broken"
+                type="checkbox"
+                checked={allowBroken}
+                onChange={(e) => setAllowBroken(e.target.checked)}
+                className="w-4 h-4 accent-rose-600"
+              />
+              <span>{isAr ? 'أفهم المخاطر وأريد التصدير رغم ذلك' : 'I understand the risk, export anyway'}</span>
+            </label>
+          </div>
+        )}
+
         <div className="p-6 pt-4 flex items-center justify-between">
           <button
             onClick={handleCopy}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-200 transition cursor-pointer m3-state-layer"
+            disabled={exportBlocked}
+            className="disabled:opacity-40 disabled:pointer-events-none inline-flex items-center gap-1.5 px-4 py-2 rounded-full border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-200 transition cursor-pointer m3-state-layer"
           >
             {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
             <span>
@@ -390,7 +441,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             </button>
             <button
               onClick={handleDownload}
-              className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-full bg-[#0B57D0] hover:bg-[#0842A0] dark:bg-[#A8C7FA] dark:hover:bg-[#82AAFA] text-white dark:text-[#062E6F] text-xs font-semibold shadow-xs transition cursor-pointer m3-state-layer"
+              disabled={exportBlocked}
+              aria-disabled={exportBlocked}
+              className="disabled:opacity-40 disabled:pointer-events-none inline-flex items-center gap-1.5 px-5 py-2.5 rounded-full bg-[#0B57D0] hover:bg-[#0842A0] dark:bg-[#A8C7FA] dark:hover:bg-[#82AAFA] text-white dark:text-[#062E6F] text-xs font-semibold shadow-xs transition cursor-pointer m3-state-layer"
             >
               <Download className="w-4 h-4" />
               <span>{isAr ? 'تنزيل strings.xml' : 'Download strings.xml'}</span>

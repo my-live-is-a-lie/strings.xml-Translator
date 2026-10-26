@@ -22,6 +22,7 @@ export const ENGINE_OPTIONS: Array<{ value: string; nameEn: string; nameAr: stri
   { value: 'deepl', nameEn: 'DeepL API', nameAr: 'ترجمة DeepL', labelAr: 'محرك DeepL للترجمة', labelEn: 'DeepL API' },
   { value: 'openai', nameEn: 'OpenAI GPT', nameAr: 'ذكاء OpenAI GPT', labelAr: 'ذكاء OpenAI (GPT)', labelEn: 'OpenAI (GPT)' },
   { value: 'google_cloud', nameEn: 'Google Cloud Translate', nameAr: 'ترجمة Google السحابية', labelAr: 'ترجمة Google السحابية', labelEn: 'Google Cloud Translation' },
+  { value: 'libretranslate', nameEn: 'LibreTranslate', nameAr: 'ليبرترانسليت (مفتوح المصدر)', labelAr: 'LibreTranslate (مجاني ومفتوح المصدر)', labelEn: 'LibreTranslate (free, open source)' },
   { value: 'microsoft', nameEn: 'Microsoft Translator', nameAr: 'مترجم Microsoft', labelAr: 'مترجم Microsoft Azure', labelEn: 'Microsoft Azure Translator' },
 ];
 

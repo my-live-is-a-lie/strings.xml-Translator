@@ -11,6 +11,7 @@ import {
   translateBatch,
 } from './server/providers';
 import { createRateLimiter } from './server/rateLimit';
+import { log, metrics, metricsSnapshot, requestLogger } from './server/observability';
 
 dotenv.config();
 
@@ -24,6 +25,7 @@ const MAX_SOURCE_TEXT = 5000;
 const MAX_BATCH_SIZE = 50;
 const MAX_KEY_LENGTH = 512;
 const MAX_FOLDER_ID_LENGTH = 64;
+const MAX_SERVER_URL_LENGTH = 200; // LibreTranslate instance URL travels in the folderId field
 const LANG_CODE = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})?$/;
 const PLURAL_QUANTITIES = ['zero', 'one', 'two', 'few', 'many', 'other'];
 const ALLOWED_PROVIDER_VALUES = ['auto', ...PROVIDER_TYPES];
@@ -44,11 +46,13 @@ function validateProviderFields(
   }
 
   const apiKey = typeof body.apiKey === 'string' ? body.apiKey.trim() : '';
-  if (!apiKey) return { error: 'مفتاح API مطلوب / API key is required.' };
+  // LibreTranslate instances may run without a key
+  if (!apiKey && providerType !== 'libretranslate') return { error: 'مفتاح API مطلوب / API key is required.' };
   if (apiKey.length > MAX_KEY_LENGTH) return { error: 'مفتاح API طويل جداً / API key is too long.' };
 
   const folderId = body.folderId === undefined || body.folderId === null ? undefined : String(body.folderId).trim();
-  if (folderId && folderId.length > MAX_FOLDER_ID_LENGTH) {
+  const maxFolder = providerType === 'libretranslate' ? MAX_SERVER_URL_LENGTH : MAX_FOLDER_ID_LENGTH;
+  if (folderId && folderId.length > maxFolder) {
     return { error: 'معرّف المجلد طويل جداً / Folder ID is too long.' };
   }
 
@@ -89,6 +93,12 @@ function toUserMessage(err: unknown, fallback: string): string {
     if (err.name === 'TimeoutError' || err.name === 'AbortError') {
       return 'انتهت مهلة الاتصال بالمزود، حاول لاحقاً / The provider timed out, try again later.';
     }
+    if (/Address not allowed/i.test(err.message)) {
+      return 'عنوان الخادم غير مسموح (شبكة داخلية) / The server address is not allowed (internal network).';
+    }
+    if (/ENOTFOUND/i.test(err.message)) {
+      return 'تعذّر العثور على الخادم، تحقق من العنوان / Server not found, check the address.';
+    }
     if (err instanceof TypeError || /fetch failed/i.test(err.message)) {
       return 'تعذّر الاتصال بالمزود من الخادم / Could not reach the provider from the server.';
     }
@@ -100,7 +110,7 @@ function toUserMessage(err: unknown, fallback: string): string {
 /** Logs only the error message, never the request (which contains the user's key). */
 function logProviderError(scope: string, err: unknown) {
   const message = err instanceof Error ? err.message : String(err);
-  console.error(`[${scope}] ${message.slice(0, 300)}`);
+  log('error', 'provider_error', { scope, message: message.slice(0, 300) });
 }
 
 async function startServer() {
@@ -144,8 +154,32 @@ async function startServer() {
   });
 
   // Key-handling endpoints get their own limit; the static app is not limited.
-  const providerLimiter = createRateLimiter({ windowMs: 60_000, max: 60 });
+  const providerLimiter = createRateLimiter({
+    windowMs: 60_000,
+    max: 60,
+    onLimited: () => {
+      metrics.rateLimited += 1;
+    },
+  });
+  app.use('/api', requestLogger);
   app.use('/api/providers', providerLimiter);
+
+  // Liveness probe for load balancers and uptime monitors. Reveals nothing about configuration.
+  app.get('/health', (_req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ status: 'ok', uptimeSeconds: Math.round((Date.now() - metrics.startedAt) / 1000) });
+  });
+
+  // Counters are only served when METRICS_TOKEN is set and sent as a Bearer token; otherwise the route does not exist.
+  app.get('/metrics', (req: Request, res: Response) => {
+    const token = process.env.METRICS_TOKEN;
+    if (!token || req.headers.authorization !== `Bearer ${token}`) {
+      res.status(404).end();
+      return;
+    }
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(metricsSnapshot());
+  });
   app.use('/api', express.json({ limit: '64kb' }));
 
   app.post('/api/providers/test', async (req: Request, res: Response) => {
@@ -281,11 +315,11 @@ async function startServer() {
   }
 
   app.listen(PORT, HOST, () => {
-    console.log(`Server listening on http://${HOST}:${PORT}`);
+    log('info', 'listening', { host: HOST, port: PORT });
   });
 }
 
 startServer().catch((err) => {
-  console.error('Failed to start server:', err);
+  log('error', 'startup_failed', { message: err instanceof Error ? err.message : String(err) });
   process.exit(1);
 });

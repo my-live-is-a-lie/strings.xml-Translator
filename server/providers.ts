@@ -1,6 +1,7 @@
 // Server-side calls to third-party translation APIs using the key the user supplied for a single request.
 // Keys are never logged or stored here.
 import { AccessKey, AuthToken, Translator as LaraTranslator } from '@translated/lara';
+import { parseSafeBaseUrl, safeJsonPost } from './safeHttp';
 import {
   SYSTEM_INSTRUCTION,
   fetchGoogleGtxRaw,
@@ -17,7 +18,10 @@ export const PROVIDER_TYPES = [
   'openai',
   'google_cloud',
   'microsoft',
+  'libretranslate',
 ] as const;
+// Providers that can be tried against an unknown key; LibreTranslate needs a server URL so it is never probed.
+const AUTO_PROBE_TYPES = PROVIDER_TYPES.filter((t) => t !== 'libretranslate');
 export type ProviderType = (typeof PROVIDER_TYPES)[number];
 
 export interface ProviderResult {
@@ -71,6 +75,13 @@ function parseLaraCredentials(raw: string): { id?: string; secret?: string; sing
   }
 
   return { singleToken: cleaned };
+}
+
+/** LibreTranslate uses bare ISO codes; Traditional Chinese is 'zt'. */
+function libreTarget(targetLang: string): string {
+  const lower = targetLang.toLowerCase();
+  if (lower === 'zh-rtw' || lower === 'zh-tw') return 'zt';
+  return lower.split('-')[0];
 }
 
 function laraTargetFor(targetLang: string): string {
@@ -308,6 +319,22 @@ export async function callProviderWithKey(
     );
   };
 
+  const tryLibre = async (): Promise<string> => {
+    // For this provider the "folder ID" field carries the instance URL. The key is optional ('none' = no key).
+    const base = parseSafeBaseUrl(trimmedFolderId);
+    const { status, json } = await safeJsonPost(base, '/translate', {
+      q: sourceText,
+      source: 'en',
+      target: libreTarget(targetLang),
+      format: 'text',
+      ...(trimmedKey && trimmedKey !== 'none' ? { api_key: trimmedKey } : {}),
+    });
+    if (status < 200 || status >= 300) throw providerHttpError('LibreTranslate', status);
+    const text = (json as { translatedText?: string } | null)?.translatedText;
+    if (!text) throw new Error('LibreTranslate: ردّ غير متوقع / Unexpected response.');
+    return text;
+  };
+
   const runners: Record<ProviderType, { type: string; fn: () => Promise<string> }> = {
     yandex: { type: 'yandex', fn: tryYandex },
     lara: { type: 'lara', fn: tryLara },
@@ -315,6 +342,7 @@ export async function callProviderWithKey(
     openai: { type: 'openai', fn: tryOpenAI },
     google_cloud: { type: 'google_cloud', fn: tryGoogleCloudKey },
     microsoft: { type: 'microsoft', fn: tryMicrosoft },
+    libretranslate: { type: 'libretranslate', fn: tryLibre },
   };
 
   if ((PROVIDER_TYPES as readonly string[]).includes(providerType)) {
@@ -324,7 +352,7 @@ export async function callProviderWithKey(
 
   // Auto-detect: order the probes by the key's shape, then run them in parallel.
   // The first success in priority order wins, so the total time is bounded by the slowest probe, not the sum.
-  let order: ProviderType[] = [...PROVIDER_TYPES];
+  let order: ProviderType[] = [...AUTO_PROBE_TYPES];
   if (trimmedKey.startsWith('AIza')) order = ['google_cloud', ...order.filter((t) => t !== 'google_cloud')];
   else if (trimmedKey.startsWith('sk-')) order = ['openai', ...order.filter((t) => t !== 'openai')];
   else if (trimmedKey.endsWith(':fx')) order = ['deepl', ...order.filter((t) => t !== 'deepl')];
@@ -432,6 +460,26 @@ export async function translateBatch(
     if (!res.ok) throw providerHttpError('Microsoft Translator', res.status);
     const data = (await res.json()) as Array<{ translations?: Array<{ text?: string }> }>;
     return texts.map((_, i) => data?.[i]?.translations?.[0]?.text ?? null);
+  }
+
+  if (providerType === 'libretranslate') {
+    const base = parseSafeBaseUrl(folderId || '');
+    const { status, json } = await safeJsonPost(
+      base,
+      '/translate',
+      {
+        q: texts,
+        source: 'en',
+        target: libreTarget(targetLang),
+        format: 'text',
+        ...(trimmedKey && trimmedKey !== 'none' ? { api_key: trimmedKey } : {}),
+      },
+      30000
+    );
+    if (status < 200 || status >= 300) throw providerHttpError('LibreTranslate', status);
+    const out = (json as { translatedText?: string[] | string } | null)?.translatedText;
+    if (!Array.isArray(out)) return texts.map(() => null);
+    return texts.map((_, i) => out[i] ?? null);
   }
 
   if (providerType === 'google_cloud') {

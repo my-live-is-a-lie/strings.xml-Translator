@@ -9,7 +9,7 @@ interface Bucket {
  * Fixed-window, in-memory rate limiter keyed by client IP.
  * Good enough for a single instance; use a shared store if the app is scaled out.
  */
-export function createRateLimiter(options: { windowMs: number; max: number }) {
+export function createRateLimiter(options: { windowMs: number; max: number; onLimited?: (ip: string) => void }) {
   const buckets = new Map<string, Bucket>();
 
   // Remove expired buckets periodically so the map cannot grow without bound.
@@ -35,6 +35,7 @@ export function createRateLimiter(options: { windowMs: number; max: number }) {
     res.setHeader('RateLimit-Remaining', String(Math.max(0, options.max - bucket.count)));
 
     if (bucket.count > options.max) {
+      options.onLimited?.(key);
       res.setHeader('Retry-After', String(Math.ceil((bucket.resetAt - now) / 1000)));
       res.status(429).json({ error: 'طلبات كثيرة جداً، حاول بعد دقيقة / Too many requests, try again in a minute.' });
       return;
