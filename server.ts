@@ -1,9 +1,10 @@
-import express from 'express';
+import express, { type NextFunction, type Request, type Response } from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
-import { AccessKey, AuthToken, Translator as LaraTranslator } from '@translated/lara';
 import dotenv from 'dotenv';
+import { PROVIDER_TYPES, callProviderWithKey, getReferenceTranslation, outputMatchesReference } from './server/providers';
+import { createRateLimiter } from './server/rateLimit';
 
 dotenv.config();
 
@@ -13,552 +14,126 @@ const __dirname = path.dirname(__filename);
 // Gemini is NOT handled by this server: the browser calls the Gemini API directly with the
 // user's own key (see src/utils/geminiDirect.ts), so that key never reaches this server.
 
-const SYSTEM_INSTRUCTION = `You are an expert Android strings.xml localization engine.
-Follow these strict rules for every translation:
-1. Return ONLY the final translated string text. Do NOT include any metadata labels, prefixes, explanations, notes, or bracketed tags such as "[ترجمة المصطلح: ...]", "[ترجمة: ...]", "[Translation: ...]", or markdown code fences.
-2. Strictly preserve all original formatting and Android syntax tokens in their exact form:
-   - Printf format specifiers (e.g., %s, %d, %1$s, %2$d, %1$.1f, %%)
-   - Escape sequences (e.g., \\n, \\\\n, \\t, \\', \\")
-   - Inline HTML/XML tags (e.g., <b>, </b>, <i>, <u>, <xliff:g>)
-   - Resource references (e.g., @string/..., @plurals/...) and ICU placeholders (e.g., {0}, {count})
-3. Use natural, concise mobile UI terminology appropriate for Android applications (for example, translate "Install" to "تثبيت" in Arabic).
-4. Preserve leading or trailing whitespace and outer quotes only if they exist in the source string.`;
+const MAX_SOURCE_TEXT = 5000;
+const MAX_KEY_LENGTH = 512;
+const MAX_FOLDER_ID_LENGTH = 64;
+const LANG_CODE = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})?$/;
+const PLURAL_QUANTITIES = ['zero', 'one', 'two', 'few', 'many', 'other'];
+const ALLOWED_PROVIDER_VALUES = ['auto', ...PROVIDER_TYPES];
 
-function stripMetadataWrappers(text: string, sourceText: string): string {
-  let cleaned = text.trim();
-
-  // Strip common metadata labels like [ترجمة المصطلح: ...] or [Translation: ...]
-  const metadataRegex = /^\[?\s*(?:ترجمة المصطلح|ترجمة النص|ترجمة|Translation|Translated text)\s*[:：-]\s*(.*?)\s*\]?$/i;
-  const match = cleaned.match(metadataRegex);
-  if (match && match[1]) {
-    cleaned = match[1].trim();
-  }
-
-  // Strip accidental markdown code fences
-  if (cleaned.startsWith('```') && cleaned.endsWith('```')) {
-    cleaned = cleaned.replace(/^```[a-zA-Z]*\n?/, '').replace(/\n?```$/, '').trim();
-  }
-
-  // If the AI wrapped the whole output in [...] when the source was not wrapped in [...]
-  if (
-    cleaned.startsWith('[') &&
-    cleaned.endsWith(']') &&
-    !sourceText.trim().startsWith('[') &&
-    !sourceText.trim().endsWith(']')
-  ) {
-    cleaned = cleaned.slice(1, -1).trim();
-  }
-
-  return cleaned;
+/** Returns the request body as a plain object, or null when it is missing or not an object. */
+function readBody(body: unknown): Record<string, unknown> | null {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+  return body as Record<string, unknown>;
 }
 
-function normalizeForComparison(str: string): string {
-  return str
-    .trim()
-    .toLowerCase()
-    // Remove Arabic diacritics (tashkeel) and tatweel
-    .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
-    // Normalize Arabic Alef variants
-    .replace(/[أإآٱ]/g, 'ا')
-    // Normalize Taa Marbuta to Haa
-    .replace(/ة/g, 'ه')
-    // Normalize Alef Maksura to Yaa
-    .replace(/ى/g, 'ي')
-    // Remove punctuation
-    .replace(/[.,!?;:؟،"«»'()[\]{}]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+function validateProviderFields(
+  body: Record<string, unknown>,
+  { requireSourceText }: { requireSourceText: boolean }
+): { error?: string; fields?: Record<string, string | undefined> } {
+  const providerType = typeof body.providerType === 'string' ? body.providerType : 'auto';
+  if (!ALLOWED_PROVIDER_VALUES.includes(providerType)) {
+    return { error: 'نوع المزود غير مدعوم / Unsupported provider type.' };
+  }
+
+  const apiKey = typeof body.apiKey === 'string' ? body.apiKey.trim() : '';
+  if (!apiKey) return { error: 'مفتاح API مطلوب / API key is required.' };
+  if (apiKey.length > MAX_KEY_LENGTH) return { error: 'مفتاح API طويل جداً / API key is too long.' };
+
+  const folderId = body.folderId === undefined || body.folderId === null ? undefined : String(body.folderId).trim();
+  if (folderId && folderId.length > MAX_FOLDER_ID_LENGTH) {
+    return { error: 'معرّف المجلد طويل جداً / Folder ID is too long.' };
+  }
+
+  const targetLang = typeof body.targetLang === 'string' ? body.targetLang : 'ar';
+  if (!LANG_CODE.test(targetLang)) return { error: 'رمز اللغة غير صالح / Invalid language code.' };
+
+  const sourceText = typeof body.sourceText === 'string' ? body.sourceText : '';
+  if (requireSourceText) {
+    if (!sourceText.trim()) return { error: 'النص المراد ترجمته مطلوب / Source text is required.' };
+    if (sourceText.length > MAX_SOURCE_TEXT) {
+      return { error: `النص طويل جداً (الحد ${MAX_SOURCE_TEXT} حرف) / Source text exceeds ${MAX_SOURCE_TEXT} characters.` };
+    }
+  }
+
+  const targetLocaleName =
+    typeof body.targetLocaleName === 'string' ? body.targetLocaleName.slice(0, 80) : undefined;
+  const pluralQuantity =
+    typeof body.pluralQuantity === 'string' && PLURAL_QUANTITIES.includes(body.pluralQuantity)
+      ? body.pluralQuantity
+      : undefined;
+
+  return {
+    fields: {
+      providerType,
+      apiKey,
+      folderId,
+      targetLang,
+      sourceText,
+      targetLocaleName,
+      pluralQuantity,
+    },
+  };
 }
 
-async function fetchGoogleTranslate(text: string, targetLang: string): Promise<string> {
-  const baseLang = targetLang.split('-')[0].toLowerCase();
-  const googleLang =
-    targetLang.toLowerCase() === 'zh-rcn'
-      ? 'zh-CN'
-      : targetLang.toLowerCase() === 'zh-rtw'
-        ? 'zh-TW'
-        : targetLang.toLowerCase() === 'pt-rbr'
-          ? 'pt-BR'
-          : baseLang;
-
-  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=${encodeURIComponent(
-    googleLang
-  )}&dt=t&q=${encodeURIComponent(text)}`;
-
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(`Google Translate HTTP ${res.status}`);
+/** Turns network and timeout errors into a clear message; other errors already carry a readable message. */
+function toUserMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error) {
+    if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+      return 'انتهت مهلة الاتصال بالمزود، حاول لاحقاً / The provider timed out, try again later.';
+    }
+    if (err instanceof TypeError || /fetch failed/i.test(err.message)) {
+      return 'تعذّر الاتصال بالمزود من الخادم / Could not reach the provider from the server.';
+    }
+    return err.message;
   }
-  const data = await res.json();
-  if (Array.isArray(data) && Array.isArray(data[0])) {
-    const combined = data[0]
-      .map((chunk: unknown) => (Array.isArray(chunk) && typeof chunk[0] === 'string' ? chunk[0] : ''))
-      .join('');
-    return stripMetadataWrappers(combined, text);
-  }
-  throw new Error('Invalid Google Translate response');
+  return fallback;
 }
 
-async function callProviderWithKey(
-  providerType: string,
-  apiKey: string,
-  sourceText: string,
-  targetLang: string,
-  targetLocaleName?: string,
-  pluralQuantity?: string,
-  folderId?: string
-): Promise<{ translatedText: string; detectedType: string }> {
-  const baseLang = targetLang.split('-')[0].toLowerCase();
-  const trimmedKey = apiKey.trim();
-  const trimmedFolderId = folderId?.trim() || '';
-
-  const tryYandex = async (): Promise<string> => {
-    // 1. Try Yandex Cloud Translate v2 API (supports Api-Key or IAM Bearer token)
-    const cloudRes = await fetch('https://translate.api.cloud.yandex.net/translate/v2/translate', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: trimmedKey.startsWith('t1.') ? `Bearer ${trimmedKey}` : `Api-Key ${trimmedKey}`,
-      },
-      body: JSON.stringify({
-        sourceLanguageCode: 'en',
-        targetLanguageCode: baseLang,
-        texts: [sourceText],
-        // Required with an IAM token (personal Yandex account); a service-account API key
-        // already knows its folder, so this is omitted when empty.
-        ...(trimmedFolderId ? { folderId: trimmedFolderId } : {}),
-      }),
-    });
-
-    if (cloudRes.ok) {
-      const data = (await cloudRes.json()) as { translations?: Array<{ text?: string }> };
-      const text = data.translations?.[0]?.text;
-      if (text) return stripMetadataWrappers(text, sourceText);
-    }
-
-    // 2. Try Yandex Translate v1.5 API
-    const v1Url = `https://translate.yandex.net/api/v1.5/tr.json/translate?key=${encodeURIComponent(
-      trimmedKey
-    )}&text=${encodeURIComponent(sourceText)}&lang=en-${encodeURIComponent(baseLang)}`;
-    const v1Res = await fetch(v1Url);
-    if (v1Res.ok) {
-      const v1Data = (await v1Res.json()) as { text?: string[] };
-      if (Array.isArray(v1Data.text) && v1Data.text[0]) {
-        return stripMetadataWrappers(v1Data.text[0], sourceText);
-      }
-    }
-
-    // 3. Try YandexGPT / OpenAI-compatible Yandex AI endpoint
-    const yandexAiRes = await fetch('https://llm.api.cloud.yandex.net/foundationModels/v1/completion', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: trimmedKey.startsWith('t1.') ? `Bearer ${trimmedKey}` : `Api-Key ${trimmedKey}`,
-        ...(trimmedFolderId ? { 'x-folder-id': trimmedFolderId } : {}),
-      },
-      body: JSON.stringify({
-        modelUri: `gpt://${trimmedFolderId || 'b1g'}/yandexgpt-lite/latest`,
-        completionOptions: { stream: false, temperature: 0.1, maxTokens: '200' },
-        messages: [
-          { role: 'system', text: SYSTEM_INSTRUCTION },
-          {
-            role: 'user',
-            text: `Translate from English to ${targetLocaleName || baseLang}. Return ONLY the translated text:\n${sourceText}`,
-          },
-        ],
-      }),
-    });
-
-    if (yandexAiRes.ok) {
-      const yData = (await yandexAiRes.json()) as {
-        result?: { alternatives?: Array<{ message?: { text?: string } }> };
-      };
-      const yText = yData.result?.alternatives?.[0]?.message?.text;
-      if (yText) return stripMetadataWrappers(yText, sourceText);
-    }
-
-    throw new Error(
-      trimmedFolderId
-        ? 'Yandex authentication failed. Check the API key / IAM token and the folder ID.'
-        : 'Yandex authentication failed. With an IAM token (personal account) a folder ID is required.'
-    );
-  };
-
-  const tryDeepL = async (): Promise<string> => {
-    const isFree = trimmedKey.endsWith(':fx');
-    const host = isFree ? 'api-free.deepl.com' : 'api.deepl.com';
-    const deeplTarget =
-      targetLang.toLowerCase() === 'pt-rbr'
-        ? 'PT-BR'
-        : targetLang.toLowerCase() === 'zh-rcn'
-          ? 'ZH-HANS'
-          : baseLang.toUpperCase();
-
-    const res = await fetch(`https://${host}/v2/translate`, {
-      method: 'POST',
-      headers: {
-        Authorization: `DeepL-Auth-Key ${trimmedKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        text: [sourceText],
-        source_lang: 'EN',
-        target_lang: deeplTarget,
-      }),
-    });
-
-    if (!res.ok) {
-      throw new Error(`DeepL API HTTP ${res.status}`);
-    }
-    const data = (await res.json()) as { translations?: Array<{ text?: string }> };
-    const text = data.translations?.[0]?.text;
-    if (!text) throw new Error('Empty DeepL translation');
-    return stripMetadataWrappers(text, sourceText);
-  };
-
-  const tryOpenAI = async (): Promise<string> => {
-    const langLabel = targetLocaleName ? `${targetLocaleName} (${targetLang})` : targetLang;
-    const pluralContext = pluralQuantity ? ` (CLDR plural form: ${pluralQuantity})` : '';
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${trimmedKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        temperature: 0.1,
-        messages: [
-          { role: 'system', content: SYSTEM_INSTRUCTION },
-          {
-            role: 'user',
-            content: `Translate the following Android strings.xml value from English to ${langLabel}${pluralContext}. Return ONLY the translated text:\n${sourceText}`,
-          },
-        ],
-      }),
-    });
-
-    if (!res.ok) {
-      throw new Error(`OpenAI API HTTP ${res.status}`);
-    }
-    const data = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) throw new Error('Empty OpenAI response');
-    return stripMetadataWrappers(content, sourceText);
-  };
-
-  const tryGoogleCloudKey = async (): Promise<string> => {
-    // Google Cloud Translation v2 REST API
-    const gUrl = `https://translation.googleapis.com/language/translate/v2?key=${encodeURIComponent(trimmedKey)}`;
-    const gRes = await fetch(gUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        q: sourceText,
-        source: 'en',
-        target: baseLang,
-        format: 'text',
-      }),
-    });
-    if (gRes.ok) {
-      const gData = (await gRes.json()) as {
-        data?: { translations?: Array<{ translatedText?: string }> };
-      };
-      const t = gData.data?.translations?.[0]?.translatedText;
-      if (t) return stripMetadataWrappers(t, sourceText);
-    }
-    throw new Error('Google Cloud Translation API key authentication failed');
-  };
-
-  const tryMicrosoft = async (): Promise<string> => {
-    const msUrl = `https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&from=en&to=${encodeURIComponent(
-      baseLang
-    )}`;
-    const msRes = await fetch(msUrl, {
-      method: 'POST',
-      headers: {
-        'Ocp-Apim-Subscription-Key': trimmedKey,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify([{ Text: sourceText }]),
-    });
-    if (!msRes.ok) {
-      throw new Error(`Microsoft Translator HTTP ${msRes.status}`);
-    }
-    const msData = (await msRes.json()) as Array<{
-      translations?: Array<{ text?: string }>;
-    }>;
-    const text = msData?.[0]?.translations?.[0]?.text;
-    if (!text) throw new Error('Empty Microsoft Translator response');
-    return stripMetadataWrappers(text, sourceText);
-  };
-
-  const parseLaraCredentials = (
-    raw: string
-  ): { id?: string; secret?: string; singleToken?: string } => {
-    const cleaned = raw.trim();
-
-    // 1. JSON object format: {"id":"...", "secret":"..."}
-    if (cleaned.startsWith('{') && cleaned.endsWith('}')) {
-      try {
-        const parsed = JSON.parse(cleaned) as Record<string, string>;
-        const id =
-          parsed.id ||
-          parsed.accessKeyId ||
-          parsed.access_key_id ||
-          parsed.LARA_ACCESS_KEY_ID;
-        const secret =
-          parsed.secret ||
-          parsed.accessKeySecret ||
-          parsed.access_key_secret ||
-          parsed.LARA_ACCESS_KEY_SECRET;
-        if (id && secret) {
-          return { id: String(id).trim(), secret: String(secret).trim() };
-        }
-      } catch {
-        // Fall through
-      }
-    }
-
-    // 2. Environment variable paste format: LARA_ACCESS_KEY_ID=... LARA_ACCESS_KEY_SECRET=...
-    const envIdMatch = cleaned.match(/LARA_ACCESS_KEY_ID\s*=\s*["']?([^\s"']+)["']?/i);
-    const envSecretMatch = cleaned.match(/LARA_ACCESS_KEY_SECRET\s*=\s*["']?([^\s"']+)["']?/i);
-    if (envIdMatch?.[1] && envSecretMatch?.[1]) {
-      return { id: envIdMatch[1].trim(), secret: envSecretMatch[1].trim() };
-    }
-
-    // 3. Delimited format: id:secret, id|secret, id,secret, or id secret (excluding DeepL :fx)
-    if (!cleaned.endsWith(':fx')) {
-      for (const sep of [':', '|', ',']) {
-        const idx = cleaned.indexOf(sep);
-        if (idx > 0 && idx < cleaned.length - 1) {
-          const id = cleaned.slice(0, idx).trim();
-          const secret = cleaned.slice(idx + 1).trim();
-          if (id && secret) {
-            return { id, secret };
-          }
-        }
-      }
-      const parts = cleaned.split(/\s+/);
-      if (parts.length === 2 && parts[0] && parts[1]) {
-        return { id: parts[0].trim(), secret: parts[1].trim() };
-      }
-    }
-
-    return { singleToken: cleaned };
-  };
-
-  const tryLara = async (): Promise<string> => {
-    const laraTarget =
-      targetLang.toLowerCase() === 'zh-rcn'
-        ? 'zh-CN'
-        : targetLang.toLowerCase() === 'zh-rtw'
-          ? 'zh-TW'
-          : targetLang.toLowerCase() === 'pt-rbr'
-            ? 'pt-BR'
-            : baseLang;
-
-    const creds = parseLaraCredentials(trimmedKey);
-
-    // 1. Official Lara SDK with AccessKey (ID + Secret)
-    if (creds.id && creds.secret) {
-      const lara = new LaraTranslator(new AccessKey(creds.id, creds.secret), {
-        connectionTimeoutMs: 10000,
-      });
-      try {
-        const result = await lara.translate(sourceText, 'en', laraTarget, {
-          timeoutInMillis: 10000,
-        });
-        if (result && typeof result.translation === 'string' && result.translation.trim()) {
-          return stripMetadataWrappers(result.translation, sourceText);
-        }
-      } catch (err) {
-        if (laraTarget !== baseLang) {
-          const fallbackRes = await lara.translate(sourceText, 'en', baseLang, {
-            timeoutInMillis: 10000,
-          });
-          if (
-            fallbackRes &&
-            typeof fallbackRes.translation === 'string' &&
-            fallbackRes.translation.trim()
-          ) {
-            return stripMetadataWrappers(fallbackRes.translation, sourceText);
-          }
-        }
-        throw err;
-      }
-    }
-
-    // 2. Official Lara SDK with AuthToken (single token / JWT)
-    if (creds.singleToken) {
-      try {
-        const laraTokenClient = new LaraTranslator(new AuthToken(creds.singleToken, ''), {
-          connectionTimeoutMs: 10000,
-        });
-        const result = await laraTokenClient.translate(sourceText, 'en', laraTarget, {
-          timeoutInMillis: 10000,
-        });
-        if (result && typeof result.translation === 'string' && result.translation.trim()) {
-          return stripMetadataWrappers(result.translation, sourceText);
-        }
-      } catch {
-        // Fall through to REST header probes
-      }
-
-      // 3. Direct REST call to Lara API with Bearer or x-api-key header
-      for (const authHeader of [
-        { Authorization: `Bearer ${creds.singleToken}` },
-        { 'x-api-key': creds.singleToken },
-        { Authorization: `Lara:${creds.singleToken}` },
-      ]) {
-        try {
-          const restRes = await fetch('https://api.laratranslate.com/v2/translate', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...authHeader,
-            },
-            body: JSON.stringify({
-              q: sourceText,
-              source: 'en',
-              target: laraTarget,
-            }),
-          });
-          if (restRes.ok) {
-            const textBody = await restRes.text();
-            const lines = textBody
-              .split('\n')
-              .map((l) => l.trim())
-              .filter(Boolean);
-            for (let i = lines.length - 1; i >= 0; i--) {
-              try {
-                const parsed = JSON.parse(lines[i]) as {
-                  translation?: string;
-                  data?: { translation?: string };
-                  content?: { translation?: string };
-                };
-                const tr =
-                  parsed.translation || parsed.data?.translation || parsed.content?.translation;
-                if (tr && typeof tr === 'string') {
-                  return stripMetadataWrappers(tr, sourceText);
-                }
-              } catch {
-                // Ignore non-JSON line
-              }
-            }
-          }
-        } catch {
-          // Continue
-        }
-      }
-    }
-
-    throw new Error(
-      'Lara Translate authentication failed. Please provide valid Lara Access Key ID and Secret (or ID:Secret).'
-    );
-  };
-
-  if (providerType === 'yandex') {
-    return { translatedText: await tryYandex(), detectedType: 'yandex' };
-  }
-  if (providerType === 'lara') {
-    return { translatedText: await tryLara(), detectedType: 'lara' };
-  }
-  if (providerType === 'deepl') {
-    return { translatedText: await tryDeepL(), detectedType: 'deepl' };
-  }
-  if (providerType === 'openai') {
-    return { translatedText: await tryOpenAI(), detectedType: 'openai' };
-  }
-  if (providerType === 'google_cloud') {
-    return { translatedText: await tryGoogleCloudKey(), detectedType: 'google_cloud' };
-  }
-  if (providerType === 'microsoft') {
-    return { translatedText: await tryMicrosoft(), detectedType: 'microsoft' };
-  }
-
-  // Auto-detect provider from key format or sequential probing
-  const probes: Array<{ type: string; fn: () => Promise<string> }> = [
-    { type: 'lara', fn: tryLara },
-    { type: 'yandex', fn: tryYandex },
-    { type: 'deepl', fn: tryDeepL },
-    { type: 'google_cloud', fn: tryGoogleCloudKey },
-    { type: 'openai', fn: tryOpenAI },
-    { type: 'microsoft', fn: tryMicrosoft },
-  ];
-
-  // Prioritize based on key prefix heuristics
-  if (trimmedKey.startsWith('AIza')) {
-    probes.sort((a) => (a.type === 'google_cloud' ? -1 : 1));
-  } else if (trimmedKey.startsWith('sk-')) {
-    probes.sort((a) => (a.type === 'openai' ? -1 : 1));
-  } else if (trimmedKey.endsWith(':fx')) {
-    probes.sort((a) => (a.type === 'deepl' ? -1 : 1));
-  } else if (
-    trimmedKey.startsWith('AQVN') ||
-    trimmedKey.startsWith('trnsl.') ||
-    trimmedKey.startsWith('t1.')
-  ) {
-    probes.sort((a) => (a.type === 'yandex' ? -1 : 1));
-  } else if (
-    (trimmedKey.includes(':') && !trimmedKey.endsWith(':fx')) ||
-    trimmedKey.toLowerCase().includes('lara')
-  ) {
-    probes.sort((a) => (a.type === 'lara' ? -1 : 1));
-  }
-
-  for (const probe of probes) {
-    try {
-      const translatedText = await probe.fn();
-      if (translatedText) {
-        return { translatedText, detectedType: probe.type };
-      }
-    } catch {
-      // Continue trying next provider
-    }
-  }
-
-  throw new Error('API key could not be verified with any supported translation provider.');
+/** Logs only the error message, never the request (which contains the user's key). */
+function logProviderError(scope: string, err: unknown) {
+  const message = err instanceof Error ? err.message : String(err);
+  console.error(`[${scope}] ${message.slice(0, 300)}`);
 }
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json({ limit: '1mb' }));
+  app.disable('x-powered-by');
+  // Behind a load balancer (e.g. Cloud Run) use the first proxy's address so rate limiting sees real clients.
+  app.set('trust proxy', 1);
 
-  // Test & verify a custom translation provider API key by comparing its output to Google Translate
-  app.post('/api/providers/test', async (req, res) => {
+  app.use((_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    next();
+  });
+
+  // Key-handling endpoints get their own limit; the static app is not limited.
+  const providerLimiter = createRateLimiter({ windowMs: 60_000, max: 60 });
+  app.use('/api/providers', providerLimiter);
+  app.use('/api', express.json({ limit: '64kb' }));
+
+  app.post('/api/providers/test', async (req: Request, res: Response) => {
+    const body = readBody(req.body);
+    if (!body) {
+      return res.status(400).json({ success: false, matched: false, error: 'طلب غير صالح / Invalid request body.' });
+    }
+
+    const validated = validateProviderFields(body, { requireSourceText: false });
+    if (!validated.fields) {
+      return res.status(400).json({ success: false, matched: false, error: validated.error });
+    }
+    const { providerType, apiKey, folderId } = validated.fields as Record<string, string>;
+
+    // Small standard test word ("Install" -> Arabic "تثبيت")
+    const testSource = 'Install';
+    const testTargetLang = 'ar';
+    const accepted = ['تثبيت', 'التثبيت', 'تنصيب', 'ثبت'];
+
     try {
-      const { providerType = 'auto', apiKey = '', folderId } = req.body as {
-        providerType?: string;
-        apiKey?: string;
-        folderId?: string;
-      };
-
-      if (!apiKey || !apiKey.trim()) {
-        res.status(400).json({ error: 'API key is required.' });
-        return;
-      }
-
-      // Small standard test word ("Install" -> Arabic "تثبيت")
-      const testSource = 'Install';
-      const testTargetLang = 'ar';
-
-      // 1. Get reference translation from Google Translate
-      let googleTranslation = 'تثبيت';
-      try {
-        const gRes = await fetchGoogleTranslate(testSource, testTargetLang);
-        if (gRes && gRes.trim()) {
-          googleTranslation = gRes.trim();
-        }
-      } catch {
-        googleTranslation = 'تثبيت';
-      }
-
-      // 2. Call the candidate provider with the user's API key on the same test string
+      const reference = await getReferenceTranslation(testSource, testTargetLang);
       const { translatedText: providerTranslation, detectedType } = await callProviderWithKey(
         providerType,
         apiKey,
@@ -568,104 +143,55 @@ async function startServer() {
         undefined,
         folderId
       );
-
-      // 3. Compare normalized outputs against Google Translate reference (and accepted Arabic equivalents for "Install")
-      const normGoogle = normalizeForComparison(googleTranslation);
-      const normProvider = normalizeForComparison(providerTranslation);
-      const acceptedEquivalents = new Set([
-        normGoogle,
-        normalizeForComparison('تثبيت'),
-        normalizeForComparison('التثبيت'),
-        normalizeForComparison('تنصيب'),
-        normalizeForComparison('ثبت'),
-      ]);
-
-      const matched =
-        Boolean(normProvider) &&
-        (normProvider === normGoogle ||
-          normProvider.includes(normGoogle) ||
-          normGoogle.includes(normProvider) ||
-          acceptedEquivalents.has(normProvider));
+      const matched = outputMatchesReference(providerTranslation, reference, [...accepted, reference ?? '']);
+      const googleTranslation = reference ?? 'تثبيت';
 
       if (!matched) {
-        res.status(422).json({
+        return res.status(422).json({
           success: false,
           matched: false,
           testSource,
           googleTranslation,
           providerTranslation,
           detectedType,
-          error: `Test translation "${providerTranslation}" did not match Google Translate reference "${googleTranslation}".`,
+          error: `الترجمة "${providerTranslation}" لا تطابق المرجع "${googleTranslation}". / Test translation did not match the reference.`,
         });
-        return;
       }
 
-      res.json({
-        success: true,
-        matched: true,
-        testSource,
-        googleTranslation,
-        providerTranslation,
-        detectedType,
-      });
+      return res.json({ success: true, matched: true, testSource, googleTranslation, providerTranslation, detectedType });
     } catch (error) {
-      res.status(400).json({
+      logProviderError('providers/test', error);
+      return res.status(400).json({
         success: false,
         matched: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : 'API key test failed. Please check the key and provider type.',
+        error: toUserMessage(error, 'فشل اختبار المفتاح / API key test failed.'),
       });
     }
   });
 
-  // Translate using a custom or built-in provider
-  app.post('/api/providers/translate', async (req, res) => {
+  app.post('/api/providers/translate', async (req: Request, res: Response) => {
+    const body = readBody(req.body);
+    if (!body) return res.status(400).json({ error: 'طلب غير صالح / Invalid request body.' });
+
+    const validated = validateProviderFields(body, { requireSourceText: true });
+    if (!validated.fields) return res.status(400).json({ error: validated.error });
+    const f = validated.fields;
+
     try {
-      const {
-        providerType,
-        apiKey,
-        folderId,
-        sourceText,
-        targetLang = 'ar',
-        targetLocaleName,
-        pluralQuantity,
-      } = req.body as {
-        providerType: string;
-        apiKey?: string;
-        folderId?: string;
-        sourceText: string;
-        targetLang?: string;
-        targetLocaleName?: string;
-        pluralQuantity?: string;
-      };
-
-      if (!sourceText || !sourceText.trim()) {
-        res.json({ translatedText: sourceText || '' });
-        return;
-      }
-
-      if (!apiKey) {
-        res.status(400).json({ error: 'Missing API key for translation provider' });
-        return;
-      }
-
       const { translatedText } = await callProviderWithKey(
-        providerType,
-        apiKey,
-        sourceText,
-        targetLang,
-        targetLocaleName,
-        pluralQuantity,
-        folderId
+        f.providerType as string,
+        f.apiKey as string,
+        f.sourceText as string,
+        f.targetLang as string,
+        f.targetLocaleName,
+        f.pluralQuantity,
+        f.folderId
       );
-
-      res.json({ translatedText });
+      return res.json({ translatedText });
     } catch (error) {
-      console.error('Provider translation error:', error);
-      res.status(500).json({
-        error: error instanceof Error ? error.message : 'Provider translation failed',
+      logProviderError('providers/translate', error);
+      return res.status(502).json({
+        error: toUserMessage(error, 'فشلت الترجمة عبر المزود / Provider translation failed.'),
       });
     }
   });
@@ -679,7 +205,7 @@ async function startServer() {
   } else {
     const distPath = path.join(__dirname, 'dist');
     app.use(express.static(distPath));
-    app.get('*', (_req, res) => {
+    app.get('*', (_req: Request, res: Response) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
@@ -689,4 +215,7 @@ async function startServer() {
   });
 }
 
-startServer();
+startServer().catch((err) => {
+  console.error('Failed to start server:', err);
+  process.exit(1);
+});

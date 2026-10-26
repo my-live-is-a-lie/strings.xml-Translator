@@ -1,698 +1,29 @@
 // Robust translation engine for Android strings with offline glossary, format token protection, and machine translation
+import { ANDROID_LOCALIZATION_DICTIONARY, CASE_INSENSITIVE_GLOSSARY, ARABIC_PLURAL_GLOSSARY } from './glossary';
 import { ResourceItem, SingleStringItem, PluralStringItem, ArrayStringItem } from '../types';
 import { normalizePluralsForLanguage } from './xmlParser';
-import { getStoredItem, setStoredItem, removeStoredItem } from './storage';
+import {
+  getStoredItem,
+  setStoredItem,
+  removeStoredItem,
+  getSecret,
+  setSecret,
+  deleteSecret,
+  isSecretVaultReady,
+  scheduleStoredWrite,
+} from './storage';
 import { geminiTranslateDirect } from './geminiDirect';
+import { fetchGoogleGtxRaw, fetchWithTimeout } from '../shared/translateCore';
 
-// Comprehensive Android UI terminology glossary for instant offline translations
-export const ANDROID_LOCALIZATION_DICTIONARY: Record<string, Record<string, string>> = {
-  Watched: {
-    ar: 'تمت المشاهدة',
-    es: 'Visto',
-    fr: 'Vu',
-    de: 'Gesehen',
-    'pt-rBR': 'Assistido',
-    ja: '視聴済み',
-    'zh-rCN': '已观看',
-    it: 'Visto',
-    ru: 'Просмотрено',
-    tr: 'İzlendi',
-    hi: 'देखा गया',
-  },
-  Save: {
-    ar: 'حفظ',
-    es: 'Guardar',
-    fr: 'Enregistrer',
-    de: 'Speichern',
-    'pt-rBR': 'Salvar',
-    ja: '保存',
-    'zh-rCN': '保存',
-    it: 'Salva',
-    ru: 'Сохранить',
-    tr: 'Kaydet',
-    hi: 'सहेजें',
-  },
-  'Save Changes': {
-    ar: 'حفظ التغييرات',
-    es: 'Guardar cambios',
-    fr: 'Enregistrer les modifications',
-    de: 'Änderungen speichern',
-    'pt-rBR': 'Salvar alterações',
-    ja: '変更を保存',
-    'zh-rCN': '保存更改',
-    it: 'Salva modifiche',
-    ru: 'Сохранить изменения',
-    tr: 'Değişiklikleri Kaydet',
-    hi: 'परिवर्तन सहेजें',
-  },
-  Cancel: {
-    ar: 'إلغاء',
-    es: 'Cancelar',
-    fr: 'Annuler',
-    de: 'Abbrechen',
-    'pt-rBR': 'Cancelar',
-    ja: 'キャンセル',
-    'zh-rCN': '取消',
-    it: 'Annulla',
-    ru: 'Отмена',
-    tr: 'İptal',
-    hi: 'रद्द करें',
-  },
-  'Delete Item': {
-    ar: 'حذف العنصر',
-    es: 'Eliminar elemento',
-    fr: 'Supprimer l’élément',
-    de: 'Element löschen',
-    'pt-rBR': 'Excluir item',
-    ja: '項目を削除',
-    'zh-rCN': '删除项目',
-    it: 'Elimina elemento',
-    ru: 'Удалить элемент',
-    tr: 'Öğeyi Sil',
-    hi: 'आइटम हटाएं',
-  },
-  Delete: {
-    ar: 'حذف',
-    es: 'Eliminar',
-    fr: 'Supprimer',
-    de: 'Löschen',
-    'pt-rBR': 'Excluir',
-    ja: '削除',
-    'zh-rCN': '删除',
-    it: 'Elimina',
-    ru: 'Удалить',
-    tr: 'Sil',
-    hi: 'हटाएं',
-  },
-  'Retry Connection': {
-    ar: 'إعادة المحاولة',
-    es: 'Reintentar conexión',
-    fr: 'Réessayer la connexion',
-    de: 'Verbindung wiederholen',
-    'pt-rBR': 'Tentar conexão novamente',
-    ja: '接続を再試行',
-    'zh-rCN': '重试连接',
-    it: 'Riprova connessione',
-    ru: 'Повторить подключение',
-    tr: 'Bağlantıyı Yeniden Dene',
-    hi: 'पुनः प्रयास करें',
-  },
-  Retry: {
-    ar: 'إعادة المحاولة',
-    es: 'Reintentar',
-    fr: 'Réessayer',
-    de: 'Wiederholen',
-    'pt-rBR': 'Tentar novamente',
-    ja: '再試行',
-    'zh-rCN': '重试',
-    it: 'Riprova',
-    ru: 'Повторить',
-    tr: 'Yeniden Dene',
-    hi: 'पुनः प्रयास',
-  },
-  'Welcome to OmniTask!': {
-    ar: 'مرحبًا بك في OmniTask!',
-    es: '¡Bienvenido a OmniTask!',
-    fr: 'Bienvenue sur OmniTask !',
-    de: 'Willkommen bei OmniTask!',
-    'pt-rBR': 'Bem-vindo ao OmniTask!',
-    ja: 'OmniTaskへようこそ！',
-    'zh-rCN': '欢迎使用 OmniTask！',
-    it: 'Benvenuto su OmniTask!',
-    ru: 'Добро пожаловать в OmniTask!',
-    tr: 'OmniTask’e Hoş Geldiniz!',
-    hi: 'OmniTask में आपका स्वागत है!',
-  },
-  "Don't worry about losing your progress. Everything is saved automatically and works 100% offline.": {
-    ar: 'لا تقلق بشأن فقدان تقدمك. يتم حفظ كل شيء تلقائيًا ويعمل دون اتصال بالإنترنت بنسبة 100%.',
-    es: 'No te preocupes por perder tu progreso. Todo se guarda automáticamente y funciona 100% sin conexión.',
-    fr: 'Ne vous inquiétez pas de perdre votre progression. Tout est enregistré automatiquement et fonctionne à 100 % hors ligne.',
-    de: 'Keine Sorge wegen Datenverlust. Alles wird automatisch gespeichert und funktioniert zu 100% offline.',
-    'pt-rBR': 'Não se preocupe em perder seu progresso. Tudo é salvo automaticamente e funciona 100% offline.',
-    ja: '進行状況が失われる心配はありません。すべて自動的に保存され、100%オフラインで動作します。',
-    'zh-rCN': '不必担心丢失进度。所有内容都会自动保存，并支持100%离线使用。',
-    it: 'Non preoccuparti di perdere i tuoi progressi. Tutto viene salvato automaticamente e funziona al 100% offline.',
-    ru: 'Не беспокойтесь о потере данных. Все сохраняется автоматически и работает на 100% офлайн.',
-  },
-  'Hello, %1$s! You have %2$d pending tasks for today.': {
-    ar: 'مرحبًا %1$s! لديك %2$d من المهام المعلقة لهذا اليوم.',
-    es: '¡Hola, %1$s! Tienes %2$d tareas pendientes para hoy.',
-    fr: 'Bonjour, %1$s ! Vous avez %2$d tâches en attente pour aujourd’hui.',
-    de: 'Hallo, %1$s! Du hast heute %2$d ausstehende Aufgaben.',
-    'pt-rBR': 'Olá, %1$s! Você tem %2$d tarefas pendentes para hoje.',
-    ja: 'こんにちは、%1$sさん！本日保留中のタスクが %2$d 件あります。',
-    'zh-rCN': '你好，%1$s！你今天有 %2$d 个待办任务。',
-  },
-  'Task "%s" has been created successfully.': {
-    ar: 'تم إنشاء المهمة "%s" بنجاح.',
-    es: 'La tarea "%s" ha sido creada con éxito.',
-    fr: 'La tâche « %s » a été créée avec succès.',
-    de: 'Aufgabe „%s“ wurde erfolgreich erstellt.',
-    'pt-rBR': 'A tarefa "%s" foi criada com sucesso.',
-    ja: 'タスク「%s」が正常に作成されました。',
-    'zh-rCN': '任务“%s”已成功创建。',
-  },
-  'Due on %1$s at %2$s': {
-    ar: 'تاريخ الاستحقاق في %1$s الساعة %2$s',
-    es: 'Vence el %1$s a las %2$s',
-    fr: 'Échéance le %1$s à %2$s',
-    de: 'Fällig am %1$s um %2$s',
-    'pt-rBR': 'Vence em %1$s às %2$s',
-    ja: '期限: %1$s %2$s',
-    'zh-rCN': '截止日期为 %1$s %2$s',
-  },
-  'No active tasks found. Tap the + button below to add your first task!': {
-    ar: 'لم يتم العثور على مهام نشطة. اضغط على زر + أدناه لإضافة مهمتك الأولى!',
-    es: 'No se encontraron tareas activas. ¡Toca el botón + abajo para agregar tu primera tarea!',
-    fr: 'Aucune tâche active trouvée. Appuyez sur le bouton + ci-dessous pour ajouter votre première tâche !',
-    de: 'Keine aktiven Aufgaben gefunden. Tippe auf das +-Symbol unten, um deine erste Aufgabe hinzuzufügen!',
-    'pt-rBR': 'Nenhuma tarefa ativa encontrada. Toque no botão + abaixo para adicionar sua primeira tarefa!',
-    ja: 'アクティブなタスクが見つかりません。下の + ボタンをタップして最初のタスクを追加してください！',
-    'zh-rCN': '未找到活动任务。点击下方的 + 按钮添加您的第一个任务！',
-  },
-  'Local database is using %1$.1f MB of %2$.1f MB allocated storage.': {
-    ar: 'تستخدم قاعدة البيانات المحلية %1$.1f ميغابايت من مساحة التخزين المخصصة %2$.1f ميغابايت.',
-    es: 'La base de datos local está usando %1$.1f MB de %2$.1f MB de almacenamiento asignado.',
-    fr: 'La base de données locale utilise %1$.1f Mo sur %2$.1f Mo de stockage alloué.',
-    de: 'Die lokale Datenbank belegt %1$.1f MB von %2$.1f MB zugewiesenem Speicher.',
-    'pt-rBR': 'O banco de dados local está usando %1$.1f MB de %2$.1f MB de armazenamento alocado.',
-    ja: 'ローカルデータベースは割り当て容量 %2$.1f MB のうち %1$.1f MB を使用しています。',
-    'zh-rCN': '本地数据库正在使用已分配存储空间 %2$.1f MB 中的 %1$.1f MB。',
-  },
-  'By clicking continue, you agree to our Terms of Service & Privacy Policy.': {
-    ar: 'بالنقر على متابعة، فإنك توافق على شروط الخدمة وسياسة الخصوصية الخاصة بنا.',
-    es: 'Al hacer clic en continuar, aceptas nuestros Términos de servicio y Política de privacidad.',
-    fr: 'En cliquant sur Continuer, vous acceptez nos Conditions d’utilisation et notre Politique de confidentialité.',
-    de: 'Mit dem Klick auf Weiter stimmst du unseren Nutzungsbedingungen und Datenschutzrichtlinien zu.',
-    'pt-rBR': 'Ao clicar em continuar, você concorda com nossos Termos de Serviço e Política de Privacidade.',
-    ja: '続行をクリックすると、利用規約およびプライバシーポリシーに同意したものとみなされます。',
-    'zh-rCN': '点击继续即表示您同意我们的服务条款和隐私政策。',
-  },
-  Urgent: {
-    ar: 'عاجل',
-    es: 'Urgente',
-    fr: 'Urgent',
-    de: 'Dringend',
-    'pt-rBR': 'Urgente',
-    ja: '緊急',
-    'zh-rCN': '紧急',
-    it: 'Urgente',
-    ru: 'Срочно',
-  },
-  'High Priority': {
-    ar: 'أولوية عالية',
-    es: 'Alta prioridad',
-    fr: 'Haute priorité',
-    de: 'Hohe Priorität',
-    'pt-rBR': 'Prioridade alta',
-    ja: '高優先度',
-    'zh-rCN': '高优先级',
-    it: 'Alta priorità',
-    ru: 'Высокий приоритет',
-  },
-  Normal: {
-    ar: 'عادي',
-    es: 'Normal',
-    fr: 'Normal',
-    de: 'Normal',
-    'pt-rBR': 'Normal',
-    ja: '通常',
-    'zh-rCN': '普通',
-    it: 'Normale',
-    ru: 'Обычный',
-  },
-  'Low Priority': {
-    ar: 'أولوية منخفضة',
-    es: 'Baja prioridad',
-    fr: 'Basse priorité',
-    de: 'Niedrige Priorität',
-    'pt-rBR': 'Prioridade baixa',
-    ja: '低優先度',
-    'zh-rCN': '低优先级',
-    it: 'Bassa priorità',
-    ru: 'Низкий приоритет',
-  },
-  Settings: {
-    ar: 'الإعدادات',
-    es: 'Ajustes',
-    fr: 'Paramètres',
-    de: 'Einstellungen',
-    'pt-rBR': 'Configurações',
-    ja: '設定',
-    'zh-rCN': '设置',
-    it: 'Impostazioni',
-    ru: 'Настройки',
-  },
-  Search: {
-    ar: 'بحث',
-    es: 'Buscar',
-    fr: 'Rechercher',
-    de: 'Suchen',
-    'pt-rBR': 'Pesquisar',
-    ja: '検索',
-    'zh-rCN': '搜索',
-    it: 'Cerca',
-    ru: 'Поиск',
-  },
-  Close: {
-    ar: 'إغلاق',
-    es: 'Cerrar',
-    fr: 'Fermer',
-    de: 'Schließen',
-    'pt-rBR': 'Fechar',
-    ja: '閉じる',
-    'zh-rCN': '关闭',
-    it: 'Chiudi',
-    ru: 'Закрыть',
-  },
-  Install: {
-    ar: 'تثبيت',
-    es: 'Instalar',
-    fr: 'Installer',
-    de: 'Installieren',
-    'pt-rBR': 'Instalar',
-    ja: 'インストール',
-    'zh-rCN': '安装',
-    it: 'Installa',
-    ru: 'Установить',
-    tr: 'Yükle',
-    hi: 'इंस्टॉल करें',
-  },
-  Uninstall: {
-    ar: 'إلغاء التثبيت',
-    es: 'Desinstalar',
-    fr: 'Désinstaller',
-    de: 'Deinstallieren',
-    'pt-rBR': 'Desinstalar',
-    ja: 'アンインストール',
-    'zh-rCN': '卸载',
-    it: 'Disinstalla',
-    ru: 'Удалить',
-    tr: 'Kaldır',
-    hi: 'अनइंस्टॉल करें',
-  },
-  Update: {
-    ar: 'تحديث',
-    es: 'Actualizar',
-    fr: 'Mettre à jour',
-    de: 'Aktualisieren',
-    'pt-rBR': 'Atualizar',
-    ja: ' 업데이트',
-    'zh-rCN': '更新',
-    it: 'Aggiorna',
-    ru: 'Обновить',
-    tr: 'Güncelle',
-    hi: 'अपडेट करें',
-  },
-  Download: {
-    ar: 'تنزيل',
-    es: 'Descargar',
-    fr: 'Télécharger',
-    de: 'Herunterladen',
-    'pt-rBR': 'Baixar',
-    ja: 'ダウンロード',
-    'zh-rCN': '下载',
-    it: 'Scarica',
-    ru: 'Скачать',
-    tr: 'İndir',
-    hi: 'डाउनलोड करें',
-  },
-  Downloads: {
-    ar: 'التنزيلات',
-    es: 'Descargas',
-    fr: 'Téléchargements',
-    de: 'Downloads',
-    'pt-rBR': 'Downloads',
-    ja: 'ダウンロード',
-    'zh-rCN': '下载内容',
-    it: 'Download',
-    ru: 'Загрузки',
-    tr: 'İndirilenler',
-  },
-  Upload: {
-    ar: 'رفع',
-    es: 'Subir',
-    fr: 'Téléverser',
-    de: 'Hochladen',
-    'pt-rBR': 'Enviar',
-    ja: 'アップロード',
-    'zh-rCN': '上传',
-    it: 'Carica',
-    ru: 'Загрузить',
-  },
-  Open: {
-    ar: 'فتح',
-    es: 'Abrir',
-    fr: 'Ouvrir',
-    de: 'Öffnen',
-    'pt-rBR': 'Abrir',
-    ja: '開く',
-    'zh-rCN': '打开',
-    it: 'Apri',
-    ru: 'Открыть',
-  },
-  Share: {
-    ar: 'مشاركة',
-    es: 'Compartir',
-    fr: 'Partager',
-    de: 'Teilen',
-    'pt-rBR': 'Compartilhar',
-    ja: '共有',
-    'zh-rCN': '分享',
-    it: 'Condividi',
-    ru: 'Поделиться',
-  },
-  Copy: {
-    ar: 'نسخ',
-    es: 'Copiar',
-    fr: 'Copier',
-    de: 'Kopieren',
-    'pt-rBR': 'Copiar',
-    ja: 'コピー',
-    'zh-rCN': '复制',
-    it: 'Copia',
-    ru: 'Копировать',
-  },
-  Paste: {
-    ar: 'لصق',
-    es: 'Pegar',
-    fr: 'Coller',
-    de: 'Einfügen',
-    'pt-rBR': 'Colar',
-    ja: '貼り付け',
-    'zh-rCN': '粘贴',
-    it: 'Incolla',
-    ru: 'Вставить',
-  },
-  Edit: {
-    ar: 'تعديل',
-    es: 'Editar',
-    fr: 'Modifier',
-    de: 'Bearbeiten',
-    'pt-rBR': 'Editar',
-    ja: '編集',
-    'zh-rCN': '编辑',
-    it: 'Modifica',
-    ru: 'Изменить',
-  },
-  Add: {
-    ar: 'إضافة',
-    es: 'Añadir',
-    fr: 'Ajouter',
-    de: 'Hinzufügen',
-    'pt-rBR': 'Adicionar',
-    ja: '追加',
-    'zh-rCN': '添加',
-    it: 'Aggiungi',
-    ru: 'Добавить',
-  },
-  Remove: {
-    ar: 'إزالة',
-    es: 'Quitar',
-    fr: 'Supprimer',
-    de: 'Entfernen',
-    'pt-rBR': 'Remover',
-    ja: '削除',
-    'zh-rCN': '移除',
-    it: 'Rimuovi',
-    ru: 'Удалить',
-  },
-  Clear: {
-    ar: 'مسح',
-    es: 'Borrar',
-    fr: 'Effacer',
-    de: 'Löschen',
-    'pt-rBR': 'Limpar',
-    ja: 'クリア',
-    'zh-rCN': '清除',
-    it: 'Cancella',
-    ru: 'Очистить',
-  },
-  Refresh: {
-    ar: 'تحديث',
-    es: 'Actualizar',
-    fr: 'Actualiser',
-    de: 'Aktualisieren',
-    'pt-rBR': 'Atualizar',
-    ja: '更新',
-    'zh-rCN': '刷新',
-    it: 'Aggiorna',
-    ru: 'Обновить',
-  },
-  Confirm: {
-    ar: 'تأكيد',
-    es: 'Confirmar',
-    fr: 'Confirmer',
-    de: 'Bestätigen',
-    'pt-rBR': 'Confirmar',
-    ja: '確認',
-    'zh-rCN': '确认',
-    it: 'Conferma',
-    ru: 'Подтвердить',
-  },
-  Continue: {
-    ar: 'متابعة',
-    es: 'Continuar',
-    fr: 'Continuer',
-    de: 'Weiter',
-    'pt-rBR': 'Continuar',
-    ja: '続行',
-    'zh-rCN': '继续',
-    it: 'Continua',
-    ru: 'Продолжить',
-  },
-  Skip: {
-    ar: 'تخطّي',
-    es: 'Omitir',
-    fr: 'Ignorer',
-    de: 'Überspringen',
-    'pt-rBR': 'Pular',
-    ja: 'スキップ',
-    'zh-rCN': '跳过',
-    it: 'Salta',
-    ru: 'Пропустить',
-  },
-  Back: {
-    ar: 'رجوع',
-    es: 'Atrás',
-    fr: 'Retour',
-    de: 'Zurück',
-    'pt-rBR': 'Voltar',
-    ja: '戻る',
-    'zh-rCN': '返回',
-    it: 'Indietro',
-    ru: 'Назад',
-  },
-  Next: {
-    ar: 'التالي',
-    es: 'Siguiente',
-    fr: 'Suivant',
-    de: 'Weiter',
-    'pt-rBR': 'Próximo',
-    ja: '次へ',
-    'zh-rCN': '下一步',
-    it: 'Avanti',
-    ru: 'Далее',
-  },
-  Previous: {
-    ar: 'السابق',
-    es: 'Anterior',
-    fr: 'Précédent',
-    de: 'Zurück',
-    'pt-rBR': 'Anterior',
-    ja: '前へ',
-    'zh-rCN': '上一步',
-    it: 'Precedente',
-    ru: 'Назад',
-  },
-  Done: {
-    ar: 'تم',
-    es: 'Listo',
-    fr: 'Terminé',
-    de: 'Fertig',
-    'pt-rBR': 'Concluído',
-    ja: '完了',
-    'zh-rCN': '完成',
-    it: 'Fatto',
-    ru: 'Готово',
-  },
-  OK: {
-    ar: 'حسناً',
-    es: 'Aceptar',
-    fr: 'OK',
-    de: 'OK',
-    'pt-rBR': 'OK',
-    ja: 'OK',
-    'zh-rCN': '确定',
-    it: 'OK',
-    ru: 'ОК',
-  },
-  Yes: {
-    ar: 'نعم',
-    es: 'Sí',
-    fr: 'Oui',
-    de: 'Ja',
-    'pt-rBR': 'Sim',
-    ja: 'はい',
-    'zh-rCN': '是',
-    it: 'Sì',
-    ru: 'Да',
-  },
-  No: {
-    ar: 'لا',
-    es: 'No',
-    fr: 'Non',
-    de: 'Nein',
-    'pt-rBR': 'Não',
-    ja: 'いいえ',
-    'zh-rCN': '否',
-    it: 'No',
-    ru: 'Нет',
-  },
-  Enable: {
-    ar: 'تفعيل',
-    es: 'Activar',
-    fr: 'Activer',
-    de: 'Aktivieren',
-    'pt-rBR': 'Ativar',
-    ja: '有効にする',
-    'zh-rCN': '启用',
-    it: 'Abilita',
-    ru: 'Включить',
-  },
-  Disable: {
-    ar: 'تعطيل',
-    es: 'Desactivar',
-    fr: 'Désactiver',
-    de: 'Deaktivieren',
-    'pt-rBR': 'Desativar',
-    ja: '無効にする',
-    'zh-rCN': '禁用',
-    it: 'Disabilita',
-    ru: 'Отключить',
-  },
-  Play: {
-    ar: 'تشغيل',
-    es: 'Reproducir',
-    fr: 'Lire',
-    de: 'Abspielen',
-    'pt-rBR': 'Reproduzir',
-    ja: '再生',
-    'zh-rCN': '播放',
-    it: 'Riproduci',
-    ru: 'Воспроизвести',
-  },
-  Pause: {
-    ar: 'إيقاف مؤقت',
-    es: 'Pausar',
-    fr: 'Pause',
-    de: 'Pause',
-    'pt-rBR': 'Pausar',
-    ja: '一時停止',
-    'zh-rCN': '暂停',
-    it: 'Pausa',
-    ru: 'Пауза',
-  },
-  Stop: {
-    ar: 'إيقاف',
-    es: 'Detener',
-    fr: 'Arrêter',
-    de: 'Stopp',
-    'pt-rBR': 'Parar',
-    ja: '停止',
-    'zh-rCN': '停止',
-    it: 'Ferma',
-    ru: 'Стоп',
-  },
-  Import: {
-    ar: 'استيراد',
-    es: 'Importar',
-    fr: 'Importer',
-    de: 'Importieren',
-    'pt-rBR': 'Importar',
-    ja: 'インポート',
-    'zh-rCN': '导入',
-    it: 'Importa',
-    ru: 'Импорт',
-  },
-  Export: {
-    ar: 'تصدير',
-    es: 'Exportar',
-    fr: 'Exporter',
-    de: 'Exportieren',
-    'pt-rBR': 'Exportar',
-    ja: 'エクスポート',
-    'zh-rCN': '导出',
-    it: 'Esporta',
-    ru: 'Экспорт',
-  },
-  Help: {
-    ar: 'مساعدة',
-    es: 'Ayuda',
-    fr: 'Aide',
-    de: 'Hilfe',
-    'pt-rBR': 'Ajuda',
-    ja: 'ヘルプ',
-    'zh-rCN': '帮助',
-    it: 'Aiuto',
-    ru: 'Справка',
-  },
-  About: {
-    ar: 'حول',
-    es: 'Acerca de',
-    fr: 'À propos',
-    de: 'Über',
-    'pt-rBR': 'Sobre',
-    ja: '情報',
-    'zh-rCN': '关于',
-    it: 'Informazioni',
-    ru: 'О приложении',
-  },
-};
+/** Every engine a suggestion can come from. 'glossary' and 'heuristic' are offline. */
+export type TranslationEngine = 'glossary' | 'heuristic' | ProviderEngineType;
 
-// Build case-insensitive index for ANDROID_LOCALIZATION_DICTIONARY
-const CASE_INSENSITIVE_GLOSSARY: Record<string, Record<string, string>> = Object.fromEntries(
-  Object.entries(ANDROID_LOCALIZATION_DICTIONARY).map(([k, v]) => [k.toLowerCase(), v])
-);
-
-// Arabic 6-form plural glossary for common Android plural patterns
-const ARABIC_PLURAL_GLOSSARY: Record<
-  string,
-  Record<'zero' | 'one' | 'two' | 'few' | 'many' | 'other', string>
-> = {
-  'You have %d unread notification': {
-    zero: 'ليس لديك أي إشعارات غير مقروءة',
-    one: 'لديك إشعار واحد (%d) غير مقروء',
-    two: 'لديك إشعاران (%d) غير مقروءين',
-    few: 'لديك %d إشعارات غير مقروءة',
-    many: 'لديك %d إشعارًا غير مقروء',
-    other: 'لديك %d إشعار غير مقروء',
-  },
-  'You have %d unread notifications': {
-    zero: 'ليس لديك أي إشعارات غير مقروءة',
-    one: 'لديك إشعار واحد (%d) غير مقروء',
-    two: 'لديك إشعاران (%d) غير مقروءين',
-    few: 'لديك %d إشعارات غير مقروءة',
-    many: 'لديك %d إشعارًا غير مقروء',
-    other: 'لديك %d إشعار غير مقروء',
-  },
-  '%d file selected': {
-    zero: 'لم يتم تحديد أي ملفات (%d)',
-    one: 'تم تحديد ملف واحد (%d)',
-    two: 'تم تحديد ملفين (%d)',
-    few: 'تم تحديد %d ملفات',
-    many: 'تم تحديد %d ملفًا',
-    other: 'تم تحديد %d ملف',
-  },
-  '%d files selected': {
-    zero: 'لم يتم تحديد أي ملفات (%d)',
-    one: 'تم تحديد ملف واحد (%d)',
-    two: 'تم تحديد ملفين (%d)',
-    few: 'تم تحديد %d ملفات',
-    many: 'تم تحديد %d ملفًا',
-    other: 'تم تحديد %d ملف',
-  },
-};
+/** Logs a fallback in development only; production users simply get the next engine. */
+function logFallback(engine: string, err: unknown): void {
+  if (import.meta.env?.DEV) {
+    console.warn(`[translator] ${engine} failed, trying next engine:`, err);
+  }
+}
 
 // Helper: Decode basic HTML entities that APIs sometimes return
 function decodeHtmlEntities(str: string): string {
@@ -900,20 +231,48 @@ export function getCustomProviders(): TranslationProviderConfig[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (p): p is TranslationProviderConfig =>
-        p && typeof p.id === 'string' && typeof p.name === 'string' && typeof p.type === 'string'
-    );
+    return parsed
+      .filter(
+        (p): p is TranslationProviderConfig =>
+          p && typeof p.id === 'string' && typeof p.name === 'string' && typeof p.type === 'string'
+      )
+      .map((p) => ({ ...p, apiKey: getSecret(p.id) ?? p.apiKey }));
   } catch {
     return [];
   }
 }
 
+/**
+ * Saves providers. When the encrypted vault is ready the API keys go to the vault and are removed from
+ * the plain JSON. Otherwise (no secure context) the keys stay in the JSON as before.
+ */
 export function saveCustomProviders(providers: TranslationProviderConfig[]): void {
   try {
-    setStoredItem(CUSTOM_PROVIDERS_STORAGE_KEY, JSON.stringify(providers));
+    const vault = isSecretVaultReady();
+    const toStore = providers.map((p) => {
+      if (!vault) return p;
+      if (p.apiKey) setSecret(p.id, p.apiKey);
+      else deleteSecret(p.id);
+      return { ...p, apiKey: undefined };
+    });
+    setStoredItem(CUSTOM_PROVIDERS_STORAGE_KEY, JSON.stringify(toStore));
   } catch (e) {
     console.error('Failed to save custom providers:', e);
+  }
+}
+
+/** Moves API keys saved in plain text by older versions into the encrypted vault. Call after initStorage. */
+export function migrateCustomProviderKeys(): void {
+  if (!isSecretVaultReady()) return;
+  try {
+    const raw = getStoredItem(CUSTOM_PROVIDERS_STORAGE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw) as Array<{ apiKey?: unknown }>;
+    if (Array.isArray(parsed) && parsed.some((p) => typeof p?.apiKey === 'string' && p.apiKey)) {
+      saveCustomProviders(getCustomProviders());
+    }
+  } catch (e) {
+    console.error('Failed to migrate provider keys:', e);
   }
 }
 
@@ -951,13 +310,6 @@ function migrateLegacyGeminiKey(): void {
   } catch (e) {
     console.error('Failed to migrate legacy Gemini API key:', e);
   }
-}
-
-/** Returns the key of the first saved Gemini provider (used as a fallback for other providers). */
-export function getGeminiApiKey(): string {
-  migrateLegacyGeminiKey();
-  const geminiProvider = getCustomProviders().find((p) => p.type === 'gemini' && p.apiKey);
-  return geminiProvider?.apiKey || '';
 }
 
 export function getAllTranslationProviders(): TranslationProviderConfig[] {
@@ -1049,6 +401,7 @@ export function removeCustomProvider(id: string): void {
   const current = getCustomProviders();
   const updated = current.filter((p) => p.id !== id);
   saveCustomProviders(updated);
+  deleteSecret(id);
   if (getActiveProviderId() === id) {
     setActiveProviderId('google');
   }
@@ -1070,11 +423,15 @@ export async function testProviderApiKey(
   folderId?: string
 ): Promise<ProviderTestResult> {
   try {
-    const res = await fetch('/api/providers/test', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ providerType, apiKey: apiKey.trim(), folderId: folderId?.trim() || undefined }),
-    });
+    const res = await fetchWithTimeout(
+      '/api/providers/test',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ providerType, apiKey: apiKey.trim(), folderId: folderId?.trim() || undefined }),
+      },
+      30000
+    );
     const data = (await res.json()) as ProviderTestResult;
     return data;
   } catch (err) {
@@ -1123,13 +480,113 @@ export function stripMetadataLabels(text: string, sourceText: string): string {
  * (Custom API Key Provider such as Gemini AI, Google Translate, or MyMemory),
  * while preserving 100% of Android syntax tokens (%s, %d, %1$s, etc.).
  */
+type SuggestionResult = { text: string; source: TranslationEngine };
+
+// ---------- Translation cache ----------
+// Repeated strings (and re-opening a project) do not send the same request again. Keys include a hash
+// of the provider key, so changing a key starts a fresh cache for that provider. Heuristic fallbacks are
+// never cached, so they are retried later.
+const TRANSLATION_CACHE_KEY = 'translation_cache_v1';
+const TRANSLATION_CACHE_LIMIT = 5000;
+let translationCache: Map<string, SuggestionResult> | null = null;
+
+function getTranslationCache(): Map<string, SuggestionResult> {
+  if (!translationCache) {
+    translationCache = new Map();
+    try {
+      const raw = getStoredItem(TRANSLATION_CACHE_KEY);
+      if (raw) {
+        for (const [k, v] of JSON.parse(raw) as Array<[string, SuggestionResult]>) translationCache.set(k, v);
+      }
+    } catch {
+      // A corrupt cache is simply discarded
+    }
+  }
+  return translationCache;
+}
+
+function hashString(value: string): string {
+  let h = 5381;
+  for (let i = 0; i < value.length; i++) h = ((h << 5) + h + value.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+
+function cacheKeyFor(segment: string, directLang: string, pluralQuantity: string | undefined): string {
+  const provider = getActiveProvider();
+  const providerSignature = `${provider.id}:${provider.type}:${hashString(provider.apiKey || '')}:${provider.folderId || ''}`;
+  return [providerSignature, directLang, pluralQuantity || '', segment].join('\u0001');
+}
+
+function cachedSegmentLookup(key: string): SuggestionResult | undefined {
+  const cache = getTranslationCache();
+  const hit = cache.get(key);
+  if (hit) {
+    // Move to the end so the least recently used entries are evicted first
+    cache.delete(key);
+    cache.set(key, hit);
+  }
+  return hit;
+}
+
+function cacheSegmentResult(key: string, result: SuggestionResult): void {
+  if (result.source === 'heuristic') return;
+  const cache = getTranslationCache();
+  cache.delete(key);
+  cache.set(key, result);
+  if (cache.size > TRANSLATION_CACHE_LIMIT) {
+    cache.delete(cache.keys().next().value as string);
+  }
+  scheduleStoredWrite(TRANSLATION_CACHE_KEY, () => JSON.stringify([...cache.entries()]), 1500);
+}
+
+const ENGINE_LABELS: Record<string, string> = {
+  google: 'Google',
+  gemini: 'Gemini',
+  mymemory: 'MyMemory',
+  yandex: 'Yandex',
+  lara: 'Lara',
+  deepl: 'DeepL',
+  openai: 'OpenAI',
+  google_cloud: 'Google Cloud',
+  microsoft: 'Microsoft',
+  glossary: 'Glossary',
+  heuristic: 'Heuristic',
+};
+
+/** Human-readable name of the engine that produced a suggestion. */
+export function engineLabel(engine: string | undefined): string {
+  if (!engine) return '';
+  return ENGINE_LABELS[engine] ?? engine;
+}
+
+/** Clears saved suggestions (for example after the user changes the translation provider). */
+export function clearTranslationCache(): void {
+  translationCache = new Map();
+  scheduleStoredWrite(TRANSLATION_CACHE_KEY, () => '[]', 0);
+}
+
 async function translateSingleSegment(
   segment: string,
   baseLang: string,
   directLang: string,
   targetLocaleName?: string,
   pluralQuantity?: 'zero' | 'one' | 'two' | 'few' | 'many' | 'other'
-): Promise<{ text: string; source: 'glossary' | 'mymemory' | 'heuristic' }> {
+): Promise<SuggestionResult> {
+  const key = cacheKeyFor(segment, directLang, pluralQuantity);
+  const cached = cachedSegmentLookup(key);
+  if (cached) return cached;
+  const result = await translateSingleSegmentUncached(segment, baseLang, directLang, targetLocaleName, pluralQuantity);
+  cacheSegmentResult(key, result);
+  return result;
+}
+
+async function translateSingleSegmentUncached(
+  segment: string,
+  baseLang: string,
+  directLang: string,
+  targetLocaleName?: string,
+  pluralQuantity?: 'zero' | 'one' | 'two' | 'few' | 'many' | 'other'
+): Promise<SuggestionResult> {
   const leadingMatch = segment.match(/^[ \t]+/);
   const trailingMatch = segment.match(/[ \t]+$/);
   const leadingSpace = leadingMatch ? leadingMatch[0] : '';
@@ -1213,19 +670,23 @@ async function translateSingleSegment(
       return null;
     }
     try {
-      const pRes = await fetch('/api/providers/translate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          providerType: activeProvider.type,
-          apiKey: activeProvider.apiKey,
-          folderId: activeProvider.folderId,
-          sourceText: coreText,
-          targetLang: directLang,
-          targetLocaleName,
-          pluralQuantity,
-        }),
-      });
+      const pRes = await fetchWithTimeout(
+        '/api/providers/translate',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            providerType: activeProvider.type,
+            apiKey: activeProvider.apiKey,
+            folderId: activeProvider.folderId,
+            sourceText: coreText,
+            targetLang: directLang,
+            targetLocaleName,
+            pluralQuantity,
+          }),
+        },
+        25000
+      );
       if (pRes.ok) {
         const pData = (await pRes.json()) as { translatedText?: string };
         if (pData && typeof pData.translatedText === 'string' && pData.translatedText.trim()) {
@@ -1235,21 +696,17 @@ async function translateSingleSegment(
           }
         }
       }
-    } catch {
-      // Fallback if provider request fails
+    } catch (err) {
+      logFallback('custom provider', err);
     }
     return null;
   };
 
   // Gemini AI (added as an API key provider): called straight from this browser with the user's own key (never via our server).
   const tryGeminiDirect = async (): Promise<string | null> => {
-    // Only ever use a Gemini key here. Another provider's key (DeepL, OpenAI, ...) must never be sent to Google.
-    const userGeminiKey =
-      (activeProvider.type === 'gemini' && activeProvider.apiKey) || getGeminiApiKey();
-    if (!userGeminiKey) {
-      // No Gemini key yet: skip Gemini and fall back to Google Translate
-      return null;
-    }
+    // Only the selected Gemini provider's key is used, and only for Gemini. Other keys never go to Google.
+    const userGeminiKey = activeProvider.type === 'gemini' ? activeProvider.apiKey : undefined;
+    if (!userGeminiKey) return null;
 
     try {
       const translated = await geminiTranslateDirect({
@@ -1263,46 +720,22 @@ async function translateSingleSegment(
       if (cleanedAi && !isPollutedTranslation(cleanedAi)) {
         return restoreSegmentSyntax(cleanedAi, tokens, usesEscapedDoubleQuotes);
       }
-    } catch {
-      // Fallback
+    } catch (err) {
+      logFallback('gemini', err);
     }
     return null;
   };
 
-  // Helper for Google Translate GTX neural endpoint
+  // Helper for Google Translate GTX neural endpoint (unofficial; shared with the server)
   const tryGoogleGtx = async (): Promise<string | null> => {
     try {
-      const googleLang =
-        directLang === 'zh-rcn'
-          ? 'zh-CN'
-          : directLang === 'zh-rtw'
-            ? 'zh-TW'
-            : directLang === 'pt-rbr'
-              ? 'pt-BR'
-              : baseLang;
-      const gtxUrl = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=${encodeURIComponent(
-        googleLang
-      )}&dt=t&q=${encodeURIComponent(cleanText)}`;
-
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-      const gtxRes = await fetch(gtxUrl, { signal: controller.signal });
-      clearTimeout(timeoutId);
-
-      if (gtxRes.ok) {
-        const gtxData = await gtxRes.json();
-        if (Array.isArray(gtxData) && Array.isArray(gtxData[0])) {
-          const combined = gtxData[0]
-            .map((chunk: unknown) => (Array.isArray(chunk) && typeof chunk[0] === 'string' ? chunk[0] : ''))
-            .join('');
-          const decoded = stripMetadataLabels(decodeHtmlEntities(combined), coreText);
-          if (decoded && !isPollutedTranslation(decoded)) {
-            return restoreSegmentSyntax(decoded, tokens, usesEscapedDoubleQuotes);
-          }
-        }
+      const combined = await fetchGoogleGtxRaw(cleanText, directLang, 5000);
+      const decoded = stripMetadataLabels(decodeHtmlEntities(combined), coreText);
+      if (decoded && !isPollutedTranslation(decoded)) {
+        return restoreSegmentSyntax(decoded, tokens, usesEscapedDoubleQuotes);
       }
-    } catch {
-      // Fallback
+    } catch (err) {
+      logFallback('google', err);
     }
     return null;
   };
@@ -1361,28 +794,40 @@ async function translateSingleSegment(
     return null;
   };
 
-  // Order of execution based on the user's selected Translation Provider
-  const strategies: Array<() => Promise<string | null>> = [];
-
-  if (!activeProvider.isBuiltIn && activeProvider.type === 'gemini') {
-    // Gemini API key provider: handled directly in the browser
-    strategies.push(tryGeminiDirect, tryGoogleGtx, tryMyMemory);
-  } else if (!activeProvider.isBuiltIn) {
-    strategies.push(tryCustomProvider, tryGeminiDirect, tryGoogleGtx, tryMyMemory);
-  } else if (activeProvider.type === 'google') {
-    strategies.push(tryGoogleGtx, tryGeminiDirect, tryMyMemory);
+  // Engine chain for the selected provider. The primary engine runs first. Only if it fails do the
+  // fallbacks run, in parallel, and the highest-priority success wins. Gemini is used only when it is the
+  // selected provider, so other providers' suggestions never call it.
+  type Strategy = { engine: TranslationEngine; run: () => Promise<string | null> };
+  let strategies: Strategy[];
+  if (!activeProvider.isBuiltIn) {
+    strategies =
+      activeProvider.type === 'gemini'
+        ? [{ engine: 'gemini', run: tryGeminiDirect }, { engine: 'google', run: tryGoogleGtx }, { engine: 'mymemory', run: tryMyMemory }]
+        : [
+            { engine: activeProvider.type, run: tryCustomProvider },
+            { engine: 'google', run: tryGoogleGtx },
+            { engine: 'mymemory', run: tryMyMemory },
+          ];
   } else if (activeProvider.type === 'mymemory') {
-    strategies.push(tryMyMemory, tryGoogleGtx, tryGeminiDirect);
+    strategies = [{ engine: 'mymemory', run: tryMyMemory }, { engine: 'google', run: tryGoogleGtx }];
   } else {
-    // Default: Google Translate first
-    strategies.push(tryGoogleGtx, tryGeminiDirect, tryMyMemory);
+    strategies = [{ engine: 'google', run: tryGoogleGtx }, { engine: 'mymemory', run: tryMyMemory }];
   }
 
-  for (const runStrategy of strategies) {
-    const resText = await runStrategy();
-    if (resText) {
-      return { text: wrapResult(resText), source: 'mymemory' };
-    }
+  const primary = strategies[0];
+  const primaryResult = await primary.run().catch(() => null);
+  if (primaryResult) {
+    return { text: wrapResult(primaryResult), source: primary.engine };
+  }
+  const fallbacks = await Promise.all(
+    strategies.slice(1).map(async (strategy) => ({
+      engine: strategy.engine,
+      text: await strategy.run().catch(() => null),
+    }))
+  );
+  const winner = fallbacks.find((f): f is { engine: TranslationEngine; text: string } => Boolean(f.text));
+  if (winner) {
+    return { text: wrapResult(winner.text), source: winner.engine };
   }
 
   // Fallback check in glossary if custom provider failed offline
@@ -1406,7 +851,7 @@ export async function suggestTranslation(
   targetLang: string,
   targetLocaleName?: string,
   pluralQuantity?: 'zero' | 'one' | 'two' | 'few' | 'many' | 'other'
-): Promise<{ text: string; source: 'glossary' | 'mymemory' | 'heuristic' }> {
+): Promise<SuggestionResult> {
   if (!sourceText || !sourceText.trim()) {
     return { text: '', source: 'glossary' };
   }
@@ -1422,7 +867,7 @@ export async function suggestTranslation(
     return translateSingleSegment(sourceText, baseLang, directLang, targetLocaleName, pluralQuantity);
   }
 
-  let overallSource: 'glossary' | 'mymemory' | 'heuristic' = 'glossary';
+  let overallSource: TranslationEngine = 'glossary';
   const translatedParts = await Promise.all(
     parts.map(async (part) => {
       if (!part) return part;
@@ -1432,7 +877,7 @@ export async function suggestTranslation(
       }
       separatorRegex.lastIndex = 0;
       const res = await translateSingleSegment(part, baseLang, directLang, targetLocaleName, pluralQuantity);
-      if (res.source === 'mymemory') overallSource = 'mymemory';
+      if (res.source !== 'glossary' && res.source !== 'heuristic') overallSource = res.source;
       return res.text;
     })
   );
@@ -1471,14 +916,17 @@ export async function bulkTranslateItems(
         target: targetText,
         status: hasTranslation ? 'translated' : 'untranslated',
         translationSource: hasTranslation ? 'ai' : undefined,
+        translationEngine: hasTranslation ? res?.source : undefined,
       };
     }
 
     if (item.type === 'plural') {
       const plural = item as PluralStringItem;
+      let engineUsed: TranslationEngine | undefined;
       const updatedQuantities = await Promise.all(
         plural.items.map(async (pi) => {
           const res = await suggestTranslation(pi.source, targetLang, targetLocaleName, pi.quantity);
+          engineUsed = engineUsed ?? res?.source;
           return {
             ...pi,
             target: res?.text || pi.target,
@@ -1491,14 +939,17 @@ export async function bulkTranslateItems(
         items: updatedQuantities,
         status: anyFilled ? 'translated' : 'untranslated',
         translationSource: anyFilled ? 'ai' : undefined,
+        translationEngine: anyFilled ? engineUsed : undefined,
       };
     }
 
     if (item.type === 'array') {
       const arr = item as ArrayStringItem;
+      let engineUsed: TranslationEngine | undefined;
       const updatedElements = await Promise.all(
         arr.items.map(async (ai) => {
           const res = await suggestTranslation(ai.source, targetLang, targetLocaleName);
+          engineUsed = engineUsed ?? res?.source;
           return {
             ...ai,
             target: res?.text || ai.target,
@@ -1511,6 +962,7 @@ export async function bulkTranslateItems(
         items: updatedElements,
         status: anyFilled ? 'translated' : 'untranslated',
         translationSource: anyFilled ? 'ai' : undefined,
+        translationEngine: anyFilled ? engineUsed : undefined,
       };
     }
 

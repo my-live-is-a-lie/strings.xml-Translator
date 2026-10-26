@@ -20,7 +20,7 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { ResourceItem, FilterStatus, SourceFilter, SingleStringItem, PluralStringItem, ArrayStringItem } from '../types';
-import { bulkTranslateItems } from '../utils/translator';
+import { bulkTranslateItems, engineLabel } from '../utils/translator';
 import { filterProjectItems } from '../utils/xmlExporter';
 import { analyzeProjectQa } from '../utils/placeholderCheck';
 
@@ -745,9 +745,9 @@ export const StringList: React.FC<StringListProps> = ({
                           }`}
                           title={
                             item.translationSource === 'ai'
-                              ? isAr
-                                ? 'مترجم بالذكاء الاصطناعي'
-                                : 'Translated with AI'
+                              ? `${isAr ? 'مترجم بالذكاء الاصطناعي' : 'Translated with AI'}${
+                                  item.translationEngine ? ` (${engineLabel(item.translationEngine)})` : ''
+                                }`
                               : isAr
                                 ? 'إدخال يدوي'
                                 : 'Manual input'

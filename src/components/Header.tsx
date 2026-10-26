@@ -38,6 +38,7 @@ import { analyzeProjectQa } from '../utils/placeholderCheck';
 import { getArabicLanguageName } from '../utils/languages';
 import { getStoredItem, setStoredItem } from '../utils/storage';
 import { applyAppTheme, getInitialAppTheme, AppTheme } from '../utils/theme';
+import { APP_LANGUAGES, THEME_OPTIONS, ENGINE_OPTIONS } from './headerOptions';
 import { testGeminiKeyDirect } from '../utils/geminiDirect';
 import { PWAInstallButton } from './PWAInstallButton';
 import { OfflineBadge } from './OfflineBadge';
@@ -66,30 +67,6 @@ const ACCENT_COLORS = [
 ] as const;
 
 type AccentColorId = (typeof ACCENT_COLORS)[number]['id'];
-
-const APP_LANGUAGES = [
-  { code: 'ar' as const, label: 'العربية' },
-  { code: 'en' as const, label: 'English' },
-];
-
-export type { AppTheme };
-
-const THEME_OPTIONS: Array<{ id: AppTheme; label: string; labelAr: string }> = [
-  { id: 'day', label: 'Day', labelAr: 'نهار' },
-  { id: 'night', label: 'Night', labelAr: 'ليل' },
-  { id: 'black_hole', label: 'Black Hole', labelAr: 'ثقب أسود' },
-];
-
-const ENGINE_OPTIONS: Array<{ value: string; nameEn: string; nameAr: string; labelAr: string; labelEn: string }> = [
-  { value: 'auto', nameEn: '', nameAr: '', labelAr: 'تعرف تلقائي على المزود', labelEn: 'Auto-Detect Provider' },
-  { value: 'gemini', nameEn: 'Gemini AI', nameAr: 'ذكاء Gemini الاصطناعي', labelAr: 'ذكاء Gemini (Google)', labelEn: 'Gemini AI (Google)' },
-  { value: 'lara', nameEn: 'Lara Translate', nameAr: 'ترجمة Lara الذكية', labelAr: 'ترجمة Lara الذكية', labelEn: 'Lara Translate AI (Translated)' },
-  { value: 'yandex', nameEn: 'Yandex AI', nameAr: 'ترجمة Yandex الذكية', labelAr: 'ترجمة Yandex الذكية', labelEn: 'Yandex AI / Translate' },
-  { value: 'deepl', nameEn: 'DeepL API', nameAr: 'ترجمة DeepL', labelAr: 'محرك DeepL للترجمة', labelEn: 'DeepL API' },
-  { value: 'openai', nameEn: 'OpenAI GPT', nameAr: 'ذكاء OpenAI GPT', labelAr: 'ذكاء OpenAI (GPT)', labelEn: 'OpenAI (GPT)' },
-  { value: 'google_cloud', nameEn: 'Google Cloud Translate', nameAr: 'ترجمة Google السحابية', labelAr: 'ترجمة Google السحابية', labelEn: 'Google Cloud Translation' },
-  { value: 'microsoft', nameEn: 'Microsoft Translator', nameAr: 'مترجم Microsoft', labelAr: 'مترجم Microsoft Azure', labelEn: 'Microsoft Azure Translator' },
-];
 
 interface HeaderProps {
   project: TranslationProject;
@@ -1471,6 +1448,13 @@ export const Header: React.FC<HeaderProps> = ({
                               />
                             </div>
                           )}
+
+                          {/* Where the key is kept; the user should restrict it in the provider's console */}
+                          <p className="text-[10px] leading-snug text-slate-500 dark:text-slate-400">
+                            {isAr
+                              ? 'تُحفظ المفاتيح مشفّرة على هذا الجهاز فقط، ولا تُرسل إلا إلى المزود الذي تختاره. ينصح بتقييد المفتاح من لوحة تحكم المزود.'
+                              : 'Keys are encrypted on this device and sent only to the provider you choose. Restrict the key in your provider console.'}
+                          </p>
 
                           {/* Yandex Cloud folder ID: needed with an IAM token (personal account) */}
                           {(inferEngineFromName(newProviderName, newProviderEngine) === 'yandex' ||

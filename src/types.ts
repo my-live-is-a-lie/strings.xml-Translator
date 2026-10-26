@@ -13,6 +13,7 @@ export interface BaseResourceItem {
   formatted?: boolean; // formatted="false"
   order: number;
   translationSource?: 'ai' | 'manual'; // Tracks whether translated via AI/provider or manual input
+  translationEngine?: string; // Which engine produced an AI suggestion (e.g. 'google', 'gemini', 'deepl')
 }
 
 export interface SingleStringItem extends BaseResourceItem {

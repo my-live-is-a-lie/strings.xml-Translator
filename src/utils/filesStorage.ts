@@ -1,5 +1,5 @@
 import { StoredXmlFile, TranslationProject, ResourceItem } from '../types';
-import { getStoredItem, setStoredItem } from './storage';
+import { getStoredItem, setStoredItem, scheduleStoredWrite } from './storage';
 
 const SAVED_FILES_STORAGE_KEY = 'android_strings_saved_xml_files_v1';
 const ACTIVE_FILE_STORAGE_KEY = 'android_strings_active_file_id_v1';
@@ -106,7 +106,8 @@ export function getStoredFiles(): StoredXmlFile[] {
  */
 export function saveStoredFiles(files: StoredXmlFile[]): void {
   try {
-    setStoredItem(SAVED_FILES_STORAGE_KEY, JSON.stringify(files));
+    // Debounced: a burst of edits serializes the whole file list once
+    scheduleStoredWrite(SAVED_FILES_STORAGE_KEY, () => JSON.stringify(files));
   } catch (err) {
     console.error('Failed to persist stored XML files:', err);
   }

@@ -2,6 +2,8 @@ import React, { Component, ReactNode, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import { initStorage } from './utils/storage';
+import { migrateCustomProviderKeys } from './utils/translator';
 
 if (typeof window !== 'undefined') {
   window.addEventListener(
@@ -58,10 +60,19 @@ class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorBoundary
   }
 }
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <AppErrorBoundary>
-      <App />
-    </AppErrorBoundary>
-  </StrictMode>,
-);
+// Load saved data (IndexedDB) and decrypt API keys before the first render, so every
+// synchronous getter sees the stored values. Give up after 3 s and continue with localStorage.
+const storageReady = Promise.race([
+  initStorage(),
+  new Promise<void>((resolve) => setTimeout(resolve, 3000)),
+]).then(() => migrateCustomProviderKeys());
+
+storageReady.finally(() => {
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <AppErrorBoundary>
+        <App />
+      </AppErrorBoundary>
+    </StrictMode>,
+  );
+});

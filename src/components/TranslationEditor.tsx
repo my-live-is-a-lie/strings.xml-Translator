@@ -1014,6 +1014,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             target: res.text,
             status: isNowEmpty ? 'untranslated' : 'translated',
             translationSource: isNowEmpty ? undefined : 'ai',
+            translationEngine: isNowEmpty ? undefined : res.source,
           };
           updateDraftItem(updated, { undoDeletesText: true });
         }
@@ -1097,6 +1098,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               target: res.text,
               status: 'translated',
               translationSource: 'ai',
+              translationEngine: res.source,
             };
             completed = true;
             updateDraftItem(updated, { undoDeletesText: true });

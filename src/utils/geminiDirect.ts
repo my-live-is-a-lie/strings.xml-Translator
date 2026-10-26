@@ -1,20 +1,10 @@
 // Calls the Gemini API straight from the browser with the user's own key.
 // The key goes from this browser to Google only; it never passes through this app's server.
-// (Same wording as SYSTEM_INSTRUCTION in server.ts, which other providers still use.)
 import type { ProviderTestResult } from './translator';
+import { SYSTEM_INSTRUCTION, fetchWithTimeout } from '../shared/translateCore';
 
 export const GEMINI_MODEL = 'gemini-2.5-flash';
-
-const GEMINI_SYSTEM_INSTRUCTION = `You are an expert Android strings.xml localization engine.
-Follow these strict rules for every translation:
-1. Return ONLY the final translated string text. Do NOT include any metadata labels, prefixes, explanations, notes, or bracketed tags such as "[ترجمة المصطلح: ...]", "[ترجمة: ...]", "[Translation: ...]", or markdown code fences.
-2. Strictly preserve all original formatting and Android syntax tokens in their exact form:
-   - Printf format specifiers (e.g., %s, %d, %1$s, %2$d, %1$.1f, %%)
-   - Escape sequences (e.g., \\n, \\\\n, \\t, \\', \\")
-   - Inline HTML/XML tags (e.g., <b>, </b>, <i>, <u>, <xliff:g>)
-   - Resource references (e.g., @string/..., @plurals/...) and ICU placeholders (e.g., {0}, {count})
-3. Use natural, concise mobile UI terminology appropriate for Android applications (for example, translate "Install" to "تثبيت" in Arabic).
-4. Preserve leading or trailing whitespace and outer quotes only if they exist in the source string.`;
+const GEMINI_TIMEOUT_MS = 15000;
 
 export async function geminiTranslateDirect(opts: {
   apiKey: string;
@@ -34,7 +24,7 @@ Return ONLY the translated text without any metadata labels (never output "[تر
 Source string:
 ${sourceText}`;
 
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
     {
       method: 'POST',
@@ -43,20 +33,26 @@ ${sourceText}`;
         'x-goog-api-key': apiKey.trim(),
       },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: GEMINI_SYSTEM_INSTRUCTION }] },
+        systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: { temperature: 0.1 },
       }),
-    }
+    },
+    GEMINI_TIMEOUT_MS
   );
 
   if (!res.ok) {
-    let message = `Gemini API HTTP ${res.status}`;
+    let message =
+      res.status === 401 || res.status === 403
+        ? `Gemini: المفتاح غير صالح أو غير مفعّل / Invalid or disabled key (HTTP ${res.status})`
+        : res.status === 429
+          ? 'Gemini: تجاوزت حد الطلبات، حاول لاحقاً / Rate limit reached (HTTP 429)'
+          : `Gemini: فشل الطلب / Request failed (HTTP ${res.status})`;
     try {
       const body = (await res.json()) as { error?: { message?: string } };
-      if (body?.error?.message) message = body.error.message;
+      if (body?.error?.message) message = `Gemini: ${body.error.message}`;
     } catch {
-      // keep the generic message
+      // Keep the generic message
     }
     throw new Error(message);
   }
@@ -68,7 +64,7 @@ ${sourceText}`;
     .map((p) => p.text || '')
     .join('')
     .trim();
-  if (!text) throw new Error('Gemini API returned an empty translation response');
+  if (!text) throw new Error('Gemini: استجابة فارغة / Empty translation response');
   return text;
 }
 
@@ -90,7 +86,7 @@ export async function testGeminiKeyDirect(apiKey: string): Promise<ProviderTestR
       success: false,
       matched: false,
       error: network
-        ? `Could not reach the Gemini API from this browser (${raw}). Check your connection or content blockers.`
+        ? `تعذّر الوصول إلى Gemini من هذا المتصفح (${raw}). تحقق من الاتصال أو من مانع الإعلانات. / Could not reach the Gemini API from this browser.`
         : raw,
     };
   }

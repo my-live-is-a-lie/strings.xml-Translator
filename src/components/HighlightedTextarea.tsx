@@ -648,6 +648,7 @@ export const HighlightedTextarea = forwardRef<HTMLTextAreaElement, HighlightedTe
       const onPointerUp = (upEvent: PointerEvent) => {
         window.removeEventListener('pointermove', onPointerMove);
         window.removeEventListener('pointerup', onPointerUp);
+        window.removeEventListener('pointercancel', onPointerUp);
         setIsDragging(false);
         lastDragEndTimeRef.current = Date.now();
 
@@ -706,6 +707,8 @@ export const HighlightedTextarea = forwardRef<HTMLTextAreaElement, HighlightedTe
 
       window.addEventListener('pointermove', onPointerMove);
       window.addEventListener('pointerup', onPointerUp);
+      // A cancelled pointer (e.g. the browser takes over the gesture) must end the drag too
+      window.addEventListener('pointercancel', onPointerUp);
     };
 
     const effectiveTextareaClass = isExpanded
