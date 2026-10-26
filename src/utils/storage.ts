@@ -1,3 +1,4 @@
+import { debugIgnored } from './debug';
 // Persistent storage with three layers:
 //  1. An in-memory cache, which is what synchronous getters read.
 //  2. IndexedDB, which stores project data (no ~5 MB localStorage limit). Writes are debounced.
@@ -127,8 +128,8 @@ export function initStorage(): Promise<void> {
             legacyKeys.push(key);
           }
         }
-      } catch {
-        // localStorage can be blocked in sandboxed frames
+      } catch (err) {
+        debugIgnored('storage', err);
       }
       for (const key of legacyKeys) void persistKv(key, memoryStore.get(key)!);
 
@@ -158,8 +159,8 @@ async function persistKv(key: string, value: string): Promise<void> {
   }
   try {
     window.localStorage?.setItem(key, value);
-  } catch {
-    // Quota exceeded or storage blocked; the in-memory value still works for this session
+  } catch (err) {
+    debugIgnored('storage', err);
   }
 }
 
@@ -223,8 +224,8 @@ export function getStoredItem(key: string): string | null {
       const val = window.localStorage.getItem(key);
       if (val !== null) return val;
     }
-  } catch {
-    // Storage blocked; nothing else to read
+  } catch (err) {
+    debugIgnored('storage', err);
   }
   return null;
 }
@@ -235,8 +236,8 @@ export function setStoredItem(key: string, value: string): void {
   if (key.startsWith(APP_PREFIX)) {
     try {
       window.localStorage?.setItem(key, value);
-    } catch {
-      // Ignore; memory copy is still current
+    } catch (err) {
+      debugIgnored('storage', err);
     }
     return;
   }
@@ -248,8 +249,8 @@ export function removeStoredItem(key: string): void {
   memoryStore.delete(key);
   try {
     getSafeLocalStorage()?.removeItem(key);
-  } catch {
-    // Ignore
+  } catch (err) {
+    debugIgnored('storage', err);
   }
   void idbDelete(KV_STORE, key).catch(() => undefined);
 }
@@ -340,8 +341,8 @@ export async function copyTextToClipboard(text: string): Promise<boolean> {
       await navigator.clipboard.writeText(text);
       return true;
     }
-  } catch {
-    // Fall back to the textarea copy below
+  } catch (err) {
+    debugIgnored('storage', err);
   }
 
   try {
@@ -371,8 +372,8 @@ export async function readTextFromClipboard(): Promise<string | null> {
         return text;
       }
     }
-  } catch {
-    // Fall back to the in-memory copy if clipboard read permission is denied
+  } catch (err) {
+    debugIgnored('storage', err);
   }
   return lastCopiedClipboardText || null;
 }
@@ -430,7 +431,7 @@ function updateRecentProjectsList(meta: ProjectMetadata): void {
     const list = getRecentProjects().filter((p) => p.id !== meta.id);
     list.unshift(meta);
     setStoredItem(RECENT_PROJECTS_KEY, JSON.stringify(list.slice(0, 5)));
-  } catch {
-    // Ignore storage issues
+  } catch (err) {
+    debugIgnored('storage', err);
   }
 }

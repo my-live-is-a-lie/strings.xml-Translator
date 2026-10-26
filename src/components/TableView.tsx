@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { ResourceItem, FilterStatus, SourceFilter, SingleStringItem, PluralStringItem, ArrayStringItem } from '../types';
+import React, { useState, useMemo } from 'react';
+import { ResourceItem, FilterStatus, SourceFilter, SingleStringItem } from '../types';
 import { Search, CheckCircle2, Circle, AlertCircle, Edit3, Check, Sparkles, CheckSquare, Square, Loader2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp } from 'lucide-react';
 import { bulkTranslateItems } from '../utils/translator';
 import { filterProjectItems } from '../utils/xmlExporter';
@@ -21,7 +21,8 @@ interface TableViewProps {
   sourceFilter?: SourceFilter;
 }
 
-export const TableView: React.FC<TableViewProps> = ({
+// Wrapped with React.memo below: re-renders only when its props change
+const TableViewBase: React.FC<TableViewProps> = ({
   items,
   onSelectString,
   onUpdateTranslation,
@@ -29,7 +30,7 @@ export const TableView: React.FC<TableViewProps> = ({
   targetLocaleName,
   appLang = 'ar',
   onBulkUpdateTranslations,
-  onResetItemHistory,
+  onResetItemHistory: _onResetItemHistory,
   filterStatus: controlledFilter,
   onFilterChange,
   searchQuery: controlledSearch,
@@ -51,9 +52,6 @@ export const TableView: React.FC<TableViewProps> = ({
     else setLocalSearch(q);
   };
 
-  useEffect(() => {
-    setEditingId(null);
-  }, [search]);
 
   const filter = controlledFilter !== undefined ? controlledFilter : localFilter;
   const setFilter = (st: FilterStatus) => {
@@ -68,10 +66,14 @@ export const TableView: React.FC<TableViewProps> = ({
 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<number>(50);
-
-  useEffect(() => {
+  // Going back to page 1 and closing the editor when the search or filters change (during render)
+  const viewKey = `${search}|${filter}|${sourceFilter}`;
+  const [lastViewKey, setLastViewKey] = useState(viewKey);
+  if (lastViewKey !== viewKey) {
+    setLastViewKey(viewKey);
     setPage(1);
-  }, [search, filter, sourceFilter]);
+    setEditingId(null);
+  }
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -750,3 +752,5 @@ export const TableView: React.FC<TableViewProps> = ({
     </div>
   );
 };
+
+export const TableView = React.memo(TableViewBase);

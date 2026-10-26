@@ -1,5 +1,6 @@
-import { StoredXmlFile, TranslationProject, ResourceItem } from '../types';
-import { getStoredItem, setStoredItem, scheduleStoredWrite } from './storage';
+import { debugIgnored } from './debug';
+import { StoredXmlFile, ResourceItem } from '../types';
+import { getStoredItem, setStoredItem, removeStoredItem, scheduleStoredWrite } from './storage';
 
 const SAVED_FILES_STORAGE_KEY = 'android_strings_saved_xml_files_v1';
 const ACTIVE_FILE_STORAGE_KEY = 'android_strings_active_file_id_v1';
@@ -75,6 +76,13 @@ export function hasItemsChanged(current: ResourceItem[], original: ResourceItem[
   return false;
 }
 
+// Each saved file is split in two: a small metadata entry in the list, and a "body" entry (project,
+// original items, raw XML) under its own key. Bodies are rewritten only when they change, so editing one
+// file no longer re-serializes every file.
+const FILE_BODY_PREFIX = 'android_strings_file_body_v1:';
+type FileBody = Pick<StoredXmlFile, 'project' | 'originalItems' | 'originalRawXml'>;
+const lastSavedBodies = new Map<string, FileBody>();
+
 /**
  * Retrieve all saved XML files from local storage
  */
@@ -83,18 +91,24 @@ export function getStoredFiles(): StoredXmlFile[] {
     const raw = getStoredItem(SAVED_FILES_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) {
-      return parsed.map((f: StoredXmlFile) => {
-        if (!f.appName) {
-          const appName = extractAppNameFromItems(f.originalItems) || extractAppNameFromItems(f.project?.items);
-          if (appName) {
-            return { ...f, appName };
-          }
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((entry: Partial<StoredXmlFile>) => {
+      // Entries saved by older versions already include their body inline
+      let file = entry as StoredXmlFile;
+      if (!entry.project) {
+        const bodyRaw = entry.id ? getStoredItem(FILE_BODY_PREFIX + entry.id) : null;
+        if (bodyRaw) {
+          const body = JSON.parse(bodyRaw) as FileBody;
+          file = { ...entry, ...body } as StoredXmlFile;
+          lastSavedBodies.set(entry.id as string, body);
         }
-        return f;
-      });
-    }
-    return [];
+      }
+      if (!file.appName) {
+        const appName = extractAppNameFromItems(file.originalItems) || extractAppNameFromItems(file.project?.items);
+        if (appName) return { ...file, appName };
+      }
+      return file;
+    });
   } catch (err) {
     console.error('Failed to parse stored XML files:', err);
     return [];
@@ -102,12 +116,38 @@ export function getStoredFiles(): StoredXmlFile[] {
 }
 
 /**
- * Persist all saved XML files to local storage
+ * Persist all saved XML files: the list (metadata only), plus the body of each file that changed.
  */
 export function saveStoredFiles(files: StoredXmlFile[]): void {
   try {
-    // Debounced: a burst of edits serializes the whole file list once
-    scheduleStoredWrite(SAVED_FILES_STORAGE_KEY, () => JSON.stringify(files));
+    const meta = files.map((f) => {
+      const { project, originalItems, originalRawXml, ...rest } = f;
+      void project;
+      void originalItems;
+      void originalRawXml;
+      return rest;
+    });
+    scheduleStoredWrite(SAVED_FILES_STORAGE_KEY, () => JSON.stringify(meta));
+
+    const currentIds = new Set<string>();
+    for (const f of files) {
+      currentIds.add(f.id);
+      const last = lastSavedBodies.get(f.id);
+      if (last && last.project === f.project && last.originalItems === f.originalItems && last.originalRawXml === f.originalRawXml) {
+        continue; // unchanged since the last save
+      }
+      const body: FileBody = { project: f.project, originalItems: f.originalItems, originalRawXml: f.originalRawXml };
+      lastSavedBodies.set(f.id, body);
+      scheduleStoredWrite(FILE_BODY_PREFIX + f.id, () => JSON.stringify(body));
+    }
+
+    // Drop bodies of files that were removed
+    for (const id of [...lastSavedBodies.keys()]) {
+      if (!currentIds.has(id)) {
+        lastSavedBodies.delete(id);
+        removeStoredItem(FILE_BODY_PREFIX + id);
+      }
+    }
   } catch (err) {
     console.error('Failed to persist stored XML files:', err);
   }
@@ -130,8 +170,8 @@ export function getActiveFileId(): string | null {
 export function setActiveFileId(id: string): void {
   try {
     setStoredItem(ACTIVE_FILE_STORAGE_KEY, id);
-  } catch {
-    // Ignore
+  } catch (err) {
+    debugIgnored('filesStorage', err);
   }
 }
 

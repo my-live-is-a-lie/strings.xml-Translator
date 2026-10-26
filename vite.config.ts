@@ -4,9 +4,32 @@ import path from 'path';
 import {defineConfig} from 'vite';
 import {VitePWA} from 'vite-plugin-pwa';
 
+// The CSP <meta> is only for production builds: the dev server injects inline scripts (React refresh).
+const apiBaseOrigin = (() => {
+  try {
+    return process.env.VITE_API_BASE ? new URL(process.env.VITE_API_BASE).origin : '';
+  } catch {
+    return '';
+  }
+})();
+
+const cspPlugin = {
+  name: 'csp-plugin',
+  transformIndexHtml(html: string, ctx: { server?: unknown }) {
+    if (ctx.server) {
+      // Dev server injects inline scripts (React refresh), which the policy would block.
+      return html.replace(/\s*<meta http-equiv="Content-Security-Policy"[^>]*>/, '');
+    }
+    return apiBaseOrigin
+      ? html.replace("connect-src 'self'", `connect-src 'self' ${apiBaseOrigin}`)
+      : html;
+  },
+};
+
 export default defineConfig(() => {
   return {
     plugins: [
+      cspPlugin,
       react(),
       tailwindcss(),
       VitePWA({

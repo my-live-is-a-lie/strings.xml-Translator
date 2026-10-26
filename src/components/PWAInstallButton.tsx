@@ -1,3 +1,4 @@
+import { debugIgnored } from '../utils/debug';
 import React, { useEffect, useState } from 'react';
 import { Download, Smartphone, X } from 'lucide-react';
 
@@ -13,26 +14,29 @@ interface PWAInstallButtonProps {
 export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({ appLang = 'ar' }) => {
   const isAr = appLang === 'ar';
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [isInstalled, setIsInstalled] = useState(false);
-  const [isIOS, setIsIOS] = useState(false);
+  // Detected once on mount; computed in the initializers so no effect has to set state
+  const [isInstalled, setIsInstalled] = useState(() => {
+    try {
+      return (
+        (typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches) ||
+        (window.navigator as unknown as { standalone?: boolean })?.standalone === true
+      );
+    } catch (err) {
+      debugIgnored('PWAInstallButton', err);
+      return false;
+    }
+  });
+  const [isIOS] = useState(() => {
+    try {
+      return /iphone|ipad|ipod/.test((window.navigator?.userAgent || '').toLowerCase());
+    } catch (err) {
+      debugIgnored('PWAInstallButton', err);
+      return false;
+    }
+  });
   const [showIOSGuide, setShowIOSGuide] = useState(false);
 
   useEffect(() => {
-    try {
-      // Detect standalone mode (already installed)
-      const isStandalone =
-        (typeof window.matchMedia === 'function' &&
-          window.matchMedia('(display-mode: standalone)').matches) ||
-        (window.navigator as unknown as { standalone?: boolean })?.standalone === true;
-      setIsInstalled(isStandalone);
-
-      const userAgent = (window.navigator?.userAgent || '').toLowerCase();
-      const isIOSDevice = /iphone|ipad|ipod/.test(userAgent);
-      setIsIOS(isIOSDevice);
-    } catch {
-      // Ignore environment detection errors
-    }
-
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e as BeforeInstallPromptEvent);
@@ -61,8 +65,8 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({ appLang = 'a
         setIsInstalled(true);
         setDeferredPrompt(null);
       }
-    } catch {
-      // Ignore install prompt cancellation or browser errors
+    } catch (err) {
+      debugIgnored('PWAInstallButton', err);
     }
   };
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   FileCode2,
@@ -32,7 +32,7 @@ export const FilesModal: React.FC<FilesModalProps> = ({
   onClose,
   storedFiles,
   activeFileId,
-  currentProject,
+  currentProject: _currentProject,
   onSelectFile,
   onRenameFile,
   onDeleteFile,
@@ -72,6 +72,13 @@ export const FilesModal: React.FC<FilesModalProps> = ({
     }
   }, [editingFileId]);
 
+  // Clock refreshed every 30 s so relative times stay current without calling Date.now() during render
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(timer);
+  }, []);
+
   if (!isOpen) return null;
 
   const handleStartRename = (file: StoredXmlFile) => {
@@ -96,7 +103,7 @@ export const FilesModal: React.FC<FilesModalProps> = ({
   };
 
   const formatTimeAgo = (timestamp: number) => {
-    const seconds = Math.floor((Date.now() - timestamp) / 1000);
+    const seconds = Math.floor((now - timestamp) / 1000);
     if (seconds < 60) return isAr ? 'الآن' : 'Just now';
     const minutes = Math.floor(seconds / 60);
     if (minutes < 60) return isAr ? `منذ ${minutes} دقيقة` : `${minutes}m ago`;

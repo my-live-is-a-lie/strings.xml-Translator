@@ -30,7 +30,7 @@ import {
   getAutoTranslateEnabled,
   setAutoTranslateEnabled,
 } from './utils/translator';
-import { Menu, X } from 'lucide-react';
+import { Menu } from 'lucide-react';
 
 interface HistorySnapshot {
   items: ResourceItem[];
@@ -49,21 +49,6 @@ interface EditorState {
 
 const MAX_HISTORY_STEPS = 100;
 const TYPING_COALESCE_MS = 700;
-
-const LOCALE_NAMES: Record<string, string> = {
-  ar: 'العربية',
-  es: 'Spanish',
-  fr: 'French',
-  de: 'German',
-  'pt-rBR': 'Portuguese BR',
-  ja: 'Japanese',
-  'zh-rCN': 'Chinese Simplified',
-  it: 'Italian',
-  ru: 'Russian',
-  hi: 'Hindi',
-  tr: 'Turkish',
-  pl: 'Polish',
-};
 
 function repairSavedProjectItems(items: ResourceItem[], targetLang: string): ResourceItem[] {
   const normalized = normalizePluralsForLanguage(items, targetLang);
@@ -84,7 +69,8 @@ function repairSavedProjectItems(items: ResourceItem[], targetLang: string): Res
         translationSource: defaultSource,
       };
     }
-    let { source, target } = item;
+    let { source } = item;
+    const target = item.target;
 
     // Restore exact original source syntax if project was imported under older parser
     if (item.name === 'info_labels' && !source.includes('\\\\n')) {
@@ -190,7 +176,7 @@ export default function App() {
   const originalFileStateRef = useRef<{ fileId: string; rawXml?: string; items: ResourceItem[] }>({
     fileId: project.id,
     rawXml: project.rawSourceXml,
-    items: JSON.parse(JSON.stringify(project.items)),
+    items: structuredClone(project.items),
   });
 
   // Keep originalFileStateRef synchronized with current project when project.id changes
@@ -201,13 +187,13 @@ export default function App() {
         originalFileStateRef.current = {
           fileId: stored.id,
           rawXml: stored.originalRawXml,
-          items: JSON.parse(JSON.stringify(stored.originalItems)),
+          items: structuredClone(stored.originalItems),
         };
       } else {
         originalFileStateRef.current = {
           fileId: project.id,
           rawXml: project.rawSourceXml,
-          items: JSON.parse(JSON.stringify(project.items)),
+          items: structuredClone(project.items),
         };
       }
     }
@@ -259,26 +245,32 @@ export default function App() {
   }, [appLang]);
 
   // Auto-save project locally on change and sync to stored files if modified
+  // Saved-file bookkeeping runs after edits settle (300 ms), not on every keystroke.
+  // State is computed from a ref and side effects run outside the state updater, so React's
+  // StrictMode double-invocation cannot repeat writes or corrupt state.
+  const storedFilesRef = useRef(storedFiles);
+  useEffect(() => {
+    storedFilesRef.current = storedFiles;
+  }, [storedFiles]);
+
   useEffect(() => {
     saveCurrentProject(project);
 
-    // Check if user has made any changes compared to original imported file
-    const origItems = originalFileStateRef.current.fileId === project.id
-      ? originalFileStateRef.current.items
-      : [];
-    const hasChanges = origItems.length > 0 && hasItemsChanged(project.items, origItems);
+    const timer = setTimeout(() => {
+      const prev = storedFilesRef.current;
+      const existingIndex = prev.findIndex((f) => f.id === project.id);
 
-    if (hasChanges) {
-      setStoredFiles((prev) => {
-        const existingIndex = prev.findIndex((f) => f.id === project.id);
-        const baseOrigItems = origItems.length > 0
-          ? origItems
-          : (existingIndex >= 0 ? prev[existingIndex].originalItems : JSON.parse(JSON.stringify(project.items)));
+      // Check if user has made any changes compared to original imported file
+      const origItems = originalFileStateRef.current.fileId === project.id
+        ? originalFileStateRef.current.items
+        : [];
+      const hasChanges = origItems.length > 0 && hasItemsChanged(project.items, origItems);
 
-        // Extract app_name key if present in original items or project items
+      let next: StoredXmlFile[] | null = null;
+      if (hasChanges) {
+        const baseOrigItems = origItems;
         const existingAppName = existingIndex >= 0 ? prev[existingIndex].appName : undefined;
         const detectedAppName = existingAppName || extractAppNameFromItems(baseOrigItems) || extractAppNameFromItems(project.items);
-
         const updatedFile: StoredXmlFile = {
           id: project.id,
           name: project.sourceFileName || project.name || 'strings.xml',
@@ -290,46 +282,34 @@ export default function App() {
           project: project,
           hasUserEdits: true,
         };
-
-        let next: StoredXmlFile[];
-        if (existingIndex >= 0) {
-          next = [...prev];
-          next[existingIndex] = updatedFile;
-        } else {
-          next = [updatedFile, ...prev];
-        }
-        saveStoredFiles(next);
+        next = existingIndex >= 0
+          ? prev.map((f, i) => (i === existingIndex ? updatedFile : f))
+          : [updatedFile, ...prev];
         setActiveFileId(project.id);
-        return next;
-      });
-    } else {
-      // If this file was already in storedFiles, keep its project in sync
-      setStoredFiles((prev) => {
-        const existingIndex = prev.findIndex((f) => f.id === project.id);
-        if (existingIndex >= 0) {
-          const next = [...prev];
-          const curr = next[existingIndex];
-          const appName = curr.appName || extractAppNameFromItems(curr.originalItems) || extractAppNameFromItems(project.items);
-          next[existingIndex] = {
-            ...curr,
-            appName,
-            project: project,
-            lastModified: Date.now(),
-          };
-          saveStoredFiles(next);
-          return next;
-        }
-        return prev;
-      });
-    }
+      } else if (existingIndex >= 0) {
+        // Already saved: keep its project in sync
+        const curr = prev[existingIndex];
+        const appName = curr.appName || extractAppNameFromItems(curr.originalItems) || extractAppNameFromItems(project.items);
+        next = prev.map((f, i) =>
+          i === existingIndex ? { ...curr, appName, project: project, lastModified: Date.now() } : f
+        );
+      }
+
+      if (next) {
+        saveStoredFiles(next);
+        storedFilesRef.current = next;
+        setStoredFiles(next);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
   }, [project]);
 
   // If selectedId is invalid, default to first item
-  useEffect(() => {
-    if (!project.items.some((i) => i.id === selectedId) && project.items.length > 0) {
-      setSelectedId(project.items[0].id);
-    }
-  }, [project.items, selectedId, setSelectedId]);
+  if (project.items.length > 0 && !project.items.some((i) => i.id === selectedId)) {
+    // Own-state update during render (React re-renders once with the corrected selection)
+    setEditorState((prev) => ({ ...prev, selectedId: prev.project.items[0]?.id ?? prev.selectedId }));
+  }
 
   // Current item and index
   const currentIndex = useMemo(() => {
@@ -688,7 +668,7 @@ export default function App() {
     originalFileStateRef.current = {
       fileId: sample.id,
       rawXml: sample.rawSourceXml,
-      items: JSON.parse(JSON.stringify(sample.items)),
+      items: structuredClone(sample.items),
     };
     setActiveFileId(sample.id);
     setEditorState({
@@ -711,7 +691,7 @@ export default function App() {
     originalFileStateRef.current = {
       fileId: targetFile.id,
       rawXml: targetFile.originalRawXml,
-      items: JSON.parse(JSON.stringify(targetFile.originalItems)),
+      items: structuredClone(targetFile.originalItems),
     };
     setActiveFileId(targetFile.id);
 
@@ -748,7 +728,7 @@ export default function App() {
       originalFileStateRef.current = {
         fileId: resetFile.id,
         rawXml: resetFile.originalRawXml,
-        items: JSON.parse(JSON.stringify(resetFile.originalItems)),
+        items: structuredClone(resetFile.originalItems),
       };
       setEditorState({
         project: resetFile.project,
@@ -770,7 +750,7 @@ export default function App() {
         originalFileStateRef.current = {
           fileId: defaultProj.id,
           rawXml: defaultProj.rawSourceXml,
-          items: JSON.parse(JSON.stringify(defaultProj.items)),
+          items: structuredClone(defaultProj.items),
         };
         setActiveFileId(defaultProj.id);
         setEditorState({
@@ -869,6 +849,22 @@ export default function App() {
   const canUndo = past.length > 0;
   const canRedo = future.length > 0;
 
+  // Stable callbacks: child components can skip re-rendering when unrelated state changes
+  const openImport = useCallback(() => setIsImportOpen(true), []);
+  const openExport = useCallback(() => setIsExportOpen(true), []);
+  const openLanguageModal = useCallback(() => setIsLanguageModalOpen(true), []);
+  const openFilesModal = useCallback(() => setIsFilesModalOpen(true), []);
+  const openMobileDrawer = useCallback(() => setMobileDrawerOpen(true), []);
+  const closeMobileDrawer = useCallback(() => setMobileDrawerOpen(false), []);
+  const selectItem = useCallback((id: string) => setSelectedId(id), [setSelectedId]);
+  const selectItemInEditor = useCallback(
+    (id: string) => {
+      setSelectedId(id);
+      setActiveView('editor');
+    },
+    [setSelectedId]
+  );
+
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-app text-app font-sans antialiased">
       {/* Material 3 Top Header */}
@@ -876,11 +872,11 @@ export default function App() {
         project={project}
         activeView={activeView}
         onViewChange={setActiveView}
-        onOpenImport={() => setIsImportOpen(true)}
-        onOpenExport={() => setIsExportOpen(true)}
+        onOpenImport={openImport}
+        onOpenExport={openExport}
         onLoadSample={handleLoadSample}
         onLanguageChange={handleLanguageChange}
-        onOpenLanguageModal={() => setIsLanguageModalOpen(true)}
+        onOpenLanguageModal={openLanguageModal}
         appLang={appLang}
         onAppLangChange={setAppLang}
         appTheme={appTheme}
@@ -894,11 +890,8 @@ export default function App() {
         autoTranslate={autoTranslate}
         onToggleAutoTranslate={handleToggleAutoTranslate}
         onResetItemHistory={handleResetItemHistory}
-        onSelectString={(id) => {
-          setSelectedId(id);
-          setActiveView('editor');
-        }}
-        onOpenFilesModal={() => setIsFilesModalOpen(true)}
+        onSelectString={selectItemInEditor}
+        onOpenFilesModal={openFilesModal}
         savedFilesCount={storedFiles.length}
         currentFileName={project.sourceFileName || project.name}
       />
@@ -912,7 +905,7 @@ export default function App() {
               <StringList
                 items={project.items}
                 selectedId={selectedId}
-                onSelect={(id) => setSelectedId(id)}
+                onSelect={selectItem}
                 searchQuery={searchQuery}
                 onSearchChange={setSearchQuery}
                 filterStatus={filterStatus}
@@ -933,7 +926,7 @@ export default function App() {
               <div className="md:hidden flex items-center justify-between px-4 py-2 bg-slate-50/80 dark:bg-[#171A21]/90 text-xs">
                 <button
                   id="mobile-drawer-btn"
-                  onClick={() => setMobileDrawerOpen(true)}
+                  onClick={openMobileDrawer}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 font-medium text-slate-800 dark:text-slate-200 cursor-pointer m3-state-layer"
                 >
                   <Menu className="w-4 h-4 text-[#0B57D0] dark:text-[#A8C7FA]" />
@@ -984,13 +977,10 @@ export default function App() {
             {/* Mobile Strings List Drawer - identical snappy 200ms motion & feel matching the side drawer */}
             <StringsListDrawer
               isOpen={mobileDrawerOpen}
-              onClose={() => setMobileDrawerOpen(false)}
+              onClose={closeMobileDrawer}
               items={project.items}
               selectedId={selectedId}
-              onSelect={(id) => {
-                setSelectedId(id);
-                setActiveView('editor');
-              }}
+              onSelect={selectItemInEditor}
               searchQuery={searchQuery}
               onSearchChange={setSearchQuery}
               filterStatus={filterStatus}
@@ -1009,10 +999,7 @@ export default function App() {
           <main className="flex-1 h-full overflow-hidden">
             <TableView
               items={project.items}
-              onSelectString={(id) => {
-                setSelectedId(id);
-                setActiveView('editor');
-              }}
+              onSelectString={selectItemInEditor}
               onUpdateTranslation={handleUpdateTranslation}
               targetLang={project.targetLang}
               targetLocaleName={project.targetLocaleName}
@@ -1038,7 +1025,7 @@ export default function App() {
           originalFileStateRef.current = {
             fileId: newProject.id,
             rawXml: newProject.rawSourceXml,
-            items: JSON.parse(JSON.stringify(newProject.items)),
+            items: structuredClone(newProject.items),
           };
           setActiveFileId(newProject.id);
           setEditorState({
@@ -1066,7 +1053,7 @@ export default function App() {
         onRenameFile={handleRenameFile}
         onDeleteFile={handleDeleteFile}
         onResetFile={handleResetFile}
-        onOpenImport={() => setIsImportOpen(true)}
+        onOpenImport={openImport}
         appLang={appLang}
       />
 

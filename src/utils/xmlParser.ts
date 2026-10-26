@@ -36,8 +36,6 @@ function extractRawStringMap(xmlContent: string): Map<string, string> {
  * using DOMParser while preserving exact raw syntax and whitespace.
  */
 export function parseAndroidXml(xmlContent: string): ParsedXmlResult {
-  const errors: string[] = [];
-
   if (!xmlContent || !xmlContent.trim()) {
     return { items: [], errors: ['XML content is empty.'] };
   }

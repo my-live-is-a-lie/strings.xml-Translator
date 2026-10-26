@@ -1,3 +1,4 @@
+import { debugIgnored } from '../utils/debug';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Upload,
@@ -29,9 +30,6 @@ import {
   Braces,
   Code2,
   FolderOpen,
-  Eye,
-  EyeOff,
-  ExternalLink,
 } from 'lucide-react';
 import { TranslationProject } from '../types';
 import { analyzeProjectQa } from '../utils/placeholderCheck';
@@ -96,7 +94,8 @@ interface HeaderProps {
   currentFileName?: string;
 }
 
-export const Header: React.FC<HeaderProps> = ({
+// Wrapped with React.memo below: re-renders only when its props change
+const HeaderBase: React.FC<HeaderProps> = ({
   project,
   activeView,
   onViewChange,
@@ -136,7 +135,7 @@ export const Header: React.FC<HeaderProps> = ({
     });
   }, [qaSummary.allIssues, qaDrawerFilter]);
 
-  const { translatedItems, aiTranslatedCount, manualTranslatedCount, totalTranslatedCount, aiPercent, manualPercent, filteredHistoryItems } = useMemo(() => {
+  const { aiTranslatedCount, manualTranslatedCount, totalTranslatedCount, aiPercent, manualPercent, filteredHistoryItems } = useMemo(() => {
     const translated = project.items.filter((i) => i.status !== 'untranslated');
     let ai = 0;
     let manual = 0;
@@ -233,14 +232,10 @@ export const Header: React.FC<HeaderProps> = ({
     if (window.navigator?.vibrate) {
       try {
         window.navigator.vibrate(12);
-      } catch {}
+      } catch (err) {
+        debugIgnored('haptics', err);
+      }
     }
-  };
-
-  const handleCycleAccentColor = () => {
-    const currentIndex = ACCENT_COLORS.findIndex((c) => c.id === accentColor);
-    const nextIndex = (currentIndex + 1) % ACCENT_COLORS.length;
-    setAccentColor(ACCENT_COLORS[nextIndex].id);
   };
 
   const handleSelectProvider = (id: string) => {
@@ -2084,3 +2079,5 @@ export const Header: React.FC<HeaderProps> = ({
     </>
   );
 };
+
+export const Header = React.memo(HeaderBase);

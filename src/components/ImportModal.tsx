@@ -4,6 +4,15 @@ import { parseAndroidXml, mergeTargetXml, normalizePluralsForLanguage } from '..
 import { TranslationProject } from '../types';
 import { getArabicLanguageName } from '../utils/languages';
 
+// Larger files freeze the page while parsing; real strings.xml files are far smaller than this.
+const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
+
+function importTooLargeMessage(isAr: boolean): string {
+  return isAr
+    ? 'الملف كبير جداً (الحد 5 MB). / The file is too large (limit 5 MB).'
+    : 'The file is too large (limit 5 MB).';
+}
+
 interface ImportModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -33,6 +42,10 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   const handleSourceFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > MAX_IMPORT_BYTES) {
+      setErrorMsg(importTooLargeMessage(isAr));
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = (ev) => {
@@ -46,6 +59,10 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   const handleTargetFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > MAX_IMPORT_BYTES) {
+      setErrorMsg(importTooLargeMessage(isAr));
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = (ev) => {
@@ -59,6 +76,11 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     setErrorMsg(null);
     const xmlToParse = activeTab === 'upload' ? sourceFile?.content : pastedXml;
     const fileName = activeTab === 'upload' ? sourceFile?.name || 'strings.xml' : 'strings.xml';
+
+    if (xmlToParse && xmlToParse.length > MAX_IMPORT_BYTES) {
+      setErrorMsg(importTooLargeMessage(isAr));
+      return;
+    }
 
     if (!xmlToParse || !xmlToParse.trim()) {
       setErrorMsg(

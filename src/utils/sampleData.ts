@@ -13,7 +13,7 @@ export const SAMPLE_ANDROID_STRINGS_XML = `<?xml version="1.0" encoding="utf-8"?
     <!-- Onboarding and Welcome messages -->
     <!-- Displayed on first launch after user logs in -->
     <string name="welcome_headline">Welcome to OmniTask!</string>
-    <string name="welcome_description">Don\'t worry about losing your progress. Everything is saved automatically and works 100% offline.</string>
+    <string name="welcome_description">Don't worry about losing your progress. Everything is saved automatically and works 100% offline.</string>
     <string name="user_greeting">Hello, %1$s! You have %2$d pending tasks for today.</string>
 
     <!-- Task details and statuses -->

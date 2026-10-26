@@ -3,7 +3,13 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
-import { PROVIDER_TYPES, callProviderWithKey, getReferenceTranslation, outputMatchesReference } from './server/providers';
+import {
+  PROVIDER_TYPES,
+  callProviderWithKey,
+  getReferenceTranslation,
+  outputMatchesReference,
+  translateBatch,
+} from './server/providers';
 import { createRateLimiter } from './server/rateLimit';
 
 dotenv.config();
@@ -15,6 +21,7 @@ const __dirname = path.dirname(__filename);
 // user's own key (see src/utils/geminiDirect.ts), so that key never reaches this server.
 
 const MAX_SOURCE_TEXT = 5000;
+const MAX_BATCH_SIZE = 50;
 const MAX_KEY_LENGTH = 512;
 const MAX_FOLDER_ID_LENGTH = 64;
 const LANG_CODE = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})?$/;
@@ -98,15 +105,41 @@ function logProviderError(scope: string, err: unknown) {
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  // PORT is set by the hosting platform (e.g. Cloud Run). Local runs default to loopback only.
+  const PORT = Number(process.env.PORT) || 3000;
+  const isProduction = process.env.NODE_ENV === 'production';
+  const HOST = process.env.HOST || (isProduction ? '0.0.0.0' : '127.0.0.1');
 
   app.disable('x-powered-by');
   // Behind a load balancer (e.g. Cloud Run) use the first proxy's address so rate limiting sees real clients.
-  app.set('trust proxy', 1);
+  // Only trust X-Forwarded-For when explicitly deployed behind a proxy; otherwise clients could spoof their IP.
+  app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : false);
+
+  // Cross-origin access is off unless the origin is listed in ALLOWED_ORIGINS (comma-separated),
+  // e.g. the packaged Android app's origin.
+  const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const origin = req.headers.origin;
+    if (origin && allowedOrigins.includes(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      res.setHeader('Vary', 'Origin');
+      if (req.method === 'OPTIONS') {
+        res.status(204).end();
+        return;
+      }
+    }
+    next();
+  });
 
   app.use((_req: Request, res: Response, next: NextFunction) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('X-Frame-Options', 'DENY');
     next();
   });
 
@@ -196,6 +229,43 @@ async function startServer() {
     }
   });
 
+  // Several short texts in one request (used by bulk translation to avoid one request per string)
+  app.post('/api/providers/translate-batch', async (req: Request, res: Response) => {
+    const body = readBody(req.body);
+    if (!body) return res.status(400).json({ error: 'طلب غير صالح / Invalid request body.' });
+
+    const validated = validateProviderFields(body, { requireSourceText: false });
+    if (!validated.fields) return res.status(400).json({ error: validated.error });
+    const f = validated.fields;
+    if (f.providerType === 'auto') {
+      return res.status(400).json({ error: 'حدد نوع المزود للترجمة الجماعية / Choose a provider type for batch translation.' });
+    }
+
+    const texts = Array.isArray(body.texts) ? body.texts : null;
+    if (!texts || texts.length === 0 || texts.length > MAX_BATCH_SIZE) {
+      return res.status(400).json({ error: `عدد النصوص غير صالح (1 إلى ${MAX_BATCH_SIZE}) / Batch must hold 1 to ${MAX_BATCH_SIZE} texts.` });
+    }
+    if (!texts.every((t): t is string => typeof t === 'string' && t.length > 0 && t.length <= MAX_SOURCE_TEXT)) {
+      return res.status(400).json({ error: 'نص غير صالح في الدفعة / Invalid text in batch.' });
+    }
+
+    try {
+      const translations = await translateBatch(
+        f.providerType as string,
+        f.apiKey as string,
+        texts,
+        f.targetLang as string,
+        f.folderId
+      );
+      return res.json({ translations });
+    } catch (error) {
+      logProviderError('providers/translate-batch', error);
+      return res.status(502).json({
+        error: toUserMessage(error, 'فشلت الترجمة الجماعية / Batch translation failed.'),
+      });
+    }
+  });
+
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -210,8 +280,8 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server listening on http://0.0.0.0:${PORT}`);
+  app.listen(PORT, HOST, () => {
+    console.log(`Server listening on http://${HOST}:${PORT}`);
   });
 }
 

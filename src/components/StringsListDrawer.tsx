@@ -23,7 +23,8 @@ interface StringsListDrawerProps {
   onResetItemHistory?: (id: string) => void;
 }
 
-export const StringsListDrawer: React.FC<StringsListDrawerProps> = ({
+// Wrapped with React.memo below: re-renders only when its props change
+const StringsListDrawerBase: React.FC<StringsListDrawerProps> = ({
   isOpen,
   onClose,
   items,
@@ -206,3 +207,5 @@ export const StringsListDrawer: React.FC<StringsListDrawerProps> = ({
     </div>
   );
 };
+
+export const StringsListDrawer = React.memo(StringsListDrawerBase);

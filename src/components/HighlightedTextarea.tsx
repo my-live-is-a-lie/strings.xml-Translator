@@ -1,3 +1,4 @@
+import { debugIgnored } from '../utils/debug';
 import React, {
   useRef,
   useImperativeHandle,
@@ -462,7 +463,9 @@ export const HighlightedTextarea = forwardRef<HTMLTextAreaElement, HighlightedTe
             if (window.navigator?.vibrate) {
               try {
                 window.navigator.vibrate(10);
-              } catch {}
+              } catch (err) {
+        debugIgnored('haptics', err);
+      }
             }
           }
         } else if (activeGesture === 'resize') {
@@ -506,7 +509,9 @@ export const HighlightedTextarea = forwardRef<HTMLTextAreaElement, HighlightedTe
                   if (window.navigator?.vibrate) {
                     try {
                       window.navigator.vibrate(12);
-                    } catch {}
+                    } catch (err) {
+        debugIgnored('haptics', err);
+      }
                   }
                 }
               } else if (deltaY >= 18 && hist.currentIndex > 0) {
@@ -522,7 +527,9 @@ export const HighlightedTextarea = forwardRef<HTMLTextAreaElement, HighlightedTe
                   if (window.navigator?.vibrate) {
                     try {
                       window.navigator.vibrate(12);
-                    } catch {}
+                    } catch (err) {
+        debugIgnored('haptics', err);
+      }
                   }
                 }
               }
@@ -615,7 +622,7 @@ export const HighlightedTextarea = forwardRef<HTMLTextAreaElement, HighlightedTe
         container.removeEventListener('touchend', onTouchEnd);
         container.removeEventListener('touchcancel', onTouchEnd);
       };
-    }, [enableSwipeResize, onExpandedChange]);
+    }, [enableSwipeResize, onExpandedChange, value, onValueChange]);
 
     // Handle mouse drag / click on the bottom handle
     const handleHandlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {

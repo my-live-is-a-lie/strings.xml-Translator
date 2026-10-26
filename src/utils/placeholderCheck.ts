@@ -140,7 +140,7 @@ function checkHtmlTags(source: string, target: string): {
 
   // Check if there is a '<' that looks like an unclosed tag (e.g. "<b" without ">")
   const strippedValidTags = cleanTarget.replace(tagRegex, '');
-  if (/<[a-zA-Z\/]/.test(strippedValidTags)) {
+  if (/<[a-zA-Z/]/.test(strippedValidTags)) {
     const brokenMatch = strippedValidTags.match(/<[^>]{0,20}/)?.[0] || '<...';
     issuesEn.push(`Malformed or unclosed HTML tag (${brokenMatch})`);
     issuesAr.push(`وسم HTML غير مكتمل أو غير صالح (${brokenMatch})`);

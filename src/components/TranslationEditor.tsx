@@ -1,23 +1,14 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import {
-  Link as LinkIcon,
   Copy,
   Check,
-  ChevronDown,
   Sparkles,
-  Info,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  Code2,
-  Eraser,
   RotateCcw,
-  Sliders,
-  ExternalLink,
-  Layers,
   Globe,
   Trash2,
-  FastForward,
   Undo2,
   Redo2,
   ClipboardPaste,
@@ -27,8 +18,7 @@ import {
   ResourceItem,
   SingleStringItem,
   PluralStringItem,
-  ArrayStringItem,
-  TranslationStatus
+  ArrayStringItem
 } from '../types';
 import { LanguageSelectorModal } from './LanguageSelectorModal';
 import { HighlightedTextarea } from './HighlightedTextarea';
@@ -128,14 +118,12 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   // Text Direction State (default to RTL for Arabic, Urdu, Hebrew, Persian)
   const isTargetRtl = ['ar', 'fa', 'ur', 'he'].includes(targetLang.toLowerCase());
   const [direction, setDirection] = useState<'ltr' | 'rtl'>(isTargetRtl ? 'rtl' : 'ltr');
+  const [lastTargetLang, setLastTargetLang] = useState(targetLang);
 
   // UI feedback states
-  const [copiedLink, setCopiedLink] = useState(false);
   const [copiedSource, setCopiedSource] = useState(false);
   const [copiedTarget, setCopiedTarget] = useState(false);
   const [showSavedFeedback, setShowSavedFeedback] = useState(false);
-  const [showToolsMenu, setShowToolsMenu] = useState(false);
-  const [showInfoTooltip, setShowInfoTooltip] = useState(false);
 
   // Suggestion loading state
   const [isSuggesting, setIsSuggesting] = useState(false);
@@ -289,13 +277,16 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   );
 
   // Reset direction when target language changes
-  useEffect(() => {
-    setDirection(isTargetRtl ? 'rtl' : 'ltr');
-  }, [isTargetRtl, targetLang]);
+  const expectedDirection: 'ltr' | 'rtl' = isTargetRtl ? 'rtl' : 'ltr';
+  const [lastExpectedDirection, setLastExpectedDirection] = useState(expectedDirection);
+  if (lastExpectedDirection !== expectedDirection || lastTargetLang !== targetLang) {
+    setLastExpectedDirection(expectedDirection);
+    setLastTargetLang(targetLang);
+    setDirection(expectedDirection);
+  }
 
   // Reset tools menu state and cursor ref when item changes
   useEffect(() => {
-    setShowToolsMenu(false);
     lastCursorRef.current = null;
     activeLineMarkerRef.current = null;
     lastDraftEditRef.current = { timestamp: 0 };
@@ -353,10 +344,13 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   };
 
   // Ensure plural items always include all CLDR quantities for targetLang (e.g. zero, one, two, few, many, other for Arabic)
-  const normalizedPluralItems =
-    draftItem.type === 'plural'
-      ? (normalizePluralsForLanguage([draftItem], targetLang)[0] as PluralStringItem).items
-      : [];
+  const normalizedPluralItems = useMemo(
+    () =>
+      draftItem.type === 'plural'
+        ? (normalizePluralsForLanguage([draftItem], targetLang)[0] as PluralStringItem).items
+        : [],
+    [draftItem, targetLang]
+  );
 
   // Plural change (updates local draft only)
   const handlePluralQuantityChange = (quantity: string, val: string) => {
@@ -661,13 +655,6 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   };
 
   // Copy link / XML key
-  const handleCopyLink = () => {
-    const xmlSnippet = `<string name="${item.name}">${currentTargetText || sourceText}</string>`;
-    void copyTextToClipboard(xmlSnippet);
-    setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 2000);
-  };
-
   // Copy English source
   const handleCopySource = () => {
     void copyTextToClipboard(sourceText);
@@ -884,14 +871,6 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   };
 
   // Toggle "Needs editing / Needs review" (تحتاج إلى تعديل)
-  const handleToggleNeedsReview = () => {
-    const newStatus: TranslationStatus = draftItem.status === 'needs_review' ? 'translated' : 'needs_review';
-    updateDraftItem({
-      ...draftItem,
-      status: newStatus,
-    });
-  };
-
   // Build final ResourceItem to save when user clicks Save & Continue or Save & Stay
   const buildSavedItemFromDraft = React.useCallback(
     (currentDraft: ResourceItem): ResourceItem => {
@@ -1196,14 +1175,6 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
         translationSource: undefined,
       });
     }
-    setShowToolsMenu(false);
-  };
-
-  const handleWrapCData = () => {
-    if (draftItem.type === 'string') {
-      handleSingleTextChange(`<![CDATA[${draftItem.target || draftItem.source}]]>`);
-    }
-    setShowToolsMenu(false);
   };
 
   // Check if target text currently contains multiple consecutive spaces (typing mistake)
@@ -1252,7 +1223,6 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   const effectiveRedoCount = draftFuture.length + redoCount;
 
   // Max recommended character threshold
-  const maxThreshold = 100;
 
   return (
     <div className="flex flex-col h-full bg-[#F8F9FA] dark:bg-[#0E1015] text-slate-800 dark:text-slate-100 overflow-y-auto p-2 sm:p-3">

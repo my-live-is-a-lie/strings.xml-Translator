@@ -113,7 +113,7 @@ export function syncTargetStructureWithSource(source: string, target: string): s
         res = res.replace(/\\n\\n\\n\\n/g, '\\n\\n');
       } else if (sourceHasDoubleN && sourceHasSingleN) {
         // Source has both \n\n and \n (e.g. import_soundcloud_instructions)
-        res = res.replace(/\\n\\n\\n\\n/g, '\\n\\n').replace(/(?<!\\n)\\n\\n(?!\\n)/g, (match, offset, fullStr) => {
+        res = res.replace(/\\n\\n\\n\\n/g, '\\n\\n').replace(/(?<!\\n)\\n\\n(?!\\n)/g, (match) => {
           // Keep the first \n\n if it was originally \n\n\n\n, and convert subsequent \n\n to \n
           return match;
         });

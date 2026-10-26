@@ -1,3 +1,4 @@
+import { debugIgnored } from './debug';
 // Calls the Gemini API straight from the browser with the user's own key.
 // The key goes from this browser to Google only; it never passes through this app's server.
 import type { ProviderTestResult } from './translator';
@@ -51,8 +52,8 @@ ${sourceText}`;
     try {
       const body = (await res.json()) as { error?: { message?: string } };
       if (body?.error?.message) message = `Gemini: ${body.error.message}`;
-    } catch {
-      // Keep the generic message
+    } catch (err) {
+      debugIgnored('geminiDirect', err);
     }
     throw new Error(message);
   }

@@ -1,3 +1,4 @@
+import { debugIgnored } from './debug';
 // Robust translation engine for Android strings with offline glossary, format token protection, and machine translation
 import { ANDROID_LOCALIZATION_DICTIONARY, CASE_INSENSITIVE_GLOSSARY, ARABIC_PLURAL_GLOSSARY } from './glossary';
 import { ResourceItem, SingleStringItem, PluralStringItem, ArrayStringItem } from '../types';
@@ -18,6 +19,23 @@ import { fetchGoogleGtxRaw, fetchWithTimeout } from '../shared/translateCore';
 /** Every engine a suggestion can come from. 'glossary' and 'heuristic' are offline. */
 export type TranslationEngine = 'glossary' | 'heuristic' | ProviderEngineType;
 
+// Base URL of the translation server. Empty means same origin (the web app served by the server).
+// The Android app is packaged without the server, so it needs VITE_API_BASE set at build time.
+const API_BASE = ((import.meta.env.VITE_API_BASE as string | undefined) || '').replace(/\/$/, '');
+
+function isNativeApp(): boolean {
+  const cap = (window as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+  return Boolean(cap?.isNativePlatform?.());
+}
+
+/** False in the packaged app when no server is configured: API-key providers cannot be reached there. */
+export function serverProvidersAvailable(): boolean {
+  return API_BASE !== '' || !isNativeApp();
+}
+
+const SERVER_PROVIDERS_UNAVAILABLE =
+  'مزودو المفاتيح يتطلبون خادم الترجمة، وهو غير متاح في هذا التطبيق. / API-key providers need the translation server, which is not available in this app.';
+
 /** Logs a fallback in development only; production users simply get the next engine. */
 function logFallback(engine: string, err: unknown): void {
   if (import.meta.env?.DEV) {
@@ -27,9 +45,9 @@ function logFallback(engine: string, err: unknown): void {
 
 // Helper: Decode basic HTML entities that APIs sometimes return
 function decodeHtmlEntities(str: string): string {
-  const txt = document.createElement('textarea');
-  txt.innerHTML = str;
-  return txt.value;
+  // DOMParser builds an inert document: no scripts run and no resources load from provider output.
+  const doc = new DOMParser().parseFromString(str, 'text/html');
+  return doc.documentElement.textContent ?? '';
 }
 
 // Convert Western digits to Arabic-Indic digits (for matching if an MT engine transliterates numbers)
@@ -225,19 +243,27 @@ export const BUILTIN_TRANSLATION_PROVIDERS: TranslationProviderConfig[] = [
   },
 ];
 
+// Parsed provider list, reused while the stored JSON is unchanged (lookups happen for every segment).
+let providersParseCache: { raw: string; list: TranslationProviderConfig[] } | null = null;
+
 export function getCustomProviders(): TranslationProviderConfig[] {
   try {
     const raw = getStoredItem(CUSTOM_PROVIDERS_STORAGE_KEY);
     if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter(
-        (p): p is TranslationProviderConfig =>
-          p && typeof p.id === 'string' && typeof p.name === 'string' && typeof p.type === 'string'
-      )
-      .map((p) => ({ ...p, apiKey: getSecret(p.id) ?? p.apiKey }));
-  } catch {
+    if (!providersParseCache || providersParseCache.raw !== raw) {
+      const parsed = JSON.parse(raw);
+      const list = Array.isArray(parsed)
+        ? parsed.filter(
+            (p): p is TranslationProviderConfig =>
+              p && typeof p.id === 'string' && typeof p.name === 'string' && typeof p.type === 'string'
+          )
+        : [];
+      providersParseCache = { raw, list };
+    }
+    // Keys come from the vault, which can change without the JSON changing, so they are applied on each call
+    return providersParseCache.list.map((p) => ({ ...p, apiKey: getSecret(p.id) ?? p.apiKey }));
+  } catch (err) {
+    logFallback('providers', err);
     return [];
   }
 }
@@ -324,8 +350,8 @@ export function getActiveProviderId(): string {
     if (saved && all.some((p) => p.id === saved)) {
       return saved;
     }
-  } catch {
-    // Ignore storage read errors
+  } catch (err) {
+    debugIgnored('translator', err);
   }
   // Google Translate works out-of-the-box
   return 'google';
@@ -423,8 +449,11 @@ export async function testProviderApiKey(
   folderId?: string
 ): Promise<ProviderTestResult> {
   try {
+    if (!serverProvidersAvailable()) {
+      return { success: false, matched: false, error: SERVER_PROVIDERS_UNAVAILABLE };
+    }
     const res = await fetchWithTimeout(
-      '/api/providers/test',
+      `${API_BASE}/api/providers/test`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -498,8 +527,8 @@ function getTranslationCache(): Map<string, SuggestionResult> {
       if (raw) {
         for (const [k, v] of JSON.parse(raw) as Array<[string, SuggestionResult]>) translationCache.set(k, v);
       }
-    } catch {
-      // A corrupt cache is simply discarded
+    } catch (err) {
+      debugIgnored('translator', err);
     }
   }
   return translationCache;
@@ -666,12 +695,12 @@ async function translateSingleSegmentUncached(
 
   // Helper for custom API key providers (Yandex, DeepL, OpenAI, ...). Always needs the user's key.
   const tryCustomProvider = async (): Promise<string | null> => {
-    if (!activeProvider.apiKey) {
+    if (!activeProvider.apiKey || !serverProvidersAvailable()) {
       return null;
     }
     try {
       const pRes = await fetchWithTimeout(
-        '/api/providers/translate',
+        `${API_BASE}/api/providers/translate`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -888,6 +917,65 @@ export async function suggestTranslation(
   };
 }
 
+// ---------- Batch prewarm for API-key providers ----------
+// Plain strings (no format tokens, markup, quotes or line breaks) are sent in batches of up to 50, so a
+// large file costs a few requests instead of one per string. Results go into the same cache the per-string
+// path reads, so nothing else changes. Anything not batch-safe keeps the normal path.
+const BATCH_SIZE = 50;
+const BATCH_UNSAFE = /[%\\<>@[\]{}"\n\r]/;
+const POLLUTED_BATCH_RESULT = /ترجمة المصطلح|INVALID TARGET|MYMEMORY|[[]/;
+
+export async function prewarmProviderBatch(
+  sources: string[],
+  targetLang: string,
+  targetLocaleName?: string
+): Promise<void> {
+  const provider = getActiveProvider();
+  if (provider.isBuiltIn || provider.type === 'gemini' || !provider.apiKey || !serverProvidersAvailable()) return;
+
+  const directLang = targetLang.toLowerCase();
+  const pending: string[] = [];
+  for (const src of new Set(sources)) {
+    if (!src || src.length > 5000 || src.trim() !== src || BATCH_UNSAFE.test(src)) continue;
+    if (cachedSegmentLookup(cacheKeyFor(src, directLang, undefined))) continue;
+    pending.push(src);
+  }
+
+  for (let i = 0; i < pending.length; i += BATCH_SIZE) {
+    const chunk = pending.slice(i, i + BATCH_SIZE);
+    try {
+      const res = await fetchWithTimeout(
+        `${API_BASE}/api/providers/translate-batch`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            providerType: provider.type,
+            apiKey: provider.apiKey,
+            folderId: provider.folderId,
+            targetLang: directLang,
+            targetLocaleName,
+            texts: chunk,
+          }),
+        },
+        60000
+      );
+      if (!res.ok) return; // Remaining strings use the per-string path, which reports errors individually
+      const data = (await res.json()) as { translations?: Array<string | null> };
+      chunk.forEach((src, idx) => {
+        const raw = data.translations?.[idx];
+        if (!raw) return;
+        const cleaned = stripMetadataLabels(raw, src).trim();
+        if (!cleaned || POLLUTED_BATCH_RESULT.test(cleaned)) return;
+        cacheSegmentResult(cacheKeyFor(src, directLang, undefined), { text: cleaned, source: provider.type });
+      });
+    } catch (err) {
+      logFallback('batch', err);
+      return;
+    }
+  }
+}
+
 /**
  * Bulk translates a list of ResourceItems using suggestTranslation with controlled concurrency
  * and live progress reporting.
@@ -902,6 +990,15 @@ export async function bulkTranslateItems(
   if (total === 0) return [];
 
   const normalizedInput = normalizePluralsForLanguage(itemsToTranslate, targetLang);
+
+  // One batch request per 50 plain strings before the per-item pass (no effect for built-in providers)
+  const batchSources: string[] = [];
+  for (const it of normalizedInput) {
+    if (it.type === 'string') batchSources.push((it as SingleStringItem).source);
+    else if (it.type === 'array') for (const ai of (it as ArrayStringItem).items) batchSources.push(ai.source);
+  }
+  await prewarmProviderBatch(batchSources, targetLang, targetLocaleName);
+
   const results: ResourceItem[] = new Array(total);
   let completed = 0;
 

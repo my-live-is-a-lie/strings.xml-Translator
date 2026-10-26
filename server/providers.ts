@@ -368,3 +368,101 @@ export function outputMatchesReference(providerOutput: string, reference: string
   }
   return candidates.has(normProvider);
 }
+
+/**
+ * Translates several English texts in as few requests as the provider allows.
+ * Yandex, DeepL, Microsoft and Google Cloud accept arrays; other providers are called once per text.
+ * Returns one entry per input (null where that text could not be translated).
+ */
+export async function translateBatch(
+  providerType: string,
+  apiKey: string,
+  texts: string[],
+  targetLang: string,
+  folderId?: string
+): Promise<Array<string | null>> {
+  const trimmedKey = apiKey.trim();
+  const baseLang = targetLang.split('-')[0].toLowerCase();
+  const deeplTarget =
+    targetLang.toLowerCase() === 'pt-rbr' ? 'PT-BR' : targetLang.toLowerCase() === 'zh-rcn' ? 'ZH-HANS' : baseLang.toUpperCase();
+
+  if (providerType === 'deepl') {
+    const host = trimmedKey.endsWith(':fx') ? 'api-free.deepl.com' : 'api.deepl.com';
+    const res = await fetchWithTimeout(`https://${host}/v2/translate`, {
+      method: 'POST',
+      headers: { Authorization: `DeepL-Auth-Key ${trimmedKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: texts, source_lang: 'EN', target_lang: deeplTarget }),
+    }, 30000);
+    if (!res.ok) throw providerHttpError('DeepL', res.status);
+    const data = (await res.json()) as { translations?: Array<{ text?: string }> };
+    return texts.map((_, i) => data.translations?.[i]?.text ?? null);
+  }
+
+  if (providerType === 'yandex' && (trimmedKey.startsWith('t1.') || !trimmedKey.includes(':'))) {
+    const res = await fetchWithTimeout('https://translate.api.cloud.yandex.net/translate/v2/translate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: trimmedKey.startsWith('t1.') ? `Bearer ${trimmedKey}` : `Api-Key ${trimmedKey}`,
+      },
+      body: JSON.stringify({
+        sourceLanguageCode: 'en',
+        targetLanguageCode: baseLang,
+        texts,
+        ...(folderId ? { folderId } : {}),
+      }),
+    }, 30000);
+    if (res.ok) {
+      const data = (await res.json()) as { translations?: Array<{ text?: string }> };
+      return texts.map((_, i) => data.translations?.[i]?.text ?? null);
+    }
+    // Fall through to per-text calls, which also try the YandexGPT fallback
+  }
+
+  if (providerType === 'microsoft') {
+    const res = await fetchWithTimeout(
+      `https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&from=en&to=${encodeURIComponent(baseLang)}`,
+      {
+        method: 'POST',
+        headers: { 'Ocp-Apim-Subscription-Key': trimmedKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify(texts.map((Text) => ({ Text }))),
+      },
+      30000
+    );
+    if (!res.ok) throw providerHttpError('Microsoft Translator', res.status);
+    const data = (await res.json()) as Array<{ translations?: Array<{ text?: string }> }>;
+    return texts.map((_, i) => data?.[i]?.translations?.[0]?.text ?? null);
+  }
+
+  if (providerType === 'google_cloud') {
+    const res = await fetchWithTimeout(
+      `https://translation.googleapis.com/language/translate/v2?key=${encodeURIComponent(trimmedKey)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ q: texts, source: 'en', target: baseLang, format: 'text' }),
+      },
+      30000
+    );
+    if (!res.ok) throw providerHttpError('Google Cloud Translation', res.status);
+    const data = (await res.json()) as { data?: { translations?: Array<{ translatedText?: string }> } };
+    return texts.map((_, i) => data.data?.translations?.[i]?.translatedText ?? null);
+  }
+
+  // Providers without batch endpoints (or Yandex keys that need the fallback): per-text calls, 4 at a time
+  const results: Array<string | null> = new Array(texts.length).fill(null);
+  let next = 0;
+  const worker = async () => {
+    while (next < texts.length) {
+      const idx = next++;
+      try {
+        results[idx] = (await callProviderWithKey(providerType, apiKey, texts[idx], targetLang, undefined, undefined, folderId))
+          .translatedText;
+      } catch {
+        results[idx] = null;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(4, texts.length) }, worker));
+  return results;
+}

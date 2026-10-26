@@ -25,7 +25,7 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
   const isAr = appLang === 'ar';
   const [search, setSearch] = useState('');
   const [customCode, setCustomCode] = useState('');
-  const [customName, setCustomName] = useState('');
+  const [customName] = useState('');
 
   const filteredLanguages = useMemo(() => {
     if (!search.trim()) return SUPPORTED_LANGUAGES;

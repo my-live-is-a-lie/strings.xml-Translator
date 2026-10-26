@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   Search,
   CheckCircle2,
@@ -19,7 +19,7 @@ import {
   Braces,
   ChevronDown,
 } from 'lucide-react';
-import { ResourceItem, FilterStatus, SourceFilter, SingleStringItem, PluralStringItem, ArrayStringItem } from '../types';
+import { ResourceItem, FilterStatus, SourceFilter } from '../types';
 import { bulkTranslateItems, engineLabel } from '../utils/translator';
 import { filterProjectItems } from '../utils/xmlExporter';
 import { analyzeProjectQa } from '../utils/placeholderCheck';
@@ -66,7 +66,8 @@ function highlightText(text: string, query: string): React.ReactNode {
   );
 }
 
-export const StringList: React.FC<StringListProps> = ({
+// Wrapped with React.memo below: re-renders only when its props change
+const StringListBase: React.FC<StringListProps> = ({
   items,
   selectedId,
   onSelect,
@@ -141,19 +142,21 @@ export const StringList: React.FC<StringListProps> = ({
 
   // Incremental rendering limit (renders 25 items initially for ultra-fast instant mount, loads more on scroll)
   const [displayLimit, setDisplayLimit] = useState(25);
-
-  useEffect(() => {
+  // Reset when the filters change (adjusted during render, which avoids an extra render pass)
+  const filterKey = `${searchQuery}|${filterStatus}|${sourceFilter}|${qaFilter}`;
+  const [lastFilterKey, setLastFilterKey] = useState(filterKey);
+  if (lastFilterKey !== filterKey) {
+    setLastFilterKey(filterKey);
     setDisplayLimit(25);
-  }, [searchQuery, filterStatus, sourceFilter, qaFilter]);
+  }
 
-  useEffect(() => {
-    if (selectedId) {
-      const idx = filteredItems.findIndex((i) => i.id === selectedId);
-      if (idx >= 0 && idx >= displayLimit) {
-        setDisplayLimit((prev) => Math.max(prev, idx + 20));
-      }
+  // Grow the window so the selected item is rendered
+  if (selectedId) {
+    const idx = filteredItems.findIndex((i) => i.id === selectedId);
+    if (idx >= 0 && idx >= displayLimit) {
+      setDisplayLimit(Math.max(displayLimit, idx + 20));
     }
-  }, [selectedId, filteredItems, displayLimit]);
+  }
 
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const target = e.currentTarget;
@@ -856,3 +859,5 @@ export const StringList: React.FC<StringListProps> = ({
     </div>
   );
 };
+
+export const StringList = React.memo(StringListBase);
