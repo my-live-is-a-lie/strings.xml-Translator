@@ -46,6 +46,9 @@ jobs:
 
       - name: Build web project
         run: npm run build
+        env:
+          # Optional repository variable: the deployed server URL the Android app should call for API-key providers
+          VITE_API_BASE: ${{ vars.VITE_API_BASE }}
 
       - name: Add Capacitor Android platform
         run: npx cap add android
