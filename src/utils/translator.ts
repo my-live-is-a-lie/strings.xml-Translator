@@ -15,26 +15,24 @@ import {
 } from './storage';
 import { geminiTranslateDirect } from './geminiDirect';
 import { fetchGoogleGtxRaw, fetchWithTimeout } from '../shared/translateCore';
+import { directCallProviderWithKey, directTestProviderApiKey } from './directProviders';
 
 /** Every engine a suggestion can come from. 'glossary' and 'heuristic' are offline. */
 export type TranslationEngine = 'glossary' | 'heuristic' | ProviderEngineType;
 
 // Base URL of the translation server. Empty means same origin (the web app served by the server).
-// The Android app is packaged without the server, so it needs VITE_API_BASE set at build time.
+// In Android APK, CapacitorHttp bypasses CORS so providers can also be called directly without a server.
 const API_BASE = ((import.meta.env.VITE_API_BASE as string | undefined) || '').replace(/\/$/, '');
 
-function isNativeApp(): boolean {
+export function isNativeApp(): boolean {
   const cap = (window as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
   return Boolean(cap?.isNativePlatform?.());
 }
 
-/** False in the packaged app when no server is configured: API-key providers cannot be reached there. */
+/** Providers are supported on web via server and on native Android directly via CapacitorHttp. */
 export function serverProvidersAvailable(): boolean {
-  return API_BASE !== '' || !isNativeApp();
+  return true;
 }
-
-const SERVER_PROVIDERS_UNAVAILABLE =
-  'مزودو المفاتيح يتطلبون خادم الترجمة، وهو غير متاح في هذا التطبيق. / API-key providers need the translation server, which is not available in this app.';
 
 /** Logs a fallback in development only; production users simply get the next engine. */
 function logFallback(engine: string, err: unknown): void {
@@ -449,21 +447,33 @@ export async function testProviderApiKey(
   apiKey: string,
   folderId?: string
 ): Promise<ProviderTestResult> {
-  try {
-    if (!serverProvidersAvailable()) {
-      return { success: false, matched: false, error: SERVER_PROVIDERS_UNAVAILABLE };
+  const trimmedKey = apiKey.trim();
+  const trimmedFolder = folderId?.trim() || undefined;
+
+  // 1. If an external/self-hosted backend server is configured, try it first
+  if (API_BASE) {
+    try {
+      const res = await fetchWithTimeout(
+        `${API_BASE}/api/providers/test`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ providerType, apiKey: trimmedKey, folderId: trimmedFolder }),
+        },
+        30000
+      );
+      if (res.ok) {
+        return (await res.json()) as ProviderTestResult;
+      }
+    } catch (serverErr) {
+      logFallback('server provider test', serverErr);
     }
-    const res = await fetchWithTimeout(
-      `${API_BASE}/api/providers/test`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ providerType, apiKey: apiKey.trim(), folderId: folderId?.trim() || undefined }),
-      },
-      30000
-    );
-    const data = (await res.json()) as ProviderTestResult;
-    return data;
+  }
+
+  // 2. Direct client test (bypasses CORS on Android APK via CapacitorHttp)
+  try {
+    const directRes = await directTestProviderApiKey(providerType, trimmedKey, trimmedFolder);
+    return directRes as ProviderTestResult;
   } catch (err) {
     return {
       success: false,
@@ -714,41 +724,71 @@ async function translateSingleSegmentUncached(
     return false;
   };
 
-  // Helper for custom API key providers (Yandex, DeepL, OpenAI, ...). Always needs the user's key.
+  // Helper for custom API key providers (Yandex, DeepL, OpenAI, Lara, ...). Always needs the user's key.
   const tryCustomProvider = async (): Promise<string | null> => {
-    if (!activeProvider.apiKey || !serverProvidersAvailable()) {
+    if (!activeProvider.apiKey) {
       return null;
     }
-    try {
-      const pRes = await fetchWithTimeout(
-        `${API_BASE}/api/providers/translate`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            providerType: activeProvider.type,
-            apiKey: activeProvider.apiKey,
-            folderId: activeProvider.folderId,
-            sourceText: coreText,
-            targetLang: directLang,
-            targetLocaleName,
-            pluralQuantity,
-          }),
-        },
-        25000
-      );
-      if (pRes.ok) {
-        const pData = (await pRes.json()) as { translatedText?: string };
-        if (pData && typeof pData.translatedText === 'string' && pData.translatedText.trim()) {
-          const cleaned = stripMetadataLabels(pData.translatedText, coreText);
-          if (cleaned && !isPollutedTranslation(cleaned)) {
-            return restoreSegmentSyntax(cleaned, tokens, usesEscapedDoubleQuotes);
+    // Gemini has its own dedicated direct caller
+    if (activeProvider.type === 'gemini') {
+      return tryGeminiDirect();
+    }
+
+    // 1. If backend server is configured, try it first
+    if (API_BASE) {
+      try {
+        const pRes = await fetchWithTimeout(
+          `${API_BASE}/api/providers/translate`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              providerType: activeProvider.type,
+              apiKey: activeProvider.apiKey,
+              folderId: activeProvider.folderId,
+              sourceText: coreText,
+              targetLang: directLang,
+              targetLocaleName,
+              pluralQuantity,
+            }),
+          },
+          25000
+        );
+        if (pRes.ok) {
+          const pData = (await pRes.json()) as { translatedText?: string };
+          if (pData && typeof pData.translatedText === 'string' && pData.translatedText.trim()) {
+            const cleaned = stripMetadataLabels(pData.translatedText, coreText);
+            if (cleaned && !isPollutedTranslation(cleaned)) {
+              return restoreSegmentSyntax(cleaned, tokens, usesEscapedDoubleQuotes);
+            }
           }
+        }
+      } catch (err) {
+        logFallback('server provider', err);
+      }
+    }
+
+    // 2. Direct client translation (uses CapacitorHttp on native Android APK to bypass CORS)
+    try {
+      const directResult = await directCallProviderWithKey(
+        activeProvider.type,
+        activeProvider.apiKey,
+        coreText,
+        directLang,
+        targetLocaleName,
+        pluralQuantity,
+        activeProvider.folderId
+      );
+      if (directResult && directResult.translatedText) {
+        const cleaned = stripMetadataLabels(directResult.translatedText, coreText);
+        if (cleaned && !isPollutedTranslation(cleaned)) {
+          return restoreSegmentSyntax(cleaned, tokens, usesEscapedDoubleQuotes);
         }
       }
     } catch (err) {
-      logFallback('custom provider', err);
+      logFallback('direct provider', err);
     }
+
     return null;
   };
 
