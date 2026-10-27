@@ -35,6 +35,7 @@
 
     /* Dynamic App Accent Color Tokens (Default: Teal) */
     --accent-primary: #1eb996;
+    --accent-on-primary: #10151c;
     --accent-hover: #19a585;
     --accent-active: #158c71;
     --accent-muted: #185f54;
@@ -106,6 +107,7 @@
 
   html[data-accent="teal"] {
     --accent-primary: #1eb996;
+    --accent-on-primary: #10151c;
     --accent-hover: #19a585;
     --accent-active: #158c71;
     --accent-muted: #185f54;
@@ -118,6 +120,7 @@
 
   html[data-accent="blue"] {
     --accent-primary: #3b82f6;
+    --accent-on-primary: #10151c;
     --accent-hover: #2563eb;
     --accent-active: #1d4ed8;
     --accent-muted: #1e3a8a;
@@ -130,6 +133,7 @@
 
   html[data-accent="violet"] {
     --accent-primary: #8b5cf6;
+    --accent-on-primary: #10151c;
     --accent-hover: #7c3aed;
     --accent-active: #6d28d9;
     --accent-muted: #4c1d95;
@@ -142,6 +146,7 @@
 
   html[data-accent="rose"] {
     --accent-primary: #f43f5e;
+    --accent-on-primary: #10151c;
     --accent-hover: #e11d48;
     --accent-active: #be123c;
     --accent-muted: #881337;
@@ -154,6 +159,7 @@
 
   html[data-accent="amber"] {
     --accent-primary: #f59e0b;
+    --accent-on-primary: #10151c;
     --accent-hover: #d97706;
     --accent-active: #b45309;
     --accent-muted: #78350f;
@@ -166,6 +172,7 @@
 
   html[data-accent="cyan"] {
     --accent-primary: #06b6d4;
+    --accent-on-primary: #10151c;
     --accent-hover: #0891b2;
     --accent-active: #0e7490;
     --accent-muted: #164e63;
@@ -278,11 +285,25 @@
   background-color: var(--accent-muted-active) !important;
 }
 
+/* Text on a filled accent background uses whichever of white/dark reaches 4.5:1 for the chosen accent */
+.bg-\[\#1EB996\],
+.dark .dark\:bg-\[\#1EB996\],
+.bg-\[\#0B57D0\],
+.dark .dark\:bg-\[\#A8C7FA\] {
+  color: var(--accent-on-primary) !important;
+}
+
 .text-\[\#1EB996\],
 .dark .dark\:text-\[\#1EB996\],
 .text-\[\#0B57D0\],
 .dark .dark\:text-\[\#A8C7FA\] {
   color: var(--accent-primary) !important;
+}
+
+/* Accent-colored TEXT on light backgrounds: darken the accent so it keeps at least 4.5:1 contrast */
+html:not(.dark) .text-\[\#1EB996\],
+html:not(.dark) .text-\[\#0B57D0\] {
+  color: color-mix(in srgb, var(--accent-primary) 62%, black) !important;
 }
 
 .fill-\[\#1EB996\] {
@@ -577,7 +598,7 @@ html:not(.dark) .dark\:text-slate-300 {
 
 html[data-theme="day"] .dark\:text-slate-400,
 html:not(.dark) .dark\:text-slate-400 {
-  color: #64748b !important;
+  color: #475569 !important;
 }
 
 /* Light border overrides */

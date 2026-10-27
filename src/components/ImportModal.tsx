@@ -1,5 +1,7 @@
+
 import React, { useState } from 'react';
 import { X, Upload, FileCode, Sparkles, FolderUp, AlertCircle } from 'lucide-react';
+import { useDialog } from '../utils/useDialog';
 import { parseAndroidXml, mergeTargetXml, normalizePluralsForLanguage } from '../utils/xmlParser';
 import { TranslationProject } from '../types';
 import { getArabicLanguageName } from '../utils/languages';
@@ -29,6 +31,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   appLang = 'ar',
 }) => {
   const isAr = appLang === 'ar';
+  const dialogRef = useDialog(isOpen, onClose);
   const [activeTab, setActiveTab] = useState<'upload' | 'paste'>('upload');
   const [sourceFile, setSourceFile] = useState<{ name: string; content: string } | null>(null);
   const [targetFile, setTargetFile] = useState<{ name: string; content: string } | null>(null);
@@ -132,7 +135,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 overflow-y-auto">
       {/* Material 3 Dialog Container */}
-      <div className="w-full max-w-xl bg-white dark:bg-[#1E1F20] rounded-3xl m3-elevation-3 border border-slate-200/80 dark:border-slate-800/80 overflow-hidden flex flex-col my-6 animate-in fade-in zoom-in-95 duration-150">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="ImportModal-title" tabIndex={-1} className="outline-none w-full max-w-xl bg-white dark:bg-[#1E1F20] rounded-3xl m3-elevation-3 border border-slate-200/80 dark:border-slate-800/80 overflow-hidden flex flex-col my-6 animate-in fade-in zoom-in-95 duration-150">
         {/* Modal Header */}
         <div className="p-6 pb-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -140,10 +143,10 @@ export const ImportModal: React.FC<ImportModalProps> = ({
               <FolderUp className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+              <h2 id="ImportModal-title" className="text-lg font-semibold text-slate-900 dark:text-white">
                 {isAr ? 'استيراد ملف strings.xml' : 'Import strings.xml'}
               </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
+              <p className="text-xs text-slate-600 dark:text-slate-400">
                 {isAr
                   ? 'قم بتحميل ملف نصوص موارد أندرويد للبدء في الترجمة'
                   : 'Load your Android resource strings file to begin translating'}
@@ -151,10 +154,12 @@ export const ImportModal: React.FC<ImportModalProps> = ({
             </div>
           </div>
           <button
+            type="button"
+            aria-label={isAr ? 'إغلاق' : 'Close'}
             onClick={onClose}
             className="p-2 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer m3-state-layer"
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5" aria-hidden="true" />
           </button>
         </div>
 

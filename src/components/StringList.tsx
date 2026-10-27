@@ -1,16 +1,12 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import {
   Search,
-  CheckCircle2,
-  Circle,
-  AlertCircle,
   Check,
   X,
   Sparkles,
   CheckSquare,
   Square,
   Loader2,
-  RotateCcw,
   Keyboard,
   BarChart3,
   ShieldAlert,
@@ -20,9 +16,10 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { ResourceItem, FilterStatus, SourceFilter } from '../types';
-import { bulkTranslateItems, engineLabel } from '../utils/translator';
+import { bulkTranslateItems } from '../utils/translator';
 import { filterProjectItems } from '../utils/xmlExporter';
 import { analyzeProjectQa } from '../utils/placeholderCheck';
+import { StringListRow } from './StringListRow';
 
 interface StringListProps {
   items: ResourceItem[];
@@ -39,31 +36,6 @@ interface StringListProps {
   appLang?: 'ar' | 'en';
   onBulkUpdateTranslations?: (updatedItems: ResourceItem[]) => void;
   onResetItemHistory?: (id: string) => void;
-}
-
-function highlightText(text: string, query: string): React.ReactNode {
-  const trimmed = query.trim();
-  if (!trimmed || !text) return text;
-
-  const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const regex = new RegExp(`(${escaped})`, 'gi');
-  const parts = text.split(regex);
-
-  if (parts.length <= 1) return text;
-
-  const lowerQuery = trimmed.toLowerCase();
-  return parts.map((part, idx) =>
-    part.toLowerCase() === lowerQuery ? (
-      <mark
-        key={idx}
-        className="bg-amber-200/90 dark:bg-amber-500/35 text-slate-900 dark:text-amber-100 rounded-xs px-0.5 font-semibold"
-      >
-        {part}
-      </mark>
-    ) : (
-      <React.Fragment key={idx}>{part}</React.Fragment>
-    )
-  );
 }
 
 // Wrapped with React.memo below: re-renders only when its props change
@@ -169,8 +141,7 @@ const StringListBase: React.FC<StringListProps> = ({
   const allFilteredUntranslatedSelected =
     filteredUntranslated.length > 0 && filteredUntranslated.every((i) => checkedIds.has(i.id));
 
-  const toggleItemChecked = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const toggleItemChecked = useCallback((id: string) => {
     setCheckedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
@@ -180,7 +151,7 @@ const StringListBase: React.FC<StringListProps> = ({
       }
       return next;
     });
-  };
+  }, []);
 
   const handleToggleSelectUntranslated = () => {
     if (allFilteredUntranslatedSelected) {
@@ -229,7 +200,7 @@ const StringListBase: React.FC<StringListProps> = ({
       <div className="p-3.5 space-y-2.5 border-b border-slate-100 dark:border-slate-800/80">
         {/* M3 Search Bar */}
         <div className="relative flex items-center bg-slate-100 dark:bg-slate-800/80 rounded-full px-3.5 py-2 ring-1 ring-slate-200/60 dark:ring-slate-700/60 focus-within:ring-2 focus-within:ring-[#0B57D0] dark:focus-within:ring-[#A8C7FA] focus-within:bg-white dark:focus-within:bg-[#1E1F20] transition-all">
-          <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 shrink-0 me-2.5" />
+          <Search className="w-4 h-4 text-slate-600 dark:text-slate-400 shrink-0 me-2.5" />
           <input
             id="string-search-input"
             type="text"
@@ -274,7 +245,7 @@ const StringListBase: React.FC<StringListProps> = ({
               >
                 {isSelected && <Check className="w-3 h-3 stroke-[2.5]" />}
                 <span>{chip.label}</span>
-                <span className="text-[10px] opacity-75 tabular-nums">({chip.count})</span>
+                <span className="text-[10px] opacity-90 tabular-nums">({chip.count})</span>
               </button>
             );
           })}
@@ -325,7 +296,7 @@ const StringListBase: React.FC<StringListProps> = ({
               </div>
               <div className="flex items-baseline gap-1 shrink-0 tabular-nums">
                 <span className="text-xs font-bold">{counts.ai}</span>
-                <span className="text-[9px] text-slate-400">({aiPercent}%)</span>
+                <span className="text-[9px] text-slate-600 dark:text-slate-400">({aiPercent}%)</span>
               </div>
             </button>
 
@@ -352,7 +323,7 @@ const StringListBase: React.FC<StringListProps> = ({
               </div>
               <div className="flex items-baseline gap-1 shrink-0 tabular-nums">
                 <span className="text-xs font-bold">{counts.manual}</span>
-                <span className="text-[9px] text-slate-400">({manualPercent}%)</span>
+                <span className="text-[9px] text-slate-600 dark:text-slate-400">({manualPercent}%)</span>
               </div>
             </button>
           </div>
@@ -407,7 +378,7 @@ const StringListBase: React.FC<StringListProps> = ({
               <span
                 className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold tabular-nums ${
                   qaSummary.totalAffectedItemsCount > 0
-                    ? 'bg-rose-500/15 text-rose-600 dark:text-rose-300'
+                    ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
                     : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
                 }`}
               >
@@ -545,7 +516,7 @@ const StringListBase: React.FC<StringListProps> = ({
                           <span
                             className={`px-1.5 py-0.2 rounded text-[9px] font-semibold shrink-0 ${
                               iss.category === 'placeholder'
-                                ? 'bg-rose-500/15 text-rose-600 dark:text-rose-300'
+                                ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
                                 : 'bg-amber-500/15 text-amber-600 dark:text-amber-300'
                             }`}
                           >
@@ -628,7 +599,7 @@ const StringListBase: React.FC<StringListProps> = ({
       {/* String Items List */}
       <div onScroll={handleScroll} className="flex-1 overflow-y-auto p-2 space-y-1">
         {filteredItems.length === 0 ? (
-          <div className="py-12 px-4 text-center text-xs text-slate-500 dark:text-slate-400 space-y-1.5">
+          <div className="py-12 px-4 text-center text-xs text-slate-600 dark:text-slate-400 space-y-1.5">
             <p className="font-medium text-slate-700 dark:text-slate-300">
               {isAr ? 'لا توجد نصوص مطابقة' : 'No strings match filter'}
             </p>
@@ -638,195 +609,21 @@ const StringListBase: React.FC<StringListProps> = ({
           </div>
         ) : (
           <>
-            {filteredItems.slice(0, displayLimit).map((item) => {
-            const isSelected = item.id === selectedId;
-            const isChecked = checkedIds.has(item.id);
-
-            // Preview snippets (prefer sub-item matching searchQuery for plurals/arrays)
-            let sourceSnippet = '';
-            let targetSnippet = '';
-            const trimmedQuery = searchQuery.trim().toLowerCase();
-            if (item.type === 'string') {
-              sourceSnippet = item.source || '';
-              targetSnippet = item.target || '';
-            } else if (item.type === 'plural' || item.type === 'array') {
-              const subItems = item.items || [];
-              const matchedSubItem = trimmedQuery
-                ? subItems.find(
-                    (sub) =>
-                      (sub.source || '').toLowerCase().includes(trimmedQuery) ||
-                      (sub.target || '').toLowerCase().includes(trimmedQuery)
-                  )
-                : undefined;
-              const previewItem = matchedSubItem || subItems[0];
-              sourceSnippet = previewItem?.source || '';
-              targetSnippet = previewItem?.target || '';
-            }
-
-            return (
-              <button
+            {filteredItems.slice(0, displayLimit).map((item) => (
+              <StringListRow
                 key={item.id}
-                id={`string-item-${item.name}`}
-                onClick={() => onSelect(item.id)}
-                className={`w-full text-start px-3.5 py-2.5 rounded-2xl transition-all cursor-pointer flex flex-col gap-1 m3-state-layer ${
-                  isSelected
-                    ? 'bg-[#E8F0FE] dark:bg-[#1E293B] shadow-xs ring-1 ring-[#0B57D0]/30 dark:ring-[#A8C7FA]/30'
-                    : isChecked
-                      ? 'bg-emerald-50/70 dark:bg-emerald-950/20 ring-1 ring-[#1EB996]/40'
-                      : 'hover:bg-slate-100/80 dark:hover:bg-slate-800/60'
-                }`}
-              >
-                {/* Header: Checkbox, Status, Key & Type */}
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    {onBulkUpdateTranslations && (
-                      <span
-                        role="checkbox"
-                        aria-checked={isChecked}
-                        onClick={(e) => toggleItemChecked(item.id, e)}
-                        className="p-0.5 -ms-1 rounded hover:bg-slate-200/70 dark:hover:bg-slate-700/70 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition shrink-0"
-                        title={isAr ? 'تحديد للترجمة الجماعية' : 'Select for bulk translation'}
-                      >
-                        {isChecked ? (
-                          <CheckSquare className="w-3.5 h-3.5 text-[#1EB996]" />
-                        ) : (
-                          <Square className="w-3.5 h-3.5" />
-                        )}
-                      </span>
-                    )}
-                    {item.status === 'translated' ? (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                    ) : item.status === 'needs_review' ? (
-                      <AlertCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-                    ) : (
-                      <Circle className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 shrink-0" />
-                    )}
-                    <span
-                      className={`font-mono text-xs truncate ${
-                        isSelected
-                          ? 'font-semibold text-[#0B57D0] dark:text-[#A8C7FA]'
-                          : 'font-medium text-slate-800 dark:text-slate-200'
-                      }`}
-                    >
-                      <bdi>{highlightText(item.name, searchQuery)}</bdi>
-                    </span>
-                  </div>
-
-                  {/* Right: QA Badge, Source Badge (AI vs Manual), Individual Reset Button & Type indicator */}
-                  <div className="flex items-center gap-1 shrink-0">
-                    {(() => {
-                      const itemQa = qaSummary.byItemId.get(item.id);
-                      if (!itemQa) return null;
-                      const tooltip = itemQa.issues
-                        .map((i) => (isAr ? i.messageAr : i.messageEn))
-                        .join('\n');
-                      return (
-                        <span
-                          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-600 dark:text-rose-300 text-[9px] font-semibold ring-1 ring-rose-500/30"
-                          title={tooltip}
-                        >
-                          <ShieldAlert className="w-2.5 h-2.5 shrink-0" />
-                          <span>
-                            {itemQa.hasPlaceholderIssue && itemQa.hasHtmlIssue
-                              ? isAr
-                                ? 'جودة'
-                                : 'QA'
-                              : itemQa.hasPlaceholderIssue
-                                ? '%s'
-                                : 'HTML'}
-                          </span>
-                        </span>
-                      );
-                    })()}
-                    {item.status !== 'untranslated' && (
-                      <>
-                        <span
-                          className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-semibold ${
-                            item.translationSource === 'ai'
-                              ? 'bg-amber-500/15 text-amber-600 dark:text-amber-300'
-                              : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                          }`}
-                          title={
-                            item.translationSource === 'ai'
-                              ? `${isAr ? 'مترجم بالذكاء الاصطناعي' : 'Translated with AI'}${
-                                  item.translationEngine ? ` (${engineLabel(item.translationEngine)})` : ''
-                                }`
-                              : isAr
-                                ? 'إدخال يدوي'
-                                : 'Manual input'
-                          }
-                        >
-                          {item.translationSource === 'ai' ? (
-                            <>
-                              <Sparkles className="w-2.5 h-2.5" />
-                              <span>{isAr ? 'ذكاء اصطناعي' : 'AI'}</span>
-                            </>
-                          ) : (
-                            <span>{isAr ? 'يدوي' : 'Manual'}</span>
-                          )}
-                        </span>
-
-                        {onResetItemHistory && (
-                          <span
-                            role="button"
-                            tabIndex={0}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onResetItemHistory(item.id);
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' || e.key === ' ') {
-                                e.stopPropagation();
-                                e.preventDefault();
-                                onResetItemHistory(item.id);
-                              }
-                            }}
-                            className="p-1 rounded-md text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-500/10 transition cursor-pointer"
-                            title={
-                              isAr
-                                ? 'إعادة تعيين سجل وترجمة هذا النص'
-                                : 'Reset individual translation history'
-                            }
-                          >
-                            <RotateCcw className="w-3 h-3" />
-                          </span>
-                        )}
-                      </>
-                    )}
-
-                    {/* Clean unboxed type indicator */}
-                    {item.type !== 'string' && (
-                      <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 shrink-0">
-                        {isAr ? (item.type === 'plural' ? 'جمع' : 'مصفوفة') : item.type}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Source English preview */}
-                <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-1 ps-5.5">
-                  {sourceSnippet ? (
-                    <bdi>{highlightText(sourceSnippet, searchQuery)}</bdi>
-                  ) : (
-                    <span className="italic text-slate-400">{isAr ? 'نص فارغ' : 'Empty string'}</span>
-                  )}
-                </p>
-
-                {/* Target translation preview */}
-                <p className="text-[11px] line-clamp-1 ps-5.5">
-                  {targetSnippet ? (
-                    <span className="text-emerald-700 dark:text-emerald-300 font-medium">
-                      <bdi>{highlightText(targetSnippet, searchQuery)}</bdi>
-                    </span>
-                  ) : (
-                    <span className="text-slate-400 dark:text-slate-500 italic">
-                      {isAr ? 'غير مترجم' : 'Untranslated'}
-                    </span>
-                  )}
-                </p>
-              </button>
-            );
-          })}
+                item={item}
+                isSelected={item.id === selectedId}
+                isChecked={checkedIds.has(item.id)}
+                searchQuery={searchQuery}
+                isAr={isAr}
+                selectable={Boolean(onBulkUpdateTranslations)}
+                qa={qaSummary.byItemId.get(item.id)}
+                onSelect={onSelect}
+                onToggleChecked={toggleItemChecked}
+                onResetItemHistory={onResetItemHistory}
+              />
+            ))}
 
           {displayLimit < filteredItems.length && (
             <div className="py-2.5 text-center">
@@ -846,13 +643,13 @@ const StringListBase: React.FC<StringListProps> = ({
       </div>
 
       {/* Footer count indicator */}
-      <div className="px-4 py-2 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/50 text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between">
+      <div className="px-4 py-2 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/50 text-[11px] text-slate-600 dark:text-slate-400 flex items-center justify-between">
         <span className="tabular-nums">
           {isAr
             ? `عرض ${Math.min(displayLimit, filteredItems.length)} من ${filteredItems.length}${filteredItems.length !== items.length ? ` (الإجمالي ${items.length})` : ''}`
             : `Showing ${Math.min(displayLimit, filteredItems.length)} of ${filteredItems.length}${filteredItems.length !== items.length ? ` (Total ${items.length})` : ''}`}
         </span>
-        <span className="font-mono text-[10px] text-slate-400">
+        <span className="font-mono text-[10px] text-slate-600 dark:text-slate-400">
           {isAr ? 'Ctrl+↵ حفظ' : 'Ctrl+↵ Save'}
         </span>
       </div>

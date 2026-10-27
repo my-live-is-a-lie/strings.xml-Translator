@@ -1,3 +1,4 @@
+import { useDialog } from '../utils/useDialog';
 import React, { useState, useMemo } from 'react';
 import { X, Search, Globe, Check, Plus } from 'lucide-react';
 import {
@@ -23,6 +24,7 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
   appLang = 'ar',
 }) => {
   const isAr = appLang === 'ar';
+  const dialogRef = useDialog(isOpen, onClose);
   const [search, setSearch] = useState('');
   const [customCode, setCustomCode] = useState('');
   const [customName] = useState('');
@@ -65,7 +67,7 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-150">
       {/* M3 Dialog Card */}
-      <div className="w-full max-w-xl bg-white dark:bg-[#161A23] rounded-3xl border border-slate-200 dark:border-[#283244] shadow-2xl overflow-hidden flex flex-col my-4 max-h-[88vh]">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="language-modal-title" tabIndex={-1} className="outline-none w-full max-w-xl bg-white dark:bg-[#161A23] rounded-3xl border border-slate-200 dark:border-[#283244] shadow-2xl overflow-hidden flex flex-col my-4 max-h-[88vh]">
         {/* Dialog Header */}
         <div className="px-5 py-4 border-b border-slate-100 dark:border-[#242D3D] flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -73,10 +75,10 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
               <Globe className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-semibold text-slate-900 dark:text-white">
+              <h2 id="language-modal-title" className="text-base font-semibold text-slate-900 dark:text-white">
                 {isAr ? 'تغيير لغة الترجمة المستهدفة' : 'Switch Target Language'}
               </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
+              <p className="text-xs text-slate-600 dark:text-slate-400">
                 {isAr
                   ? 'اختر لغة أندرويد لترجمة النصوص إليها'
                   : 'Select an Android locale to translate your strings into'}
@@ -84,17 +86,19 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
             </div>
           </div>
           <button
+            type="button"
+            aria-label={isAr ? 'إغلاق' : 'Close'}
             onClick={onClose}
             className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#202736] transition cursor-pointer"
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5" aria-hidden="true" />
           </button>
         </div>
 
         {/* Search input */}
         <div className="p-4 pb-2 border-b border-slate-100 dark:border-[#242D3D]">
           <div className="relative flex items-center bg-slate-100 dark:bg-[#121620] rounded-2xl px-3.5 py-2 ring-1 ring-slate-200/80 dark:ring-[#2A3448] focus-within:ring-2 focus-within:ring-[#1EB996]">
-            <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 me-2 shrink-0" />
+            <Search className="w-4 h-4 text-slate-600 dark:text-slate-400 me-2 shrink-0" />
             <input
               type="text"
               placeholder={
@@ -150,7 +154,7 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
                           ({lang.nativeName})
                         </span>
                       </div>
-                      <div className="text-[10px] font-mono text-slate-400 dark:text-slate-500">
+                      <div className="text-[10px] font-mono text-slate-600 dark:text-slate-400">
                         {lang.androidDir} {lang.isRtl && (isAr ? '· من اليمين لليسار' : '· RTL')}
                       </div>
                     </div>

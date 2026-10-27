@@ -119,7 +119,7 @@ export const MultiLanguageModal: React.FC<MultiLanguageModalProps> = ({
               <h2 id="multilang-title" className="text-lg font-semibold text-slate-900 dark:text-white">
                 {isAr ? 'ترجمة عدة لغات وتصدير ZIP' : 'Translate several languages → ZIP'}
               </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
+              <p className="text-xs text-slate-600 dark:text-slate-400">
                 {isAr
                   ? 'تُترجم النصوص غير المترجمة فقط بالمزود المختار، ويُنشأ مجلد values-xx لكل لغة.'
                   : 'Only untranslated strings are translated with the selected provider; one values-xx folder is created per language.'}
@@ -181,7 +181,7 @@ export const MultiLanguageModal: React.FC<MultiLanguageModalProps> = ({
         </ul>
 
         <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-          <span className="text-xs text-slate-500 dark:text-slate-400" aria-live="polite">
+          <span className="text-xs text-slate-600 dark:text-slate-400" aria-live="polite">
             {isAr ? `${selected.size} لغة محددة` : `${selected.size} selected`}
             {doneCount > 0 && (isAr ? ` · ${doneCount} جاهزة` : ` · ${doneCount} ready`)}
           </span>

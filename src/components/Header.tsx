@@ -187,7 +187,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
                   {isAr ? 'الملفات' : 'Files'}
                 </span>
                 {currentFileName && (
-                  <span className="hidden sm:inline-block max-w-[110px] md:max-w-[150px] truncate text-xs text-slate-500 dark:text-slate-400 font-mono">
+                  <span className="hidden sm:inline-block max-w-[110px] md:max-w-[150px] truncate text-xs text-slate-600 dark:text-slate-400 font-mono">
                     ({currentFileName})
                   </span>
                 )}
@@ -245,7 +245,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
                     ? getArabicLanguageName(project.targetLang, project.targetLocaleName)
                     : project.targetLocaleName || project.targetLang}
                 </span>
-                <span className="font-mono text-[10px] text-slate-400 bg-black/10 dark:bg-black/30 px-1.5 py-0.5 rounded">
+                <span className="font-mono text-[10px] text-slate-600 dark:text-slate-400 bg-black/10 dark:bg-black/30 px-1.5 py-0.5 rounded">
                   values-{project.targetLang}
                 </span>
                 <ChevronDown className="w-3 h-3 text-slate-400 group-hover:text-slate-200" />
@@ -370,7 +370,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
                   <span className="font-semibold text-slate-900 dark:text-slate-100 tabular-nums">
                     {translatedPercent}% {isAr ? 'مترجم' : 'Translated'}
                   </span>
-                  <span className="text-slate-400 dark:text-slate-500 tabular-nums">
+                  <span className="text-slate-600 dark:text-slate-400 tabular-nums">
                     ({translatedCount}/{totalItems})
                   </span>
                 </div>
@@ -383,7 +383,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
                   <span className="font-medium text-slate-700 dark:text-slate-300 tabular-nums">
                     {untranslatedPercent}% {isAr ? 'غير مترجم' : 'Untranslated'}
                   </span>
-                  <span className="text-slate-400 dark:text-slate-500 tabular-nums">
+                  <span className="text-slate-600 dark:text-slate-400 tabular-nums">
                     ({untranslatedCount})
                   </span>
                 </div>
@@ -720,7 +720,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
                     <span className="w-full text-xs sm:text-sm font-semibold leading-snug truncate">
                       {isAr ? 'الترجمة التلقائية' : 'Auto Translate'}
                     </span>
-                    <span className="w-full text-[11px] text-slate-500 dark:text-slate-400 leading-snug truncate">
+                    <span className="w-full text-[11px] text-slate-600 dark:text-slate-400 leading-snug truncate">
                       {isAr
                         ? `ترجمة تلقائية عبر ${getProviderDisplayName(activeProviderObj, isAr)}`
                         : `Auto-translate via ${activeProviderObj?.name || 'Google Translate'}`}

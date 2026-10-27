@@ -320,7 +320,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
       <div className="p-4 sm:p-5 border-b border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-[#131314] flex flex-wrap items-center justify-between gap-3">
         {/* M3 Search Bar */}
         <div className="relative flex-1 min-w-[240px] max-w-md flex items-center bg-slate-100 dark:bg-slate-800/80 rounded-full px-4 py-2 ring-1 ring-slate-200/60 dark:ring-slate-700/60 focus-within:ring-2 focus-within:ring-[#0B57D0] dark:focus-within:ring-[#A8C7FA] focus-within:bg-white dark:focus-within:bg-[#1E1F20] transition-all">
-          <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 me-2.5 shrink-0" />
+          <Search className="w-4 h-4 text-slate-600 dark:text-slate-400 me-2.5 shrink-0" />
           <input
             id="table-search-input"
             type="text"
@@ -471,7 +471,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
                       >
                         {item.name}
                         {item.type !== 'string' && (
-                          <span className="ms-1 text-[10px] text-slate-400 dark:text-slate-500 font-sans">
+                          <span className="ms-1 text-[10px] text-slate-600 dark:text-slate-400 font-sans">
                             ({isAr ? (item.type === 'plural' ? 'جمع' : 'مصفوفة') : item.type})
                           </span>
                         )}
@@ -639,7 +639,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
                         <div className="flex items-center gap-1.5">
                           <span dir="ltr" className="truncate max-w-[200px]">{item.name}</span>
                           {item.type !== 'string' && (
-                            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-sans">
+                            <span className="text-[10px] text-slate-600 dark:text-slate-400 font-sans">
                               ({isAr ? (item.type === 'plural' ? 'جمع' : 'مصفوفة') : item.type})
                             </span>
                           )}

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useDialog } from '../utils/useDialog';
 import { createPortal } from 'react-dom';
 import { AlertCircle, Check, CheckCircle2, ChevronDown, Cpu, KeyRound, Loader2, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { ENGINE_OPTIONS } from './headerOptions';
@@ -72,6 +73,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
     window.addEventListener(GTX_STATUS_EVENT, onChange);
     return () => window.removeEventListener(GTX_STATUS_EVENT, onChange);
   }, []);
+
+  const deleteDialogRef = useDialog(providerToDelete !== null, () => setProviderToDelete(null));
 
   const refresh = () => {
     setProvidersList(getAllTranslationProviders());
@@ -303,7 +306,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
 
               {/* Providers Selection List */}
               <div className="flex flex-col gap-1.5">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-1">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 px-1">
                   {isAr ? 'اختر مزود الترجمة لزر الاقتراح' : 'Select Provider for Suggest'}
                 </span>
 
@@ -337,7 +340,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                   </span>
                                 )}
                               </div>
-                              <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate">
+                              <span className="text-[10px] text-slate-600 dark:text-slate-400 truncate">
                                 {prov.type === 'lara'
                                   ? isAr
                                     ? 'محرك Lara الذكي للترجمة'
@@ -793,7 +796,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                     )}
 
                     {/* Where the key is kept; the user should restrict it in the provider's console */}
-                    <p className="text-[10px] leading-snug text-slate-500 dark:text-slate-400">
+                    <p className="text-[10px] leading-snug text-slate-600 dark:text-slate-400">
                       {isAr
                         ? 'تُحفظ المفاتيح مشفّرة على هذا الجهاز فقط، ولا تُرسل إلا إلى المزود الذي تختاره. ينصح بتقييد المفتاح من لوحة تحكم المزود.'
                         : 'Keys are encrypted on this device and sent only to the provider you choose. Restrict the key in your provider console.'}
@@ -820,7 +823,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                           placeholder="https://libretranslate.example.com"
                           className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
                         />
-                        <p className="text-[10px] leading-snug text-slate-500 dark:text-slate-400">
+                        <p className="text-[10px] leading-snug text-slate-600 dark:text-slate-400">
                           {isAr
                             ? 'يجب أن يبدأ بـ https. مفتاح API اختياري: اتركه فارغاً إذا كان الخادم لا يطلبه.'
                             : 'Must start with https. The API key is optional: leave it empty if the server does not require one.'}
@@ -850,7 +853,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                           placeholder="b1g..."
                           className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
                         />
-                        <p className="text-[10px] leading-snug text-slate-500 dark:text-slate-400">
+                        <p className="text-[10px] leading-snug text-slate-600 dark:text-slate-400">
                           {isAr
                             ? 'مطلوب مع رمز IAM لحساب Yandex شخصي. الرمز يبدأ بـ t1 وصلاحيته 12 ساعة كحد أقصى. غير مطلوب مع مفتاح API لحساب خدمة.'
                             : 'Required with an IAM token from a personal Yandex account (starts with t1., valid for at most 12 hours). Not needed with a service-account API key.'}
@@ -971,17 +974,17 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
               className="fixed inset-0 bg-black/60 backdrop-blur-xs"
               onClick={() => setProviderToDelete(null)}
             />
-            <div className="relative z-10 w-full max-w-sm rounded-2xl bg-white dark:bg-[#1B212E] border border-slate-200 dark:border-[#2F384B] p-5 shadow-2xl flex flex-col gap-4">
+            <div ref={deleteDialogRef} role="alertdialog" aria-modal="true" aria-labelledby="delete-provider-title" tabIndex={-1} className="outline-none relative z-10 w-full max-w-sm rounded-2xl bg-white dark:bg-[#1B212E] border border-slate-200 dark:border-[#2F384B] p-5 shadow-2xl flex flex-col gap-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-2.5">
                   <div className="w-9 h-9 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-500 shrink-0">
                     <Trash2 className="w-4.5 h-4.5" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                    <h3 id="delete-provider-title" className="text-sm font-bold text-slate-900 dark:text-white">
                       {isAr ? 'حذف مزود الترجمة؟' : 'Delete Translation Provider?'}
                     </h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
                       {providerToDelete.name}
                     </p>
                   </div>

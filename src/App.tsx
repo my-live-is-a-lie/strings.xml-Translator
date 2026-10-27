@@ -1,21 +1,30 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Header } from './components/Header';
 import { applyAppTheme, getInitialAppTheme, AppTheme } from './utils/theme';
-import { applyAppDirection, isDocumentRtl } from './utils/direction';
+import { applyAppDirection } from './utils/direction';
 import { StringList } from './components/StringList';
 import { StringsListDrawer } from './components/StringsListDrawer';
 import { TranslationEditor } from './components/TranslationEditor';
 import { TableView } from './components/TableView';
 import { ImportModal } from './components/ImportModal';
+import { useGlobalShortcuts } from './hooks/useGlobalShortcuts';
 import { ShortcutsModal } from './components/ShortcutsModal';
 import { UpdateSourceModal } from './components/UpdateSourceModal';
 import { MultiLanguageModal } from './components/MultiLanguageModal';
-import { applySourceUpdate } from './utils/sourceDiff';
+import {
+  EditorState,
+  HistorySnapshot,
+  MAX_HISTORY_STEPS,
+  bulkUpdate,
+  changeLanguage,
+  saveLanguages,
+  updateSource,
+} from './utils/editorState';
 import { ExportModal } from './components/ExportModal';
 import { FilesModal } from './components/FilesModal';
 import { TranslationProject, ResourceItem, FilterStatus, SourceFilter, StoredXmlFile } from './types';
 import { parseAndroidXml, mergeTargetXml, normalizePluralsForLanguage } from './utils/xmlParser';
-import { SAMPLE_ANDROID_STRINGS_XML, SAMPLE_TARGET_ARABIC_XML, SAMPLE_TARGET_SPANISH_XML } from './utils/sampleData';
+import { SAMPLE_ANDROID_STRINGS_XML, SAMPLE_TARGET_ARABIC_XML } from './utils/sampleData';
 import { saveCurrentProject, loadCurrentProject, getStoredItem, setStoredItem } from './utils/storage';
 import {
   getStoredFiles,
@@ -29,29 +38,12 @@ import {
   extractAppNameFromItems,
 } from './utils/filesStorage';
 import { LanguageSelectorModal } from './components/LanguageSelectorModal';
-import { getLanguageOption } from './utils/languages';
 import {
   getAutoTranslateEnabled,
   setAutoTranslateEnabled,
 } from './utils/translator';
 import { Menu } from 'lucide-react';
 
-interface HistorySnapshot {
-  items: ResourceItem[];
-  targetLang: string;
-  targetLocaleName?: string;
-  translationsByLang?: Record<string, ResourceItem[]>;
-  selectedId: string;
-}
-
-interface EditorState {
-  project: TranslationProject;
-  selectedId: string;
-  past: HistorySnapshot[];
-  future: HistorySnapshot[];
-}
-
-const MAX_HISTORY_STEPS = 100;
 const TYPING_COALESCE_MS = 700;
 
 function repairSavedProjectItems(items: ResourceItem[], targetLang: string): ResourceItem[] {
@@ -506,44 +498,14 @@ export default function App() {
   // Bulk update multiple items in a single undoable snapshot
   // Keep languages translated in bulk so they can be opened later from the language picker
   const handleSaveLanguages = useCallback((byLang: Record<string, ResourceItem[]>) => {
-    setEditorState((curr) => {
-      const cache = { ...(curr.project.translationsByLang || {}) };
-      for (const [code, items] of Object.entries(byLang)) {
-        if (code.toLowerCase() === curr.project.targetLang.toLowerCase()) continue; // the open language is edited live
-        cache[code] = items;
-      }
-      return { ...curr, project: { ...curr.project, translationsByLang: cache, lastModified: Date.now() } };
-    });
+    setEditorState((curr) => saveLanguages(curr, byLang));
   }, []);
 
   // Apply a newer source file: keep translations, flag changed strings for review, drop removed ones
   const handleApplySourceUpdate = useCallback(
     (parsed: { items: ResourceItem[]; resourcesAttributes?: string; indentStyle?: string; itemIndentStyle?: string }, rawXml: string) => {
       lastEditRef.current = { itemId: '', timestamp: 0 };
-      setEditorState((curr) => {
-        const prev = curr.project;
-        const snapshot: HistorySnapshot = {
-          items: prev.items,
-          targetLang: prev.targetLang,
-          targetLocaleName: prev.targetLocaleName,
-          translationsByLang: prev.translationsByLang,
-          selectedId: curr.selectedId,
-        };
-        const next = applySourceUpdate(prev, parsed.items, {
-          rawSourceXml: rawXml,
-          resourcesAttributes: parsed.resourcesAttributes,
-          indentStyle: parsed.indentStyle,
-          itemIndentStyle: parsed.itemIndentStyle,
-        });
-        const stillThere = next.items.some((i) => i.id === curr.selectedId);
-        return {
-          ...curr,
-          project: next,
-          selectedId: stillThere ? curr.selectedId : next.items[0]?.id ?? '',
-          past: [...curr.past.slice(-(MAX_HISTORY_STEPS - 1)), snapshot],
-          future: [],
-        };
-      });
+      setEditorState((curr) => updateSource(curr, parsed, rawXml));
     },
     []
   );
@@ -551,38 +513,9 @@ export default function App() {
   const handleBulkUpdateTranslations = useCallback((updatedItems: ResourceItem[]) => {
     if (!updatedItems || updatedItems.length === 0) return;
     lastEditRef.current = { itemId: '', timestamp: 0 };
-
-    setEditorState((curr) => {
-      const prev = curr.project;
-      const updateMap = new Map<string, ResourceItem>();
-      for (const u of updatedItems) {
-        updateMap.set(u.id, u);
-      }
-
-      const snapshot: HistorySnapshot = {
-        items: prev.items,
-        targetLang: prev.targetLang,
-        targetLocaleName: prev.targetLocaleName,
-        translationsByLang: prev.translationsByLang,
-        selectedId: curr.selectedId,
-      };
-
-      const nextItems = prev.items.map((item) => updateMap.get(item.id) || item);
-
-      return {
-        ...curr,
-        project: {
-          ...prev,
-          items: nextItems,
-          lastModified: Date.now(),
-        },
-        past: [...curr.past.slice(-(MAX_HISTORY_STEPS - 1)), snapshot],
-        future: [],
-      };
-    });
+    setEditorState((curr) => bulkUpdate(curr, updatedItems));
   }, []);
 
-  // Reset an individual item's translation and clear its translation history
   const handleResetItemHistory = useCallback((itemId: string) => {
     if (lastEditRef.current.itemId === itemId) {
       lastEditRef.current = { itemId: '', timestamp: 0 };
@@ -672,61 +605,14 @@ export default function App() {
     }
   }, [currentIndex, project.items, setSelectedId]);
 
-  // Global keyboard shortcuts (Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z, Ctrl+Enter, Alt+Left, Alt+Right, Ctrl+J)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // "?" opens the shortcut list, unless the user is typing somewhere
-      if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        const el = e.target as HTMLElement | null;
-        const typing = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
-        if (!typing) {
-          e.preventDefault();
-          setIsShortcutsOpen(true);
-          return;
-        }
-      }
-      // Undo: Ctrl+Z / Cmd+Z (without Shift)
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
-        e.preventDefault();
-        handleUndo();
-        return;
-      }
-      // Redo: Ctrl+Y / Cmd+Y or Ctrl+Shift+Z / Cmd+Shift+Z
-      if (
-        ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') ||
-        ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'z')
-      ) {
-        e.preventDefault();
-        handleRedo();
-        return;
-      }
-      // Ctrl+Enter or Cmd+Enter: Save & Next
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault();
-        handleNavigateNext();
-      }
-      // Alt+Arrow towards the "next" side: Next string (→ in LTR, ← in RTL, matching the mirrored buttons)
-      const nextKey = isDocumentRtl() ? 'ArrowLeft' : 'ArrowRight';
-      const prevKey = isDocumentRtl() ? 'ArrowRight' : 'ArrowLeft';
-      if (e.altKey && e.key === nextKey) {
-        e.preventDefault();
-        handleNavigateNext();
-      }
-      // Alt+Arrow towards the "previous" side: Previous string
-      if (e.altKey && e.key === prevKey) {
-        e.preventDefault();
-        handleNavigatePrevious();
-      }
-      // Ctrl+J or Alt+U: Jump to next untranslated
-      if (((e.ctrlKey || e.metaKey) && e.key === 'j') || (e.altKey && e.key.toLowerCase() === 'u')) {
-        e.preventDefault();
-        handleNavigateNextUntranslated();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleUndo, handleRedo, handleNavigateNext, handleNavigatePrevious, handleNavigateNextUntranslated]);
+  useGlobalShortcuts({
+    onUndo: handleUndo,
+    onRedo: handleRedo,
+    onNext: handleNavigateNext,
+    onPrevious: handleNavigatePrevious,
+    onNextUntranslated: handleNavigateNextUntranslated,
+    onShowHelp: openShortcuts,
+  });
 
   // Handle Load Sample Project
   const handleLoadSample = useCallback(() => {
@@ -833,84 +719,7 @@ export default function App() {
   // Handle Locale Change with translations caching per language so nothing is lost!
   const handleLanguageChange = useCallback((newLocale: string) => {
     lastEditRef.current = { itemId: '', timestamp: 0 };
-    setEditorState((curr) => {
-      const prev = curr.project;
-      const currentLang = prev.targetLang;
-      if (currentLang.toLowerCase() === newLocale.toLowerCase()) return curr;
-
-      // Save current state to undo stack before switching language
-      const snapshot: HistorySnapshot = {
-        items: prev.items,
-        targetLang: prev.targetLang,
-        targetLocaleName: prev.targetLocaleName,
-        translationsByLang: prev.translationsByLang,
-        selectedId: curr.selectedId,
-      };
-
-      // 1. Cache current items under currentLang
-      const updatedCache = {
-        ...(prev.translationsByLang || {}),
-        [currentLang]: prev.items,
-      };
-
-      // 2. Check if new language already has cached translations
-      let newItems: ResourceItem[];
-      if (updatedCache[newLocale] && updatedCache[newLocale].length === prev.items.length) {
-        newItems = normalizePluralsForLanguage(updatedCache[newLocale], newLocale);
-      } else if (newLocale === 'es' && SAMPLE_TARGET_SPANISH_XML) {
-        const { updatedItems } = mergeTargetXml(prev.items, SAMPLE_TARGET_SPANISH_XML, 'es');
-        newItems = updatedItems;
-      } else if (newLocale === 'ar' && SAMPLE_TARGET_ARABIC_XML) {
-        const { updatedItems } = mergeTargetXml(prev.items, SAMPLE_TARGET_ARABIC_XML, 'ar');
-        newItems = updatedItems;
-      } else {
-        // Fresh blank target translations for this language, normalized for its CLDR plural forms
-        const clearedItems = prev.items.map((item) => {
-          if (item.type === 'string') {
-            return {
-              ...item,
-              target: '',
-              status: 'untranslated' as const,
-              translationSource: undefined,
-            };
-          }
-          if (item.type === 'plural') {
-            return {
-              ...item,
-              items: item.items.map((pi) => ({ ...pi, target: '' })),
-              status: 'untranslated' as const,
-              translationSource: undefined,
-            };
-          }
-          if (item.type === 'array') {
-            return {
-              ...item,
-              items: item.items.map((ai) => ({ ...ai, target: '' })),
-              status: 'untranslated' as const,
-              translationSource: undefined,
-            };
-          }
-          return item;
-        });
-        newItems = normalizePluralsForLanguage(clearedItems, newLocale);
-      }
-
-      const langOpt = getLanguageOption(newLocale);
-
-      return {
-        ...curr,
-        project: {
-          ...prev,
-          targetLang: newLocale,
-          targetLocaleName: langOpt.nativeName || langOpt.name || newLocale,
-          items: newItems,
-          translationsByLang: updatedCache,
-          lastModified: Date.now(),
-        },
-        past: [...curr.past.slice(-(MAX_HISTORY_STEPS - 1)), snapshot],
-        future: [],
-      };
-    });
+    setEditorState((curr) => changeLanguage(curr, newLocale));
   }, []);
 
   const canUndo = past.length > 0;

@@ -1219,7 +1219,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                 <span className="font-mono text-xs sm:text-sm font-semibold text-slate-900 dark:text-slate-100 truncate select-all">
                   {item.name}
                 </span>
-                <span className="text-slate-400 dark:text-slate-500 text-[11px] sm:text-xs font-medium">
+                <span className="text-slate-600 dark:text-slate-400 text-[11px] sm:text-xs font-medium">
                   {isAr ? 'مفاتيح' : 'Keys'}
                 </span>
               </div>

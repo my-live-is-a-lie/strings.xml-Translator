@@ -59,7 +59,7 @@ export const TranslationStatsSection: React.FC<TranslationStatsSectionProps> = (
             {isAr ? 'إحصائيات الترجمة' : 'Translation Statistics'}
           </span>
         </div>
-        <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 shrink-0 tabular-nums">
+        <span className="text-[11px] font-mono text-slate-600 dark:text-slate-400 shrink-0 tabular-nums">
           {totalTranslatedCount}/{project.items.length}
         </span>
       </div>
@@ -181,7 +181,7 @@ export const TranslationStatsSection: React.FC<TranslationStatsSectionProps> = (
         {historyListExpanded && (
           <div className="mt-2 space-y-1.5 max-h-52 overflow-y-auto pe-0.5">
             {filteredHistoryItems.length === 0 ? (
-              <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center py-3">
+              <p className="text-[11px] text-slate-600 dark:text-slate-400 text-center py-3">
                 {isAr ? 'لا توجد نصوص مترجمة حالياً' : 'No translated strings yet'}
               </p>
             ) : (
@@ -219,7 +219,7 @@ export const TranslationStatsSection: React.FC<TranslationStatsSectionProps> = (
                           {isAi ? (isAr ? 'ذكاء اصطناعي' : 'AI') : isAr ? 'يدوي' : 'Manual'}
                         </span>
                       </div>
-                      <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate w-full">
+                      <span className="text-[10px] text-slate-600 dark:text-slate-400 truncate w-full">
                         {preview}
                       </span>
                     </button>

@@ -1,3 +1,4 @@
+import { useDialog } from '../utils/useDialog';
 import React, { useState, useEffect } from 'react';
 import {
   X,
@@ -41,6 +42,7 @@ export const FilesModal: React.FC<FilesModalProps> = ({
   appLang = 'ar',
 }) => {
   const isAr = appLang === 'ar';
+  const dialogRef = useDialog(isOpen, onClose);
 
   // Inline editing state for renaming
   const [editingFileId, setEditingFileId] = useState<string | null>(null);
@@ -140,7 +142,7 @@ export const FilesModal: React.FC<FilesModalProps> = ({
         }
       }}
     >
-      <div className="relative w-full max-w-2xl bg-white dark:bg-[#161B26] border border-slate-200 dark:border-[#263143] rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden text-slate-800 dark:text-slate-100">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="files-modal-title" tabIndex={-1} className="outline-none relative w-full max-w-2xl bg-white dark:bg-[#161B26] border border-slate-200 dark:border-[#263143] rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden text-slate-800 dark:text-slate-100">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200/80 dark:border-[#242E3E]">
           <div className="flex items-center gap-2.5">
@@ -183,7 +185,7 @@ export const FilesModal: React.FC<FilesModalProps> = ({
               <h3 className="text-sm font-semibold mb-1">
                 {isAr ? 'لا توجد ملفات معدلة محفوظة بعد' : 'No saved files yet'}
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto mb-4 leading-relaxed">
+              <p className="text-xs text-slate-600 dark:text-slate-400 max-w-md mx-auto mb-4 leading-relaxed">
                 {isAr
                   ? 'الملف المستورد يتم حفظه وتخزينه تلقائياً في هذه القائمة بمجرد إجراء أي تعديل على نصوصه. يمكنك بعدها التبديل بين عدة ملفات دون فقدان عملك.'
                   : 'Imported files are automatically saved and synced here as soon as you make any edits. You can then switch between multiple files without losing work.'}
@@ -374,7 +376,7 @@ export const FilesModal: React.FC<FilesModalProps> = ({
                     </div>
 
                     {/* Progress Bar & Stats */}
-                    <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                    <div className="flex items-center justify-between text-[11px] text-slate-600 dark:text-slate-400">
                       <div className="flex items-center gap-2">
                         <span>
                           {isAr

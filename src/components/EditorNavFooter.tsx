@@ -39,7 +39,7 @@ export const EditorNavFooter: React.FC<EditorNavFooterProps> = ({
         </button>
       </div>
 
-      <div className="font-mono text-slate-400 tabular-nums">
+      <div className="font-mono text-slate-600 dark:text-slate-400 tabular-nums">
         {currentIndex + 1} / {totalCount}
       </div>
 

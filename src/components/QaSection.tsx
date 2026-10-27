@@ -43,7 +43,7 @@ export const QaSection: React.FC<QaSectionProps> = ({ project, isAr, onSelectStr
         <span
           className={`px-2 py-0.5 rounded-full text-[10px] font-semibold shrink-0 tabular-nums ${
             qaSummary.totalAffectedItemsCount > 0
-              ? 'bg-rose-500/15 text-rose-600 dark:text-rose-300'
+              ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
               : 'bg-[#1EB996]/15 text-emerald-700 dark:text-[#1EB996]'
           }`}
         >
@@ -187,7 +187,7 @@ export const QaSection: React.FC<QaSectionProps> = ({ project, isAr, onSelectStr
                     <span
                       className={`inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-semibold shrink-0 ${
                         iss.category === 'placeholder'
-                          ? 'bg-rose-500/15 text-rose-600 dark:text-rose-300'
+                          ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
                           : 'bg-amber-500/15 text-amber-600 dark:text-amber-300'
                       }`}
                     >

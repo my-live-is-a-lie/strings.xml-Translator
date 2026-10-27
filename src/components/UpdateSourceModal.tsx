@@ -92,7 +92,7 @@ export const UpdateSourceModal: React.FC<UpdateSourceModalProps> = ({
               <h2 id="update-source-title" className="text-lg font-semibold text-slate-900 dark:text-white">
                 {isAr ? 'تحديث ملف المصدر' : 'Update source file'}
               </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
+              <p className="text-xs text-slate-600 dark:text-slate-400">
                 {isAr
                   ? 'ارفع نسخة جديدة من strings.xml الإنجليزي. تبقى ترجماتك، وتُعلَّم النصوص المتغيرة للمراجعة.'
                   : 'Load a newer English strings.xml. Your translations are kept and changed strings are flagged for review.'}

@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { X, Download, Copy, Check, Sliders, Folder, Filter, ShieldAlert } from 'lucide-react';
+import { useDialog } from '../utils/useDialog';
 import { FilterStatus, SourceFilter, TranslationProject } from '../types';
 import { copyTextToClipboard } from '../utils/storage';
 import { analyzeProjectQa } from '../utils/placeholderCheck';
@@ -35,6 +36,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   appLang = 'ar',
 }) => {
   const isAr = appLang === 'ar';
+  const dialogRef = useDialog(isOpen, onClose);
   const [options, setOptions] = useState<ExportOptions>(defaultExportOptions);
   const [copied, setCopied] = useState(false);
   const [localFilterStatus, setLocalFilterStatus] = useState<FilterStatus>('all');
@@ -136,7 +138,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 overflow-y-auto">
       {/* Material 3 Dialog Container */}
-      <div className="w-full max-w-2xl bg-white dark:bg-[#1E1F20] rounded-3xl m3-elevation-3 border border-slate-200/80 dark:border-slate-800/80 overflow-hidden flex flex-col my-6 max-h-[90vh] animate-in fade-in zoom-in-95 duration-150">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="ExportModal-title" tabIndex={-1} className="outline-none w-full max-w-2xl bg-white dark:bg-[#1E1F20] rounded-3xl m3-elevation-3 border border-slate-200/80 dark:border-slate-800/80 overflow-hidden flex flex-col my-6 max-h-[90vh] animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
         <div className="p-6 pb-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -144,10 +146,10 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               <Download className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+              <h2 id="ExportModal-title" className="text-lg font-semibold text-slate-900 dark:text-white">
                 {isAr ? 'تصدير ملف strings.xml لأندرويد' : 'Export Android strings.xml'}
               </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
+              <p className="text-xs text-slate-600 dark:text-slate-400">
                 {options.onlyMatchingFilter
                   ? isAr
                     ? `تصدير ${filteredItems.length} من أصل ${totalCount} نص (${activeFilterLabel})`
@@ -159,10 +161,12 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             </div>
           </div>
           <button
+            type="button"
+            aria-label={isAr ? 'إغلاق' : 'Close'}
             onClick={onClose}
             className="p-2 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer m3-state-layer"
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5" aria-hidden="true" />
           </button>
         </div>
 
@@ -306,7 +310,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                       }`}
                     >
                       <span>{chip.label}</span>
-                      <span className="opacity-75 tabular-nums">({chip.count})</span>
+                      <span className="tabular-nums">({chip.count})</span>
                     </button>
                   );
                 })}
@@ -337,7 +341,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                       }`}
                     >
                       <span>{srcChip.label}</span>
-                      <span className="opacity-75 tabular-nums">({srcChip.count})</span>
+                      <span className="tabular-nums">({srcChip.count})</span>
                     </button>
                   );
                 })}
@@ -347,7 +351,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
           {/* Live XML Preview */}
           <div className="space-y-1.5">
-            <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+            <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
               <span className="font-semibold text-slate-700 dark:text-slate-300">
                 {isAr ? 'معاينة مباشرة لملف XML' : 'Live Preview'}
               </span>
@@ -370,6 +374,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
             <div
               dir="ltr"
+              tabIndex={0}
+              role="region"
+              aria-label={isAr ? 'معاينة ملف XML' : 'XML preview'}
               className="max-h-60 overflow-y-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-[#111318] text-slate-100 p-4 font-mono text-[11px] leading-relaxed select-all"
             >
               <pre className="whitespace-pre">{generatedXml}</pre>
