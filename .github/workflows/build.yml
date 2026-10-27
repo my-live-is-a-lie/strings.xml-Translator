@@ -69,6 +69,13 @@ jobs:
       - name: Add Capacitor Android platform
         run: npx cap add android
 
+      - name: Harden Android manifest
+        run: |
+          # Keep encrypted API-key storage out of cloud/adb backups; forbid cleartext traffic
+          sed -i 's/<application/<application android:allowBackup="false" android:usesCleartextTraffic="false"/' android/app/src/main/AndroidManifest.xml
+          sed -i 's/android:allowBackup="true"//' android/app/src/main/AndroidManifest.xml
+          grep -n "<application" android/app/src/main/AndroidManifest.xml
+
       - name: Build Android Debug APK
         working-directory: android
         run: ./gradlew assembleDebug

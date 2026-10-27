@@ -240,10 +240,11 @@ export async function directCallProviderWithKey(
 
   const tryGoogleCloudKey = async (): Promise<string> => {
     const res = await nativeFetch<{ data?: { translations?: Array<{ translatedText?: string }> } }>(
-      `https://translation.googleapis.com/language/translate/v2?key=${encodeURIComponent(trimmedKey)}`,
+      'https://translation.googleapis.com/language/translate/v2',
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        // Key in a header, not the URL, so it never lands in URLs/logs.
+        headers: { 'Content-Type': 'application/json', 'X-goog-api-key': trimmedKey },
         data: { q: sourceText, source: 'en', target: baseLang, format: 'text' },
       }
     );
