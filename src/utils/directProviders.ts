@@ -2,7 +2,6 @@
 // Uses nativeFetch (CapacitorHttp) on native Android/iOS to bypass browser CORS completely,
 // allowing the APK to translate directly without requiring an intermediate backend proxy server.
 
-import { AccessKey, AuthToken, Translator as LaraTranslator } from '@translated/lara';
 import {
   SYSTEM_INSTRUCTION,
   fetchGoogleGtxRaw,
@@ -37,6 +36,28 @@ export interface DirectProviderTestResult {
   providerTranslation?: string;
   detectedType?: string;
   error?: string;
+}
+
+// The Lara SDK is Node-oriented; load it only when a Lara key is actually used.
+async function loadLara() {
+  return import('@translated/lara');
+}
+
+/** Client-side guard for the user-typed LibreTranslate URL: https only, no credentials, no IP/localhost/private hosts. */
+export function assertSafeLibreBase(raw: string): string {
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    throw new Error('LibreTranslate: رابط غير صالح / Invalid server URL.');
+  }
+  const h = u.hostname.toLowerCase();
+  const isIp = /^[\d.]+$/.test(h) || h.includes(':') || h.startsWith('[');
+  const privateName = h === 'localhost' || h.endsWith('.local') || h.endsWith('.internal') || !h.includes('.');
+  if (u.protocol !== 'https:' || u.username || u.password || isIp || privateName) {
+    throw new Error('LibreTranslate: يُسمح فقط برابط https لنطاق عام / Only public https domains are allowed.');
+  }
+  return `${u.origin}${u.pathname.replace(/\/$/, '')}`;
 }
 
 const LARA_CONNECTION_TIMEOUT_MS = 12000;
@@ -248,6 +269,7 @@ export async function directCallProviderWithKey(
   };
 
   const tryLara = async (): Promise<string> => {
+    const { AccessKey, AuthToken, Translator: LaraTranslator } = await loadLara();
     const laraTarget = laraTargetFor(targetLang);
     const creds = parseLaraCredentials(trimmedKey);
 
@@ -345,6 +367,7 @@ export async function directCallProviderWithKey(
     if (!base.startsWith('http://') && !base.startsWith('https://')) {
       base = `https://${base}`;
     }
+    base = assertSafeLibreBase(base);
     const res = await nativeFetch<{ translatedText?: string }>(`${base}/translate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

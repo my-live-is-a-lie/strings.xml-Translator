@@ -55,7 +55,8 @@ export async function nativeFetch<T = unknown>(
         text,
       };
     } catch (nativeErr) {
-      console.warn('[nativeHttp] Native request encountered an error, falling back to fetch:', nativeErr);
+      // No fetch fallback on native: CORS/CSP would block it and hide the real error.
+      throw nativeErr instanceof Error ? nativeErr : new Error(String(nativeErr));
     }
   }
 

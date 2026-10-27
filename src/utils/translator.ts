@@ -29,10 +29,18 @@ export function isNativeApp(): boolean {
   return Boolean(cap?.isNativePlatform?.());
 }
 
-/** Providers are supported on web via server and on native Android directly via CapacitorHttp. */
+/** True when the translation server can be reached (same origin on the web, or VITE_API_BASE in the app). */
 export function serverProvidersAvailable(): boolean {
-  return true;
+  return API_BASE !== '' || !isNativeApp();
 }
+
+/** Native app: key providers are called straight from the device through CapacitorHttp (no CORS). */
+export function directProvidersAvailable(): boolean {
+  return isNativeApp();
+}
+
+const PROVIDERS_UNAVAILABLE =
+  'مزودو المفاتيح يتطلبون خادم الترجمة، وهو غير متاح هنا. / API-key providers need the translation server, which is not reachable here.';
 
 /** Logs a fallback in development only; production users simply get the next engine. */
 function logFallback(engine: string, err: unknown): void {
@@ -450,8 +458,8 @@ export async function testProviderApiKey(
   const trimmedKey = apiKey.trim();
   const trimmedFolder = folderId?.trim() || undefined;
 
-  // 1. If an external/self-hosted backend server is configured, try it first
-  if (API_BASE) {
+  // 1. Server first (same origin on the web, or VITE_API_BASE in the app)
+  if (serverProvidersAvailable()) {
     try {
       const res = await fetchWithTimeout(
         `${API_BASE}/api/providers/test`,
@@ -470,7 +478,10 @@ export async function testProviderApiKey(
     }
   }
 
-  // 2. Direct client test (bypasses CORS on Android APK via CapacitorHttp)
+  // 2. Direct client test, native app only (CapacitorHttp bypasses CORS)
+  if (!directProvidersAvailable()) {
+    return { success: false, matched: false, error: PROVIDERS_UNAVAILABLE };
+  }
   try {
     const directRes = await directTestProviderApiKey(providerType, trimmedKey, trimmedFolder);
     return directRes as ProviderTestResult;
@@ -734,8 +745,8 @@ async function translateSingleSegmentUncached(
       return tryGeminiDirect();
     }
 
-    // 1. If backend server is configured, try it first
-    if (API_BASE) {
+    // 1. Server first when reachable
+    if (serverProvidersAvailable()) {
       try {
         const pRes = await fetchWithTimeout(
           `${API_BASE}/api/providers/translate`,
@@ -768,7 +779,8 @@ async function translateSingleSegmentUncached(
       }
     }
 
-    // 2. Direct client translation (uses CapacitorHttp on native Android APK to bypass CORS)
+    // 2. Direct client translation, native app only (CapacitorHttp bypasses CORS)
+    if (!directProvidersAvailable()) return null;
     try {
       const directResult = await directCallProviderWithKey(
         activeProvider.type,
