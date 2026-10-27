@@ -153,3 +153,31 @@ test('quick filters: multi-select, count badge, hide/show, and they are remember
   await page.reload();
   await expect(page.locator('[data-quick-filters-btn]:visible')).toContainText('1');
 });
+
+test('the strings list and the table open on the string being translated', async ({ page }) => {
+  await mockProviderApi(page);
+  await openAppWithProvider(page);
+  await loadSample(page);
+  const counter = page.locator('text=/^\\d+ \\/ \\d+$/').first();
+  for (let i = 0; i < 14; i++) await page.locator('#weblate-skip-btn').click();
+  await expect(counter).toHaveText('15 / 17');
+  await page.setViewportSize({ width: 390, height: 520 });
+
+  const inView = async (sel: string) =>
+    page.evaluate((s) => {
+      const el = Array.from(document.querySelectorAll<HTMLElement>(s)).find((e) => e.offsetParent !== null);
+      if (!el) return false;
+      const r = el.getBoundingClientRect();
+      return r.top >= 0 && r.bottom <= window.innerHeight;
+    }, sel);
+
+  await page.locator('#mobile-drawer-btn').click();
+  await expect.poll(() => inView('[data-item-id].ring-1')).toBe(true);
+  const selectedItemId = await page.locator('[data-item-id].ring-1').first().getAttribute('data-item-id');
+  await page.locator('button[title="إغلاق القائمة"]').click();
+  await page.waitForTimeout(400);
+
+  await page.locator('#header-mobile-view-toggle-btn').click();
+  await page.waitForTimeout(500);
+  await expect.poll(() => inView(`[data-item-id="${selectedItemId}"]`)).toBe(true);
+});

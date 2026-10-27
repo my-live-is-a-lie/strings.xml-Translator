@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { scrollItemIntoView } from '../utils/scrollToItem';
 import { ResourceItem, FilterStatus, SourceFilter, SingleStringItem } from '../types';
 import { Search, CheckCircle2, Circle, AlertCircle, Edit3, Check, Sparkles, CheckSquare, Square, Loader2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp } from 'lucide-react';
 import { bulkTranslateItems } from '../utils/translator';
@@ -8,6 +9,8 @@ import { getLanguageOption } from '../utils/languages';
 
 interface TableViewProps {
   items: ResourceItem[];
+  /** The string currently open in the editor: the table opens on its page and scrolls to it. */
+  selectedId?: string;
   onSelectString: (id: string) => void;
   onUpdateTranslation: (updated: ResourceItem) => void;
   targetLang?: string;
@@ -32,6 +35,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
   appLang = 'ar',
   onBulkUpdateTranslations,
   onResetItemHistory: _onResetItemHistory,
+  selectedId,
   filterStatus: controlledFilter,
   onFilterChange,
   searchQuery: controlledSearch,
@@ -66,8 +70,16 @@ const TableViewBase: React.FC<TableViewProps> = ({
     [items, filter, search, sourceFilter, quickActive]
   );
 
-  const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<number>(50);
+  const [page, setPage] = useState(() => {
+    const idx = selectedId ? filtered.findIndex((i) => i.id === selectedId) : -1;
+    return idx >= 0 ? Math.floor(idx / 50) + 1 : 1;
+  });
+  const tableRootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (selectedId && tableRootRef.current) scrollItemIntoView(tableRootRef.current, selectedId, 'center');
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only once, when the table opens
+  }, []);
   // Going back to page 1 and closing the editor when the search or filters change (during render)
   const viewKey = `${search}|${filter}|${sourceFilter}|${quickActive.join(',')}`;
   const [lastViewKey, setLastViewKey] = useState(viewKey);
@@ -317,7 +329,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
     );
 
   return (
-    <div className="flex flex-col h-full bg-[#F8F9FA] dark:bg-[#111318] overflow-hidden">
+    <div ref={tableRootRef} className="flex flex-col h-full bg-[#F8F9FA] dark:bg-[#111318] overflow-hidden">
       {/* Search, Filter & Bulk Actions Header */}
       <div className="p-4 sm:p-5 border-b border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-[#131314] flex flex-wrap items-center justify-between gap-3">
         {/* M3 Search Bar */}
@@ -448,6 +460,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
                 return (
                   <div
                     key={item.id}
+                    data-item-id={item.id}
                     className={`p-3.5 space-y-2.5 ${isChecked ? 'bg-emerald-50/60 dark:bg-emerald-950/20' : ''}`}
                   >
                     <div className="flex items-center gap-2.5">
@@ -611,6 +624,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
                   return (
                     <tr
                       key={item.id}
+                      data-item-id={item.id}
                       className={`transition-colors group ${
                         isChecked
                           ? 'bg-emerald-50/60 dark:bg-emerald-950/20'

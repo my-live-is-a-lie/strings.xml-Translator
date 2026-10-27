@@ -883,6 +883,7 @@ export default function App() {
           <main className="flex-1 h-full overflow-hidden">
             <TableView
               items={project.items}
+              selectedId={selectedId}
               onSelectString={selectItemInEditor}
               onUpdateTranslation={handleUpdateTranslation}
               targetLang={project.targetLang}

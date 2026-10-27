@@ -82,6 +82,7 @@ const StringListRowBase: React.FC<StringListRowProps> = ({
 
   return (
     <div
+      data-item-id={item.id}
       className={`relative w-full text-start px-3.5 py-2.5 rounded-2xl transition-all flex flex-col gap-1 m3-state-layer ${
         isSelected
           ? 'bg-[#E8F0FE] dark:bg-[#1E293B] shadow-xs ring-1 ring-[#0B57D0]/30 dark:ring-[#A8C7FA]/30'

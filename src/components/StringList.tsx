@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import {
   Search,
   Check,
@@ -19,6 +19,7 @@ import { ResourceItem, FilterStatus, SourceFilter } from '../types';
 import { bulkTranslateItems } from '../utils/translator';
 import { filterProjectItems } from '../utils/xmlExporter';
 import { analyzeProjectQa } from '../utils/placeholderCheck';
+import { scrollItemIntoView } from '../utils/scrollToItem';
 import { StringListRow } from './StringListRow';
 import { QuickFilterButton, QuickFilterBar } from './QuickFilters';
 import { applyQuickFilters, useQuickFilters } from '../utils/quickFilters';
@@ -135,6 +136,17 @@ const StringListBase: React.FC<StringListProps> = ({
       setDisplayLimit(Math.max(displayLimit, idx + 20));
     }
   }
+
+  // Show the string being translated: centre it when the list opens, keep it visible as the selection moves.
+  const listRef = useRef<HTMLDivElement>(null);
+  const firstScrollDone = useRef(false);
+  useEffect(() => {
+    if (!selectedId || !listRef.current) return;
+    const first = !firstScrollDone.current;
+    if (scrollItemIntoView(listRef.current, selectedId, first ? 'center' : 'nearest')) {
+      firstScrollDone.current = true;
+    }
+  }, [selectedId]);
 
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const target = e.currentTarget;
@@ -609,7 +621,7 @@ const StringListBase: React.FC<StringListProps> = ({
       </div>
 
       {/* String Items List */}
-      <div onScroll={handleScroll} className="flex-1 overflow-y-auto p-2 space-y-1">
+      <div ref={listRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-2 space-y-1">
         {filteredItems.length === 0 ? (
           <div className="py-12 px-4 text-center text-xs text-slate-600 dark:text-slate-400 space-y-1.5">
             <p className="font-medium text-slate-700 dark:text-slate-300">
