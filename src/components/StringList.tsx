@@ -20,6 +20,8 @@ import { bulkTranslateItems } from '../utils/translator';
 import { filterProjectItems } from '../utils/xmlExporter';
 import { analyzeProjectQa } from '../utils/placeholderCheck';
 import { StringListRow } from './StringListRow';
+import { QuickFilterButton, QuickFilterBar } from './QuickFilters';
+import { applyQuickFilters, useQuickFilters } from '../utils/quickFilters';
 
 interface StringListProps {
   items: ResourceItem[];
@@ -100,8 +102,12 @@ const StringListBase: React.FC<StringListProps> = ({
   const manualPercent = totalTranslatedCount > 0 ? 100 - aiPercent : 0;
 
   // Filter items (memoized to prevent redundant array operations)
+  const { active: quickActive } = useQuickFilters();
   const filteredItems = useMemo(() => {
-    const base = filterProjectItems(items, filterStatus, searchQuery, sourceFilter);
+    const base = applyQuickFilters(
+      filterProjectItems(items, filterStatus, searchQuery, sourceFilter),
+      quickActive
+    );
     if (qaFilter === 'all') return base;
     return base.filter((item) => {
       const itemQa = qaSummary.byItemId.get(item.id);
@@ -110,12 +116,12 @@ const StringListBase: React.FC<StringListProps> = ({
       if (qaFilter === 'html') return itemQa.hasHtmlIssue;
       return true;
     });
-  }, [items, filterStatus, searchQuery, sourceFilter, qaFilter, qaSummary]);
+  }, [items, filterStatus, searchQuery, sourceFilter, qaFilter, qaSummary, quickActive]);
 
   // Incremental rendering limit (renders 25 items initially for ultra-fast instant mount, loads more on scroll)
   const [displayLimit, setDisplayLimit] = useState(25);
   // Reset when the filters change (adjusted during render, which avoids an extra render pass)
-  const filterKey = `${searchQuery}|${filterStatus}|${sourceFilter}|${qaFilter}`;
+  const filterKey = `${searchQuery}|${filterStatus}|${sourceFilter}|${qaFilter}|${quickActive.join(',')}`;
   const [lastFilterKey, setLastFilterKey] = useState(filterKey);
   if (lastFilterKey !== filterKey) {
     setLastFilterKey(filterKey);
@@ -218,6 +224,12 @@ const StringListBase: React.FC<StringListProps> = ({
               <X className="w-3.5 h-3.5" />
             </button>
           )}
+        </div>
+
+        {/* Quick filters (desktop; the mobile bar has its own button) */}
+        <div className="hidden md:flex flex-col gap-1.5 text-xs">
+          <div><QuickFilterButton appLang={appLang} /></div>
+          <QuickFilterBar appLang={appLang} />
         </div>
 
         {/* M3 Filter Chips */}

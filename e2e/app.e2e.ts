@@ -128,3 +128,28 @@ test('server health endpoint answers and metrics stay hidden without a token', a
   expect(await health.json()).toMatchObject({ status: 'ok' });
   expect((await request.get('/metrics')).status()).toBe(404);
 });
+
+test('quick filters: multi-select, count badge, hide/show, and they are remembered', async ({ page }) => {
+  await openAppWithProvider(page);
+  await loadSample(page);
+  await page.setViewportSize({ width: 390, height: 800 });
+
+  const btn = page.locator('[data-quick-filters-btn]:visible');
+  await expect(page.locator('[data-quick-filters-bar]')).toHaveCount(0);
+  await btn.click();
+  await expect(page.locator('[data-quick-filters-bar]:visible')).toBeVisible();
+
+  await page.locator('[data-filter="untranslated"]:visible').click();
+  await expect(btn).toContainText('1');
+  await page.locator('[data-filter="manual"]:visible').click();
+  await expect(btn).toContainText('2');
+  await page.locator('[data-filter="manual"]:visible').click(); // toggling again disables it
+  await expect(btn).toContainText('1');
+
+  await btn.click(); // hides the bar but keeps the filter
+  await expect(page.locator('[data-quick-filters-bar]')).toHaveCount(0);
+  await expect(btn).toContainText('1');
+
+  await page.reload();
+  await expect(page.locator('[data-quick-filters-btn]:visible')).toContainText('1');
+});

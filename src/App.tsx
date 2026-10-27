@@ -22,6 +22,7 @@ import {
 } from './utils/editorState';
 import { ExportModal } from './components/ExportModal';
 import { FilesModal } from './components/FilesModal';
+import { QuickFilterButton, QuickFilterBar } from './components/QuickFilters';
 import { TranslationProject, ResourceItem, FilterStatus, SourceFilter, StoredXmlFile } from './types';
 import { parseAndroidXml, mergeTargetXml, normalizePluralsForLanguage } from './utils/xmlParser';
 import { SAMPLE_ANDROID_STRINGS_XML, SAMPLE_TARGET_ARABIC_XML } from './utils/sampleData';
@@ -802,7 +803,8 @@ export default function App() {
             {/* Center: Translation Editor */}
             <main className="flex-1 h-full min-w-0 flex flex-col overflow-hidden relative">
               {/* Mobile Quick Bar for Drawer toggle */}
-              <div className="md:hidden flex items-center justify-between px-4 pt-0.5 pb-2 bg-white/95 dark:bg-[#131314]/95 text-xs">
+              <div className="md:hidden flex flex-col gap-2 px-4 pt-0.5 pb-2 bg-white/95 dark:bg-[#131314]/95 text-xs">
+                <div className="flex items-center gap-2 flex-wrap">
                 <button
                   id="mobile-drawer-btn"
                   onClick={openMobileDrawer}
@@ -815,6 +817,9 @@ export default function App() {
                       : `Strings List (${project.items.length})`}
                   </span>
                 </button>
+                <QuickFilterButton appLang={appLang} />
+                </div>
+                <QuickFilterBar appLang={appLang} />
               </div>
 
               {currentItem ? (

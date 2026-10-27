@@ -1,0 +1,93 @@
+import { useSyncExternalStore } from 'react';
+import { ResourceItem } from '../types';
+
+export type QuickFilterId = 'untranslated' | 'translated' | 'ai' | 'manual';
+export const QUICK_FILTER_IDS: readonly QuickFilterId[] = ['untranslated', 'translated', 'ai', 'manual'];
+
+const STORAGE_KEY = 'app_quick_filters_v1';
+
+interface QuickFilterState {
+  active: readonly QuickFilterId[];
+  open: boolean;
+}
+
+function load(): QuickFilterState {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as { active?: unknown; open?: unknown };
+      const active = Array.isArray(parsed.active)
+        ? QUICK_FILTER_IDS.filter((id) => (parsed.active as unknown[]).includes(id))
+        : [];
+      return { active, open: parsed.open === true };
+    }
+  } catch {
+    // unreadable storage: start with no filters
+  }
+  return { active: [], open: false };
+}
+
+let state: QuickFilterState = load();
+const listeners = new Set<() => void>();
+
+function commit(next: QuickFilterState): void {
+  state = next;
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // storage unavailable: filters still work for this session
+  }
+  listeners.forEach((l) => l());
+}
+
+export function toggleQuickFilter(id: QuickFilterId): void {
+  const has = state.active.includes(id);
+  commit({
+    ...state,
+    active: QUICK_FILTER_IDS.filter((x) => (x === id ? !has : state.active.includes(x))),
+  });
+}
+
+export function clearQuickFilters(): void {
+  commit({ ...state, active: [] });
+}
+
+export function toggleQuickFilterBar(): void {
+  commit({ ...state, open: !state.open });
+}
+
+export function useQuickFilters(): QuickFilterState {
+  return useSyncExternalStore(
+    (cb) => {
+      listeners.add(cb);
+      return () => listeners.delete(cb);
+    },
+    () => state,
+    () => state
+  );
+}
+
+/**
+ * Within a group (status: untranslated/translated, origin: ai/manual) selected filters are OR'ed;
+ * the two groups are AND'ed, so "translated + AI" shows only AI-translated strings.
+ * Origin filters only match translated strings.
+ */
+export function applyQuickFilters(items: ResourceItem[], active: readonly QuickFilterId[]): ResourceItem[] {
+  if (active.length === 0) return items;
+  const wantUntranslated = active.includes('untranslated');
+  const wantTranslated = active.includes('translated');
+  const wantAi = active.includes('ai');
+  const wantManual = active.includes('manual');
+  const statusOn = wantUntranslated || wantTranslated;
+  const originOn = wantAi || wantManual;
+  return items.filter((item) => {
+    const isTranslated = item.status !== 'untranslated';
+    if (statusOn && !((wantUntranslated && !isTranslated) || (wantTranslated && isTranslated))) return false;
+    if (originOn) {
+      if (!isTranslated) return false;
+      const isAi = item.translationSource === 'ai';
+      if (!((wantAi && isAi) || (wantManual && !isAi))) return false;
+    }
+    return true;
+  });
+}

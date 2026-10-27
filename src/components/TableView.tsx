@@ -3,6 +3,7 @@ import { ResourceItem, FilterStatus, SourceFilter, SingleStringItem } from '../t
 import { Search, CheckCircle2, Circle, AlertCircle, Edit3, Check, Sparkles, CheckSquare, Square, Loader2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp } from 'lucide-react';
 import { bulkTranslateItems } from '../utils/translator';
 import { filterProjectItems } from '../utils/xmlExporter';
+import { applyQuickFilters, useQuickFilters } from '../utils/quickFilters';
 import { getLanguageOption } from '../utils/languages';
 
 interface TableViewProps {
@@ -59,15 +60,16 @@ const TableViewBase: React.FC<TableViewProps> = ({
     else setLocalFilter(st);
   };
 
+  const { active: quickActive } = useQuickFilters();
   const filtered = useMemo(
-    () => filterProjectItems(items, filter, search, sourceFilter as SourceFilter),
-    [items, filter, search, sourceFilter]
+    () => applyQuickFilters(filterProjectItems(items, filter, search, sourceFilter as SourceFilter), quickActive),
+    [items, filter, search, sourceFilter, quickActive]
   );
 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<number>(50);
   // Going back to page 1 and closing the editor when the search or filters change (during render)
-  const viewKey = `${search}|${filter}|${sourceFilter}`;
+  const viewKey = `${search}|${filter}|${sourceFilter}|${quickActive.join(',')}`;
   const [lastViewKey, setLastViewKey] = useState(viewKey);
   if (lastViewKey !== viewKey) {
     setLastViewKey(viewKey);
