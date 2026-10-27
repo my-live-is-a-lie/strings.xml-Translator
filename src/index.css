@@ -285,14 +285,6 @@
   background-color: var(--accent-muted-active) !important;
 }
 
-/* Text on a filled accent background uses whichever of white/dark reaches 4.5:1 for the chosen accent */
-.bg-\[\#1EB996\],
-.dark .dark\:bg-\[\#1EB996\],
-.bg-\[\#0B57D0\],
-.dark .dark\:bg-\[\#A8C7FA\] {
-  color: var(--accent-on-primary) !important;
-}
-
 .text-\[\#1EB996\],
 .dark .dark\:text-\[\#1EB996\],
 .text-\[\#0B57D0\],
