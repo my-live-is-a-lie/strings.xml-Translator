@@ -806,7 +806,7 @@ export default function App() {
                 <button
                   id="mobile-drawer-btn"
                   onClick={openMobileDrawer}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 font-medium text-slate-800 dark:text-slate-200 cursor-pointer m3-state-layer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-transparent shadow-sm font-medium text-slate-800 dark:text-slate-200 cursor-pointer m3-state-layer"
                 >
                   <Menu className="w-4 h-4 text-[#0B57D0] dark:text-[#A8C7FA]" />
                   <span>
