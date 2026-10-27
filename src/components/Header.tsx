@@ -316,7 +316,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
         </div>
 
         {/* Visual Progress Bar & Translated vs. Untranslated Breakdown */}
-        <div className="bg-slate-50/80 dark:bg-[#171A21]/90 border-t border-slate-200/60 dark:border-slate-800/70">
+        <div className="bg-white/95 dark:bg-[#131314]/95 border-t border-slate-200/60 dark:border-slate-800/70">
           {/* Segmented Progress Track - thin (h-1), edge-to-edge, touching spacer line above */}
           <div
             role="progressbar"

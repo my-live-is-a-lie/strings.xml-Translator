@@ -802,7 +802,7 @@ export default function App() {
             {/* Center: Translation Editor */}
             <main className="flex-1 h-full min-w-0 flex flex-col overflow-hidden relative">
               {/* Mobile Quick Bar for Drawer toggle */}
-              <div className="md:hidden flex items-center justify-between px-4 pt-0.5 pb-2 bg-slate-50/80 dark:bg-[#171A21]/90 text-xs">
+              <div className="md:hidden flex items-center justify-between px-4 pt-0.5 pb-2 bg-white/95 dark:bg-[#131314]/95 text-xs">
                 <button
                   id="mobile-drawer-btn"
                   onClick={openMobileDrawer}
