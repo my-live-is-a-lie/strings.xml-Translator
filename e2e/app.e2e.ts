@@ -202,3 +202,22 @@ test('quick filters drive the editor and dim filters that have no strings', asyn
   await page.locator('[data-filter="translated"]:visible').click();
   await expect(counter).toHaveText(/\/ 17$/);
 });
+
+test('a string saved under the "untranslated" filter stays reachable', async ({ page }) => {
+  await mockProviderApi(page);
+  await openAppWithProvider(page);
+  await loadSample(page);
+  await page.setViewportSize({ width: 390, height: 800 });
+  await page.locator('[data-quick-filters-btn]:visible').click();
+  await page.locator('[data-filter="untranslated"]:visible').click();
+
+  const counter = page.locator('text=/^\\d+ \\/ \\d+$/').first();
+  await expect(counter).toHaveText(/^1 \/ \d+$/);
+  const total = (await counter.innerText()).split('/')[1].trim();
+  await page.locator('textarea').first().fill('نص تجريبي');
+  await page.getByText('حفظ ومتابعة').click();
+  await expect(counter).toHaveText(`2 / ${total}`); // total unchanged: the saved string wasn't dropped
+  await page.getByText('السابق').click();
+  await expect(counter).toHaveText(`1 / ${total}`);
+  await expect(page.locator('textarea').first()).toHaveValue('نص تجريبي');
+});

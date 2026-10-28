@@ -23,7 +23,7 @@ import {
 import { ExportModal } from './components/ExportModal';
 import { FilesModal } from './components/FilesModal';
 import { QuickFilterButton, QuickFilterBar } from './components/QuickFilters';
-import { applyQuickFilters, useQuickFilters } from './utils/quickFilters';
+import { applyQuickSnapshot, resetQuickSnapshot, useQuickFilters } from './utils/quickFilters';
 import { TranslationProject, ResourceItem, FilterStatus, SourceFilter, StoredXmlFile } from './types';
 import { parseAndroidXml, mergeTargetXml, normalizePluralsForLanguage } from './utils/xmlParser';
 import { SAMPLE_ANDROID_STRINGS_XML, SAMPLE_TARGET_ARABIC_XML } from './utils/sampleData';
@@ -578,11 +578,22 @@ export default function App() {
 
   // Navigation follows the quick filters: only the strings that pass them are visited.
   // If nothing passes (e.g. a remembered filter that matches nothing in this file) the whole file is used.
-  const { active: quickActive } = useQuickFilters();
+  const quickFilters = useQuickFilters();
+  const quickActive = quickFilters.active;
   const navItems = useMemo(() => {
-    const filtered = applyQuickFilters(project.items, quickActive);
+    const filtered = applyQuickSnapshot(project.items, quickFilters);
     return filtered.length > 0 ? filtered : project.items;
-  }, [project.items, quickActive]);
+  }, [project.items, quickFilters]);
+
+  // Take a fresh snapshot of what the filters select whenever another file/language opens (not on every edit).
+  const itemsForSnapshotRef = useRef(project.items);
+  useEffect(() => {
+    itemsForSnapshotRef.current = project.items;
+  });
+  const snapshotScope = `${project.id}|${project.targetLang}|${project.items.length}`;
+  useEffect(() => {
+    resetQuickSnapshot(itemsForSnapshotRef.current);
+  }, [snapshotScope]);
   const navIndexOf = useCallback(
     (id: string) => project.items.findIndex((i) => i.id === id),
     [project.items]

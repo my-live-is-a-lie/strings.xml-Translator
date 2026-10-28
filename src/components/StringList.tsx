@@ -22,7 +22,7 @@ import { analyzeProjectQa } from '../utils/placeholderCheck';
 import { scrollItemIntoView } from '../utils/scrollToItem';
 import { StringListRow } from './StringListRow';
 import { QuickFilterButton, QuickFilterBar } from './QuickFilters';
-import { applyQuickFilters, useQuickFilters } from '../utils/quickFilters';
+import { applyQuickSnapshot, useQuickFilters } from '../utils/quickFilters';
 
 interface StringListProps {
   items: ResourceItem[];
@@ -103,11 +103,12 @@ const StringListBase: React.FC<StringListProps> = ({
   const manualPercent = totalTranslatedCount > 0 ? 100 - aiPercent : 0;
 
   // Filter items (memoized to prevent redundant array operations)
-  const { active: quickActive } = useQuickFilters();
+  const quickFilters = useQuickFilters();
+  const quickActive = quickFilters.active;
   const filteredItems = useMemo(() => {
-    const base = applyQuickFilters(
+    const base = applyQuickSnapshot(
       filterProjectItems(items, filterStatus, searchQuery, sourceFilter),
-      quickActive
+      quickFilters
     );
     if (qaFilter === 'all') return base;
     return base.filter((item) => {
@@ -117,7 +118,7 @@ const StringListBase: React.FC<StringListProps> = ({
       if (qaFilter === 'html') return itemQa.hasHtmlIssue;
       return true;
     });
-  }, [items, filterStatus, searchQuery, sourceFilter, qaFilter, qaSummary, quickActive]);
+  }, [items, filterStatus, searchQuery, sourceFilter, qaFilter, qaSummary, quickFilters]);
 
   // Incremental rendering limit (renders 25 items initially for ultra-fast instant mount, loads more on scroll)
   const [displayLimit, setDisplayLimit] = useState(25);

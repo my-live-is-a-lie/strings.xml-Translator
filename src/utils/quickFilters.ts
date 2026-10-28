@@ -9,6 +9,11 @@ const STORAGE_KEY = 'app_quick_filters_v1';
 interface QuickFilterState {
   active: readonly QuickFilterId[];
   open: boolean;
+  /**
+   * Ids of the strings the filters selected at the moment they were switched on/off (or the file/language opened).
+   * Kept fixed while translating, so a string you just saved doesn't vanish from the list; null = not taken yet.
+   */
+  snapshot: ReadonlySet<string> | null;
 }
 
 function load(): QuickFilterState {
@@ -19,12 +24,12 @@ function load(): QuickFilterState {
       const active = Array.isArray(parsed.active)
         ? QUICK_FILTER_IDS.filter((id) => (parsed.active as unknown[]).includes(id))
         : [];
-      return { active, open: parsed.open === true };
+      return { active, open: parsed.open === true, snapshot: null };
     }
   } catch {
     // unreadable storage: start with no filters
   }
-  return { active: [], open: false };
+  return { active: [], open: false, snapshot: null };
 }
 
 let state: QuickFilterState = load();
@@ -33,23 +38,26 @@ const listeners = new Set<() => void>();
 function commit(next: QuickFilterState): void {
   state = next;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ active: state.active, open: state.open }));
   } catch {
     // storage unavailable: filters still work for this session
   }
   listeners.forEach((l) => l());
 }
 
-export function toggleQuickFilter(id: QuickFilterId): void {
-  const has = state.active.includes(id);
-  commit({
-    ...state,
-    active: QUICK_FILTER_IDS.filter((x) => (x === id ? !has : state.active.includes(x))),
-  });
+function takeSnapshot(items: ResourceItem[], active: readonly QuickFilterId[]): ReadonlySet<string> | null {
+  return active.length === 0 ? null : new Set(applyQuickFilters(items, active).map((i) => i.id));
 }
 
-export function clearQuickFilters(): void {
-  commit({ ...state, active: [] });
+export function toggleQuickFilter(id: QuickFilterId, items: ResourceItem[]): void {
+  const has = state.active.includes(id);
+  const active = QUICK_FILTER_IDS.filter((x) => (x === id ? !has : state.active.includes(x)));
+  commit({ ...state, active, snapshot: takeSnapshot(items, active) });
+}
+
+/** Re-takes the snapshot (a different file/language was opened, or the strings changed). */
+export function resetQuickSnapshot(items: ResourceItem[]): void {
+  commit({ ...state, snapshot: takeSnapshot(items, state.active) });
 }
 
 export function toggleQuickFilterBar(): void {
@@ -65,6 +73,13 @@ export function useQuickFilters(): QuickFilterState {
     () => state,
     () => state
   );
+}
+
+/** What the views show: the fixed snapshot when there is one, otherwise the live result of the filters. */
+export function applyQuickSnapshot(items: ResourceItem[], qf: Pick<QuickFilterState, 'active' | 'snapshot'>): ResourceItem[] {
+  if (qf.active.length === 0) return items;
+  const snap = qf.snapshot;
+  return snap ? items.filter((i) => snap.has(i.id)) : applyQuickFilters(items, qf.active);
 }
 
 /**

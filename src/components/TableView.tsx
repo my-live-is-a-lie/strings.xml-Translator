@@ -4,7 +4,7 @@ import { ResourceItem, FilterStatus, SourceFilter, SingleStringItem } from '../t
 import { Search, CheckCircle2, Circle, AlertCircle, Edit3, Check, Sparkles, CheckSquare, Square, Loader2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp } from 'lucide-react';
 import { bulkTranslateItems } from '../utils/translator';
 import { filterProjectItems } from '../utils/xmlExporter';
-import { applyQuickFilters, useQuickFilters } from '../utils/quickFilters';
+import { applyQuickSnapshot, useQuickFilters } from '../utils/quickFilters';
 import { getLanguageOption } from '../utils/languages';
 
 interface TableViewProps {
@@ -64,10 +64,11 @@ const TableViewBase: React.FC<TableViewProps> = ({
     else setLocalFilter(st);
   };
 
-  const { active: quickActive } = useQuickFilters();
+  const quickFilters = useQuickFilters();
+  const quickActive = quickFilters.active;
   const filtered = useMemo(
-    () => applyQuickFilters(filterProjectItems(items, filter, search, sourceFilter as SourceFilter), quickActive),
-    [items, filter, search, sourceFilter, quickActive]
+    () => applyQuickSnapshot(filterProjectItems(items, filter, search, sourceFilter as SourceFilter), quickFilters),
+    [items, filter, search, sourceFilter, quickFilters]
   );
 
   const [pageSize, setPageSize] = useState<number>(50);

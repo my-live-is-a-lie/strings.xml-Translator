@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import { applyQuickFilters, quickFilterCounts } from '../src/utils/quickFilters';
+import { applyQuickFilters, applyQuickSnapshot, quickFilterCounts } from '../src/utils/quickFilters';
 import type { ResourceItem } from '../src/types';
 
 const mk = (name: string, status: string, src?: 'ai' | 'manual') =>
@@ -34,5 +34,12 @@ describe('quick filters', () => {
   it('counts what each filter could show', () => {
     expect(quickFilterCounts(items)).toEqual({ untranslated: 1, translated: 3, ai: 1, manual: 2 });
     expect(quickFilterCounts([mk('u', 'untranslated')])).toMatchObject({ ai: 0, manual: 0, translated: 0 });
+  });
+
+  it('keeps a saved string in the view while the snapshot is fixed', () => {
+    const snapshot = new Set(applyQuickFilters(items, ['untranslated']).map((i) => i.id));
+    const after = items.map((i) => (i.id === 'u' ? ({ ...i, status: 'translated', target: 'x' } as ResourceItem) : i));
+    expect(applyQuickSnapshot(after, { active: ['untranslated'], snapshot }).map((i) => i.name)).toEqual(['u']);
+    expect(applyQuickSnapshot(after, { active: ['untranslated'], snapshot: null })).toEqual([]);
   });
 });

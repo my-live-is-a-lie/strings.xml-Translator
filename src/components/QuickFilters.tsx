@@ -81,7 +81,7 @@ export const QuickFilterBar: React.FC<BarProps> = ({ appLang, items, className =
             aria-pressed={on}
             disabled={unavailable}
             title={unavailable ? (isAr ? 'لا توجد نصوص لهذا الفلتر' : 'No strings for this filter') : undefined}
-            onClick={() => toggleQuickFilter(id)}
+            onClick={() => toggleQuickFilter(id, items)}
             className={`px-3 py-1 rounded-full border text-xs font-medium transition ${
               unavailable ? 'opacity-40 cursor-not-allowed ' : 'cursor-pointer '
             }${
