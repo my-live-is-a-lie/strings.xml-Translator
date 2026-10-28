@@ -229,6 +229,7 @@ const StringListBase: React.FC<StringListProps> = ({
       {externalAiOpen && (
         <ExternalAiModal
           items={items.filter((i) => checkedIds.has(i.id))}
+          reviewPool={items}
           targetLang={targetLang ?? 'ar'}
           targetLocaleName={targetLocaleName}
           appLang={appLang}

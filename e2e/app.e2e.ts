@@ -292,3 +292,25 @@ test('external AI flow: request files, paste a reply, validate, review and apply
   await expect(dialog).toHaveCount(0);
   await expect(page.locator('body')).toContainText('ترجمة تجريبية');
 });
+
+test('external AI request can also include the strings that need review', async ({ page }) => {
+  await openAppWithProvider(page);
+  await loadSample(page);
+  await openDrawer(page);
+  await page.click('#drawer-update-source-btn');
+  await page.fill(
+    '#update-source-text',
+    '<resources><string name="app_name">OmniTask</string><string name="action_save">Save all the Changes</string><string name="brand_new">Brand new text</string></resources>'
+  );
+  await page.click('#update-source-apply'); // action_save changed -> needs review, brand_new -> untranslated
+
+  await page.getByText(/تحديد غير المترجم/).first().click();
+  await page.click('#stringlist-bulk-translate-btn');
+  await page.locator('input[data-provider-id="__external_ai__"]').check();
+  await page.click('#bulk-provider-start');
+  const dialog = page.getByRole('dialog', { name: /الترجمة عبر تطبيق ذكاء اصطناعي/ });
+  const count = async () => Number(((await dialog.locator('h2').innerText()).match(/\((\d+) نص/) || [])[1]);
+  const before = await count();
+  await dialog.locator('#ext-include-review').check();
+  expect(await count()).toBeGreaterThan(before);
+});

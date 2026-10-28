@@ -18,6 +18,8 @@ import {
 
 interface Props {
   items: ResourceItem[];
+  /** All strings of the file: the ones that need review can be added to the request on demand. */
+  reviewPool?: ResourceItem[];
   targetLang: string;
   targetLocaleName?: string;
   appLang: 'ar' | 'en';
@@ -44,11 +46,17 @@ const ISSUE_LABELS: Record<IssueKind, { ar: string; en: string }> = {
 };
 
 /** Translate through any AI app by copy/paste or file, then validate and review before applying. */
-export const ExternalAiModal: React.FC<Props> = ({ items, targetLang, targetLocaleName, appLang, onClose, onApply }) => {
+export const ExternalAiModal: React.FC<Props> = ({ items: selectedItems, reviewPool, targetLang, targetLocaleName, appLang, onClose, onApply }) => {
   const isAr = appLang === 'ar';
   const dialogRef = useDialog<HTMLDivElement>(true, onClose);
   const label = targetLocaleName ? `${targetLocaleName} (${targetLang})` : targetLang;
 
+  const reviewExtra = useMemo(() => {
+    const have = new Set(selectedItems.map((i) => i.id));
+    return (reviewPool ?? []).filter((i) => i.status === 'needs_review' && !have.has(i.id));
+  }, [reviewPool, selectedItems]);
+  const [includeReview, setIncludeReview] = useState(false);
+  const items = useMemo(() => (includeReview ? [...selectedItems, ...reviewExtra] : selectedItems), [includeReview, selectedItems, reviewExtra]);
   const segments = useMemo(() => buildSegments(items, targetLang), [items, targetLang]);
   const [partSize, setPartSize] = useState(0); // 0 = one file
   const parts = useMemo(() => splitParts(segments, partSize), [segments, partSize]);
@@ -130,6 +138,28 @@ export const ExternalAiModal: React.FC<Props> = ({ items, targetLang, targetLoca
         {/* Step 1 */}
         <section className="space-y-2" aria-labelledby="ext-step1">
           <h3 id="ext-step1" className="font-semibold">{isAr ? '١) جهّز الطلب وأرسله' : '1) Prepare and send the request'}</h3>
+          {reviewExtra.length > 0 && (
+            <label className="flex items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                id="ext-include-review"
+                checked={includeReview}
+                onChange={(e) => {
+                  // The numbering changes with the request, so an earlier reply no longer matches
+                  setIncludeReview(e.target.checked);
+                  setReply(new Map());
+                  setEdited({});
+                  setExcluded(new Set());
+                  setError('');
+                }}
+              />
+              <span>
+                {isAr
+                  ? `إضافة النصوص التي تحتاج مراجعة (${reviewExtra.length}) إلى الطلب`
+                  : `Also include strings that need review (${reviewExtra.length})`}
+              </span>
+            </label>
+          )}
           <label className="flex items-center gap-2 text-xs">
             <span>{isAr ? 'التقسيم:' : 'Split:'}</span>
             <select
