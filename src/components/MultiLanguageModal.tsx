@@ -2,7 +2,8 @@ import React, { useRef, useState } from 'react';
 import { Archive, Check, Loader2, X } from 'lucide-react';
 import { ResourceItem, TranslationProject } from '../types';
 import { SUPPORTED_LANGUAGES, getArabicLanguageName } from '../utils/languages';
-import { bulkTranslateItems } from '../utils/translator';
+import { bulkTranslateItems, getActiveProviderId, getAllTranslationProviders, withTranslationProvider } from '../utils/translator';
+import { getProviderDisplayName } from './ProvidersPanel';
 import { downloadZip, itemsForLanguage, needsTranslation, valuesDirFor, xmlForLanguage } from '../utils/multiLang';
 import { useDialog } from '../utils/useDialog';
 
@@ -30,6 +31,12 @@ export const MultiLanguageModal: React.FC<MultiLanguageModalProps> = ({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [statuses, setStatuses] = useState<Record<string, LangStatus>>({});
   const [results, setResults] = useState<Record<string, ResourceItem[]>>({});
+  // Providers that need a key are only offered once a key has been saved; the choice applies to this run only
+  const [providers] = useState(() => getAllTranslationProviders().filter((p) => p.isBuiltIn || p.apiKey));
+  const [providerId, setProviderId] = useState(() => {
+    const active = getActiveProviderId();
+    return providers.some((p) => p.id === active) ? active : providers[0]?.id ?? '';
+  });
   const [running, setRunning] = useState(false);
   const [zipping, setZipping] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -66,8 +73,10 @@ export const MultiLanguageModal: React.FC<MultiLanguageModalProps> = ({
       const todo = base.filter(needsTranslation);
       setStatuses((s) => ({ ...s, [code]: { state: 'running', done: 0, total: todo.length } }));
       try {
-        const translated = await bulkTranslateItems(todo, code, getArabicLanguageName(code), (done, total) =>
-          setStatuses((s) => ({ ...s, [code]: { state: 'running', done, total } }))
+        const translated = await withTranslationProvider(providerId, () =>
+          bulkTranslateItems(todo, code, getArabicLanguageName(code), (done, total) =>
+            setStatuses((s) => ({ ...s, [code]: { state: 'running', done, total } }))
+          )
         );
         const byId = new Map(translated.map((t) => [t.id, t]));
         out[code] = base.map((item) => byId.get(item.id) ?? item);
@@ -179,6 +188,23 @@ export const MultiLanguageModal: React.FC<MultiLanguageModalProps> = ({
             );
           })}
         </ul>
+
+        <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300">
+          <span className="shrink-0">{isAr ? 'مزوّد الترجمة:' : 'Translation provider:'}</span>
+          <select
+            id="multilang-provider"
+            value={providerId}
+            onChange={(e) => setProviderId(e.target.value)}
+            disabled={running}
+            className="flex-1 min-w-0 px-2 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-[#1E1F20] text-slate-800 dark:text-slate-100"
+          >
+            {providers.map((p) => (
+              <option key={p.id} value={p.id}>
+                {getProviderDisplayName(p, isAr)}
+              </option>
+            ))}
+          </select>
+        </label>
 
         <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
           <span className="text-xs text-slate-600 dark:text-slate-400" aria-live="polite">

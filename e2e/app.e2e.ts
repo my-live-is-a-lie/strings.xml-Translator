@@ -98,6 +98,7 @@ test('translates several languages and downloads a ZIP with one values folder ea
   await page.click('#drawer-multilang-btn');
   await page.locator('input[data-lang="fr"]').check();
   await page.locator('input[data-lang="pt-rBR"]').check();
+  await expect(page.locator('#multilang-provider option')).not.toHaveCount(0);
   await page.click('#multilang-start');
   await expect(page.getByText(/2 جاهزة/)).toBeVisible({ timeout: 30_000 });
 
