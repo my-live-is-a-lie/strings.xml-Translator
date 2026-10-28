@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import { applyQuickFilters } from '../src/utils/quickFilters';
+import { applyQuickFilters, quickFilterCounts } from '../src/utils/quickFilters';
 import type { ResourceItem } from '../src/types';
 
 const mk = (name: string, status: string, src?: 'ai' | 'manual') =>
@@ -29,5 +29,10 @@ describe('quick filters', () => {
   it('ANDs across groups', () => {
     expect(names(['translated', 'ai'])).toEqual(['ai']);
     expect(names(['untranslated', 'ai'])).toEqual([]);
+  });
+
+  it('counts what each filter could show', () => {
+    expect(quickFilterCounts(items)).toEqual({ untranslated: 1, translated: 3, ai: 1, manual: 2 });
+    expect(quickFilterCounts([mk('u', 'untranslated')])).toMatchObject({ ai: 0, manual: 0, translated: 0 });
   });
 });

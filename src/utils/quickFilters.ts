@@ -91,3 +91,18 @@ export function applyQuickFilters(items: ResourceItem[], active: readonly QuickF
     return true;
   });
 }
+
+/** How many strings each filter could show on its own; a filter with 0 can't be switched on. */
+export function quickFilterCounts(items: ResourceItem[]): Record<QuickFilterId, number> {
+  const counts: Record<QuickFilterId, number> = { untranslated: 0, translated: 0, ai: 0, manual: 0 };
+  for (const item of items) {
+    if (item.status === 'untranslated') {
+      counts.untranslated++;
+      continue;
+    }
+    counts.translated++;
+    if (item.translationSource === 'ai') counts.ai++;
+    else counts.manual++;
+  }
+  return counts;
+}

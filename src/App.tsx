@@ -23,6 +23,7 @@ import {
 import { ExportModal } from './components/ExportModal';
 import { FilesModal } from './components/FilesModal';
 import { QuickFilterButton, QuickFilterBar } from './components/QuickFilters';
+import { applyQuickFilters, useQuickFilters } from './utils/quickFilters';
 import { TranslationProject, ResourceItem, FilterStatus, SourceFilter, StoredXmlFile } from './types';
 import { parseAndroidXml, mergeTargetXml, normalizePluralsForLanguage } from './utils/xmlParser';
 import { SAMPLE_ANDROID_STRINGS_XML, SAMPLE_TARGET_ARABIC_XML } from './utils/sampleData';
@@ -575,36 +576,52 @@ export default function App() {
     });
   }, []);
 
-  // Navigation handlers
-  const handleNavigatePrevious = useCallback(() => {
-    if (currentIndex > 0) {
-      setSelectedId(project.items[currentIndex - 1].id);
+  // Navigation follows the quick filters: only the strings that pass them are visited.
+  // If nothing passes (e.g. a remembered filter that matches nothing in this file) the whole file is used.
+  const { active: quickActive } = useQuickFilters();
+  const navItems = useMemo(() => {
+    const filtered = applyQuickFilters(project.items, quickActive);
+    return filtered.length > 0 ? filtered : project.items;
+  }, [project.items, quickActive]);
+  const navIndexOf = useCallback(
+    (id: string) => project.items.findIndex((i) => i.id === id),
+    [project.items]
+  );
+
+  // Switching filters moves the editor to the first matching string when the current one no longer matches.
+  const quickKey = quickActive.join(',');
+  const [lastQuickKey, setLastQuickKey] = useState(quickKey);
+  if (lastQuickKey !== quickKey) {
+    // Adjusted during render (like the selection fix-up above), which avoids an extra effect pass
+    setLastQuickKey(quickKey);
+    if (!navItems.some((i) => i.id === selectedId)) {
+      const firstId = navItems[0].id;
+      setEditorState((prev) => ({ ...prev, selectedId: firstId }));
     }
-  }, [currentIndex, project.items, setSelectedId]);
+  }
+
+  const navPosition = navItems.findIndex((i) => i.id === selectedId);
+
+  const handleNavigatePrevious = useCallback(() => {
+    for (let i = navItems.length - 1; i >= 0; i--) {
+      if (navIndexOf(navItems[i].id) < currentIndex) {
+        setSelectedId(navItems[i].id);
+        return;
+      }
+    }
+  }, [navItems, navIndexOf, currentIndex, setSelectedId]);
 
   const handleNavigateNext = useCallback(() => {
-    if (currentIndex < project.items.length - 1) {
-      setSelectedId(project.items[currentIndex + 1].id);
-    }
-  }, [currentIndex, project.items, setSelectedId]);
+    const next = navItems.find((i) => navIndexOf(i.id) > currentIndex);
+    if (next) setSelectedId(next.id);
+  }, [navItems, navIndexOf, currentIndex, setSelectedId]);
 
   const handleNavigateNextUntranslated = useCallback(() => {
-    const items = project.items;
-    // Look forward from currentIndex + 1
-    for (let i = currentIndex + 1; i < items.length; i++) {
-      if (items[i].status === 'untranslated') {
-        setSelectedId(items[i].id);
-        return;
-      }
-    }
-    // Loop back from beginning
-    for (let i = 0; i <= currentIndex; i++) {
-      if (items[i].status === 'untranslated') {
-        setSelectedId(items[i].id);
-        return;
-      }
-    }
-  }, [currentIndex, project.items, setSelectedId]);
+    const untranslated = navItems.filter((i) => i.status === 'untranslated');
+    if (untranslated.length === 0) return;
+    const next = untranslated.find((i) => navIndexOf(i.id) > currentIndex) ?? untranslated[0];
+    setSelectedId(next.id);
+  }, [navItems, navIndexOf, currentIndex, setSelectedId]);
 
   useGlobalShortcuts({
     onUndo: handleUndo,
@@ -819,14 +836,14 @@ export default function App() {
                 </button>
                 <QuickFilterButton appLang={appLang} />
                 </div>
-                <QuickFilterBar appLang={appLang} />
+                <QuickFilterBar appLang={appLang} items={project.items} />
               </div>
 
               {currentItem ? (
                 <TranslationEditor
                   item={currentItem}
-                  currentIndex={currentIndex}
-                  totalCount={project.items.length}
+                  currentIndex={Math.max(0, navPosition)}
+                  totalCount={navItems.length}
                   targetLang={project.targetLang}
                   targetLocaleName={project.targetLocaleName}
                   appLang={appLang}

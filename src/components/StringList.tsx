@@ -241,7 +241,7 @@ const StringListBase: React.FC<StringListProps> = ({
         {/* Quick filters (desktop; the mobile bar has its own button) */}
         <div className="hidden md:flex flex-col gap-1.5 text-xs">
           <div><QuickFilterButton appLang={appLang} /></div>
-          <QuickFilterBar appLang={appLang} />
+          <QuickFilterBar appLang={appLang} items={items} />
         </div>
 
         {/* M3 Filter Chips */}

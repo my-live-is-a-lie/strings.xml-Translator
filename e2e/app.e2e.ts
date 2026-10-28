@@ -181,3 +181,24 @@ test('the strings list and the table open on the string being translated', async
   await page.waitForTimeout(500);
   await expect.poll(() => inView(`[data-item-id="${selectedItemId}"]`)).toBe(true);
 });
+
+test('quick filters drive the editor and dim filters that have no strings', async ({ page }) => {
+  await mockProviderApi(page);
+  await openAppWithProvider(page);
+  await loadSample(page);
+  await page.setViewportSize({ width: 390, height: 800 });
+  await page.locator('[data-quick-filters-btn]:visible').click();
+
+  // The sample has no AI-translated strings, so that filter is dimmed and can't be switched on
+  const ai = page.locator('[data-filter="ai"]:visible');
+  await expect(ai).toBeDisabled();
+  await expect(page.locator('[data-filter="untranslated"]:visible')).toBeEnabled();
+
+  const counter = page.locator('text=/^\\d+ \\/ \\d+$/').first();
+  await expect(counter).toHaveText('1 / 17');
+  await page.locator('[data-filter="translated"]:visible').click();
+  const total = Number((await counter.innerText()).split('/')[1]);
+  expect(total).toBeLessThan(17);
+  await page.locator('[data-filter="translated"]:visible').click();
+  await expect(counter).toHaveText(/\/ 17$/);
+});
