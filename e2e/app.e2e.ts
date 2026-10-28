@@ -192,6 +192,7 @@ test('quick filters drive the editor and dim filters that have no strings', asyn
   // The sample has no AI-translated strings, so that filter is dimmed and can't be switched on
   const ai = page.locator('[data-filter="ai"]:visible');
   await expect(ai).toBeDisabled();
+  await expect(page.locator('[data-filter="review"]')).toHaveCount(0); // nothing to review: the filter is hidden
   await expect(page.locator('[data-filter="untranslated"]:visible')).toBeEnabled();
 
   const counter = page.locator('text=/^\\d+ \\/ \\d+$/').first();
@@ -235,6 +236,7 @@ test('after a source update the "new" filter turns on, changed strings show a di
   await page.click('#update-source-apply');
 
   await expect(page.locator('[data-filter="new"]:visible')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('[data-filter="review"]:visible')).toBeVisible(); // the changed string needs review
   await expect(page.locator('[data-source-change="added"]:visible').first()).toBeVisible();
   // Only the strings from the update are listed
   await expect(page.locator('#string-item-brand_new')).toBeVisible();

@@ -32,7 +32,7 @@ describe('quick filters', () => {
   });
 
   it('counts what each filter could show', () => {
-    expect(quickFilterCounts(items)).toEqual({ new: 0, untranslated: 1, translated: 3, ai: 1, manual: 2 });
+    expect(quickFilterCounts(items)).toEqual({ new: 0, review: 0, untranslated: 1, translated: 3, ai: 1, manual: 2 });
     expect(quickFilterCounts([mk('u', 'untranslated')])).toMatchObject({ ai: 0, manual: 0, translated: 0 });
   });
 
@@ -41,5 +41,11 @@ describe('quick filters', () => {
     const after = items.map((i) => (i.id === 'u' ? ({ ...i, status: 'translated', target: 'x' } as ResourceItem) : i));
     expect(applyQuickSnapshot(after, { active: ['untranslated'], snapshot }).map((i) => i.name)).toEqual(['u']);
     expect(applyQuickSnapshot(after, { active: ['untranslated'], snapshot: null })).toEqual([]);
+  });
+
+  it('review filter shows only strings that need review', () => {
+    const withReview = [...items, mk('rev', 'needs_review', 'manual')];
+    expect(applyQuickFilters(withReview, ['review']).map((i) => i.name)).toEqual(['rev']);
+    expect(quickFilterCounts(withReview).review).toBe(1);
   });
 });

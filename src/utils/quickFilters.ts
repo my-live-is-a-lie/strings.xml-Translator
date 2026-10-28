@@ -1,8 +1,8 @@
 import { useSyncExternalStore } from 'react';
 import { ResourceItem } from '../types';
 
-export type QuickFilterId = 'new' | 'untranslated' | 'translated' | 'ai' | 'manual';
-export const QUICK_FILTER_IDS: readonly QuickFilterId[] = ['new', 'untranslated', 'translated', 'ai', 'manual'];
+export type QuickFilterId = 'new' | 'review' | 'untranslated' | 'translated' | 'ai' | 'manual';
+export const QUICK_FILTER_IDS: readonly QuickFilterId[] = ['new', 'review', 'untranslated', 'translated', 'ai', 'manual'];
 
 const STORAGE_KEY = 'app_quick_filters_v1';
 
@@ -59,7 +59,8 @@ export function toggleQuickFilter(id: QuickFilterId, items: ResourceItem[]): voi
 export function resetQuickSnapshot(items: ResourceItem[]): void {
   // "New" only exists while some string carries a source-update flag
   const hasNew = items.some((i) => i.sourceChange);
-  const active = hasNew ? state.active : state.active.filter((id) => id !== 'new');
+  const hasReview = items.some((i) => i.status === 'needs_review');
+  const active = state.active.filter((id) => (id === 'new' ? hasNew : id === 'review' ? hasReview : true));
   commit({ ...state, active, snapshot: takeSnapshot(items, active) });
 }
 
@@ -99,6 +100,7 @@ export function applyQuickSnapshot(items: ResourceItem[], qf: Pick<QuickFilterSt
 export function applyQuickFilters(items: ResourceItem[], active: readonly QuickFilterId[]): ResourceItem[] {
   if (active.length === 0) return items;
   const wantNew = active.includes('new');
+  const wantReview = active.includes('review');
   const wantUntranslated = active.includes('untranslated');
   const wantTranslated = active.includes('translated');
   const wantAi = active.includes('ai');
@@ -108,6 +110,7 @@ export function applyQuickFilters(items: ResourceItem[], active: readonly QuickF
   return items.filter((item) => {
     const isTranslated = item.status !== 'untranslated';
     if (wantNew && !item.sourceChange) return false;
+    if (wantReview && item.status !== 'needs_review') return false;
     if (statusOn && !((wantUntranslated && !isTranslated) || (wantTranslated && isTranslated))) return false;
     if (originOn) {
       if (!isTranslated) return false;
@@ -120,9 +123,10 @@ export function applyQuickFilters(items: ResourceItem[], active: readonly QuickF
 
 /** How many strings each filter could show on its own; a filter with 0 can't be switched on. */
 export function quickFilterCounts(items: ResourceItem[]): Record<QuickFilterId, number> {
-  const counts: Record<QuickFilterId, number> = { new: 0, untranslated: 0, translated: 0, ai: 0, manual: 0 };
+  const counts: Record<QuickFilterId, number> = { new: 0, review: 0, untranslated: 0, translated: 0, ai: 0, manual: 0 };
   for (const item of items) {
     if (item.sourceChange) counts.new++;
+    if (item.status === 'needs_review') counts.review++;
     if (item.status === 'untranslated') {
       counts.untranslated++;
       continue;
