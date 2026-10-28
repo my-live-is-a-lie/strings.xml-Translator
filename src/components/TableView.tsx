@@ -4,7 +4,8 @@ import { scrollItemIntoView } from '../utils/scrollToItem';
 import { ResourceItem, FilterStatus, SourceFilter, SingleStringItem } from '../types';
 import { Search, CheckCircle2, Circle, AlertCircle, Edit3, Check, Sparkles, CheckSquare, Square, Loader2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp } from 'lucide-react';
 import { bulkTranslateItems, withTranslationProvider } from '../utils/translator';
-import { BulkProviderModal } from './BulkProviderModal';
+import { BulkProviderModal, EXTERNAL_AI_PROVIDER_ID } from './BulkProviderModal';
+import { ExternalAiModal } from './ExternalAiModal';
 import { filterProjectItems } from '../utils/xmlExporter';
 import { applyQuickSnapshot, useQuickFilters } from '../utils/quickFilters';
 import { getLanguageOption } from '../utils/languages';
@@ -156,8 +157,13 @@ const TableViewBase: React.FC<TableViewProps> = ({
     setChooseProviderOpen(true);
   };
 
+  const [externalAiOpen, setExternalAiOpen] = useState(false);
   const runBulkTranslate = async (providerId: string) => {
     setChooseProviderOpen(false);
+    if (providerId === EXTERNAL_AI_PROVIDER_ID) {
+      setExternalAiOpen(true);
+      return;
+    }
     if (checkedIds.size === 0 || isBulkTranslating || !onBulkUpdateTranslations) return;
     const selectedItems = items.filter((i) => checkedIds.has(i.id));
     if (selectedItems.length === 0) return;
@@ -337,6 +343,19 @@ const TableViewBase: React.FC<TableViewProps> = ({
 
   return (
     <div ref={tableRootRef} className="flex flex-col h-full bg-[#F8F9FA] dark:bg-[#111318] overflow-hidden">
+      {externalAiOpen && (
+        <ExternalAiModal
+          items={items.filter((i) => checkedIds.has(i.id))}
+          targetLang={targetLang ?? 'ar'}
+          targetLocaleName={targetLocaleName}
+          appLang={appLang}
+          onClose={() => setExternalAiOpen(false)}
+          onApply={(applied) => {
+            onBulkUpdateTranslations?.(applied);
+            setCheckedIds(new Set());
+          }}
+        />
+      )}
       {chooseProviderOpen && (
         <BulkProviderModal
           count={checkedIds.size}

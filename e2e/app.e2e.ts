@@ -264,8 +264,31 @@ test('bulk translation asks which provider to use first', async ({ page }) => {
   const dialog = page.getByRole('dialog', { name: /اختر مزوّد الترجمة/ });
   await expect(dialog).toBeVisible();
   expect(hits).toEqual([]); // nothing is sent before a provider is confirmed
-  await expect(dialog.locator('input[type="radio"]')).toHaveCount(3); // Google, MyMemory and the saved DeepL provider
+  await expect(dialog.locator('input[type="radio"]')).toHaveCount(4); // Google, MyMemory, the saved DeepL provider and the external-AI option
   await dialog.locator('input[data-provider-id="t1"]').check();
   await page.click('#bulk-provider-start');
   await expect.poll(() => hits.some((h) => h.endsWith(':BULK-KEY-1'))).toBe(true);
+});
+
+test('external AI flow: request files, paste a reply, validate, review and apply', async ({ page }) => {
+  await openAppWithProvider(page);
+  await loadSample(page);
+  await page.getByText(/تحديد غير المترجم/).first().click();
+  await page.click('#stringlist-bulk-translate-btn');
+  await page.locator('input[data-provider-id="__external_ai__"]').check();
+  await page.click('#bulk-provider-start');
+
+  const dialog = page.getByRole('dialog', { name: /الترجمة عبر تطبيق ذكاء اصطناعي/ });
+  await expect(dialog).toBeVisible();
+  const [download] = await Promise.all([page.waitForEvent('download'), dialog.locator('[data-ext="download"]').click()]);
+  expect(download.suggestedFilename()).toBe('strings-to-translate.json');
+
+  // A reply wrapped in chatter and a code fence, answering only the first string, with a lost placeholder-free text
+  await page.fill('#ext-reply', 'Sure!\n```json\n{"translations":[{"id":1,"text":"ترجمة تجريبية"}]}\n```');
+  await page.click('#ext-check');
+  await expect(dialog.locator('[data-ext="summary"]')).toContainText(/^1 من \d+ مترجمة/);
+  await expect(dialog.locator('[data-ext="review-list"] li').first()).toBeVisible();
+  await page.click('#ext-apply');
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator('body')).toContainText('ترجمة تجريبية');
 });

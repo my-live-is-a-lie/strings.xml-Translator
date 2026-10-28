@@ -17,7 +17,8 @@ import {
 } from 'lucide-react';
 import { ResourceItem, FilterStatus, SourceFilter } from '../types';
 import { bulkTranslateItems, withTranslationProvider } from '../utils/translator';
-import { BulkProviderModal } from './BulkProviderModal';
+import { BulkProviderModal, EXTERNAL_AI_PROVIDER_ID } from './BulkProviderModal';
+import { ExternalAiModal } from './ExternalAiModal';
 import { filterProjectItems } from '../utils/xmlExporter';
 import { analyzeProjectQa } from '../utils/placeholderCheck';
 import { scrollItemIntoView } from '../utils/scrollToItem';
@@ -195,8 +196,13 @@ const StringListBase: React.FC<StringListProps> = ({
     setChooseProviderOpen(true);
   };
 
+  const [externalAiOpen, setExternalAiOpen] = useState(false);
   const runBulkTranslate = async (providerId: string) => {
     setChooseProviderOpen(false);
+    if (providerId === EXTERNAL_AI_PROVIDER_ID) {
+      setExternalAiOpen(true);
+      return;
+    }
     if (checkedIds.size === 0 || isBulkTranslating || !onBulkUpdateTranslations) return;
     const selectedItems = items.filter((i) => checkedIds.has(i.id));
     if (selectedItems.length === 0) return;
@@ -220,6 +226,19 @@ const StringListBase: React.FC<StringListProps> = ({
 
   return (
     <div className="flex flex-col h-full bg-white dark:bg-[#131314] border-e border-slate-200/80 dark:border-slate-800/80 select-none">
+      {externalAiOpen && (
+        <ExternalAiModal
+          items={items.filter((i) => checkedIds.has(i.id))}
+          targetLang={targetLang ?? 'ar'}
+          targetLocaleName={targetLocaleName}
+          appLang={appLang}
+          onClose={() => setExternalAiOpen(false)}
+          onApply={(applied) => {
+            onBulkUpdateTranslations?.(applied);
+            setCheckedIds(new Set());
+          }}
+        />
+      )}
       {chooseProviderOpen && (
         <BulkProviderModal
           count={checkedIds.size}

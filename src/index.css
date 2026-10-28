@@ -662,3 +662,19 @@ html:not(.dark) .dark\:border-\[\#2E384D\] {
 
 
 
+
+/* Small pill buttons used by the "translate with an AI app" dialog */
+@layer components {
+  .btn-ext {
+    padding: 0.35rem 0.8rem;
+    border-radius: 9999px;
+    border: 1px solid rgb(148 163 184 / 0.6);
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .btn-ext:disabled {
+    opacity: 0.4;
+    pointer-events: none;
+  }
+}

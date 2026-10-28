@@ -5,6 +5,9 @@ import { getActiveProviderId, getAllTranslationProviders } from '../utils/transl
 import { getProviderDisplayName } from './ProvidersPanel';
 import { useDialog } from '../utils/useDialog';
 
+/** Not a real provider: opens the copy/paste (or file) flow through an external AI app. */
+export const EXTERNAL_AI_PROVIDER_ID = '__external_ai__';
+
 interface Props {
   count: number;
   appLang: 'ar' | 'en';
@@ -58,6 +61,25 @@ export const BulkProviderModal: React.FC<Props> = ({ count, appLang, onClose, on
               <span className="flex-1 min-w-0 truncate">{getProviderDisplayName(p, isAr)}</span>
             </label>
           ))}
+          <label
+            className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border cursor-pointer text-sm ${
+              selected === EXTERNAL_AI_PROVIDER_ID
+                ? 'border-[#0B57D0] dark:border-[#A8C7FA] bg-[#0B57D0]/5 dark:bg-[#A8C7FA]/10'
+                : 'border-slate-200 dark:border-slate-700'
+            }`}
+          >
+            <input
+              type="radio"
+              name="bulk-provider"
+              data-provider-id={EXTERNAL_AI_PROVIDER_ID}
+              checked={selected === EXTERNAL_AI_PROVIDER_ID}
+              onChange={() => setSelected(EXTERNAL_AI_PROVIDER_ID)}
+              className="accent-[#0B57D0]"
+            />
+            <span className="flex-1 min-w-0">
+              {isAr ? 'تطبيق ذكاء اصطناعي خارجي (ChatGPT، Gemini…) — نسخ/لصق أو ملف' : 'External AI app (ChatGPT, Gemini…) — copy/paste or file'}
+            </span>
+          </label>
         </div>
         <div className="flex justify-end gap-2 pt-1">
           <button
@@ -75,7 +97,7 @@ export const BulkProviderModal: React.FC<Props> = ({ count, appLang, onClose, on
             className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-medium bg-[#1EB996] text-white cursor-pointer disabled:opacity-50"
           >
             <Sparkles className="w-4 h-4" />
-            {isAr ? 'ابدأ الترجمة' : 'Start'}
+            {selected === EXTERNAL_AI_PROVIDER_ID ? (isAr ? 'متابعة' : 'Continue') : isAr ? 'ابدأ الترجمة' : 'Start'}
           </button>
         </div>
       </div>
