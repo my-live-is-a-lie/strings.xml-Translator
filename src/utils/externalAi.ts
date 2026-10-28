@@ -70,6 +70,29 @@ export function buildTextRequest(prompt: string, json: string): string {
   return `${prompt}\n\n${json}`;
 }
 
+/** Undoes Markdown backslash-escaping that chat apps add when a reply is copied as rich text (\[ \] \_ and doubled backslashes). */
+export function unescapeMarkdown(text: string): string {
+  return text.replace(/\\([\\`*_{}[\]()#+\-.!|<>~"'])/g, '$1');
+}
+
+function parseJsonLenient(text: string): unknown {
+  const noTrailingCommas = (t: string) => t.replace(/,(\s*[}\]])/g, '$1');
+  const attempts = [text, noTrailingCommas(text)];
+  // Only treat the reply as Markdown-escaped when the structure itself is escaped (e.g. `\[` instead of `[`)
+  if (/\\[[\]{}]/.test(text)) {
+    const un = unescapeMarkdown(text);
+    attempts.push(un, noTrailingCommas(un));
+  }
+  for (const attempt of attempts) {
+    try {
+      return JSON.parse(attempt);
+    } catch {
+      // try the next form
+    }
+  }
+  throw new Error('BAD_JSON');
+}
+
 /** Reads the AI's reply: tolerates code fences and text around the JSON, arrays, and {"1":"..."} maps. */
 export function parseReply(raw: string): Map<number, string> {
   let text = raw.trim().replace(/^\uFEFF/, '');
@@ -78,12 +101,7 @@ export function parseReply(raw: string): Map<number, string> {
   const start = text.search(/[[{]/);
   const end = Math.max(text.lastIndexOf('}'), text.lastIndexOf(']'));
   if (start < 0 || end <= start) throw new Error('NO_JSON');
-  let data: unknown;
-  try {
-    data = JSON.parse(text.slice(start, end + 1));
-  } catch {
-    throw new Error('BAD_JSON');
-  }
+  const data = parseJsonLenient(text.slice(start, end + 1));
   const out = new Map<number, string>();
   const put = (id: unknown, value: unknown) => {
     const n = Number(id);

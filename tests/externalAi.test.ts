@@ -44,4 +44,15 @@ describe('external AI flow', () => {
     expect(applied[0]).toMatchObject({ target: 'مرحبا %s', status: 'translated', translationSource: 'ai', translationEngine: 'external-ai' });
     expect(applied[1].status).toBe('untranslated'); // only one of two quantities answered
   });
+
+  it('reads a reply that was copied with Markdown backslash-escaping', () => {
+    const escaped = '{ "translations": \\[ { "id": 1, "text": "سطر\\\\\\\\nثان" }, { "id": 2, "text": "قال \\\\\\\\\\\\"نعم\\\\\\\\\\\\"" }, \\] }';
+    const r = parseReply(escaped);
+    expect(r.get(1)).toBe('سطر\\nثان');
+    expect(r.get(2)).toBe('قال \\"نعم\\"');
+  });
+
+  it('tolerates a trailing comma', () => {
+    expect(parseReply('{"translations":[{"id":1,"text":"a"},]}').get(1)).toBe('a');
+  });
 });
