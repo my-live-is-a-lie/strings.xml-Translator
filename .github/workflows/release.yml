@@ -54,6 +54,15 @@ jobs:
       - name: Add Android platform
         run: npx cap add android
 
+      - name: Apply custom app icon
+        run: |
+          for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            cp "assets/icons/mipmap-$d/ic_launcher.png" "android/app/src/main/res/mipmap-$d/ic_launcher.png"
+            cp "assets/icons/mipmap-$d/ic_launcher_round.png" "android/app/src/main/res/mipmap-$d/ic_launcher_round.png"
+            cp "assets/icons/mipmap-$d/ic_launcher_foreground.png" "android/app/src/main/res/mipmap-$d/ic_launcher_foreground.png"
+          done
+          cp assets/icons/ic_launcher_background.xml android/app/src/main/res/values/ic_launcher_background.xml
+
       - name: Sync web assets
         run: npx cap sync android
 
