@@ -1,3 +1,4 @@
+import { SourceChangeBadge } from './SourceChangeDiff';
 import React from 'react';
 import { AlertCircle, CheckCircle2, CheckSquare, Circle, RotateCcw, ShieldAlert, Sparkles, Square } from 'lucide-react';
 import { ResourceItem } from '../types';
@@ -139,6 +140,7 @@ const StringListRowBase: React.FC<StringListRowProps> = ({
               >
                 <bdi>{highlightText(item.name, searchQuery)}</bdi>
               </span>
+              <SourceChangeBadge item={item} isAr={isAr} />
             </div>
 
             {/* Right: QA Badge, Source Badge (AI vs Manual), Individual Reset Button & Type indicator */}

@@ -77,12 +77,21 @@ export function changeLanguage(curr: EditorState, newLocale: string): EditorStat
 }
 
 /** Replaces the items whose ids appear in `updatedItems` (used by bulk translate). */
+/** Once a changed string is saved, its old source text is no longer shown (the "new" flag stays for the filter). */
+export function dropPreviousSourceWhenSaved<T extends ResourceItem>(item: T): T {
+  if (item.status === 'translated' && item.previousSources) return { ...item, previousSources: undefined };
+  return item;
+}
+
 export function bulkUpdate(curr: EditorState, updatedItems: ResourceItem[]): EditorState {
   const byId = new Map(updatedItems.map((u) => [u.id, u]));
   const prev = curr.project;
   return withHistory(curr, {
     ...prev,
-    items: prev.items.map((item) => byId.get(item.id) || item),
+    items: prev.items.map((item) => {
+      const u = byId.get(item.id);
+      return u ? dropPreviousSourceWhenSaved(u) : item;
+    }),
     lastModified: Date.now(),
   });
 }

@@ -24,3 +24,22 @@ describe('source diff', () => {
     expect(merged[2]).toMatchObject({ source: 'New', target: '', status: 'untranslated' });
   });
 });
+
+describe('source update flags', () => {
+  const cur = parse('<string name="a">Hello world</string><string name="b">Same</string>').map((i) =>
+    i.type === 'string' ? ({ ...i, target: `ar-${i.name}`, status: 'translated' } as SingleStringItem) : i
+  );
+  const inc = parse('<string name="a">Hello brave world</string><string name="b">Same</string><string name="c">New</string>');
+
+  it('marks added and changed strings and remembers the old source', () => {
+    const merged = mergeSourceUpdate(cur, inc);
+    expect(merged.map((i) => i.sourceChange)).toEqual(['changed', undefined, 'added']);
+    expect(merged[0].previousSources).toEqual({ '': 'Hello world' });
+  });
+
+  it('only the latest update is flagged', () => {
+    const first = mergeSourceUpdate(cur, inc);
+    const second = mergeSourceUpdate(first, inc);
+    expect(second.map((i) => i.sourceChange)).toEqual([undefined, undefined, undefined]);
+  });
+});

@@ -16,6 +16,7 @@ import {
   HistorySnapshot,
   MAX_HISTORY_STEPS,
   bulkUpdate,
+  dropPreviousSourceWhenSaved,
   changeLanguage,
   saveLanguages,
   updateSource,
@@ -23,7 +24,7 @@ import {
 import { ExportModal } from './components/ExportModal';
 import { FilesModal } from './components/FilesModal';
 import { QuickFilterButton, QuickFilterBar } from './components/QuickFilters';
-import { applyQuickSnapshot, resetQuickSnapshot, useQuickFilters } from './utils/quickFilters';
+import { applyQuickSnapshot, resetQuickSnapshot, showOnlyNewStrings, useQuickFilters } from './utils/quickFilters';
 import { TranslationProject, ResourceItem, FilterStatus, SourceFilter, StoredXmlFile } from './types';
 import { parseAndroidXml, mergeTargetXml, normalizePluralsForLanguage } from './utils/xmlParser';
 import { SAMPLE_ANDROID_STRINGS_XML, SAMPLE_TARGET_ARABIC_XML } from './utils/sampleData';
@@ -327,8 +328,9 @@ export default function App() {
 
   // Update translation of an item with Undo/Redo history tracking
   const handleUpdateTranslation = useCallback(
-    (updatedItem: ResourceItem, options?: { undoDeletesText?: boolean }) => {
+    (editedItem: ResourceItem, options?: { undoDeletesText?: boolean }) => {
       const now = Date.now();
+      const updatedItem = dropPreviousSourceWhenSaved(editedItem);
 
       setEditorState((curr) => {
         const oldItem = curr.project.items.find((i) => i.id === updatedItem.id);
@@ -503,10 +505,13 @@ export default function App() {
     setEditorState((curr) => saveLanguages(curr, byLang));
   }, []);
 
+  const pendingShowNewRef = useRef(false);
+
   // Apply a newer source file: keep translations, flag changed strings for review, drop removed ones
   const handleApplySourceUpdate = useCallback(
     (parsed: { items: ResourceItem[]; resourcesAttributes?: string; indentStyle?: string; itemIndentStyle?: string }, rawXml: string) => {
       lastEditRef.current = { itemId: '', timestamp: 0 };
+      pendingShowNewRef.current = true;
       setEditorState((curr) => updateSource(curr, parsed, rawXml));
     },
     []
@@ -590,6 +595,12 @@ export default function App() {
   useEffect(() => {
     itemsForSnapshotRef.current = project.items;
   });
+  // After a source update, switch on the "new" filter automatically (once the merged strings are in)
+  useEffect(() => {
+    if (!pendingShowNewRef.current) return;
+    pendingShowNewRef.current = false;
+    if (itemsForSnapshotRef.current.some((i) => i.sourceChange)) showOnlyNewStrings(itemsForSnapshotRef.current);
+  }, [project.items]);
   const snapshotScope = `${project.id}|${project.targetLang}|${project.items.length}`;
   useEffect(() => {
     resetQuickSnapshot(itemsForSnapshotRef.current);

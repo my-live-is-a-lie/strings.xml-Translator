@@ -11,6 +11,7 @@ import {
 } from '../utils/quickFilters';
 
 const LABELS: Record<QuickFilterId, { ar: string; en: string }> = {
+  new: { ar: 'جديد', en: 'New' },
   untranslated: { ar: 'غير مترجم', en: 'Untranslated' },
   translated: { ar: 'مترجم', en: 'Translated' },
   ai: { ar: 'ذكاء اصطناعي', en: 'AI' },
@@ -70,7 +71,7 @@ export const QuickFilterBar: React.FC<BarProps> = ({ appLang, items, className =
       aria-label={isAr ? 'فلاتر النصوص' : 'String filters'}
       className={`flex items-center gap-1.5 flex-wrap ${className}`}
     >
-      {QUICK_FILTER_IDS.map((id) => {
+      {QUICK_FILTER_IDS.filter((id) => id !== 'new' || counts.new > 0 || active.includes('new')).map((id) => {
         const on = active.includes(id);
         const unavailable = counts[id] === 0 && !on; // an active filter can always be switched off
         return (

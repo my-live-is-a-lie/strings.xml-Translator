@@ -221,3 +221,30 @@ test('a string saved under the "untranslated" filter stays reachable', async ({ 
   await expect(counter).toHaveText(`1 / ${total}`);
   await expect(page.locator('textarea').first()).toHaveValue('نص تجريبي');
 });
+
+test('after a source update the "new" filter turns on, changed strings show a diff, and saving removes the old text', async ({ page }) => {
+  await mockProviderApi(page);
+  await openAppWithProvider(page);
+  await loadSample(page);
+  await openDrawer(page);
+  await page.click('#drawer-update-source-btn');
+  await page.fill(
+    '#update-source-text',
+    '<resources><string name="app_name">OmniTask 2</string><string name="action_save">Save all the Changes</string><string name="brand_new">Brand new text</string></resources>'
+  );
+  await page.click('#update-source-apply');
+
+  await expect(page.locator('[data-filter="new"]:visible')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('[data-source-change="added"]:visible').first()).toBeVisible();
+  // Only the strings from the update are listed
+  await expect(page.locator('#string-item-brand_new')).toBeVisible();
+  await expect(page.locator('#string-item-action_cancel')).toHaveCount(0);
+
+  await page.locator('#string-item-action_save').click();
+  await expect(page.locator('[data-source-diff]')).toBeVisible();
+  await expect(page.locator('[data-source-diff] mark')).toContainText('all');
+  await page.getByText('حفظ ومتابعة').click();
+  await page.locator('#string-item-action_save').click();
+  await expect(page.locator('[data-source-diff]')).toHaveCount(0);
+  await expect(page.locator('#string-item-action_save')).toBeVisible(); // still listed under "new"
+});

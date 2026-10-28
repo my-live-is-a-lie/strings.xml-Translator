@@ -14,6 +14,10 @@ export interface BaseResourceItem {
   order: number;
   translationSource?: 'ai' | 'manual'; // Tracks whether translated via AI/provider or manual input
   translationEngine?: string; // Which engine produced an AI suggestion (e.g. 'google', 'gemini', 'deepl')
+  /** Set by "update source file": the string is new in that update, or its source text was changed. */
+  sourceChange?: 'added' | 'changed';
+  /** Old source text of a changed string, keyed by '' (string), plural quantity or array index. Dropped once the string is saved. */
+  previousSources?: Record<string, string>;
 }
 
 export interface SingleStringItem extends BaseResourceItem {

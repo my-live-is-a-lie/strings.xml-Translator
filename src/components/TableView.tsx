@@ -1,3 +1,4 @@
+import { SourceChangeBadge } from './SourceChangeDiff';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { scrollItemIntoView } from '../utils/scrollToItem';
 import { ResourceItem, FilterStatus, SourceFilter, SingleStringItem } from '../types';
@@ -486,6 +487,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
                         className="flex-1 min-w-0 truncate font-mono text-xs font-medium text-slate-900 dark:text-slate-100 text-start"
                       >
                         {item.name}
+                        <SourceChangeBadge item={item} isAr={isAr} />
                         {item.type !== 'string' && (
                           <span className="ms-1 text-[10px] text-slate-600 dark:text-slate-400 font-sans">
                             ({isAr ? (item.type === 'plural' ? 'جمع' : 'مصفوفة') : item.type})
@@ -655,6 +657,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
                       <td className="py-3 px-4 font-mono font-medium text-slate-900 dark:text-slate-100">
                         <div className="flex items-center gap-1.5">
                           <span dir="ltr" className="truncate max-w-[200px]">{item.name}</span>
+                          <SourceChangeBadge item={item} isAr={isAr} />
                           {item.type !== 'string' && (
                             <span className="text-[10px] text-slate-600 dark:text-slate-400 font-sans">
                               ({isAr ? (item.type === 'plural' ? 'جمع' : 'مصفوفة') : item.type})

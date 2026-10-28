@@ -1,3 +1,4 @@
+import { SourceChangeBadge, SourceChangeDiff } from './SourceChangeDiff';
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { Copy, Check, Sparkles, RotateCcw, Undo2, Redo2, ClipboardPaste, AlertCircle } from 'lucide-react';
 import { ResourceItem, SingleStringItem, PluralStringItem, ArrayStringItem } from '../types';
@@ -904,7 +905,8 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
 
   // Save without continuing (حفظ بدون متابعة / Save & Stay)
   const handleSaveWithoutContinuing = React.useCallback(() => {
-    const savedItem = buildSavedItemFromDraft(draftItem);
+    // Saving settles the string: the old source text (diff) is no longer shown
+    const savedItem = { ...buildSavedItemFromDraft(draftItem), previousSources: undefined };
     const undoDeletesText = savedItem.translationSource === 'ai' && item.status === 'untranslated';
     lastDraftEditRef.current = { timestamp: 0 };
     setDraftState({
@@ -920,7 +922,8 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
 
   // Save and continue (حفظ ومتابعة / Save & Continue)
   const handleSaveAndContinue = React.useCallback(() => {
-    const savedItem = buildSavedItemFromDraft(draftItem);
+    // Saving settles the string: the old source text (diff) is no longer shown
+    const savedItem = { ...buildSavedItemFromDraft(draftItem), previousSources: undefined };
     const undoDeletesText = savedItem.translationSource === 'ai' && item.status === 'untranslated';
     lastDraftEditRef.current = { timestamp: 0 };
     setDraftState({
@@ -1222,6 +1225,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                 <span className="text-slate-600 dark:text-slate-400 text-[11px] sm:text-xs font-medium">
                   {isAr ? 'مفاتيح' : 'Keys'}
                 </span>
+                <SourceChangeBadge item={item} isAr={isAr} />
               </div>
 
               <span className="text-slate-600 dark:text-slate-300 text-xs sm:text-sm font-medium shrink-0">
@@ -1279,6 +1283,8 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                 </span>
               </div>
             </div>
+
+            <SourceChangeDiff item={item} isAr={isAr} />
 
             {/* Target Language Name on Right + Translation Source, Alert & Reset on Left */}
             <div className="flex items-center justify-between gap-2">

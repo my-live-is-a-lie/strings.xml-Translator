@@ -32,7 +32,7 @@ describe('quick filters', () => {
   });
 
   it('counts what each filter could show', () => {
-    expect(quickFilterCounts(items)).toEqual({ untranslated: 1, translated: 3, ai: 1, manual: 2 });
+    expect(quickFilterCounts(items)).toEqual({ new: 0, untranslated: 1, translated: 3, ai: 1, manual: 2 });
     expect(quickFilterCounts([mk('u', 'untranslated')])).toMatchObject({ ai: 0, manual: 0, translated: 0 });
   });
 

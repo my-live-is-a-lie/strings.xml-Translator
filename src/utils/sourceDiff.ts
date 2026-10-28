@@ -42,6 +42,21 @@ export function diffSources(current: ResourceItem[], incoming: ResourceItem[]): 
   return diff;
 }
 
+/** Old source text of the parts that differ, keyed by '' (string), plural quantity or array index. */
+function previousSourcesOf(existing: ResourceItem, item: ResourceItem): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (existing.type === 'string' && item.type === 'string') {
+    if (existing.source !== item.source) out[''] = existing.source;
+  } else if (existing.type === 'plural' && item.type === 'plural') {
+    const old = new Map(existing.items.map((q) => [q.quantity, q.source]));
+    for (const q of item.items) if (old.has(q.quantity) && old.get(q.quantity) !== q.source) out[q.quantity] = old.get(q.quantity) as string;
+  } else if (existing.type === 'array' && item.type === 'array') {
+    const old = new Map(existing.items.map((e) => [e.index, e.source]));
+    for (const e of item.items) if (old.has(e.index) && old.get(e.index) !== e.source) out[String(e.index)] = old.get(e.index) as string;
+  }
+  return out;
+}
+
 function hasTarget(item: ResourceItem): boolean {
   if (item.type === 'string') return item.target.trim().length > 0;
   return item.items.some((x) => x.target.trim().length > 0);
@@ -57,7 +72,7 @@ export function mergeSourceUpdate(current: ResourceItem[], incoming: ResourceIte
 
   return incoming.map((item, order) => {
     const existing = currentByName.get(item.name);
-    if (!existing || existing.type !== item.type) return { ...item, order };
+    if (!existing || existing.type !== item.type) return { ...item, order, sourceChange: 'added' };
 
     const unchanged = sameSource(existing, item);
     // Carry targets over by quantity / index so a different plural set per language still lines up
@@ -75,6 +90,7 @@ export function mergeSourceUpdate(current: ResourceItem[], incoming: ResourceIte
     }
 
     if (unchanged) {
+      // Flags describe only the latest update, so they are not carried over
       return { ...merged, id: existing.id, order, status: existing.status, translationSource: existing.translationSource, translationEngine: existing.translationEngine };
     }
     return {
@@ -82,6 +98,8 @@ export function mergeSourceUpdate(current: ResourceItem[], incoming: ResourceIte
       id: existing.id,
       order,
       status: hasTarget(merged) ? 'needs_review' : 'untranslated',
+      sourceChange: 'changed' as const,
+      previousSources: previousSourcesOf(existing, item),
       translationSource: existing.translationSource,
       translationEngine: existing.translationEngine,
     };
