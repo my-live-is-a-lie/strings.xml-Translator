@@ -16,7 +16,8 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { ResourceItem, FilterStatus, SourceFilter } from '../types';
-import { bulkTranslateItems } from '../utils/translator';
+import { bulkTranslateItems, withTranslationProvider } from '../utils/translator';
+import { BulkProviderModal } from './BulkProviderModal';
 import { filterProjectItems } from '../utils/xmlExporter';
 import { analyzeProjectQa } from '../utils/placeholderCheck';
 import { scrollItemIntoView } from '../utils/scrollToItem';
@@ -188,7 +189,14 @@ const StringListBase: React.FC<StringListProps> = ({
     }
   };
 
-  const handleBulkTranslate = async () => {
+  const [chooseProviderOpen, setChooseProviderOpen] = useState(false);
+  const handleBulkTranslate = () => {
+    if (checkedIds.size === 0 || isBulkTranslating || !onBulkUpdateTranslations) return;
+    setChooseProviderOpen(true);
+  };
+
+  const runBulkTranslate = async (providerId: string) => {
+    setChooseProviderOpen(false);
     if (checkedIds.size === 0 || isBulkTranslating || !onBulkUpdateTranslations) return;
     const selectedItems = items.filter((i) => checkedIds.has(i.id));
     if (selectedItems.length === 0) return;
@@ -197,13 +205,10 @@ const StringListBase: React.FC<StringListProps> = ({
     setBulkProgress({ completed: 0, total: selectedItems.length });
 
     try {
-      const translatedItems = await bulkTranslateItems(
-        selectedItems,
-        targetLang,
-        targetLocaleName,
-        (completed, total) => {
+      const translatedItems = await withTranslationProvider(providerId, () =>
+        bulkTranslateItems(selectedItems, targetLang, targetLocaleName, (completed, total) => {
           setBulkProgress({ completed, total });
-        }
+        })
       );
       onBulkUpdateTranslations(translatedItems);
       setCheckedIds(new Set());
@@ -215,6 +220,14 @@ const StringListBase: React.FC<StringListProps> = ({
 
   return (
     <div className="flex flex-col h-full bg-white dark:bg-[#131314] border-e border-slate-200/80 dark:border-slate-800/80 select-none">
+      {chooseProviderOpen && (
+        <BulkProviderModal
+          count={checkedIds.size}
+          appLang={appLang}
+          onClose={() => setChooseProviderOpen(false)}
+          onConfirm={runBulkTranslate}
+        />
+      )}
       {/* Search & Filter Header */}
       <div className="p-3.5 space-y-2.5 border-b border-slate-100 dark:border-slate-800/80">
         {/* M3 Search Bar */}

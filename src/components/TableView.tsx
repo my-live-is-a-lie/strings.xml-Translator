@@ -3,7 +3,8 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { scrollItemIntoView } from '../utils/scrollToItem';
 import { ResourceItem, FilterStatus, SourceFilter, SingleStringItem } from '../types';
 import { Search, CheckCircle2, Circle, AlertCircle, Edit3, Check, Sparkles, CheckSquare, Square, Loader2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp } from 'lucide-react';
-import { bulkTranslateItems } from '../utils/translator';
+import { bulkTranslateItems, withTranslationProvider } from '../utils/translator';
+import { BulkProviderModal } from './BulkProviderModal';
 import { filterProjectItems } from '../utils/xmlExporter';
 import { applyQuickSnapshot, useQuickFilters } from '../utils/quickFilters';
 import { getLanguageOption } from '../utils/languages';
@@ -149,7 +150,14 @@ const TableViewBase: React.FC<TableViewProps> = ({
     }
   };
 
-  const handleBulkTranslate = async () => {
+  const [chooseProviderOpen, setChooseProviderOpen] = useState(false);
+  const handleBulkTranslate = () => {
+    if (checkedIds.size === 0 || isBulkTranslating || !onBulkUpdateTranslations) return;
+    setChooseProviderOpen(true);
+  };
+
+  const runBulkTranslate = async (providerId: string) => {
+    setChooseProviderOpen(false);
     if (checkedIds.size === 0 || isBulkTranslating || !onBulkUpdateTranslations) return;
     const selectedItems = items.filter((i) => checkedIds.has(i.id));
     if (selectedItems.length === 0) return;
@@ -158,13 +166,10 @@ const TableViewBase: React.FC<TableViewProps> = ({
     setBulkProgress({ completed: 0, total: selectedItems.length });
 
     try {
-      const translatedItems = await bulkTranslateItems(
-        selectedItems,
-        targetLang,
-        targetLocaleName,
-        (completed, total) => {
+      const translatedItems = await withTranslationProvider(providerId, () =>
+        bulkTranslateItems(selectedItems, targetLang, targetLocaleName, (completed, total) => {
           setBulkProgress({ completed, total });
-        }
+        })
       );
       onBulkUpdateTranslations(translatedItems);
       setCheckedIds(new Set());
@@ -332,6 +337,14 @@ const TableViewBase: React.FC<TableViewProps> = ({
 
   return (
     <div ref={tableRootRef} className="flex flex-col h-full bg-[#F8F9FA] dark:bg-[#111318] overflow-hidden">
+      {chooseProviderOpen && (
+        <BulkProviderModal
+          count={checkedIds.size}
+          appLang={appLang}
+          onClose={() => setChooseProviderOpen(false)}
+          onConfirm={runBulkTranslate}
+        />
+      )}
       {/* Search, Filter & Bulk Actions Header */}
       <div className="p-4 sm:p-5 border-b border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-[#131314] flex flex-wrap items-center justify-between gap-3">
         {/* M3 Search Bar */}

@@ -350,7 +350,24 @@ export function getAllTranslationProviders(): TranslationProviderConfig[] {
   return [...BUILTIN_TRANSLATION_PROVIDERS, ...getCustomProviders()];
 }
 
+// Set while a bulk translation runs with a provider picked just for that run (the saved choice is untouched)
+let providerOverrideId: string | null = null;
+
+/** Runs `fn` with `providerId` used for every translation, then restores the previous provider. */
+export async function withTranslationProvider<T>(providerId: string, fn: () => Promise<T>): Promise<T> {
+  const previous = providerOverrideId;
+  providerOverrideId = providerId;
+  try {
+    return await fn();
+  } finally {
+    providerOverrideId = previous;
+  }
+}
+
 export function getActiveProviderId(): string {
+  if (providerOverrideId && getAllTranslationProviders().some((p) => p.id === providerOverrideId)) {
+    return providerOverrideId;
+  }
   try {
     const saved = getStoredItem(ACTIVE_PROVIDER_STORAGE_KEY);
     const all = getAllTranslationProviders();

@@ -48,6 +48,7 @@ test('a legacy plain-text API key is encrypted, and the decrypted key reaches th
   await loadSample(page);
   await page.getByText(/تحديد غير المترجم/).first().click();
   await page.click('#stringlist-bulk-translate-btn');
+  await page.click('#bulk-provider-start'); // the provider picker opens first (the saved provider is preselected)
   await expect.poll(() => hits.some((h) => h.startsWith('batch:'))).toBe(true);
   expect(hits.every((h) => h.endsWith(':SECRET-KEY-123'))).toBe(true);
 });
@@ -249,4 +250,21 @@ test('after a source update the "new" filter turns on, changed strings show a di
   await page.locator('#string-item-action_save').click();
   await expect(page.locator('[data-source-diff]')).toHaveCount(0);
   await expect(page.locator('#string-item-action_save')).toBeVisible(); // still listed under "new"
+});
+
+test('bulk translation asks which provider to use first', async ({ page }) => {
+  const hits: string[] = [];
+  await mockProviderApi(page, hits);
+  await openAppWithProvider(page, 'BULK-KEY-1');
+  await loadSample(page);
+
+  await page.getByText(/تحديد غير المترجم/).first().click();
+  await page.click('#stringlist-bulk-translate-btn');
+  const dialog = page.getByRole('dialog', { name: /اختر مزوّد الترجمة/ });
+  await expect(dialog).toBeVisible();
+  expect(hits).toEqual([]); // nothing is sent before a provider is confirmed
+  await expect(dialog.locator('input[type="radio"]')).toHaveCount(3); // Google, MyMemory and the saved DeepL provider
+  await dialog.locator('input[data-provider-id="t1"]').check();
+  await page.click('#bulk-provider-start');
+  await expect.poll(() => hits.some((h) => h.endsWith(':BULK-KEY-1'))).toBe(true);
 });
