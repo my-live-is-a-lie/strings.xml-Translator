@@ -17,37 +17,28 @@ export function renderContentWithWhitespaceIndicators(text: string) {
 
     if (/^ {2,}$/.test(part)) {
       const spaceCount = part.length;
+      // The marker must take exactly the width of the spaces (no border/padding/margin), otherwise the text after it
+      // drifts away from the real text in the textarea underneath. The dotted frame is an outline, which takes no space.
       return (
         <span
           key={idx}
-          className="relative inline-flex items-center justify-center align-middle select-none"
+          className="select-none whitespace-pre"
           style={{
-            border: '2px dotted #FF1E1E',
-            backgroundColor: 'rgba(239, 68, 68, 0.22)',
+            outline: '1px dotted #FF1E1E',
+            outlineOffset: '0px',
+            backgroundColor: 'rgba(239, 68, 68, 0.18)',
             borderRadius: '2px',
-            boxShadow: '0 0 6px rgba(255, 30, 30, 0.45)',
-            verticalAlign: 'middle',
-            height: '1.45em',
-            margin: '0 1px',
-            boxSizing: 'border-box',
           }}
           title={`${spaceCount} consecutive spaces (typing mistake)`}
         >
-          {/* Transparent spaces to reserve exact natural text width */}
-          <span className="opacity-0 select-none whitespace-pre leading-none px-0.5">
-            {part}
-          </span>
-          {/* High-visibility centered middle dots representing each whitespace character */}
-          <span
-            className="absolute inset-0 flex items-center justify-around pointer-events-none text-white font-mono font-black text-xs sm:text-sm select-none leading-none px-[2px] tracking-widest drop-shadow-xs"
-            aria-hidden="true"
-          >
-            {Array.from({ length: spaceCount }).map((_, dIdx) => (
-              <span key={dIdx} className="flex-1 text-center font-bold">
+          {Array.from({ length: spaceCount }).map((_, dIdx) => (
+            <span key={dIdx} className="relative inline-block whitespace-pre" aria-hidden="true">
+              <span className="opacity-0"> </span>
+              <span className="absolute inset-0 text-center leading-none text-[#FF4D4D] font-bold" style={{ lineHeight: 'inherit' }}>
                 ·
               </span>
-            ))}
-          </span>
+            </span>
+          ))}
         </span>
       );
     }
