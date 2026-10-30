@@ -983,8 +983,8 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     const notes: FixNote[] = [...syn.notes];
     if (pun.changed) {
       notes.push({
-        en: 'Final punctuation corrected to match the source',
-        ar: 'صُحّحت علامة الترقيم الأخيرة لتطابق النص الأصلي',
+        en: 'Ending (punctuation / trailing spaces) corrected to match the source',
+        ar: 'صُحّحت نهاية النص (علامة الترقيم أو المسافات الزائدة) لتطابق النص الأصلي',
       });
     }
     const remaining = getItemQaIssues(pun.item).filter((i) => i.severity === 'error');

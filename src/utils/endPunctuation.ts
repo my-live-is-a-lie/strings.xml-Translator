@@ -29,15 +29,18 @@ function splitEnding(text: string): [string, string, string] {
  * Makes the target end like the source: same final mark (replaced or appended when different/missing)
  * and the same spacing before it (a space before "؟" is removed when the source has none, and vice versa).
  */
-export function fixTargetEnding(source: string, target: string): { text: string; changed: boolean } {
-  if (!target.trim()) return { text: target, changed: false };
+export function fixTargetEnding(source: string, rawTarget: string): { text: string; changed: boolean } {
+  if (!rawTarget.trim()) return { text: rawTarget, changed: false };
+  // trailing spaces/newlines the source doesn't have are removed
+  const stripTail = /\s$/.test(rawTarget) && !/\s$/.test(source);
+  const target = stripTail ? rawTarget.trimEnd() : rawTarget;
   const [srcBody, srcGap0, srcRun] = splitEnding(source);
-  if (!srcRun) return { text: target, changed: false };
+  if (!srcRun) return { text: target, changed: stripTail };
   const srcGap = srcBody ? srcGap0 : '';
   const [tgtBody, tgtGap, tgtRun] = splitEnding(target);
   const sameRun = !!tgtRun && normalizeRun(tgtRun) === normalizeRun(srcRun);
   const sameGap = !!tgtBody && (tgtGap === '') === (srcGap === '');
-  if (sameRun && (sameGap || !tgtBody)) return { text: target, changed: false };
+  if (sameRun && (sameGap || !tgtBody)) return { text: target, changed: stripTail };
   // Arabic-script translations use the Arabic question mark
   const mark = sameRun
     ? tgtRun
