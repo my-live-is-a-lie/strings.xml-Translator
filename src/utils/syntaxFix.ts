@@ -139,15 +139,19 @@ function insertPlaceholder(source: string, target: string, token: string, occurr
   const srcWordsAll = Math.max(1, wordsOf(srcPlain).length);
 
   let plainPos: number;
+  let atEnd = false;
   if (!beforeCore.trim() && !affixBefore) {
     plainPos = 0; // placeholder opens the sentence
   } else if (!afterCore.replace(/[\s.!?؟…,:;،؛]/g, '')) {
     plainPos = beforeTrailingPunct(proj.plain); // placeholder closes the sentence
+    atEnd = true;
   } else {
     const k = Math.max(0, Math.min(words.length, Math.round((srcWordsBefore / srcWordsAll) * words.length)));
     plainPos = k === 0 ? 0 : words[k - 1].end;
   }
-  const pos = plainPos === 0 ? origStart(proj, 0) : origEnd(proj, plainPos);
+  let pos = plainPos === 0 ? origStart(proj, 0) : origEnd(proj, plainPos);
+  // the translation already ends with spaces: put the placeholder after them, so no extra space is left behind
+  if (atEnd && /^\s*$/.test(target.slice(pos))) pos = target.length;
   const prev = target[pos - 1];
   const next = target[pos];
   const spaceBefore = /\s$/.test(beforeCore) && prev !== undefined && !/\s/.test(prev);
