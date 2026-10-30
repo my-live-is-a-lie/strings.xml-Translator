@@ -11,6 +11,8 @@ import { suggestTranslation } from '../utils/translator';
 import { normalizePluralsForLanguage } from '../utils/xmlParser';
 import { fixItemEndings } from '../utils/endPunctuation';
 import { fixItemSyntax, FixNote } from '../utils/syntaxFix';
+import { debugIgnored } from '../utils/debug';
+import { autoCloseOnDoubleSpace } from '../utils/autoCloseBracket';
 import { getItemQaIssues, QaIssue } from '../utils/placeholderCheck';
 import { copyTextToClipboard, readTextFromClipboard } from '../utils/storage';
 
@@ -318,6 +320,24 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, [item.id, currentTargetText, draftItem.type, direction]);
+
+  // Typing a second space after an unclosed bracket closes the bracket (keeps the caret after it)
+  const applyAutoClose = (el: HTMLTextAreaElement, prev: string, apply: (val: string) => void) => {
+    const next = el.value;
+    const fixed = autoCloseOnDoubleSpace(prev, next, el.selectionStart ?? next.length);
+    if (!fixed) {
+      apply(next);
+      return;
+    }
+    apply(fixed.text);
+    requestAnimationFrame(() => {
+      try {
+        el.setSelectionRange(fixed.caret, fixed.caret);
+      } catch (err) {
+        debugIgnored('TranslationEditor.autoClose', err);
+      }
+    });
+  };
 
   // Handle single string text change (updates local draft only; saved on Save & Continue / Save & Stay)
   const handleSingleTextChange = (val: string) => {
@@ -1473,7 +1493,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                 onChange={(e) => {
                   recordCursorPosition(e.currentTarget, 'string');
                   adjustTextareaHeight(e.currentTarget);
-                  handleSingleTextChange(e.target.value);
+                  applyAutoClose(e.currentTarget, draftItem.target, handleSingleTextChange);
                 }}
                 placeholder={isAr ? 'اكتب الترجمة هنا...' : 'Type translation here...'}
                 rows={1}
@@ -1541,7 +1561,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                       onChange={(e) => {
                         recordCursorPosition(e.currentTarget, 'plural', { quantity: pi.quantity });
                         adjustTextareaHeight(e.currentTarget);
-                        handlePluralQuantityChange(pi.quantity, e.target.value);
+                        applyAutoClose(e.currentTarget, pi.target, (v) => handlePluralQuantityChange(pi.quantity, v));
                       }}
                       placeholder={
                         isAr
@@ -1608,7 +1628,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                       onChange={(e) => {
                         recordCursorPosition(e.currentTarget, 'array', { index: ai.index });
                         adjustTextareaHeight(e.currentTarget);
-                        handleArrayItemChange(ai.index, e.target.value);
+                        applyAutoClose(e.currentTarget, ai.target, (v) => handleArrayItemChange(ai.index, v));
                       }}
                       placeholder={
                         isAr ? `ترجمة العنصر ${ai.index}...` : `Translate item ${ai.index}...`

@@ -356,6 +356,76 @@ function fixTags(source: string, target: string, notes: FixNote[]): string {
   return text;
 }
 
+// ---------- brackets ----------
+
+const BRACKET_PAIRS: Record<string, string> = { '(': ')', '[': ']', '{': '}', '«': '»', '“': '”' };
+const CLOSERS = new Set(Object.values(BRACKET_PAIRS));
+const CLOSER_TO_OPENER: Record<string, string> = Object.fromEntries(Object.entries(BRACKET_PAIRS).map(([o, c]) => [c, o]));
+
+/** Same-length copy of the text where placeholders, HTML tags and entities can't be mistaken for brackets. */
+function maskSyntax(text: string): string {
+  return text.replace(/%(?:\d+\$)?[+-]?\d*(?:\.\d+)?[bcdefgopsx]|\{[a-zA-Z0-9_-]+\}|<\/?[a-zA-Z][^>]*>|&[a-zA-Z#0-9]+;/g, (m) => '_'.repeat(m.length));
+}
+
+export interface BracketScan {
+  unclosed: { idx: number; ch: string }[];
+  pairs: { open: number; close: number; ch: string }[];
+}
+
+/** Finds the opening brackets that are never closed (stack scan, per bracket type). */
+export function scanBrackets(text: string): BracketScan {
+  const masked = maskSyntax(text);
+  const stack: { idx: number; ch: string }[] = [];
+  const pairs: BracketScan['pairs'] = [];
+  for (let i = 0; i < masked.length; i++) {
+    const ch = masked[i];
+    if (BRACKET_PAIRS[ch]) stack.push({ idx: i, ch });
+    else if (CLOSERS.has(ch)) {
+      const opener = CLOSER_TO_OPENER[ch];
+      for (let j = stack.length - 1; j >= 0; j--) {
+        if (stack[j].ch === opener) {
+          pairs.push({ open: stack[j].idx, close: i, ch: opener });
+          stack.splice(j, 1);
+          break;
+        }
+      }
+    }
+  }
+  return { unclosed: stack, pairs };
+}
+
+function fixBrackets(source: string, target: string, notes: FixNote[]): string {
+  let text = target;
+  const src = scanBrackets(source);
+  for (let guard = 0; guard < 10; guard++) {
+    const tgt = scanBrackets(text);
+    const extra = tgt.unclosed.find((u) => {
+      const need = tgt.unclosed.filter((x) => x.ch === u.ch).length - src.unclosed.filter((x) => x.ch === u.ch).length;
+      return need > 0 && tgt.unclosed.filter((x) => x.ch === u.ch).indexOf(u) >= tgt.unclosed.filter((x) => x.ch === u.ch).length - need;
+    });
+    if (!extra) break;
+    const closer = BRACKET_PAIRS[extra.ch];
+    const proj = project(text);
+    const words = wordsOf(proj.plain);
+    // which opener of this type is it (in order), and where does the source close the matching one?
+    const k = tgt.pairs.filter((p) => p.ch === extra.ch && p.open < extra.idx).length + tgt.unclosed.filter((u) => u.ch === extra.ch && u.idx < extra.idx).length;
+    const srcOpeners = [...src.pairs.filter((p) => p.ch === extra.ch).map((p) => p.open), ...src.unclosed.filter((u) => u.ch === extra.ch).map((u) => u.idx)].sort((a, b) => a - b);
+    const sp = src.pairs.find((p) => p.ch === extra.ch && p.open === srcOpeners[k]);
+    let pos = origEnd(proj, beforeTrailingPunct(proj.plain));
+    if (sp && !/^[\s.!?؟…,:;،؛]*$/.test(source.slice(sp.close + 1)) && words.length) {
+      const srcProj = project(source);
+      const srcWords = wordsOf(srcProj.plain);
+      const before = srcWords.filter((w) => w.start < plainIndexOfOrig(srcProj, sp.close)).length;
+      const kk = Math.max(1, Math.min(words.length, Math.round((before / Math.max(1, srcWords.length)) * words.length)));
+      pos = origEnd(proj, words[kk - 1].end);
+    }
+    pos = Math.max(pos, extra.idx + 1);
+    text = text.slice(0, pos) + closer + text.slice(pos);
+    notes.push({ en: `Closed the unclosed bracket ${extra.ch}`, ar: `أُغلق القوس غير المنغلق ${extra.ch}` });
+  }
+  return text;
+}
+
 // ---------- public API ----------
 
 export function fixTargetSyntax(source: string, target: string): { text: string; notes: FixNote[] } {
@@ -363,6 +433,7 @@ export function fixTargetSyntax(source: string, target: string): { text: string;
   if (!target.trim() || !source) return { text: target, notes };
   let text = fixPlaceholders(source, target, notes);
   text = fixTags(source, text, notes);
+  text = fixBrackets(source, text, notes);
   return { text, notes };
 }
 
