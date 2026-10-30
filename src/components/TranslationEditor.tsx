@@ -118,7 +118,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   const [copiedSource, setCopiedSource] = useState(false);
   const [copiedTarget, setCopiedTarget] = useState(false);
   const [showSavedFeedback, setShowSavedFeedback] = useState(false);
-  const [saveGuard, setSaveGuard] = useState<{ notes: FixNote[]; remaining: QaIssue[] } | null>(null);
+  const [saveGuard, setSaveGuard] = useState<{ notes: FixNote[]; remaining: QaIssue[]; empty?: boolean } | null>(null);
   const ackedIssuesRef = useRef('');
 
   // Suggestion loading state
@@ -973,6 +973,15 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     [targetLang]
   );
 
+  // Nothing typed: saving an untouched empty translation does nothing (no status change, no navigation)
+  const blockIfNothingTyped = React.useCallback((): boolean => {
+    const hasText = (it: ResourceItem) =>
+      it.type === 'string' ? !!it.target.trim() : it.items.some((x) => !!x.target.trim());
+    if (hasText(draftItem) || hasText(item)) return false;
+    setSaveGuard({ notes: [], remaining: [], empty: true });
+    return true;
+  }, [draftItem, item]);
+
   // Before saving: repairs placeholders, HTML tags and final punctuation from the source's context.
   // When anything was changed (or unfixable errors remain) the save is blocked once with a message; saving again confirms.
   const blockIfNeedsFix = React.useCallback((): boolean => {
@@ -1007,7 +1016,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   }, [autoCorrect, draftItem, targetLang, updateDraftItem]);
 
   useEffect(() => {
-    if (!autoCorrect) setSaveGuard(null);
+    if (!autoCorrect) setSaveGuard((g) => (g && g.empty ? g : null));
   }, [autoCorrect]);
 
   useEffect(() => {
@@ -1018,7 +1027,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
 
   // Save without continuing (حفظ بدون متابعة / Save & Stay)
   const handleSaveWithoutContinuing = React.useCallback(() => {
-    if (blockIfNeedsFix()) return;
+    if (blockIfNothingTyped() || blockIfNeedsFix()) return;
     // Saving settles the string: the old source text (diff) is no longer shown
     const savedItem = { ...buildSavedItemFromDraft(draftItem), previousSources: undefined };
     const undoDeletesText = savedItem.translationSource === 'ai' && item.status === 'untranslated';
@@ -1032,11 +1041,11 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     onUpdateTranslation(savedItem, undoDeletesText ? { undoDeletesText: true } : undefined);
     setShowSavedFeedback(true);
     setTimeout(() => setShowSavedFeedback(false), 2000);
-  }, [blockIfNeedsFix, buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation]);
+  }, [blockIfNothingTyped, blockIfNeedsFix, buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation]);
 
   // Save and continue (حفظ ومتابعة / Save & Continue)
   const handleSaveAndContinue = React.useCallback(() => {
-    if (blockIfNeedsFix()) return;
+    if (blockIfNothingTyped() || blockIfNeedsFix()) return;
     // Saving settles the string: the old source text (diff) is no longer shown
     const savedItem = { ...buildSavedItemFromDraft(draftItem), previousSources: undefined };
     const undoDeletesText = savedItem.translationSource === 'ai' && item.status === 'untranslated';
@@ -1049,7 +1058,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     });
     onUpdateTranslation(savedItem, undoDeletesText ? { undoDeletesText: true } : undefined);
     onNavigateNext();
-  }, [blockIfNeedsFix, buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation, onNavigateNext]);
+  }, [blockIfNothingTyped, blockIfNeedsFix, buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation, onNavigateNext]);
 
   // Editor keyboard shortcuts for Undo/Redo and Ctrl+Enter (Save & Continue)
   useEffect(() => {
@@ -1833,7 +1842,11 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               <div className="flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                 <span className="font-semibold">
-                  {saveGuard.notes.length > 0
+                  {saveGuard.empty
+                    ? isAr
+                      ? 'لم يُحفظ شيء: لم تكتب أي ترجمة بعد.'
+                      : 'Nothing saved: no translation has been typed yet.'
+                    : saveGuard.notes.length > 0
                     ? isAr
                       ? 'لم يُحفظ النص. صحّحتُ الترجمة تلقائياً، راجعها ثم اضغط حفظ مرة أخرى:'
                       : 'Not saved. The translation was corrected automatically, review it and press Save again:'
