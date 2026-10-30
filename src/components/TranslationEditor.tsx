@@ -9,6 +9,7 @@ import { HighlightedTextarea } from './HighlightedTextarea';
 import { getArabicLanguageName, getLanguageOption } from '../utils/languages';
 import { suggestTranslation } from '../utils/translator';
 import { normalizePluralsForLanguage } from '../utils/xmlParser';
+import { fixItemEndings } from '../utils/endPunctuation';
 import { copyTextToClipboard, readTextFromClipboard } from '../utils/storage';
 
 const PLURAL_QUANTITY_LABELS_AR: Record<string, string> = {
@@ -108,6 +109,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   const [copiedSource, setCopiedSource] = useState(false);
   const [copiedTarget, setCopiedTarget] = useState(false);
   const [showSavedFeedback, setShowSavedFeedback] = useState(false);
+  const [endPunctWarning, setEndPunctWarning] = useState(false);
 
   // Suggestion loading state
   const [isSuggesting, setIsSuggesting] = useState(false);
@@ -903,8 +905,28 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     [targetLang]
   );
 
+  // Blocks saving when the source ends with a period/ellipsis but the translation doesn't: fixes the draft and warns
+  const blockIfEndPunctuationMissing = React.useCallback((): boolean => {
+    const base =
+      draftItem.type === 'plural'
+        ? ({ ...draftItem, items: (normalizePluralsForLanguage([draftItem], targetLang)[0] as PluralStringItem).items } as ResourceItem)
+        : draftItem;
+    const { item: fixed, changed } = fixItemEndings(base);
+    if (!changed) return false;
+    updateDraftItem(fixed);
+    setEndPunctWarning(true);
+    return true;
+  }, [draftItem, targetLang, updateDraftItem]);
+
+  useEffect(() => {
+    if (!endPunctWarning) return;
+    const t = setTimeout(() => setEndPunctWarning(false), 6000);
+    return () => clearTimeout(t);
+  }, [endPunctWarning]);
+
   // Save without continuing (حفظ بدون متابعة / Save & Stay)
   const handleSaveWithoutContinuing = React.useCallback(() => {
+    if (blockIfEndPunctuationMissing()) return;
     // Saving settles the string: the old source text (diff) is no longer shown
     const savedItem = { ...buildSavedItemFromDraft(draftItem), previousSources: undefined };
     const undoDeletesText = savedItem.translationSource === 'ai' && item.status === 'untranslated';
@@ -918,10 +940,11 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     onUpdateTranslation(savedItem, undoDeletesText ? { undoDeletesText: true } : undefined);
     setShowSavedFeedback(true);
     setTimeout(() => setShowSavedFeedback(false), 2000);
-  }, [buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation]);
+  }, [blockIfEndPunctuationMissing, buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation]);
 
   // Save and continue (حفظ ومتابعة / Save & Continue)
   const handleSaveAndContinue = React.useCallback(() => {
+    if (blockIfEndPunctuationMissing()) return;
     // Saving settles the string: the old source text (diff) is no longer shown
     const savedItem = { ...buildSavedItemFromDraft(draftItem), previousSources: undefined };
     const undoDeletesText = savedItem.translationSource === 'ai' && item.status === 'untranslated';
@@ -934,7 +957,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     });
     onUpdateTranslation(savedItem, undoDeletesText ? { undoDeletesText: true } : undefined);
     onNavigateNext();
-  }, [buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation, onNavigateNext]);
+  }, [blockIfEndPunctuationMissing, buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation, onNavigateNext]);
 
   // Editor keyboard shortcuts for Undo/Redo and Ctrl+Enter (Save & Continue)
   useEffect(() => {
@@ -1706,6 +1729,20 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               )}
             </div>
           </div>
+
+          {endPunctWarning && (
+            <div
+              role="alert"
+              className="mx-3 sm:mx-4 mb-2 flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-200"
+            >
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>
+                {isAr
+                  ? 'لم يُحفظ النص: نسيت إضافة نقطة (أو نقاط الحذف) في آخر الترجمة كما في النص الأصلي. أضفتها تلقائياً، اضغط حفظ مرة أخرى.'
+                  : 'Not saved: the translation is missing the final period (or ellipsis) the source has. It was added automatically, press Save again.'}
+              </span>
+            </div>
+          )}
 
           <EditorActionButtons
             isAr={isAr}
