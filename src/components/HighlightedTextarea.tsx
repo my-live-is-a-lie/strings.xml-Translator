@@ -17,6 +17,8 @@ export interface HighlightedTextareaProps
   resetKey?: string | number;
   onExpandedChange?: (isExpanded: boolean) => void;
   onValueChange?: (newValue: string) => void;
+  /** Grey completion shown right after the text (word prediction). */
+  ghostText?: string;
 }
 
 import {
@@ -39,6 +41,7 @@ export const HighlightedTextarea = forwardRef<HTMLTextAreaElement, HighlightedTe
       resetKey,
       onExpandedChange,
       onValueChange,
+      ghostText,
       onScroll,
       style,
       ...props
@@ -648,6 +651,9 @@ export const HighlightedTextarea = forwardRef<HTMLTextAreaElement, HighlightedTe
         >
           <div className="w-full inline-block">
             {renderContentWithWhitespaceIndicators(value)}
+            {ghostText && (
+              <span className="select-none whitespace-pre-wrap text-slate-400 dark:text-slate-500">{ghostText}</span>
+            )}
             {value.endsWith('\n') && <br aria-hidden="true" />}
           </div>
         </div>

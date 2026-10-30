@@ -13,6 +13,7 @@ import { fixItemEndings } from '../utils/endPunctuation';
 import { fixItemSyntax, FixNote } from '../utils/syntaxFix';
 import { debugIgnored } from '../utils/debug';
 import { autoCloseOnDoubleSpace } from '../utils/autoCloseBracket';
+import { usePredictiveWords, PredictField } from '../hooks/usePredictiveWords';
 import { getItemQaIssues, QaIssue } from '../utils/placeholderCheck';
 import { copyTextToClipboard, readTextFromClipboard } from '../utils/storage';
 
@@ -53,6 +54,7 @@ interface TranslationEditorProps {
   undoCount?: number;
   redoCount?: number;
   autoTranslate?: boolean;
+  predictiveWords?: boolean;
   onResetItemHistory?: (id: string) => void;
 }
 
@@ -75,6 +77,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   undoCount = 0,
   redoCount = 0,
   autoTranslate = false,
+  predictiveWords = false,
   onResetItemHistory,
 }) => {
   const isAr = appLang === 'ar';
@@ -322,8 +325,22 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   }, [item.id, currentTargetText, draftItem.type, direction]);
 
   // Typing a second space after an unclosed bracket closes the bracket (keeps the caret after it)
-  const applyAutoClose = (el: HTMLTextAreaElement, prev: string, apply: (val: string) => void) => {
+  const applyAutoClose = (el: HTMLTextAreaElement, prev: string, key: string, apply: (val: string) => void) => {
     const next = el.value;
+    // Space accepts a word completion, Backspace rejects it
+    const predicted = predict.handleChange(key, prev, next);
+    if (predicted !== null) {
+      el.value = predicted;
+      apply(predicted);
+      requestAnimationFrame(() => {
+        try {
+          el.setSelectionRange(predicted.length, predicted.length);
+        } catch (err) {
+          debugIgnored('TranslationEditor.predict', err);
+        }
+      });
+      return;
+    }
     const fixed = autoCloseOnDoubleSpace(prev, next, el.selectionStart ?? next.length);
     if (!fixed) {
       apply(next);
@@ -360,6 +377,27 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
         : [],
     [draftItem, targetLang]
   );
+
+  // Word prediction: the machine translation of each source text feeds grey completions while typing
+  const predictFields = useMemo<PredictField[]>(() => {
+    if (draftItem.type === 'string') return [{ key: 'string', source: draftItem.source }];
+    if (draftItem.type === 'plural') {
+      const fallback = draftItem.items.find((pi) => pi.quantity === 'other')?.source || draftItem.items[0]?.source || '';
+      return normalizedPluralItems.map((pi) => ({
+        key: `plural:${pi.quantity}`,
+        source: pi.source || fallback,
+        quantity: pi.quantity,
+      }));
+    }
+    return draftItem.items.map((ai) => ({ key: `array:${ai.index}`, source: ai.source }));
+  }, [draftItem, normalizedPluralItems]);
+  const predict = usePredictiveWords({
+    enabled: predictiveWords && item.translatable !== false,
+    resetKey: item.id,
+    fields: predictFields,
+    targetLang,
+    targetLocaleName,
+  });
 
   // Plural change (updates local draft only)
   const handlePluralQuantityChange = (quantity: string, val: string) => {
@@ -426,6 +464,10 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     extra?: { quantity?: string; index?: number }
   ) => {
     if (!el) return;
+    predict.noteCursor(
+      fieldType === 'string' ? 'string' : fieldType === 'plural' ? `plural:${extra?.quantity}` : `array:${extra?.index}`,
+      el
+    );
     const start = typeof el.selectionStart === 'number' ? el.selectionStart : el.value.length;
     const end = typeof el.selectionEnd === 'number' ? el.selectionEnd : el.value.length;
     lastCursorRef.current = {
@@ -448,6 +490,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     fieldType: 'string' | 'plural' | 'array',
     extra?: { quantity?: string; index?: number }
   ) => {
+    predict.clearCursor();
     setTimeout(() => {
       if (isInteractingWithToolbarOrPasteRef.current) return;
       if (el && document.activeElement === el) return;
@@ -1481,6 +1524,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                 ref={textareaRef}
                 dir={direction}
                 value={draftItem.target}
+                ghostText={predict.ghostFor('string', draftItem.target)}
                 resetKey={draftItem.id}
                 onValueChange={(val) => {
                   handleSingleTextChange(val);
@@ -1493,7 +1537,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                 onChange={(e) => {
                   recordCursorPosition(e.currentTarget, 'string');
                   adjustTextareaHeight(e.currentTarget);
-                  applyAutoClose(e.currentTarget, draftItem.target, handleSingleTextChange);
+                  applyAutoClose(e.currentTarget, draftItem.target, 'string', handleSingleTextChange);
                 }}
                 placeholder={isAr ? 'اكتب الترجمة هنا...' : 'Type translation here...'}
                 rows={1}
@@ -1530,6 +1574,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                       rows={1}
                       dir={direction}
                       value={pi.target}
+                      ghostText={predict.ghostFor(`plural:${pi.quantity}`, pi.target)}
                       resetKey={`${draftItem.id}-${pi.quantity}`}
                       onValueChange={(val) => {
                         handlePluralQuantityChange(pi.quantity, val);
@@ -1561,7 +1606,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                       onChange={(e) => {
                         recordCursorPosition(e.currentTarget, 'plural', { quantity: pi.quantity });
                         adjustTextareaHeight(e.currentTarget);
-                        applyAutoClose(e.currentTarget, pi.target, (v) => handlePluralQuantityChange(pi.quantity, v));
+                        applyAutoClose(e.currentTarget, pi.target, `plural:${pi.quantity}`, (v) => handlePluralQuantityChange(pi.quantity, v));
                       }}
                       placeholder={
                         isAr
@@ -1597,6 +1642,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                       rows={1}
                       dir={direction}
                       value={ai.target}
+                      ghostText={predict.ghostFor(`array:${ai.index}`, ai.target)}
                       resetKey={`${draftItem.id}-${ai.index}`}
                       onValueChange={(val) => {
                         handleArrayItemChange(ai.index, val);
@@ -1628,7 +1674,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                       onChange={(e) => {
                         recordCursorPosition(e.currentTarget, 'array', { index: ai.index });
                         adjustTextareaHeight(e.currentTarget);
-                        applyAutoClose(e.currentTarget, ai.target, (v) => handleArrayItemChange(ai.index, v));
+                        applyAutoClose(e.currentTarget, ai.target, `array:${ai.index}`, (v) => handleArrayItemChange(ai.index, v));
                       }}
                       placeholder={
                         isAr ? `ترجمة العنصر ${ai.index}...` : `Translate item ${ai.index}...`

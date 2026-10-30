@@ -24,6 +24,7 @@ import {
 import { ExportModal } from './components/ExportModal';
 import { FilesModal } from './components/FilesModal';
 import { QuickFilterButton, QuickFilterBar } from './components/QuickFilters';
+import { getPredictiveWordsEnabled, setPredictiveWordsEnabled } from './utils/wordPredictor';
 import { applyQuickSnapshot, resetQuickSnapshot, showOnlyNewStrings, useQuickFilters } from './utils/quickFilters';
 import { TranslationProject, ResourceItem, FilterStatus, SourceFilter, StoredXmlFile } from './types';
 import { parseAndroidXml, mergeTargetXml, normalizePluralsForLanguage } from './utils/xmlParser';
@@ -240,6 +241,11 @@ export default function App() {
   }, [appTheme]);
 
   const [autoTranslate, setAutoTranslate] = useState<boolean>(() => getAutoTranslateEnabled());
+  const [predictiveWords, setPredictiveWords] = useState<boolean>(() => getPredictiveWordsEnabled());
+  const handleTogglePredictiveWords = useCallback((enabled: boolean) => {
+    setPredictiveWords(enabled);
+    setPredictiveWordsEnabled(enabled);
+  }, []);
 
   const handleToggleAutoTranslate = useCallback((enabled: boolean) => {
     setAutoTranslate(enabled);
@@ -805,6 +811,8 @@ export default function App() {
         redoCount={future.length}
         autoTranslate={autoTranslate}
         onToggleAutoTranslate={handleToggleAutoTranslate}
+        predictiveWords={predictiveWords}
+        onTogglePredictiveWords={handleTogglePredictiveWords}
         onResetItemHistory={handleResetItemHistory}
         onSelectString={selectItemInEditor}
         onOpenFilesModal={openFilesModal}
@@ -881,6 +889,7 @@ export default function App() {
                   undoCount={past.length}
                   redoCount={future.length}
                   autoTranslate={autoTranslate}
+                  predictiveWords={predictiveWords}
                   onResetItemHistory={handleResetItemHistory}
                 />
               ) : (
