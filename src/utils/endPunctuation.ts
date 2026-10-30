@@ -16,17 +16,33 @@ function normalizeRun(run: string): string {
     .replace(/[。۔]/g, '.');
 }
 
-/** Makes the target end with the same mark as the source: replaces a different final mark, or appends a missing one. */
+/** Splits a text into [body, whitespace before the final mark, final mark]. */
+function splitEnding(text: string): [string, string, string] {
+  const t = text.trimEnd();
+  const run = t.match(END_RUN)?.[0] ?? '';
+  const rest = t.slice(0, t.length - run.length);
+  const body = rest.trimEnd();
+  return [body, rest.slice(body.length), run];
+}
+
+/**
+ * Makes the target end like the source: same final mark (replaced or appended when different/missing)
+ * and the same spacing before it (a space before "؟" is removed when the source has none, and vice versa).
+ */
 export function fixTargetEnding(source: string, target: string): { text: string; changed: boolean } {
   if (!target.trim()) return { text: target, changed: false };
-  const srcRun = sourceEnding(source);
+  const [srcBody, srcGap0, srcRun] = splitEnding(source);
   if (!srcRun) return { text: target, changed: false };
-  const trimmed = target.trimEnd();
-  const tgtRun = trimmed.match(END_RUN)?.[0] ?? '';
-  if (tgtRun && normalizeRun(tgtRun) === normalizeRun(srcRun)) return { text: target, changed: false };
+  const srcGap = srcBody ? srcGap0 : '';
+  const [tgtBody, tgtGap, tgtRun] = splitEnding(target);
+  const sameRun = !!tgtRun && normalizeRun(tgtRun) === normalizeRun(srcRun);
+  const sameGap = !!tgtBody && (tgtGap === '') === (srcGap === '');
+  if (sameRun && (sameGap || !tgtBody)) return { text: target, changed: false };
   // Arabic-script translations use the Arabic question mark
-  const mark = /[\u0600-\u06FF]/.test(trimmed) ? srcRun.replace(/\?/g, '؟') : srcRun;
-  return { text: trimmed.slice(0, trimmed.length - tgtRun.length) + mark, changed: true };
+  const mark = sameRun
+    ? tgtRun
+    : /[\u0600-\u06FF]/.test(tgtBody) ? srcRun.replace(/\?/g, '؟') : srcRun;
+  return { text: tgtBody + (tgtBody ? srcGap : '') + mark, changed: true };
 }
 
 /** Fixes the final punctuation to every translated entry of an item. */
