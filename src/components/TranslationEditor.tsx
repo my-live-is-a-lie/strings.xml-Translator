@@ -55,6 +55,7 @@ interface TranslationEditorProps {
   redoCount?: number;
   autoTranslate?: boolean;
   predictiveWords?: boolean;
+  autoCorrect?: boolean;
   onResetItemHistory?: (id: string) => void;
 }
 
@@ -78,6 +79,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   redoCount = 0,
   autoTranslate = false,
   predictiveWords = false,
+  autoCorrect = true,
   onResetItemHistory,
 }) => {
   const isAr = appLang === 'ar';
@@ -341,7 +343,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       });
       return;
     }
-    const fixed = autoCloseOnDoubleSpace(prev, next, el.selectionStart ?? next.length);
+    const fixed = autoCorrect ? autoCloseOnDoubleSpace(prev, next, el.selectionStart ?? next.length) : null;
     if (!fixed) {
       apply(next);
       return;
@@ -974,6 +976,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   // Before saving: repairs placeholders, HTML tags and final punctuation from the source's context.
   // When anything was changed (or unfixable errors remain) the save is blocked once with a message; saving again confirms.
   const blockIfNeedsFix = React.useCallback((): boolean => {
+    if (!autoCorrect) return false; // the user turned auto-correction off: save exactly what was typed
     const base =
       draftItem.type === 'plural'
         ? ({ ...draftItem, items: (normalizePluralsForLanguage([draftItem], targetLang)[0] as PluralStringItem).items } as ResourceItem)
@@ -1001,7 +1004,11 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       return true;
     }
     return false;
-  }, [draftItem, targetLang, updateDraftItem]);
+  }, [autoCorrect, draftItem, targetLang, updateDraftItem]);
+
+  useEffect(() => {
+    if (!autoCorrect) setSaveGuard(null);
+  }, [autoCorrect]);
 
   useEffect(() => {
     if (!saveGuard) return;

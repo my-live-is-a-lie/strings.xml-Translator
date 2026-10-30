@@ -25,6 +25,7 @@ import { ExportModal } from './components/ExportModal';
 import { FilesModal } from './components/FilesModal';
 import { QuickFilterButton, QuickFilterBar } from './components/QuickFilters';
 import { getPredictiveWordsEnabled, setPredictiveWordsEnabled } from './utils/wordPredictor';
+import { getAutoCorrectEnabled, setAutoCorrectEnabled } from './utils/autoCorrectSetting';
 import { applyQuickSnapshot, resetQuickSnapshot, showOnlyNewStrings, useQuickFilters } from './utils/quickFilters';
 import { TranslationProject, ResourceItem, FilterStatus, SourceFilter, StoredXmlFile } from './types';
 import { parseAndroidXml, mergeTargetXml, normalizePluralsForLanguage } from './utils/xmlParser';
@@ -242,6 +243,11 @@ export default function App() {
 
   const [autoTranslate, setAutoTranslate] = useState<boolean>(() => getAutoTranslateEnabled());
   const [predictiveWords, setPredictiveWords] = useState<boolean>(() => getPredictiveWordsEnabled());
+  const [autoCorrect, setAutoCorrect] = useState<boolean>(() => getAutoCorrectEnabled());
+  const handleToggleAutoCorrect = useCallback((enabled: boolean) => {
+    setAutoCorrect(enabled);
+    setAutoCorrectEnabled(enabled);
+  }, []);
   const handleTogglePredictiveWords = useCallback((enabled: boolean) => {
     setPredictiveWords(enabled);
     setPredictiveWordsEnabled(enabled);
@@ -813,6 +819,8 @@ export default function App() {
         onToggleAutoTranslate={handleToggleAutoTranslate}
         predictiveWords={predictiveWords}
         onTogglePredictiveWords={handleTogglePredictiveWords}
+        autoCorrect={autoCorrect}
+        onToggleAutoCorrect={handleToggleAutoCorrect}
         onResetItemHistory={handleResetItemHistory}
         onSelectString={selectItemInEditor}
         onOpenFilesModal={openFilesModal}
@@ -890,6 +898,7 @@ export default function App() {
                   redoCount={future.length}
                   autoTranslate={autoTranslate}
                   predictiveWords={predictiveWords}
+                  autoCorrect={autoCorrect}
                   onResetItemHistory={handleResetItemHistory}
                 />
               ) : (

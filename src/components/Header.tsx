@@ -1,6 +1,6 @@
 import { debugIgnored } from '../utils/debug';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Archive, Upload, Download, Sparkles, Languages, Layers, LayoutList, Globe, FileDiff, Keyboard, ChevronDown, X, Palette, Contrast, Paintbrush, FolderOpen, TextCursorInput } from 'lucide-react';
+import { Archive, Upload, Download, Sparkles, Languages, Layers, LayoutList, Globe, FileDiff, Keyboard, ChevronDown, X, Palette, Contrast, Paintbrush, FolderOpen, TextCursorInput, SpellCheck } from 'lucide-react';
 import { TranslationProject } from '../types';
 
 import { getArabicLanguageName } from '../utils/languages';
@@ -51,6 +51,8 @@ interface HeaderProps {
   onToggleAutoTranslate?: (enabled: boolean) => void;
   predictiveWords?: boolean;
   onTogglePredictiveWords?: (enabled: boolean) => void;
+  autoCorrect?: boolean;
+  onToggleAutoCorrect?: (enabled: boolean) => void;
   onResetItemHistory?: (id: string) => void;
   onSelectString?: (id: string) => void;
   onOpenFilesModal?: () => void;
@@ -78,6 +80,8 @@ const HeaderBase: React.FC<HeaderProps> = ({
   onToggleAutoTranslate,
   predictiveWords = false,
   onTogglePredictiveWords,
+  autoCorrect = true,
+  onToggleAutoCorrect,
   onResetItemHistory,
   onSelectString,
   onOpenFilesModal,
@@ -784,6 +788,47 @@ const HeaderBase: React.FC<HeaderProps> = ({
                   <span
                     className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${
                       predictiveWords ? 'translate-x-5 rtl:-translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </div>
+              </button>
+
+              {/* Auto-correct: fixes punctuation, placeholders, tags and brackets before saving */}
+              <button
+                type="button"
+                onClick={() => onToggleAutoCorrect?.(!autoCorrect)}
+                role="switch"
+                aria-checked={autoCorrect}
+                id="drawer-auto-correct-toggle"
+                className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-2xl border transition cursor-pointer shrink-0 select-none text-start ${
+                  autoCorrect
+                    ? 'bg-[#1EB996]/12 border-[#1EB996]/50 text-slate-900 dark:text-white'
+                    : 'bg-slate-100/90 hover:bg-slate-200/70 dark:bg-[#202634] dark:hover:bg-[#2A3244] border-slate-200/90 dark:border-[#2F384B] text-slate-800 dark:text-slate-100'
+                }`}
+              >
+                <div className="flex items-center gap-2.5 flex-1 min-w-0 overflow-hidden">
+                  <SpellCheck
+                    className={`w-4 h-4 shrink-0 transition-colors ${
+                      autoCorrect ? 'text-[#1EB996]' : 'text-slate-400 dark:text-slate-400'
+                    }`}
+                  />
+                  <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+                    <span className="w-full text-xs sm:text-sm font-semibold leading-snug truncate">
+                      {isAr ? 'التصحيح التلقائي' : 'Auto-correct'}
+                    </span>
+                    <span className="w-full text-[11px] text-slate-600 dark:text-slate-400 leading-snug truncate">
+                      {isAr ? 'عطّله للكتابة بحرية دون تنبيهات' : 'Turn off to type freely, without warnings'}
+                    </span>
+                  </div>
+                </div>
+                <div
+                  className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition-colors duration-200 ${
+                    autoCorrect ? 'bg-[#1EB996]' : 'bg-slate-300 dark:bg-[#343E52]'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${
+                      autoCorrect ? 'translate-x-5 rtl:-translate-x-5' : 'translate-x-0'
                     }`}
                   />
                 </div>
