@@ -37,6 +37,8 @@ export interface WordSuggestion {
   word: string;
   partial: string;
   suffix: string;
+  /** The word is the last one of the stored translation (nothing follows it). */
+  isLast: boolean;
 }
 
 const letterRuns = (text: string) => text.split(/[^\p{L}\p{M}]+/u).filter(Boolean);
@@ -58,8 +60,8 @@ function findNextWord(words: string[], text: string, skip: string[]): WordSugges
     if (i >= 0) pointer = i + 1;
   }
   if (!lastMatched) return null;
-  const word = words.slice(pointer).find((w) => !skip.includes(w));
-  return word ? { word, partial: '', suffix: word } : null;
+  const i = words.findIndex((w, idx) => idx >= pointer && !skip.includes(w));
+  return i >= 0 ? { word: words[i], partial: '', suffix: words[i], isLast: i === words.length - 1 } : null;
 }
 
 /**
@@ -78,6 +80,8 @@ export function findSuggestion(words: string[] | undefined, text: string, skip: 
     const i = remaining.findIndex((w) => w.toLowerCase() === tok.toLowerCase());
     if (i >= 0) remaining.splice(i, 1);
   }
-  const word = remaining.find((w) => !skip.includes(w) && w.length > partial.length && w.toLowerCase().startsWith(lower));
-  return word ? { word, partial, suffix: word.slice(partial.length) } : null;
+  const i = remaining.findIndex((w) => !skip.includes(w) && w.length > partial.length && w.toLowerCase().startsWith(lower));
+  return i >= 0
+    ? { word: remaining[i], partial, suffix: remaining[i].slice(partial.length), isLast: i === remaining.length - 1 }
+    : null;
 }

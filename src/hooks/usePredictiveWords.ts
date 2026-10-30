@@ -113,9 +113,9 @@ export function usePredictiveWords(opts: {
       const s = findSuggestion(list, prev, skip);
       if (s) {
         setRejected(null);
-        // a one-word source gets no trailing space after the completed word
+        // no trailing space after the last stored word, nor after a one-word source's completion
         const oneWord = (fieldsRef.current.find((f) => f.key === key)?.source.trim().split(/\s+/).length ?? 2) === 1;
-        return prev + s.suffix + (oneWord ? '' : ' ');
+        return prev + s.suffix + (oneWord || s.isLast ? '' : ' ');
       }
     } else if (next.length === prev.length - 1 && prev.startsWith(next)) {
       const s = findSuggestion(list, prev, skip);
