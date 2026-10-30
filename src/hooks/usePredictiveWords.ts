@@ -33,7 +33,7 @@ interface Rejected {
 }
 
 /**
- * Word completion while typing: the source text is translated by the service, its words are stored in order,
+ * Word completion while typing: on the first edit of a field its source text is translated by the service, its words are stored in order,
  * and the first stored word starting with the typed letters is shown (grey) as a completion.
  * Space accepts it (+ one space); Backspace rejects it and offers the next matching stored word.
  */
@@ -56,22 +56,28 @@ export function usePredictiveWords(opts: {
   fieldsRef.current = fields;
   const fieldsSignature = fields.map((f) => `${f.key}:${f.quantity ?? ''}:${f.source}`).join('\u0001');
 
+  // Nothing is requested while the user only browses strings: a field is translated on its first edit
+  const requestedRef = useRef<Set<string>>(new Set());
+  const generationRef = useRef(0);
+
   useEffect(() => {
+    generationRef.current++;
+    requestedRef.current = new Set();
     setWords({});
     setRejected(null);
-    if (!enabled) return;
-    let cancelled = false;
-    for (const f of fieldsRef.current) {
-      if (!f.source.trim()) continue;
-      translateOnce(f, targetLang, targetLocaleName).then((text) => {
-        if (cancelled || !text) return;
-        setWords((prev) => ({ ...prev, [f.key]: extractWords(text) }));
-      });
-    }
-    return () => {
-      cancelled = true;
-    };
   }, [enabled, resetKey, fieldsSignature, targetLang, targetLocaleName]);
+
+  const ensureWords = (key: string) => {
+    if (requestedRef.current.has(key)) return;
+    const f = fieldsRef.current.find((x) => x.key === key);
+    if (!f || !f.source.trim()) return;
+    requestedRef.current.add(key);
+    const generation = generationRef.current;
+    translateOnce(f, targetLang, targetLocaleName).then((text) => {
+      if (generation !== generationRef.current || !text) return;
+      setWords((prev) => ({ ...prev, [key]: extractWords(text) }));
+    });
+  };
 
   const skipFor = (key: string, text: string) => {
     const r = rejectedRef.current;
@@ -99,6 +105,7 @@ export function usePredictiveWords(opts: {
    */
   const handleChange = (key: string, prev: string, next: string): string | null => {
     if (!enabled) return null;
+    ensureWords(key);
     const list = wordsRef.current[key];
     if (!list || list.length === 0) return null;
     const skip = skipFor(key, prev);
