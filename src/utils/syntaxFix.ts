@@ -96,6 +96,26 @@ function looseRegex(token: string): RegExp {
   return new RegExp(src, 'gi');
 }
 
+/** Incomplete copies of a placeholder the user started typing: "%1$", "%1", "{name", "name}", a lone "%". */
+function partialRegexes(token: string): RegExp[] {
+  if (token.startsWith('{')) {
+    const name = esc(token.slice(1, -1));
+    return [new RegExp('\\{\\s*' + name + '(?![\\w}\\s])', 'gi'), new RegExp('(?<![\\w{])' + name + '\\s*\\}', 'gi')];
+  }
+  const m = token.match(/^%(?:(\d+)\$)?([+-]?\d*(?:\.\d+)?)([a-z])$/i);
+  if (!m) return [];
+  const digit = (d: string) => `[${d}${String.fromCharCode(0x660 + +d)}${String.fromCharCode(0x6f0 + +d)}]`;
+  if (m[1]) {
+    const idx = [...m[1]].map(digit).join('');
+    return [
+      new RegExp('%\\s*' + idx + '\\s*\\$(?![a-z])', 'gi'), // "%1$"
+      new RegExp('%\\s*' + idx + '(?![\\d$a-z])', 'gi'), // "%1"
+      new RegExp('(?<![\\w%])%(?![\\w%$])', 'g'), // a lone "%"
+    ];
+  }
+  return [new RegExp('(?<![\\w%])%(?![\\w%$])', 'g')]; // a lone "%" that is not part of another token
+}
+
 function insertPlaceholder(source: string, target: string, token: string, occurrence: number): string {
   // locate the occurrence-th (0-based) instance of this token in the source
   let idx = -1;
@@ -143,8 +163,12 @@ function fixPlaceholders(source: string, target: string, notes: FixNote[]): stri
   for (let pass = 0; pass < 6; pass++) {
     const before = text;
     for (const tok of [...new Set(missingTokens(source, text))]) {
-      const re = looseRegex(tok);
-      const m = [...text.matchAll(re)].find((x) => x[0] !== tok);
+      const candidates = [looseRegex(tok), ...partialRegexes(tok)];
+      let m: RegExpMatchArray | undefined;
+      for (const re of candidates) {
+        m = [...text.matchAll(re)].find((x) => x[0] !== tok);
+        if (m) break;
+      }
       if (m) {
         text = text.slice(0, m.index!) + tok + text.slice(m.index! + m[0].length);
         notes.push({ en: `Fixed malformed placeholder "${m[0]}" → ${tok}`, ar: `صُحّح العنصر النائب المكتوب خطأً "${m[0]}" إلى ${tok}` });
