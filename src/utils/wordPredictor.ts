@@ -39,11 +39,37 @@ export interface WordSuggestion {
   suffix: string;
 }
 
-/** First stored word (in order) that starts with the typed letters, skipping rejected ones. */
+const letterRuns = (text: string) => text.split(/[^\p{L}\p{M}]+/u).filter(Boolean);
+
+/**
+ * Next word after a finished one: the text ends with a space, its last word is in the stored translation,
+ * so the stored word that follows it is offered (the typed words are aligned to the stored ones in order).
+ */
+function findNextWord(words: string[], text: string, skip: string[]): WordSuggestion | null {
+  const trimmed = text.replace(/\s+$/, '');
+  if (!trimmed || trimmed === text || /[\r\n]$/.test(text)) return null;
+  if (!/[\p{L}\p{M}]$/u.test(trimmed)) return null;
+  const tokens = letterRuns(trimmed);
+  let pointer = 0;
+  let lastMatched = false;
+  for (const tok of tokens) {
+    const i = words.findIndex((w, idx) => idx >= pointer && w.toLowerCase() === tok.toLowerCase());
+    lastMatched = i >= 0;
+    if (i >= 0) pointer = i + 1;
+  }
+  if (!lastMatched) return null;
+  const word = words.slice(pointer).find((w) => !skip.includes(w));
+  return word ? { word, partial: '', suffix: word } : null;
+}
+
+/**
+ * Completion for the text: the first stored word (in order) starting with the typed letters, or, right after
+ * a finished word, the stored word that follows it. Rejected words are skipped.
+ */
 export function findSuggestion(words: string[] | undefined, text: string, skip: string[] = []): WordSuggestion | null {
   if (!words || words.length === 0) return null;
   const partial = currentPartial(text);
-  if (!partial) return null;
+  if (!partial) return findNextWord(words, text, skip);
   const lower = partial.toLowerCase();
   // words already typed in this text are used up (one stored occurrence each), so they are not offered again
   const remaining = [...words];
