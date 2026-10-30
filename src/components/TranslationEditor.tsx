@@ -1738,8 +1738,8 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
               <span>
                 {isAr
-                  ? 'لم يُحفظ النص: نسيت إضافة نقطة (أو نقاط الحذف) في آخر الترجمة كما في النص الأصلي. أضفتها تلقائياً، اضغط حفظ مرة أخرى.'
-                  : 'Not saved: the translation is missing the final period (or ellipsis) the source has. It was added automatically, press Save again.'}
+                  ? 'لم يُحفظ النص: علامة الترقيم في آخر الترجمة (نقطة أو نقاط حذف أو تعجب أو استفهام) لا تطابق النص الأصلي. صحّحتها تلقائياً، اضغط حفظ مرة أخرى.'
+                  : 'Not saved: the translation\'s final punctuation (period, ellipsis, !, ?) does not match the source. It was corrected automatically, press Save again.'}
               </span>
             </div>
           )}
