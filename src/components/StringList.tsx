@@ -279,7 +279,7 @@ const StringListBase: React.FC<StringListProps> = ({
         </div>
 
         {/* M3 Filter Chips */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar">
+        <div className="flex flex-wrap items-center gap-1.5">
           {(
             [
               { id: 'all', label: isAr ? 'الكل' : 'All', count: counts.all },
@@ -295,7 +295,7 @@ const StringListBase: React.FC<StringListProps> = ({
               <button
                 key={chip.id}
                 onClick={() => onFilterChange(chip.id as FilterStatus)}
-                className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition cursor-pointer m3-state-layer ${
+                className={`inline-flex shrink-0 items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition cursor-pointer m3-state-layer ${
                   isSelected
                     ? 'bg-[#D3E3FD] text-[#041E49] dark:bg-[#0842A0] dark:text-[#D3E3FD]'
                     : 'bg-transparent text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700/80 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -348,9 +348,6 @@ const StringListBase: React.FC<StringListProps> = ({
             >
               <div className="flex items-center gap-1.5 min-w-0">
                 <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                <span className="text-[11px] font-medium truncate">
-                  {isAr ? 'ذكاء اصطناعي' : 'AI'}
-                </span>
               </div>
               <div className="flex items-baseline gap-1 shrink-0 tabular-nums">
                 <span className="text-xs font-bold">{counts.ai}</span>
@@ -375,9 +372,6 @@ const StringListBase: React.FC<StringListProps> = ({
             >
               <div className="flex items-center gap-1.5 min-w-0">
                 <Keyboard className="w-3.5 h-3.5 text-[#1EB996] shrink-0" />
-                <span className="text-[11px] font-medium truncate">
-                  {isAr ? 'يدوي' : 'Manual'}
-                </span>
               </div>
               <div className="flex items-baseline gap-1 shrink-0 tabular-nums">
                 <span className="text-xs font-bold">{counts.manual}</span>
@@ -386,23 +380,6 @@ const StringListBase: React.FC<StringListProps> = ({
             </button>
           </div>
 
-          {/* Visual Split Bar */}
-          <div className="h-1.5 w-full rounded-full bg-slate-200/80 dark:bg-slate-800 overflow-hidden flex">
-            {counts.ai > 0 && (
-              <div
-                style={{ width: `${(counts.ai / Math.max(1, counts.all)) * 100}%` }}
-                className="h-full bg-amber-500 transition-all duration-300"
-                title={`AI: ${counts.ai}`}
-              />
-            )}
-            {counts.manual > 0 && (
-              <div
-                style={{ width: `${(counts.manual / Math.max(1, counts.all)) * 100}%` }}
-                className="h-full bg-[#1EB996] transition-all duration-300"
-                title={`Manual: ${counts.manual}`}
-              />
-            )}
-          </div>
         </div>
 
         {/* QA Checks Section (Placeholders & HTML Tags Validation) */}
