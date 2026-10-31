@@ -13,6 +13,9 @@ import { APP_LANGUAGES, THEME_OPTIONS } from './headerOptions';
 
 import { PWAInstallButton } from './PWAInstallButton';
 import { OfflineBadge } from './OfflineBadge';
+import { OfflineDot } from './OfflineDot';
+import { QuickFilterButton } from './QuickFilters';
+import { Menu as MenuIcon } from 'lucide-react';
 import { SidebarIcon } from './SidebarIcon';
 import { inlineSign } from '../utils/direction';
 import { getAllTranslationProviders, getActiveProviderId } from '../utils/translator';
@@ -56,7 +59,10 @@ interface HeaderProps {
   /** Narrow container (landscape split half): the top bar wraps instead of overflowing. */
   compact?: boolean;
   /** Landscape split: 'bar' = top app bar + drawer only, 'stats' = progress and counts only, 'all' = both. */
-  part?: 'all' | 'bar' | 'stats';
+  part?: 'all' | 'bar' | 'stats' | 'legend' | 'track' | 'dock';
+  /** Dock only: opens the strings list and how many strings it holds. */
+  onOpenStringsList?: () => void;
+  stringsCount?: number;
   onResetItemHistory?: (id: string) => void;
   onSelectString?: (id: string) => void;
   onOpenFilesModal?: () => void;
@@ -88,6 +94,8 @@ const HeaderBase: React.FC<HeaderProps> = ({
   onToggleAutoCorrect,
   compact = false,
   part = 'all',
+  onOpenStringsList,
+  stringsCount = 0,
   onResetItemHistory,
   onSelectString,
   onOpenFilesModal,
@@ -179,10 +187,64 @@ const HeaderBase: React.FC<HeaderProps> = ({
   const exactTranslatedWidth = totalItems > 0 ? (translatedCount / totalItems) * 100 : 0;
   const exactReviewWidth = totalItems > 0 ? (needsReviewCount / totalItems) * 100 : 0;
 
+  const showBar = part === 'all' || part === 'bar';
+  const showTrack = part === 'all' || part === 'stats' || part === 'track';
+  const showLegend = part === 'all' || part === 'stats' || part === 'legend';
+  const showStatsBlock = showTrack || showLegend;
+
   return (
     <>
-      <header className={`${part === 'stats' || part === 'bar' ? '' : 'sticky top-0 z-30'} bg-white/95 dark:bg-[#131314]/95 backdrop-blur-md md:border-b border-slate-200/80 dark:border-slate-800/80 transition-colors`}>
-        {part !== 'stats' && (
+      <header className={`${part !== 'all' ? '' : 'sticky top-0 z-30'} bg-white/95 dark:bg-[#131314]/95 backdrop-blur-md md:border-b border-slate-200/80 dark:border-slate-800/80 transition-colors`}>
+        {part === 'dock' && (
+          <div className="px-2 py-1.5 flex items-center gap-1.5 text-xs overflow-x-auto">
+            <button
+              type="button"
+              onClick={onOpenFilesModal}
+              className="flex items-center gap-2 h-9 px-2.5 rounded-xl bg-slate-100 dark:bg-[#1E2430] text-slate-800 dark:text-slate-100 shrink-0 min-w-0 cursor-pointer"
+            >
+              <FolderOpen className="w-4 h-4 text-[#0B57D0] dark:text-[#1EB996] shrink-0" />
+              <span className="font-semibold">{isAr ? 'الملفات' : 'Files'}</span>
+              {currentFileName && (
+                <span className="max-w-[90px] truncate font-mono text-slate-600 dark:text-slate-400" dir="ltr">({currentFileName})</span>
+              )}
+              {savedFilesCount > 0 && <span className="font-bold tabular-nums">{savedFilesCount}</span>}
+              <ChevronDown className="w-3 h-3 text-slate-400 shrink-0" />
+            </button>
+            <QuickFilterButton appLang={appLang} className="h-9 shrink-0 text-xs" />
+            <button
+              type="button"
+              onClick={onOpenStringsList}
+              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-transparent font-medium text-slate-800 dark:text-slate-200 shrink-0 cursor-pointer"
+            >
+              <MenuIcon className="w-4 h-4 text-[#0B57D0] dark:text-[#A8C7FA]" />
+              <span>{isAr ? `قائمة النصوص (${stringsCount})` : `Strings List (${stringsCount})`}</span>
+            </button>
+            <OfflineDot appLang={appLang} />
+            <button
+              type="button"
+              onClick={() => onViewChange('table')}
+              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60 text-slate-800 dark:text-slate-200 font-medium shrink-0 cursor-pointer"
+            >
+              <LayoutList className="w-3.5 h-3.5 text-[#0B57D0] dark:text-[#A8C7FA]" />
+              <span>{isAr ? 'الجدول' : 'Table'}</span>
+            </button>
+            <button
+              id="header-right-drawer-btn"
+              type="button"
+              onClick={() => {
+                setAppLangMenuOpen(false);
+                setRightDrawerOpen(true);
+              }}
+              className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60 shrink-0 cursor-pointer"
+              title={isAr ? 'فتح القائمة الجانبية' : 'Open Sidebar Menu'}
+              aria-label="Open Actions Menu"
+            >
+              <SidebarIcon className="w-4.5 h-4.5 text-slate-700 dark:text-slate-200" />
+            </button>
+          </div>
+        )}
+
+        {showBar && (
           <>
         {/* Material 3 Top App Bar */}
         <div className={`max-w-7xl mx-auto px-4 sm:px-6 ${compact ? 'min-h-13 py-1.5 flex-wrap gap-y-1.5' : 'h-13 sm:h-14'} flex items-center justify-between gap-4`}>
@@ -334,11 +396,12 @@ const HeaderBase: React.FC<HeaderProps> = ({
           </>
         )}
 
-        {part !== 'bar' && (
+        {showStatsBlock && (
           <>
         {/* Visual Progress Bar & Translated vs. Untranslated Breakdown */}
         <div className="bg-white/95 dark:bg-[#131314]/95 border-t border-slate-200/60 dark:border-slate-800/70">
           {/* Segmented Progress Track - thin (h-1), edge-to-edge, touching spacer line above */}
+          {showTrack && (
           <div
             role="progressbar"
             aria-valuenow={translatedPercent}
@@ -380,7 +443,9 @@ const HeaderBase: React.FC<HeaderProps> = ({
               )}
             </svg>
           </div>
+          )}
 
+          {showLegend && (
           <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-3 pb-0.5 md:py-2">
             {/* Breakdown Legend & Mobile View Switcher */}
             <div className="flex items-center justify-between gap-2 text-[11px] sm:text-xs text-slate-600 dark:text-slate-400 flex-wrap">
@@ -424,13 +489,14 @@ const HeaderBase: React.FC<HeaderProps> = ({
               </div>
             </div>
           </div>
+          )}
         </div>
           </>
         )}
       </header>
 
       {/* Right-Side Slide-Out Drawer for Import & Export */}
-      {part !== 'stats' && rightDrawerOpen && (
+      {(showBar || part === 'dock') && rightDrawerOpen && (
         <div className="fixed inset-0 z-50 flex justify-end">
           {/* Backdrop */}
           <div

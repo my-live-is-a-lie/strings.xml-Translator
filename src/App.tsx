@@ -802,9 +802,11 @@ export default function App() {
   );
 
   const splitActive = landscape && activeView === 'editor';
-  const renderHeader = (part: 'all' | 'bar' | 'stats') => (
+  const renderHeader = (part: 'all' | 'bar' | 'stats' | 'legend' | 'track' | 'dock') => (
       <Header
         part={part}
+        onOpenStringsList={openMobileDrawer}
+        stringsCount={project.items.length}
         project={project}
         activeView={activeView}
         onViewChange={setActiveView}
@@ -925,8 +927,13 @@ currentItem ? (
               className="min-w-0 h-full overflow-y-auto overscroll-contain flex flex-col bg-app"
             >
               <main className="flex-1 min-h-0">{editorNode}</main>
-              {renderHeader('stats')}
-              {quickBarNode}
+              {quickFilters.open ? (
+                <div className="px-3 py-2 flex justify-end">
+                  <QuickFilterBar appLang={appLang} items={project.items} />
+                </div>
+              ) : (
+                renderHeader('legend')
+              )}
             </div>
 
             <div style={{ order: 2 }} className="flex">
@@ -946,8 +953,9 @@ currentItem ? (
               className="flex-1 min-w-0 h-full overflow-y-auto overscroll-contain flex flex-col gap-2 p-2 bg-[#F8F9FA] dark:bg-[#0E1015]"
             />
           </div>
-          {/* Progress and bar shared by both halves, at the bottom */}
-          {renderHeader('bar')}
+          {/* Shared dock and progress line, at the bottom */}
+          {renderHeader('dock')}
+          {renderHeader('track')}
         </div>
       )}
 
