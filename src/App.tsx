@@ -802,8 +802,9 @@ export default function App() {
   );
 
   const splitActive = landscape && activeView === 'editor';
-  const headerNode = (
+  const renderHeader = (part: 'all' | 'bar' | 'stats') => (
       <Header
+        part={part}
         project={project}
         activeView={activeView}
         onViewChange={setActiveView}
@@ -828,7 +829,6 @@ export default function App() {
         onTogglePredictiveWords={handleTogglePredictiveWords}
         autoCorrect={autoCorrect}
         onToggleAutoCorrect={handleToggleAutoCorrect}
-        compact={splitActive}
         onResetItemHistory={handleResetItemHistory}
         onSelectString={selectItemInEditor}
         onOpenFilesModal={openFilesModal}
@@ -839,6 +839,7 @@ export default function App() {
         currentFileName={project.sourceFileName || project.name}
       />
   );
+  const headerNode = renderHeader('all');
   const quickBarNode = (
               <div className={`${splitActive ? '' : 'md:hidden'} flex flex-col gap-2 px-4 pt-0.5 pb-2 bg-white/95 dark:bg-[#131314]/95 text-xs`}>
                 <div className="flex items-center gap-2 flex-wrap">
@@ -916,33 +917,37 @@ currentItem ? (
       {!splitActive && headerNode}
 
       {splitActive && (
-        <div ref={splitRef} className="flex-1 flex min-h-0 relative">
-          {/* Info half: header, progress, list/filter buttons, source text and shortcut bars */}
-          <div
-            style={{ width: `${split.ratio * 100}%`, order: split.swapped ? 3 : 1 }}
-            className="min-w-0 h-full overflow-y-auto overscroll-contain flex flex-col bg-app"
-          >
-            {headerNode}
-            {quickBarNode}
-            <main className="flex-1 min-h-0">{editorNode}</main>
-          </div>
+        <div className="flex-1 flex flex-col min-h-0">
+          {/* Top bar shared by both halves */}
+          {renderHeader('bar')}
+          <div ref={splitRef} className="flex-1 flex min-h-0 relative">
+            {/* Info half: progress, list/filter buttons, source text and shortcut bars */}
+            <div
+              style={{ width: `${split.ratio * 100}%`, order: split.swapped ? 3 : 1 }}
+              className="min-w-0 h-full overflow-y-auto overscroll-contain flex flex-col bg-app"
+            >
+              {renderHeader('stats')}
+              {quickBarNode}
+              <main className="flex-1 min-h-0">{editorNode}</main>
+            </div>
 
-          <div style={{ order: 2 }} className="flex">
-            <SplitDivider
-              containerRef={splitRef}
-              infoOnLeft={infoOnLeft}
-              onRatioChange={split.setRatio}
-              onSwap={split.toggleSwapped}
-              isAr={isRtlUi}
+            <div style={{ order: 2 }} className="flex">
+              <SplitDivider
+                containerRef={splitRef}
+                infoOnLeft={infoOnLeft}
+                onRatioChange={split.setRatio}
+                onSwap={split.toggleSwapped}
+                isAr={isRtlUi}
+              />
+            </div>
+
+            {/* Writing half: the textarea and its buttons are rendered here by the editor */}
+            <div
+              ref={setBottomEl}
+              style={{ order: split.swapped ? 1 : 3 }}
+              className="flex-1 min-w-0 h-full overflow-y-auto overscroll-contain flex flex-col gap-2 p-2 bg-[#F8F9FA] dark:bg-[#0E1015]"
             />
           </div>
-
-          {/* Writing half: the textarea and its buttons are rendered here by the editor */}
-          <div
-            ref={setBottomEl}
-            style={{ order: split.swapped ? 1 : 3 }}
-            className="flex-1 min-w-0 h-full overflow-y-auto overscroll-contain flex flex-col gap-2 p-2 bg-[#F8F9FA] dark:bg-[#0E1015]"
-          />
         </div>
       )}
 

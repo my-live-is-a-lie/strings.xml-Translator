@@ -55,6 +55,8 @@ interface HeaderProps {
   onToggleAutoCorrect?: (enabled: boolean) => void;
   /** Narrow container (landscape split half): the top bar wraps instead of overflowing. */
   compact?: boolean;
+  /** Landscape split: 'bar' = top app bar + drawer only, 'stats' = progress and counts only, 'all' = both. */
+  part?: 'all' | 'bar' | 'stats';
   onResetItemHistory?: (id: string) => void;
   onSelectString?: (id: string) => void;
   onOpenFilesModal?: () => void;
@@ -85,6 +87,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
   autoCorrect = true,
   onToggleAutoCorrect,
   compact = false,
+  part = 'all',
   onResetItemHistory,
   onSelectString,
   onOpenFilesModal,
@@ -178,7 +181,9 @@ const HeaderBase: React.FC<HeaderProps> = ({
 
   return (
     <>
-      <header className="sticky top-0 z-30 bg-white/95 dark:bg-[#131314]/95 backdrop-blur-md md:border-b border-slate-200/80 dark:border-slate-800/80 transition-colors">
+      <header className={`${part === 'stats' ? '' : 'sticky top-0 z-30'} bg-white/95 dark:bg-[#131314]/95 backdrop-blur-md md:border-b border-slate-200/80 dark:border-slate-800/80 transition-colors`}>
+        {part !== 'stats' && (
+          <>
         {/* Material 3 Top App Bar */}
         <div className={`max-w-7xl mx-auto px-4 sm:px-6 ${compact ? 'min-h-13 py-1.5 flex-wrap gap-y-1.5' : 'h-13 sm:h-14'} flex items-center justify-between gap-4`}>
           {/* Files Button (replacing App Icon & Name at top left corner) */}
@@ -326,6 +331,11 @@ const HeaderBase: React.FC<HeaderProps> = ({
           </div>
         </div>
 
+          </>
+        )}
+
+        {part !== 'bar' && (
+          <>
         {/* Visual Progress Bar & Translated vs. Untranslated Breakdown */}
         <div className="bg-white/95 dark:bg-[#131314]/95 border-t border-slate-200/60 dark:border-slate-800/70">
           {/* Segmented Progress Track - thin (h-1), edge-to-edge, touching spacer line above */}
@@ -415,10 +425,12 @@ const HeaderBase: React.FC<HeaderProps> = ({
             </div>
           </div>
         </div>
+          </>
+        )}
       </header>
 
       {/* Right-Side Slide-Out Drawer for Import & Export */}
-      {rightDrawerOpen && (
+      {part !== 'stats' && rightDrawerOpen && (
         <div className="fixed inset-0 z-50 flex justify-end">
           {/* Backdrop */}
           <div
