@@ -925,6 +925,8 @@ currentItem ? (
               className="min-w-0 h-full overflow-y-auto overscroll-contain flex flex-col bg-app"
             >
               <main className="flex-1 min-h-0">{editorNode}</main>
+              {renderHeader('stats')}
+              {quickBarNode}
             </div>
 
             <div style={{ order: 2 }} className="flex">
@@ -945,8 +947,6 @@ currentItem ? (
             />
           </div>
           {/* Progress and bar shared by both halves, at the bottom */}
-          {renderHeader('stats')}
-          {quickBarNode}
           {renderHeader('bar')}
         </div>
       )}

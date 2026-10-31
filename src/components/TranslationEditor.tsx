@@ -1888,6 +1888,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
           )}
 
           <EditorActionButtons
+            compact={!!bottomPortal}
             isAr={isAr}
             isSuggesting={isSuggesting}
             showSavedFeedback={showSavedFeedback}
