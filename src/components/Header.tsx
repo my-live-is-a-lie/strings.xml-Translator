@@ -196,7 +196,8 @@ const HeaderBase: React.FC<HeaderProps> = ({
     <>
       <header className={`${part !== 'all' ? '' : 'sticky top-0 z-30'} bg-white/95 dark:bg-[#131314]/95 backdrop-blur-md md:border-b border-slate-200/80 dark:border-slate-800/80 transition-colors`}>
         {part === 'dock' && (
-          <div className="px-2 py-1.5 flex items-center gap-1.5 text-xs overflow-x-auto">
+          <div className="px-2 py-1.5 flex items-center justify-between gap-1.5 text-xs">
+            <div className="flex items-center gap-1.5 min-w-0">
             <button
               type="button"
               onClick={onOpenFilesModal}
@@ -219,6 +220,8 @@ const HeaderBase: React.FC<HeaderProps> = ({
               <MenuIcon className="w-4 h-4 text-[#0B57D0] dark:text-[#A8C7FA]" />
               <span>{isAr ? `قائمة النصوص (${stringsCount})` : `Strings List (${stringsCount})`}</span>
             </button>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
             <OfflineDot appLang={appLang} />
             <button
               type="button"
@@ -241,6 +244,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
             >
               <SidebarIcon className="w-4.5 h-4.5 text-slate-700 dark:text-slate-200" />
             </button>
+            </div>
           </div>
         )}
 

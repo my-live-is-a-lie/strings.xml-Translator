@@ -27,7 +27,7 @@ export const SplitDivider: React.FC<Props> = ({ containerRef, infoOnLeft, onRati
     const s = start.current;
     const box = containerRef.current?.getBoundingClientRect();
     if (!s || !box || box.width === 0) return;
-    if (!s.moved && Math.abs(e.clientX - s.x) < 8) return;
+    if (!s.moved && Math.abs(e.clientX - s.x) < 16) return;
     s.moved = true;
     const fromLeft = (e.clientX - box.left) / box.width;
     const ratio = infoOnLeft ? fromLeft : 1 - fromLeft;
@@ -49,9 +49,9 @@ export const SplitDivider: React.FC<Props> = ({ containerRef, infoOnLeft, onRati
         onPointerCancel={() => (start.current = null)}
         title={isAr ? 'اسحب لتغيير العرض، انقر لعكس الجانبين' : 'Drag to resize, tap to swap sides'}
         aria-label={isAr ? 'فاصل الشاشة' : 'Split divider'}
-        className="absolute top-3 left-1/2 -translate-x-1/2 w-9 h-14 rounded-full bg-slate-200 dark:bg-[#232C3A] border border-slate-300 dark:border-slate-600 shadow-md flex items-center justify-center text-slate-600 dark:text-slate-300 touch-none cursor-col-resize select-none"
+        className="absolute top-3 left-1/2 -translate-x-1/2 w-6 h-10 rounded-full bg-slate-200 dark:bg-[#232C3A] border border-slate-300 dark:border-slate-600 shadow-md flex items-center justify-center text-slate-600 dark:text-slate-300 touch-none cursor-col-resize select-none"
       >
-        <ArrowLeftRight className="w-4 h-4" />
+        <ArrowLeftRight className="w-3 h-3" />
       </button>
     </div>
   );

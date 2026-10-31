@@ -923,7 +923,7 @@ currentItem ? (
           <div ref={splitRef} className="flex-1 flex min-h-0 relative">
             {/* Info half: progress, list/filter buttons, source text and shortcut bars */}
             <div
-              style={{ width: `${split.ratio * 100}%`, order: split.swapped ? 3 : 1 }}
+              style={{ flex: `${split.ratio} 1 0%`, order: split.swapped ? 3 : 1 }}
               className="min-w-0 h-full overflow-y-auto overscroll-contain flex flex-col bg-app"
             >
               <main className="flex-1 min-h-0">{editorNode}</main>
@@ -949,8 +949,8 @@ currentItem ? (
             {/* Writing half: the textarea and its buttons are rendered here by the editor */}
             <div
               ref={setBottomEl}
-              style={{ order: split.swapped ? 1 : 3 }}
-              className="flex-1 min-w-0 h-full overflow-y-auto overscroll-contain flex flex-col gap-2 p-2 bg-[#F8F9FA] dark:bg-[#0E1015]"
+              style={{ flex: `${1 - split.ratio} 1 0%`, order: split.swapped ? 1 : 3 }}
+              className="min-w-0 h-full overflow-y-auto overscroll-contain flex flex-col gap-2 p-2 bg-[#F8F9FA] dark:bg-[#0E1015]"
             />
           </div>
           {/* Shared dock and progress line, at the bottom */}

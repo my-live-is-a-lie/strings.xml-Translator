@@ -100,6 +100,9 @@ export function useSplitState() {
       setStoredItem(SWAP_KEY, String(!s));
       return !s;
     });
+    // swapping always gives two equal halves again
+    setRatioState(0.5);
+    setStoredItem(RATIO_KEY, '0.5');
   };
   return { ratio, setRatio, swapped, toggleSwapped };
 }
