@@ -924,7 +924,6 @@ currentItem ? (
               style={{ width: `${split.ratio * 100}%`, order: split.swapped ? 3 : 1 }}
               className="min-w-0 h-full overflow-y-auto overscroll-contain flex flex-col bg-app"
             >
-              {renderHeader('stats')}
               {quickBarNode}
               <main className="flex-1 min-h-0">{editorNode}</main>
             </div>
@@ -946,7 +945,8 @@ currentItem ? (
               className="flex-1 min-w-0 h-full overflow-y-auto overscroll-contain flex flex-col gap-2 p-2 bg-[#F8F9FA] dark:bg-[#0E1015]"
             />
           </div>
-          {/* Bar shared by both halves, at the bottom */}
+          {/* Progress and bar shared by both halves, at the bottom */}
+          {renderHeader('stats')}
           {renderHeader('bar')}
         </div>
       )}
