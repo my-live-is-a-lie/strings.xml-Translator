@@ -53,6 +53,8 @@ interface HeaderProps {
   onTogglePredictiveWords?: (enabled: boolean) => void;
   autoCorrect?: boolean;
   onToggleAutoCorrect?: (enabled: boolean) => void;
+  /** Narrow container (landscape split half): the top bar wraps instead of overflowing. */
+  compact?: boolean;
   onResetItemHistory?: (id: string) => void;
   onSelectString?: (id: string) => void;
   onOpenFilesModal?: () => void;
@@ -82,6 +84,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
   onTogglePredictiveWords,
   autoCorrect = true,
   onToggleAutoCorrect,
+  compact = false,
   onResetItemHistory,
   onSelectString,
   onOpenFilesModal,
@@ -177,7 +180,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
     <>
       <header className="sticky top-0 z-30 bg-white/95 dark:bg-[#131314]/95 backdrop-blur-md md:border-b border-slate-200/80 dark:border-slate-800/80 transition-colors">
         {/* Material 3 Top App Bar */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-13 sm:h-14 flex items-center justify-between gap-4">
+        <div className={`max-w-7xl mx-auto px-4 sm:px-6 ${compact ? 'min-h-13 py-1.5 flex-wrap gap-y-1.5' : 'h-13 sm:h-14'} flex items-center justify-between gap-4`}>
           {/* Files Button (replacing App Icon & Name at top left corner) */}
           <div className="flex items-center gap-2 min-w-0">
             <button

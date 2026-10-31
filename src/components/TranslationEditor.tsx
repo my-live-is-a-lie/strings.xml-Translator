@@ -1,5 +1,6 @@
 import { SourceChangeBadge, SourceChangeDiff } from './SourceChangeDiff';
 import React, { useRef, useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { Copy, Check, Sparkles, RotateCcw, Undo2, Redo2, ClipboardPaste, AlertCircle } from 'lucide-react';
 import { ResourceItem, SingleStringItem, PluralStringItem, ArrayStringItem } from '../types';
 import { EditorActionButtons } from './EditorActionButtons';
@@ -56,6 +57,8 @@ interface TranslationEditorProps {
   autoTranslate?: boolean;
   predictiveWords?: boolean;
   autoCorrect?: boolean;
+  /** Landscape split mode: the writing half (textarea, buttons) is rendered into this element. */
+  bottomPortal?: HTMLElement | null;
   onResetItemHistory?: (id: string) => void;
 }
 
@@ -80,6 +83,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   autoTranslate = false,
   predictiveWords = false,
   autoCorrect = true,
+  bottomPortal = null,
   onResetItemHistory,
 }) => {
   const isAr = appLang === 'ar';
@@ -1338,6 +1342,10 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
 
   // Max recommended character threshold
 
+  // In landscape split mode the writing area goes into the other half of the screen
+  const slot = (key: string, className: string, children: React.ReactNode) =>
+    bottomPortal ? createPortal(<div className={className}>{children}</div>, bottomPortal, key) : <>{children}</>;
+
   return (
     <div className="flex flex-col h-full bg-[#F8F9FA] dark:bg-[#0E1015] text-slate-800 dark:text-slate-100 overflow-y-auto p-2 sm:p-3">
       <div className="max-w-2xl w-full mx-auto flex flex-col gap-2">
@@ -1516,6 +1524,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               </div>
             </div>
 
+            {slot('r1', 'space-y-2.5 rounded-2xl bg-white dark:bg-[#151922] border border-slate-200/80 dark:border-transparent p-3', <>
             {/* Single Multiple Consecutive Spaces Typing Mistake Warning Banner */}
             {hasMultipleSpaces && (
               <div className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-rose-500/15 border border-rose-500/40 text-rose-200 text-xs font-medium animate-in fade-in duration-150 gap-2">
@@ -1836,8 +1845,10 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                 </div>
               )}
             </div>
+            </>)}
           </div>
 
+          {slot('r2', 'rounded-2xl overflow-hidden bg-white dark:bg-[#151922] border border-slate-200/80 dark:border-transparent', <>
           {saveGuard && (autoCorrect || saveGuard.empty) && (
             <div
               role="alert"
@@ -1889,16 +1900,17 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             onSuggest={handleSuggest}
             onOpenLanguageModal={() => setShowLangModal(true)}
           />
+          </>)}
         </div>
 
-        <EditorNavFooter
+        {slot('r3', '', <EditorNavFooter
           isAr={isAr}
           currentIndex={currentIndex}
           totalCount={totalCount}
           onPrevious={() => discardDraftAndNavigate(onNavigatePrevious)}
           onNext={() => discardDraftAndNavigate(onNavigateNext)}
           onNextUntranslated={() => discardDraftAndNavigate(onNavigateNextUntranslated)}
-        />
+        />)}
       </div>
 
       {/* Target Language Selection Dialog */}

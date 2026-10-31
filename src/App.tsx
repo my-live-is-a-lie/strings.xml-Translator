@@ -24,6 +24,8 @@ import {
 import { ExportModal } from './components/ExportModal';
 import { FilesModal } from './components/FilesModal';
 import { QuickFilterButton, QuickFilterBar } from './components/QuickFilters';
+import { SplitDivider } from './components/SplitDivider';
+import { useLandscapePhone, useHideStatusBar, useSplitState } from './hooks/useLandscapeSplit';
 import { getPredictiveWordsEnabled, setPredictiveWordsEnabled } from './utils/wordPredictor';
 import { getAutoCorrectEnabled, setAutoCorrectEnabled } from './utils/autoCorrectSetting';
 import { applyQuickSnapshot, resetQuickSnapshot, showOnlyNewStrings, useQuickFilters } from './utils/quickFilters';
@@ -244,6 +246,12 @@ export default function App() {
   const [autoTranslate, setAutoTranslate] = useState<boolean>(() => getAutoTranslateEnabled());
   const [predictiveWords, setPredictiveWords] = useState<boolean>(() => getPredictiveWordsEnabled());
   const [autoCorrect, setAutoCorrect] = useState<boolean>(() => getAutoCorrectEnabled());
+  // Landscape phone: split screen (info half / writing half) with the status bar hidden
+  const landscape = useLandscapePhone();
+  useHideStatusBar(landscape);
+  const split = useSplitState();
+  const [bottomEl, setBottomEl] = useState<HTMLElement | null>(null);
+  const splitRef = useRef<HTMLDivElement>(null);
   const handleToggleAutoCorrect = useCallback((enabled: boolean) => {
     setAutoCorrect(enabled);
     setAutoCorrectEnabled(enabled);
@@ -793,9 +801,8 @@ export default function App() {
     [setSelectedId]
   );
 
-  return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-app text-app font-sans antialiased">
-      {/* Material 3 Top Header */}
+  const splitActive = landscape && activeView === 'editor';
+  const headerNode = (
       <Header
         project={project}
         activeView={activeView}
@@ -821,6 +828,7 @@ export default function App() {
         onTogglePredictiveWords={handleTogglePredictiveWords}
         autoCorrect={autoCorrect}
         onToggleAutoCorrect={handleToggleAutoCorrect}
+        compact={splitActive}
         onResetItemHistory={handleResetItemHistory}
         onSelectString={selectItemInEditor}
         onOpenFilesModal={openFilesModal}
@@ -830,8 +838,107 @@ export default function App() {
         savedFilesCount={storedFiles.length}
         currentFileName={project.sourceFileName || project.name}
       />
+  );
+  const quickBarNode = (
+              <div className={`${splitActive ? '' : 'md:hidden'} flex flex-col gap-2 px-4 pt-0.5 pb-2 bg-white/95 dark:bg-[#131314]/95 text-xs`}>
+                <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  id="mobile-drawer-btn"
+                  onClick={openMobileDrawer}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-transparent shadow-sm font-medium text-slate-800 dark:text-slate-200 cursor-pointer m3-state-layer"
+                >
+                  <Menu className="w-4 h-4 text-[#0B57D0] dark:text-[#A8C7FA]" />
+                  <span>
+                    {appLang === 'ar'
+                      ? `قائمة النصوص (${project.items.length})`
+                      : `Strings List (${project.items.length})`}
+                  </span>
+                </button>
+                <QuickFilterButton appLang={appLang} />
+                </div>
+                <QuickFilterBar appLang={appLang} items={project.items} />
+              </div>
+  );
+  const editorNode = (
+currentItem ? (
+                <TranslationEditor
+                  item={currentItem}
+                  currentIndex={Math.max(0, navPosition)}
+                  totalCount={navItems.length}
+                  targetLang={project.targetLang}
+                  targetLocaleName={project.targetLocaleName}
+                  appLang={appLang}
+                  onUpdateTranslation={handleUpdateTranslation}
+                  onNavigatePrevious={handleNavigatePrevious}
+                  onNavigateNext={handleNavigateNext}
+                  onNavigateNextUntranslated={handleNavigateNextUntranslated}
+                  onLanguageChange={handleLanguageChange}
+                  canUndo={canUndo}
+                  canRedo={canRedo}
+                  onUndo={handleUndo}
+                  onRedo={handleRedo}
+                  undoCount={past.length}
+                  redoCount={future.length}
+                  autoTranslate={autoTranslate}
+                  predictiveWords={predictiveWords}
+                  autoCorrect={autoCorrect}
+                  bottomPortal={splitActive ? bottomEl : null}
+                  onResetItemHistory={handleResetItemHistory}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full p-8 text-center text-slate-400">
+                  <p className="text-base font-semibold text-slate-600 dark:text-slate-300">
+                    {appLang === 'ar' ? 'لم يتم العثور على نصوص' : 'No strings found'}
+                  </p>
+                  <p className="text-xs mt-1">
+                    {appLang === 'ar'
+                      ? 'قم باستيراد ملف strings.xml للبدء.'
+                      : 'Import a strings.xml file to get started.'}
+                  </p>
+                </div>
+              )
+  );
+  // physical side of the info half: logical start (right in RTL, left in LTR) unless swapped
+  const isRtlUi = appLang === 'ar';
+  const infoOnLeft = isRtlUi ? split.swapped : !split.swapped;
+
+  return (
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-app text-app font-sans antialiased">
+      {!splitActive && headerNode}
+
+      {splitActive && (
+        <div ref={splitRef} className="flex-1 flex min-h-0 relative">
+          {/* Info half: header, progress, list/filter buttons, source text and shortcut bars */}
+          <div
+            style={{ width: `${split.ratio * 100}%`, order: split.swapped ? 3 : 1 }}
+            className="min-w-0 h-full overflow-y-auto overscroll-contain flex flex-col bg-app"
+          >
+            {headerNode}
+            {quickBarNode}
+            <main className="flex-1 min-h-0">{editorNode}</main>
+          </div>
+
+          <div style={{ order: 2 }} className="flex">
+            <SplitDivider
+              containerRef={splitRef}
+              infoOnLeft={infoOnLeft}
+              onRatioChange={split.setRatio}
+              onSwap={split.toggleSwapped}
+              isAr={isRtlUi}
+            />
+          </div>
+
+          {/* Writing half: the textarea and its buttons are rendered here by the editor */}
+          <div
+            ref={setBottomEl}
+            style={{ order: split.swapped ? 1 : 3 }}
+            className="flex-1 min-w-0 h-full overflow-y-auto overscroll-contain flex flex-col gap-2 p-2 bg-[#F8F9FA] dark:bg-[#0E1015]"
+          />
+        </div>
+      )}
 
       {/* Main Workspace Area */}
+      {!splitActive && (
       <div className="flex-1 flex min-h-0 relative">
         {activeView === 'editor' ? (
           <>
@@ -857,62 +964,9 @@ export default function App() {
 
             {/* Center: Translation Editor */}
             <main className="flex-1 h-full min-w-0 flex flex-col overflow-hidden relative">
-              {/* Mobile Quick Bar for Drawer toggle */}
-              <div className="md:hidden flex flex-col gap-2 px-4 pt-0.5 pb-2 bg-white/95 dark:bg-[#131314]/95 text-xs">
-                <div className="flex items-center gap-2 flex-wrap">
-                <button
-                  id="mobile-drawer-btn"
-                  onClick={openMobileDrawer}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-transparent shadow-sm font-medium text-slate-800 dark:text-slate-200 cursor-pointer m3-state-layer"
-                >
-                  <Menu className="w-4 h-4 text-[#0B57D0] dark:text-[#A8C7FA]" />
-                  <span>
-                    {appLang === 'ar'
-                      ? `قائمة النصوص (${project.items.length})`
-                      : `Strings List (${project.items.length})`}
-                  </span>
-                </button>
-                <QuickFilterButton appLang={appLang} />
-                </div>
-                <QuickFilterBar appLang={appLang} items={project.items} />
-              </div>
+              {quickBarNode}
 
-              {currentItem ? (
-                <TranslationEditor
-                  item={currentItem}
-                  currentIndex={Math.max(0, navPosition)}
-                  totalCount={navItems.length}
-                  targetLang={project.targetLang}
-                  targetLocaleName={project.targetLocaleName}
-                  appLang={appLang}
-                  onUpdateTranslation={handleUpdateTranslation}
-                  onNavigatePrevious={handleNavigatePrevious}
-                  onNavigateNext={handleNavigateNext}
-                  onNavigateNextUntranslated={handleNavigateNextUntranslated}
-                  onLanguageChange={handleLanguageChange}
-                  canUndo={canUndo}
-                  canRedo={canRedo}
-                  onUndo={handleUndo}
-                  onRedo={handleRedo}
-                  undoCount={past.length}
-                  redoCount={future.length}
-                  autoTranslate={autoTranslate}
-                  predictiveWords={predictiveWords}
-                  autoCorrect={autoCorrect}
-                  onResetItemHistory={handleResetItemHistory}
-                />
-              ) : (
-                <div className="flex flex-col items-center justify-center h-full p-8 text-center text-slate-400">
-                  <p className="text-base font-semibold text-slate-600 dark:text-slate-300">
-                    {appLang === 'ar' ? 'لم يتم العثور على نصوص' : 'No strings found'}
-                  </p>
-                  <p className="text-xs mt-1">
-                    {appLang === 'ar'
-                      ? 'قم باستيراد ملف strings.xml للبدء.'
-                      : 'Import a strings.xml file to get started.'}
-                  </p>
-                </div>
-              )}
+              {editorNode}
             </main>
 
             {/* Mobile Strings List Drawer - identical snappy 200ms motion & feel matching the side drawer */}
@@ -957,6 +1011,7 @@ export default function App() {
           </main>
         )}
       </div>
+      )}
 
       {/* Import Modal */}
       <MultiLanguageModal
