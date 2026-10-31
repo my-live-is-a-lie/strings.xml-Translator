@@ -1345,7 +1345,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   // In landscape split mode the writing area goes into the other half of the screen
   const slot = (key: string, className: string, children: React.ReactNode, plainClass?: string) =>
     bottomPortal ? (
-      createPortal(<div className={className}>{children}</div>, bottomPortal, key)
+      createPortal(<div className={`shrink-0 ${className}`}>{children}</div>, bottomPortal, key)
     ) : plainClass ? (
       <div className={plainClass}>{children}</div>
     ) : (
