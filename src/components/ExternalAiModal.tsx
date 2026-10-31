@@ -1,3 +1,4 @@
+import { saveFile } from '../utils/saveFile';
 import React, { useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ResourceItem } from '../types';
@@ -28,14 +29,7 @@ interface Props {
 }
 
 function downloadText(name: string, text: string): void {
-  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  void saveFile(new Blob([text], { type: 'application/json' }), name);
 }
 
 const ISSUE_LABELS: Record<IssueKind, { ar: string; en: string }> = {

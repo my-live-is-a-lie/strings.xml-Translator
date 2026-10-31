@@ -1,3 +1,4 @@
+import { saveFile } from './saveFile';
 import { ResourceItem, TranslationProject } from '../types';
 import { normalizePluralsForLanguage } from './xmlParser';
 import { generateAndroidXml, defaultExportOptions } from './xmlExporter';
@@ -60,12 +61,5 @@ export async function downloadZip(files: Array<{ path: string; content: string }
   const zip = new JSZip();
   for (const f of files) zip.file(f.path, f.content);
   const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = zipName;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  await saveFile(blob, zipName);
 }

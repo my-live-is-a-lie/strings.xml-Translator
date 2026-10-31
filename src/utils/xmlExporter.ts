@@ -1,3 +1,4 @@
+import { saveFile } from './saveFile';
 import {
   ResourceItem,
   SingleStringItem,
@@ -455,15 +456,7 @@ export function generateAndroidXml(
 /**
  * Triggers browser download of generated strings.xml
  */
-export function downloadXmlFile(xmlContent: string, fileName: string = 'strings.xml') {
-  const blob = new Blob([xmlContent], { type: 'application/xml;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+export function downloadXmlFile(xmlContent: string, fileName: string = 'strings.xml'): Promise<void> {
+  return saveFile(new Blob([xmlContent], { type: 'application/xml;charset=utf-8;' }), fileName);
 }
 
