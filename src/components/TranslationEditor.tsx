@@ -974,13 +974,17 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   );
 
   // Nothing typed: saving an untouched empty translation does nothing (no status change, no navigation)
-  const blockIfNothingTyped = React.useCallback((): boolean => {
+  const isNothingTyped = React.useCallback((): boolean => {
     const hasText = (it: ResourceItem) =>
       it.type === 'string' ? !!it.target.trim() : it.items.some((x) => !!x.target.trim());
-    if (hasText(draftItem) || hasText(item)) return false;
+    return !hasText(draftItem) && !hasText(item);
+  }, [draftItem, item]);
+
+  const blockIfNothingTyped = React.useCallback((): boolean => {
+    if (!isNothingTyped()) return false;
     setSaveGuard({ notes: [], remaining: [], empty: true });
     return true;
-  }, [draftItem, item]);
+  }, [isNothingTyped]);
 
   // Before saving: repairs placeholders, HTML tags and final punctuation from the source's context.
   // When anything was changed (or unfixable errors remain) the save is blocked once with a message; saving again confirms.
@@ -1045,7 +1049,11 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
 
   // Save and continue (حفظ ومتابعة / Save & Continue)
   const handleSaveAndContinue = React.useCallback(() => {
-    if (blockIfNothingTyped() || blockIfNeedsFix()) return;
+    if (isNothingTyped()) {
+      onNavigateNext(); // nothing typed: nothing is saved, just continue
+      return;
+    }
+    if (blockIfNeedsFix()) return;
     // Saving settles the string: the old source text (diff) is no longer shown
     const savedItem = { ...buildSavedItemFromDraft(draftItem), previousSources: undefined };
     const undoDeletesText = savedItem.translationSource === 'ai' && item.status === 'untranslated';
@@ -1058,7 +1066,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     });
     onUpdateTranslation(savedItem, undoDeletesText ? { undoDeletesText: true } : undefined);
     onNavigateNext();
-  }, [blockIfNothingTyped, blockIfNeedsFix, buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation, onNavigateNext]);
+  }, [isNothingTyped, blockIfNeedsFix, buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation, onNavigateNext]);
 
   // Editor keyboard shortcuts for Undo/Redo and Ctrl+Enter (Save & Continue)
   useEffect(() => {
