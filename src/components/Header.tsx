@@ -129,9 +129,22 @@ const HeaderBase: React.FC<HeaderProps> = ({
       const dx = (e.touches[0].clientX - start.x) * (start.side === 'left' ? 1 : -1);
       const dy = Math.abs(e.touches[0].clientY - start.y);
       if (dx > 50 && dx > dy * 1.5) {
-        setEdgeSide(start.side);
-        setRightDrawerOpen(true);
+        const side = start.side;
         start = null;
+        // Open whichever panel's button sits closer to the edge the swipe came from
+        const centerX = (sel: string): number | null => {
+          const r = document.querySelector(sel)?.getBoundingClientRect();
+          return r && r.width > 0 ? r.left + r.width / 2 : null;
+        };
+        const edgeX = side === 'left' ? 0 : window.innerWidth;
+        const listX = onOpenStringsList ? centerX('#mobile-drawer-btn, #dock-strings-list-btn') : null;
+        const sideX = centerX('#header-right-drawer-btn');
+        if (listX !== null && (sideX === null || Math.abs(listX - edgeX) < Math.abs(sideX - edgeX))) {
+          onOpenStringsList?.();
+        } else {
+          setEdgeSide(side);
+          setRightDrawerOpen(true);
+        }
       }
     };
     const onEnd = () => {
@@ -147,7 +160,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
       document.removeEventListener('touchend', onEnd);
       document.removeEventListener('touchcancel', onEnd);
     };
-  }, [drawerOwner, rightDrawerOpen]);
+  }, [drawerOwner, rightDrawerOpen, onOpenStringsList]);
   const [appLangMenuOpen, setAppLangMenuOpen] = useState(false);
   const [drawerSwipeX, setDrawerSwipeX] = useState(0);
   const [isSwipingDrawer, setIsSwipingDrawer] = useState(false);
@@ -255,6 +268,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
             </button>
             <QuickFilterButton appLang={appLang} className="h-9 shrink-0 text-xs" />
             <button
+              id="dock-strings-list-btn"
               type="button"
               onClick={onOpenStringsList}
               className="inline-flex items-center gap-1.5 h-9 px-3 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-transparent font-medium text-slate-800 dark:text-slate-200 shrink-0 cursor-pointer"

@@ -5,6 +5,8 @@ import { inlineSign } from '../utils/direction';
 import { ResourceItem, FilterStatus, SourceFilter } from '../types';
 
 interface StringsListDrawerProps {
+  /** Show on wide phone screens too (landscape split layout). */
+  always?: boolean;
   isOpen: boolean;
   onClose: () => void;
   items: ResourceItem[];
@@ -25,6 +27,7 @@ interface StringsListDrawerProps {
 
 // Wrapped with React.memo below: re-renders only when its props change
 const StringsListDrawerBase: React.FC<StringsListDrawerProps> = ({
+  always = false,
   isOpen,
   onClose,
   items,
@@ -65,7 +68,7 @@ const StringsListDrawerBase: React.FC<StringsListDrawerProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 md:hidden flex justify-start">
+    <div className={`fixed inset-0 z-50 ${always ? '' : 'md:hidden'} flex justify-start`}>
       {/* Backdrop with 200ms snappy fade */}
       <div
         ref={backdropRef}

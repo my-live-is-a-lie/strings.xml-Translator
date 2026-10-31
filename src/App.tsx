@@ -842,6 +842,27 @@ export default function App() {
         currentFileName={project.sourceFileName || project.name}
       />
   );
+  const stringsDrawerNode = (
+    <StringsListDrawer
+      always
+      isOpen={mobileDrawerOpen}
+      onClose={closeMobileDrawer}
+      items={project.items}
+      selectedId={selectedId}
+      onSelect={selectItemInEditor}
+      searchQuery={searchQuery}
+      onSearchChange={setSearchQuery}
+      filterStatus={filterStatus}
+      onFilterChange={setFilterStatus}
+      sourceFilter={sourceFilter}
+      onSourceFilterChange={setSourceFilter}
+      targetLang={project.targetLang}
+      targetLocaleName={project.targetLocaleName}
+      appLang={appLang}
+      onBulkUpdateTranslations={handleBulkUpdateTranslations}
+      onResetItemHistory={handleResetItemHistory}
+    />
+  );
   const headerNode = renderHeader('all');
   const quickBarNode = (
               <div className={`${splitActive ? '' : 'md:hidden'} flex flex-col gap-2 px-4 pt-0.5 pb-2 bg-white/95 dark:bg-[#131314]/95 text-xs`}>
@@ -957,6 +978,7 @@ currentItem ? (
             />
           </div>
           {/* Shared dock and progress line, at the bottom */}
+          {stringsDrawerNode}
           <div className="kb-hide">{renderHeader('dock')}{renderHeader('track')}</div>
         </div>
       )}
