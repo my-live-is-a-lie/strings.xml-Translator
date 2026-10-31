@@ -918,8 +918,6 @@ currentItem ? (
 
       {splitActive && (
         <div className="flex-1 flex flex-col min-h-0">
-          {/* Top bar shared by both halves */}
-          {renderHeader('bar')}
           <div ref={splitRef} className="flex-1 flex min-h-0 relative">
             {/* Info half: progress, list/filter buttons, source text and shortcut bars */}
             <div
@@ -948,6 +946,8 @@ currentItem ? (
               className="flex-1 min-w-0 h-full overflow-y-auto overscroll-contain flex flex-col gap-2 p-2 bg-[#F8F9FA] dark:bg-[#0E1015]"
             />
           </div>
+          {/* Bar shared by both halves, at the bottom */}
+          {renderHeader('bar')}
         </div>
       )}
 

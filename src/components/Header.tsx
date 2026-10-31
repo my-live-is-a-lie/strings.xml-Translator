@@ -181,7 +181,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
 
   return (
     <>
-      <header className={`${part === 'stats' ? '' : 'sticky top-0 z-30'} bg-white/95 dark:bg-[#131314]/95 backdrop-blur-md md:border-b border-slate-200/80 dark:border-slate-800/80 transition-colors`}>
+      <header className={`${part === 'stats' || part === 'bar' ? '' : 'sticky top-0 z-30'} bg-white/95 dark:bg-[#131314]/95 backdrop-blur-md md:border-b border-slate-200/80 dark:border-slate-800/80 transition-colors`}>
         {part !== 'stats' && (
           <>
         {/* Material 3 Top App Bar */}

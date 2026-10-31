@@ -11,7 +11,7 @@ interface Props {
   isAr: boolean;
 }
 
-/** Vertical divider with a handle at its bottom: drag to resize (limited to ±15%), tap to swap the halves. */
+/** Vertical divider with a handle at its top: drag to resize (limited to ±15%), tap to swap the halves. */
 export const SplitDivider: React.FC<Props> = ({ containerRef, infoOnLeft, onRatioChange, onSwap, isAr }) => {
   const start = useRef<{ x: number; moved: boolean } | null>(null);
 
@@ -49,7 +49,7 @@ export const SplitDivider: React.FC<Props> = ({ containerRef, infoOnLeft, onRati
         onPointerCancel={() => (start.current = null)}
         title={isAr ? 'اسحب لتغيير العرض، انقر لعكس الجانبين' : 'Drag to resize, tap to swap sides'}
         aria-label={isAr ? 'فاصل الشاشة' : 'Split divider'}
-        className="absolute bottom-3 left-1/2 -translate-x-1/2 w-9 h-14 rounded-full bg-slate-200 dark:bg-[#232C3A] border border-slate-300 dark:border-slate-600 shadow-md flex items-center justify-center text-slate-600 dark:text-slate-300 touch-none cursor-col-resize select-none"
+        className="absolute top-3 left-1/2 -translate-x-1/2 w-9 h-14 rounded-full bg-slate-200 dark:bg-[#232C3A] border border-slate-300 dark:border-slate-600 shadow-md flex items-center justify-center text-slate-600 dark:text-slate-300 touch-none cursor-col-resize select-none"
       >
         <ArrowLeftRight className="w-4 h-4" />
       </button>
