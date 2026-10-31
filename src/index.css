@@ -678,3 +678,6 @@ html:not(.dark) .dark\:border-\[\#2E384D\] {
     pointer-events: none;
   }
 }
+
+/* Landscape split + on-screen keyboard: hide labels and bars to leave room for typing */
+.kb-open .kb-hide { display: none; }

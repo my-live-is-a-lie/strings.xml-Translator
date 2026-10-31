@@ -25,7 +25,7 @@ import { ExportModal } from './components/ExportModal';
 import { FilesModal } from './components/FilesModal';
 import { QuickFilterButton, QuickFilterBar } from './components/QuickFilters';
 import { SplitDivider } from './components/SplitDivider';
-import { useLandscapePhone, useHideStatusBar, useSplitState } from './hooks/useLandscapeSplit';
+import { useLandscapePhone, useHideStatusBar, useSplitState, useTextFieldFocused } from './hooks/useLandscapeSplit';
 import { getPredictiveWordsEnabled, setPredictiveWordsEnabled } from './utils/wordPredictor';
 import { getAutoCorrectEnabled, setAutoCorrectEnabled } from './utils/autoCorrectSetting';
 import { applyQuickSnapshot, resetQuickSnapshot, showOnlyNewStrings, useQuickFilters } from './utils/quickFilters';
@@ -249,6 +249,7 @@ export default function App() {
   // Landscape phone: split screen (info half / writing half) with the status bar hidden
   const landscape = useLandscapePhone();
   useHideStatusBar(landscape);
+  const typing = useTextFieldFocused();
   const split = useSplitState();
   const [bottomEl, setBottomEl] = useState<HTMLElement | null>(null);
   const splitRef = useRef<HTMLDivElement>(null);
@@ -907,7 +908,7 @@ currentItem ? (
 
   return (
     <div
-      className="flex flex-col h-screen w-screen overflow-hidden bg-app text-app font-sans antialiased"
+      className={`${landscape && typing ? 'kb-open ' : ''}flex flex-col h-screen w-screen overflow-hidden bg-app text-app font-sans antialiased`}
       style={{
         // keep clear of the Android status / navigation bars (inset vars come from Capacitor, env() from browsers)
         paddingTop: 'var(--safe-area-inset-top, env(safe-area-inset-top, 0px))',
@@ -927,6 +928,7 @@ currentItem ? (
               className="min-w-0 h-full overflow-y-auto overscroll-contain flex flex-col bg-app"
             >
               <main className="flex-1 min-h-0">{editorNode}</main>
+              <div className="kb-hide">
               {quickFilters.open ? (
                 <div className="px-3 py-2 flex justify-end">
                   <QuickFilterBar appLang={appLang} items={project.items} />
@@ -934,6 +936,7 @@ currentItem ? (
               ) : (
                 renderHeader('legend')
               )}
+              </div>
             </div>
 
             <div style={{ order: 2 }} className="flex">
@@ -954,8 +957,7 @@ currentItem ? (
             />
           </div>
           {/* Shared dock and progress line, at the bottom */}
-          {renderHeader('dock')}
-          {renderHeader('track')}
+          <div className="kb-hide">{renderHeader('dock')}{renderHeader('track')}</div>
         </div>
       )}
 

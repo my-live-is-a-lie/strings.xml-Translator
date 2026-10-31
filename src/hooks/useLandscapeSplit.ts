@@ -106,3 +106,22 @@ export function useSplitState() {
   };
   return { ratio, setRatio, swapped, toggleSwapped };
 }
+
+/** True while a text field is focused (i.e. the on-screen keyboard is most likely open). */
+export function useTextFieldFocused(): boolean {
+  const [focused, setFocused] = useState(false);
+  useEffect(() => {
+    const check = () => {
+      const el = document.activeElement as HTMLElement | null;
+      setFocused(!!el && (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && (el as HTMLInputElement).type !== 'checkbox' && (el as HTMLInputElement).type !== 'radio') || el.isContentEditable));
+    };
+    const onOut = () => setTimeout(check, 0);
+    document.addEventListener('focusin', check);
+    document.addEventListener('focusout', onOut);
+    return () => {
+      document.removeEventListener('focusin', check);
+      document.removeEventListener('focusout', onOut);
+    };
+  }, []);
+  return focused;
+}

@@ -1359,7 +1359,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
         <div className="bg-white dark:bg-[#151922] rounded-2xl border border-slate-200/80 dark:border-transparent shadow-sm dark:shadow-lg overflow-hidden">
           <div className="p-3 sm:p-3.5 space-y-2.5">
             {/* Top row: Key name + "مفاتيح" on Left, "الإنجليزية" on Right */}
-            <div className="flex items-center justify-between gap-2 text-xs sm:text-sm">
+            <div className="kb-hide flex items-center justify-between gap-2 text-xs sm:text-sm">
               <div className="flex items-center gap-1.5 min-w-0">
                 <span className="font-mono text-xs sm:text-sm font-semibold text-slate-900 dark:text-slate-100 truncate select-all">
                   {item.name}
@@ -1429,7 +1429,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             <SourceChangeDiff item={item} isAr={isAr} />
 
             {/* Target Language Name on Right + Translation Source, Alert & Reset on Left */}
-            {slot('r0', 'flex items-center justify-between gap-2 px-1', <>
+            {slot('r0', 'kb-hide flex items-center justify-between gap-2 px-1', <>
               <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                 {item.status !== 'untranslated' && (
                   <>
