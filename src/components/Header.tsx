@@ -446,10 +446,10 @@ const HeaderBase: React.FC<HeaderProps> = ({
           )}
 
           {showLegend && (
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-3 pb-0.5 md:py-2">
+          <div className={part === 'legend' ? 'px-3 py-1.5' : 'max-w-7xl mx-auto px-4 sm:px-6 pt-3 pb-0.5 md:py-2'}>
             {/* Breakdown Legend & Mobile View Switcher */}
-            <div className="flex items-center justify-between gap-2 text-[11px] sm:text-xs text-slate-600 dark:text-slate-400 flex-wrap">
-              <div className="flex items-center gap-3 flex-wrap">
+            <div className={`flex items-center justify-between gap-2 text-slate-600 dark:text-slate-400 ${part === 'legend' ? 'text-[10px] flex-nowrap' : 'text-[11px] sm:text-xs flex-wrap'}`}>
+              <div className={`flex items-center ${part === 'legend' ? 'gap-2 flex-nowrap whitespace-nowrap' : 'gap-3 flex-wrap'}`}>
                 {/* Translated stat */}
                 <div className="inline-flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-[#1EB996] shrink-0" />

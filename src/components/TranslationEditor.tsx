@@ -1343,8 +1343,14 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   // Max recommended character threshold
 
   // In landscape split mode the writing area goes into the other half of the screen
-  const slot = (key: string, className: string, children: React.ReactNode) =>
-    bottomPortal ? createPortal(<div className={className}>{children}</div>, bottomPortal, key) : <>{children}</>;
+  const slot = (key: string, className: string, children: React.ReactNode, plainClass?: string) =>
+    bottomPortal ? (
+      createPortal(<div className={className}>{children}</div>, bottomPortal, key)
+    ) : plainClass ? (
+      <div className={plainClass}>{children}</div>
+    ) : (
+      <>{children}</>
+    );
 
   return (
     <div className="flex flex-col h-full bg-[#F8F9FA] dark:bg-[#0E1015] text-slate-800 dark:text-slate-100 overflow-y-auto p-2 sm:p-3">
@@ -1423,7 +1429,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             <SourceChangeDiff item={item} isAr={isAr} />
 
             {/* Target Language Name on Right + Translation Source, Alert & Reset on Left */}
-            <div className="flex items-center justify-between gap-2">
+            {slot('r0', 'flex items-center justify-between gap-2 px-1', <>
               <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                 {item.status !== 'untranslated' && (
                   <>
@@ -1467,7 +1473,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                   ? getArabicLanguageName(targetLang, targetLocaleName)
                   : getLanguageOption(targetLang).name || targetLocaleName}
               </span>
-            </div>
+            </>, 'flex items-center justify-between gap-2')}
 
             {/* Two Connected Typographic / Formatting Toolbars */}
             <div className="space-y-1 select-none">
