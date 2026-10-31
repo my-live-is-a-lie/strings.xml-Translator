@@ -681,3 +681,17 @@ html:not(.dark) .dark\:border-\[\#2E384D\] {
 
 /* Landscape split + on-screen keyboard: hide labels and bars to leave room for typing */
 .kb-open .kb-hide { display: none; }
+
+/* Keyboard open: tighten the editor to make room for text */
+.kb-open .kb-card { padding: 0.375rem !important; }
+.kb-open .kb-card > * + * { margin-top: 0.25rem !important; }
+.kb-open .kb-src { min-height: 1.75rem !important; padding-top: 0.125rem !important; padding-bottom: 0.125rem !important; }
+.kb-open .kb-tools > * + * { margin-top: 0.125rem !important; }
+.kb-open .kb-tools button { height: 1.5rem !important; }
+.kb-open .kb-r1 { padding: 0.375rem !important; }
+.kb-open .kb-r1 > * + * { margin-top: 0.25rem !important; }
+.kb-open .kb-r1 textarea { min-height: 0 !important; }
+.kb-open .kb-r2 > div { padding: 0.25rem 0.375rem !important; }
+.kb-open .kb-r2 > div > * + * { margin-top: 0.25rem !important; }
+.kb-open .kb-r2 button { height: 1.75rem !important; min-height: 0 !important; }
+.kb-open .kb-r2 button.shrink-0 { width: 1.75rem !important; }

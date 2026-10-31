@@ -1357,7 +1357,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       <div className="max-w-2xl w-full mx-auto flex flex-col gap-2">
         {/* Weblate / M3 Main Card Frame */}
         <div className="bg-white dark:bg-[#151922] rounded-2xl border border-slate-200/80 dark:border-transparent shadow-sm dark:shadow-lg overflow-hidden">
-          <div className="p-3 sm:p-3.5 space-y-2.5">
+          <div className="kb-card p-3 sm:p-3.5 space-y-2.5">
             {/* Top row: Key name + "مفاتيح" on Left, "الإنجليزية" on Right */}
             <div className="kb-hide flex items-center justify-between gap-2 text-xs sm:text-sm">
               <div className="flex items-center gap-1.5 min-w-0">
@@ -1404,7 +1404,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               </button>
 
               {/* Source content container */}
-              <div className="flex-1 min-h-[38px] px-3 py-1.5 rounded-lg bg-slate-100/90 dark:bg-[#141822] border border-slate-200/90 dark:border-[#283140] flex items-center justify-between gap-2.5">
+              <div className="kb-src flex-1 min-h-[38px] px-3 py-1.5 rounded-lg bg-slate-100/90 dark:bg-[#141822] border border-slate-200/90 dark:border-[#283140] flex items-center justify-between gap-2.5">
                 {/* Left: Copy button */}
                 <button
                   id="copy-source-text-btn"
@@ -1476,7 +1476,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             </>, 'flex items-center justify-between gap-2')}
 
             {/* Two Connected Typographic / Formatting Toolbars */}
-            <div className="space-y-1 select-none">
+            <div className="kb-tools space-y-1 select-none">
               {/* Toolbar Row 1: Punctuation & Typography */}
               <div dir="ltr" className="flex items-center bg-slate-100 dark:bg-[#171D27] border border-slate-200/90 dark:border-[#283242] rounded-lg overflow-x-auto divide-x divide-slate-200 dark:divide-[#283242] rtl:divide-x-reverse no-scrollbar">
                 {[
@@ -1530,7 +1530,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               </div>
             </div>
 
-            {slot('r1', 'space-y-2.5 rounded-2xl bg-white dark:bg-[#151922] border border-slate-200/80 dark:border-transparent p-3', <>
+            {slot('r1', 'kb-r1 space-y-2.5 rounded-2xl bg-white dark:bg-[#151922] border border-slate-200/80 dark:border-transparent p-3', <>
             {/* Single Multiple Consecutive Spaces Typing Mistake Warning Banner */}
             {hasMultipleSpaces && (
               <div className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-rose-500/15 border border-rose-500/40 text-rose-200 text-xs font-medium animate-in fade-in duration-150 gap-2">
@@ -1854,7 +1854,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             </>)}
           </div>
 
-          {slot('r2', 'rounded-2xl overflow-hidden bg-white dark:bg-[#151922] border border-slate-200/80 dark:border-transparent', <>
+          {slot('r2', 'kb-r2 rounded-2xl overflow-hidden bg-white dark:bg-[#151922] border border-slate-200/80 dark:border-transparent', <>
           {saveGuard && (autoCorrect || saveGuard.empty) && (
             <div
               role="alert"
