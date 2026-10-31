@@ -903,7 +903,16 @@ currentItem ? (
   const infoOnLeft = isRtlUi ? split.swapped : !split.swapped;
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-app text-app font-sans antialiased">
+    <div
+      className="flex flex-col h-screen w-screen overflow-hidden bg-app text-app font-sans antialiased"
+      style={{
+        // keep clear of the Android status / navigation bars (inset vars come from Capacitor, env() from browsers)
+        paddingTop: 'var(--safe-area-inset-top, env(safe-area-inset-top, 0px))',
+        paddingBottom: 'var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))',
+        paddingLeft: 'var(--safe-area-inset-left, env(safe-area-inset-left, 0px))',
+        paddingRight: 'var(--safe-area-inset-right, env(safe-area-inset-right, 0px))',
+      }}
+    >
       {!splitActive && headerNode}
 
       {splitActive && (

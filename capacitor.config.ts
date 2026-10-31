@@ -14,6 +14,10 @@ const config: CapacitorConfig = {
   plugins: {
     CapacitorHttp: {
       enabled: true
+    },
+    SystemBars: {
+      // exposes --safe-area-inset-* so the page can keep clear of the status / navigation bars
+      insetsHandling: 'css'
     }
   }
 };

@@ -1,33 +1,39 @@
 import { useEffect, useState } from 'react';
 import { getStoredItem, setStoredItem } from '../utils/storage';
 
-/** A phone held sideways: landscape and short. Tablets / desktops (taller viewports) keep the normal layout. */
-const QUERY = '(orientation: landscape) and (max-height: 540px)';
+/** A phone held sideways: wider than tall and short. Tablets / desktops (taller viewports) keep the normal layout. */
+const MAX_LANDSCAPE_HEIGHT = 540;
+
+function isLandscapePhone(): boolean {
+  try {
+    return window.innerWidth > window.innerHeight && window.innerHeight <= MAX_LANDSCAPE_HEIGHT;
+  } catch {
+    return false;
+  }
+}
 
 export function useLandscapePhone(): boolean {
-  const [match, setMatch] = useState<boolean>(() => {
-    try {
-      return window.matchMedia(QUERY).matches;
-    } catch {
-      return false;
-    }
-  });
+  const [match, setMatch] = useState<boolean>(isLandscapePhone);
   useEffect(() => {
-    let mq: MediaQueryList;
-    try {
-      mq = window.matchMedia(QUERY);
-    } catch {
-      return;
-    }
-    const on = () => setMatch(mq.matches);
-    on();
-    mq.addEventListener('change', on);
-    return () => mq.removeEventListener('change', on);
+    const update = () => setMatch(isLandscapePhone());
+    update();
+    // some WebViews only report the new size a moment after the rotation, so listen to every signal
+    window.addEventListener('resize', update);
+    window.addEventListener('orientationchange', update);
+    const t = window.setInterval(update, 1000);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('orientationchange', update);
+      window.clearInterval(t);
+    };
   }, []);
   return match;
 }
 
-/** Hides the system status bar (native app) or goes fullscreen on the first touch (browser) while `active`. */
+/**
+ * Hides the system status bar while `active` (landscape): through Capacitor's SystemBars on the Android app,
+ * or fullscreen on the first touch in a browser. Portrait always shows it again.
+ */
 export function useHideStatusBar(active: boolean): void {
   useEffect(() => {
     if (!active) return;
@@ -35,13 +41,12 @@ export function useHideStatusBar(active: boolean): void {
     let cancelled = false;
     (async () => {
       try {
-        const { Capacitor } = await import('@capacitor/core');
+        const { Capacitor, SystemBars, SystemBarType } = await import('@capacitor/core');
         if (!Capacitor.isNativePlatform()) return;
         native = true;
-        const { StatusBar } = await import('@capacitor/status-bar');
-        if (!cancelled) await StatusBar.hide();
+        if (!cancelled) await SystemBars.hide({ bar: SystemBarType.StatusBar });
       } catch {
-        /* plugin not available: ignore */
+        /* not available: ignore */
       }
     })();
     const goFullscreen = () => {
@@ -63,11 +68,8 @@ export function useHideStatusBar(active: boolean): void {
           /* ignore */
         }
         try {
-          const { Capacitor } = await import('@capacitor/core');
-          if (Capacitor.isNativePlatform()) {
-            const { StatusBar } = await import('@capacitor/status-bar');
-            await StatusBar.show();
-          }
+          const { Capacitor, SystemBars, SystemBarType } = await import('@capacitor/core');
+          if (Capacitor.isNativePlatform()) await SystemBars.show({ bar: SystemBarType.StatusBar });
         } catch {
           /* ignore */
         }
