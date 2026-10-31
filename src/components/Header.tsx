@@ -106,6 +106,48 @@ const HeaderBase: React.FC<HeaderProps> = ({
   currentFileName,
 }) => {
   const [rightDrawerOpen, setRightDrawerOpen] = useState(false);
+  // Which physical edge the drawer slides from when it was opened by an edge swipe (null = the default side)
+  const [edgeSide, setEdgeSide] = useState<'left' | 'right' | null>(null);
+  const drawerSide: 'left' | 'right' = edgeSide ?? (inlineSign() === 1 ? 'right' : 'left');
+  const drawerOwner = part === 'all' || part === 'bar' || part === 'dock';
+
+  // Swipe in from either screen edge to open the drawer from that side
+  useEffect(() => {
+    if (!drawerOwner || rightDrawerOpen) return;
+    const EDGE = 28;
+    let start: { x: number; y: number; side: 'left' | 'right' } | null = null;
+    const onStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return;
+      const t = e.touches[0];
+      const w = window.innerWidth;
+      if (t.clientX <= EDGE) start = { x: t.clientX, y: t.clientY, side: 'left' };
+      else if (t.clientX >= w - EDGE) start = { x: t.clientX, y: t.clientY, side: 'right' };
+      else start = null;
+    };
+    const onMove = (e: TouchEvent) => {
+      if (!start || e.touches.length !== 1) return;
+      const dx = (e.touches[0].clientX - start.x) * (start.side === 'left' ? 1 : -1);
+      const dy = Math.abs(e.touches[0].clientY - start.y);
+      if (dx > 50 && dx > dy * 1.5) {
+        setEdgeSide(start.side);
+        setRightDrawerOpen(true);
+        start = null;
+      }
+    };
+    const onEnd = () => {
+      start = null;
+    };
+    document.addEventListener('touchstart', onStart, { passive: true });
+    document.addEventListener('touchmove', onMove, { passive: true });
+    document.addEventListener('touchend', onEnd, { passive: true });
+    document.addEventListener('touchcancel', onEnd, { passive: true });
+    return () => {
+      document.removeEventListener('touchstart', onStart);
+      document.removeEventListener('touchmove', onMove);
+      document.removeEventListener('touchend', onEnd);
+      document.removeEventListener('touchcancel', onEnd);
+    };
+  }, [drawerOwner, rightDrawerOpen]);
   const [appLangMenuOpen, setAppLangMenuOpen] = useState(false);
   const [drawerSwipeX, setDrawerSwipeX] = useState(0);
   const [isSwipingDrawer, setIsSwipingDrawer] = useState(false);
@@ -236,6 +278,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
               type="button"
               onClick={() => {
                 setAppLangMenuOpen(false);
+                setEdgeSide(null);
                 setRightDrawerOpen(true);
               }}
               className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60 shrink-0 cursor-pointer"
@@ -386,6 +429,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
               type="button"
               onClick={() => {
                 setAppLangMenuOpen(false);
+                setEdgeSide(null);
                 setRightDrawerOpen(true);
               }}
               className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200/80 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200/60 dark:border-slate-700/60 transition cursor-pointer m3-state-layer"
@@ -501,7 +545,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
 
       {/* Right-Side Slide-Out Drawer for Import & Export */}
       {(showBar || part === 'dock') && rightDrawerOpen && (
-        <div className="fixed inset-0 z-50 flex justify-end">
+        <div className="fixed inset-0 z-50 flex" style={{ direction: 'ltr', justifyContent: drawerSide === 'left' ? 'flex-start' : 'flex-end' }}>
           {/* Backdrop */}
           <div
             className="fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity"
@@ -528,7 +572,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
               const deltaY = e.touches[0].clientY - drawerTouchStartRef.current.y;
               // Swiping to the right (positive deltaX): if horizontal movement is dominant, track swipe
               // (measured towards the drawer's own edge: right in LTR, left in RTL)
-              const edgeDelta = deltaX * inlineSign();
+              const edgeDelta = deltaX * (drawerSide === 'right' ? 1 : -1);
               if (edgeDelta > 8 && Math.abs(deltaX) > Math.abs(deltaY) * 0.8) {
                 setIsSwipingDrawer(true);
                 setDrawerSwipeX(Math.max(0, edgeDelta));
@@ -550,10 +594,11 @@ const HeaderBase: React.FC<HeaderProps> = ({
               drawerTouchStartRef.current = null;
             }}
             style={{
-              transform: drawerSwipeX > 0 ? `translateX(${drawerSwipeX * inlineSign()}px)` : undefined,
+              transform: drawerSwipeX > 0 ? `translateX(${drawerSwipeX * (drawerSide === 'right' ? 1 : -1)}px)` : undefined,
               transition: isSwipingDrawer ? 'none' : 'transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+              direction: inlineSign() === 1 ? 'ltr' : 'rtl',
             }}
-            className="relative w-72 sm:w-80 max-w-[85vw] h-dvh max-h-dvh overflow-hidden bg-white dark:bg-[#161922] border-s border-slate-200 dark:border-[#252C3A] shadow-2xl z-10 flex flex-col animate-in slide-in-from-right rtl:slide-in-from-left duration-200"
+            className={`relative w-72 sm:w-80 max-w-[85vw] h-dvh max-h-dvh overflow-hidden bg-white dark:bg-[#161922] ${drawerSide === 'right' ? 'border-l' : 'border-r'} border-slate-200 dark:border-[#252C3A] shadow-2xl z-10 flex flex-col animate-in ${drawerSide === 'right' ? 'slide-in-from-right' : 'slide-in-from-left'} duration-200`}
           >
             {/* Drawer Header: 4 Squircle Buttons (Language, Theme, Random Accent, Palette) + Close Button */}
             <div className="relative flex items-center justify-between gap-2 px-3.5 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] border-b border-slate-200/80 dark:border-[#252C3A]">
