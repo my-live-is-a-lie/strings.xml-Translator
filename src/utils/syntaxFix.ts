@@ -127,7 +127,7 @@ function insertPlaceholder(source: string, target: string, token: string, occurr
   if (idx < 0) return target;
   const before = source.slice(0, idx);
   const after = source.slice(idx + token.length);
-  const affixBefore = before.match(/["'“‘\[(«]*$/)![0];
+  const affixBefore = before.match(/["'“‘[(«]*$/)![0];
   const affixAfter = after.match(/^[)"'”’\]»%]*/)![0];
   const beforeCore = before.slice(0, before.length - affixBefore.length);
   const afterCore = after.slice(affixAfter.length);

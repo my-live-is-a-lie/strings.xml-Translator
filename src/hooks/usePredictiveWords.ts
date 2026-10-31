@@ -50,22 +50,31 @@ export function usePredictiveWords(opts: {
   const [rejected, setRejected] = useState<Rejected | null>(null);
   const wordsRef = useRef(words);
   const rejectedRef = useRef<Rejected | null>(null);
-  wordsRef.current = words;
-  rejectedRef.current = rejected;
   const fieldsRef = useRef(fields);
-  fieldsRef.current = fields;
+  // refs are kept in sync after each render; event handlers read them
+  useEffect(() => {
+    wordsRef.current = words;
+    rejectedRef.current = rejected;
+    fieldsRef.current = fields;
+  });
   const fieldsSignature = fields.map((f) => `${f.key}:${f.quantity ?? ''}:${f.source}`).join('\u0001');
 
   // Nothing is requested while the user only browses strings: a field is translated on its first edit
   const requestedRef = useRef<Set<string>>(new Set());
   const generationRef = useRef(0);
 
+  // Everything is reset when the string, language or setting changes (state reset during render, no effect needed)
+  const resetToken = `${enabled}|${resetKey}|${fieldsSignature}|${targetLang}|${targetLocaleName ?? ''}`;
+  const [seenToken, setSeenToken] = useState(resetToken);
+  if (seenToken !== resetToken) {
+    setSeenToken(resetToken);
+    setWords({});
+    setRejected(null);
+  }
   useEffect(() => {
     generationRef.current++;
     requestedRef.current = new Set();
-    setWords({});
-    setRejected(null);
-  }, [enabled, resetKey, fieldsSignature, targetLang, targetLocaleName]);
+  }, [resetToken]);
 
   const ensureWords = (key: string) => {
     if (requestedRef.current.has(key)) return;
@@ -79,15 +88,13 @@ export function usePredictiveWords(opts: {
     });
   };
 
-  const skipFor = (key: string, text: string) => {
-    const r = rejectedRef.current;
-    return r && r.field === key && r.prefix === currentPartial(text) ? r.skip : [];
-  };
+  const skipFor = (r: Rejected | null, key: string, text: string) =>
+    r && r.field === key && r.prefix === currentPartial(text) ? r.skip : [];
 
   /** Grey completion to show after the text of a field (empty when there is none). */
   const ghostFor = (key: string, text: string): string => {
     if (!enabled || !ctx || ctx.field !== key || !ctx.atEnd) return '';
-    return findSuggestion(words[key], text, skipFor(key, text))?.suffix ?? '';
+    return findSuggestion(words[key], text, skipFor(rejected, key, text))?.suffix ?? '';
   };
 
   const noteCursor = useCallback((key: string, el: HTMLTextAreaElement | null) => {
@@ -108,7 +115,7 @@ export function usePredictiveWords(opts: {
     ensureWords(key);
     const list = wordsRef.current[key];
     if (!list || list.length === 0) return null;
-    const skip = skipFor(key, prev);
+    const skip = skipFor(rejectedRef.current, key, prev);
     if (next === prev + ' ') {
       const s = findSuggestion(list, prev, skip);
       if (s) {

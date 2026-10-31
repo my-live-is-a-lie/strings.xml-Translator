@@ -1020,10 +1020,6 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   }, [autoCorrect, draftItem, targetLang, updateDraftItem]);
 
   useEffect(() => {
-    if (!autoCorrect) setSaveGuard((g) => (g && g.empty ? g : null));
-  }, [autoCorrect]);
-
-  useEffect(() => {
     if (!saveGuard) return;
     const t = setTimeout(() => setSaveGuard(null), 12000);
     return () => clearTimeout(t);
@@ -1842,7 +1838,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             </div>
           </div>
 
-          {saveGuard && (
+          {saveGuard && (autoCorrect || saveGuard.empty) && (
             <div
               role="alert"
               className="mx-3 sm:mx-4 mb-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-200 space-y-1"
