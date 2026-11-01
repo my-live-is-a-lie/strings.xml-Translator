@@ -581,8 +581,8 @@ const TableViewBase: React.FC<TableViewProps> = ({
                 aria-pressed={sortMode !== 'none'}
                 className={`inline-flex items-center justify-center w-8 h-8 rounded-full transition cursor-pointer ${
                   sortMode === 'none'
-                    ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 hover:bg-slate-200/80 dark:hover:bg-slate-700'
-                    : 'bg-[#D3E3FD] dark:bg-[#0842A0] text-[#0B57D0] dark:text-[#D3E3FD] ring-2 ring-[#0B57D0]/40 dark:ring-[#A8C7FA]/50 shadow-[0_0_10px_rgba(11,87,208,0.45)]'
+                    ? 'border-transparent bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 hover:bg-slate-200/80 dark:hover:bg-slate-700'
+                    : 'bg-transparent border-current text-[#0B57D0] dark:text-[#D3E3FD] shadow-[0_0_8px_currentColor]'
                 }`}
                 title={
                   sortMode === 'none'
@@ -594,9 +594,9 @@ const TableViewBase: React.FC<TableViewProps> = ({
                 aria-label={isAr ? 'فرز حسب الطول' : 'Sort by length'}
               >
                 {sortMode === 'asc' ? (
-                  <ArrowUpNarrowWide className="w-4 h-4" />
+                  <ArrowUpNarrowWide className="w-4 h-4 opacity-70" />
                 ) : sortMode === 'desc' ? (
-                  <ArrowDownWideNarrow className="w-4 h-4" />
+                  <ArrowDownWideNarrow className="w-4 h-4 opacity-70" />
                 ) : (
                   <ArrowUpDown className="w-4 h-4" />
                 )}
@@ -658,10 +658,10 @@ const TableViewBase: React.FC<TableViewProps> = ({
                 type="button"
                 onClick={cycleSort}
                 aria-pressed={sortMode !== 'none'}
-                className={`ms-auto inline-flex items-center justify-center w-8 h-8 rounded-full transition cursor-pointer ${
+                className={`ms-auto inline-flex items-center justify-center w-8 h-8 rounded-full border-2 transition cursor-pointer ${
                   sortMode === 'none'
                     ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 hover:bg-slate-200/80 dark:hover:bg-slate-700'
-                    : 'bg-[#D3E3FD] dark:bg-[#0842A0] text-[#0B57D0] dark:text-[#D3E3FD] ring-2 ring-[#0B57D0]/40 dark:ring-[#A8C7FA]/50 shadow-[0_0_10px_rgba(11,87,208,0.45)]'
+                    : 'bg-transparent border-current text-[#0B57D0] dark:text-[#D3E3FD] shadow-[0_0_8px_currentColor]'
                 }`}
                 title={
                   sortMode === 'none'
