@@ -803,7 +803,7 @@ export default function App() {
   );
 
   const splitActive = landscape && activeView === 'editor';
-  const renderHeader = (part: 'all' | 'bar' | 'stats' | 'legend' | 'track' | 'dock') => (
+  const renderHeader = (part: 'all' | 'bar' | 'stats' | 'legend' | 'track' | 'dock' | 'barTrack' | 'tableLegend') => (
       <Header
         part={part}
         onOpenStringsList={openMobileDrawer}
@@ -863,7 +863,8 @@ export default function App() {
       onResetItemHistory={handleResetItemHistory}
     />
   );
-  const headerNode = renderHeader('all');
+  // In the table view the counts line moves into the table's collapsing top block
+  const headerNode = renderHeader(activeView === 'editor' ? 'all' : 'barTrack');
   const quickBarNode = (
               <div className={`${splitActive ? '' : 'md:hidden'} flex flex-col gap-2 px-4 pt-0.5 pb-2 bg-white/95 dark:bg-[#131314]/95 text-xs`}>
                 <div className="flex items-center gap-2 flex-wrap">
@@ -1039,6 +1040,7 @@ currentItem ? (
           /* Table View */
           <main className="flex-1 h-full overflow-hidden">
             <TableView
+              statsNode={renderHeader('tableLegend')}
               items={project.items}
               selectedId={selectedId}
               onSelectString={selectItemInEditor}
