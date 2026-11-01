@@ -80,7 +80,12 @@ const TableViewBase: React.FC<TableViewProps> = ({
   const quickActive = quickFilters.active;
   // Length sort: off -> shortest first -> longest first -> off
   const [sortMode, setSortMode] = useState<'none' | 'asc' | 'desc'>('none');
-  const cycleSort = () => setSortMode((m) => (m === 'none' ? 'asc' : m === 'asc' ? 'desc' : 'none'));
+  // 'toggle' = switching on or off, 'flip' = switching between shortest/longest first (own animation timing)
+  const [sortSwitch, setSortSwitch] = useState<'toggle' | 'flip'>('toggle');
+  const cycleSort = () => {
+    setSortSwitch(sortMode === 'asc' ? 'flip' : 'toggle');
+    setSortMode(sortMode === 'none' ? 'asc' : sortMode === 'asc' ? 'desc' : 'none');
+  };
   // Strings edited here stay in the list until the search/filter changes, even when the edit no longer matches the
   // filter (typing one letter in an untranslated string makes it "translated", and it must not vanish mid-typing).
   const [stickyIds, setStickyIds] = useState<Set<string>>(new Set());
@@ -546,7 +551,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
                 type="button"
                 onClick={cycleSort}
                 aria-pressed={sortMode !== 'none'}
-                className={`${isAr ? 'ms-auto ' : ''}inline-grid place-items-center w-8 h-8 rounded-full border transition-colors duration-300 cursor-pointer ${
+                className={`${isAr ? 'ms-auto ' : ''}inline-grid place-items-center w-8 h-8 rounded-full border transition-colors duration-200 cursor-pointer ${
                   sortMode === 'none'
                     ? 'border-transparent bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 hover:bg-slate-200/80 dark:hover:bg-slate-700'
                     : 'bg-transparent border-current text-[#0B57D0] dark:text-[#D3E3FD]'
@@ -566,7 +571,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
                   style={{
                     opacity: sortMode === 'none' ? 1 : 0,
                     transform: sortMode === 'none' ? 'rotate(0deg) scale(1)' : 'rotate(90deg) scale(0.4)',
-                    transition: 'transform 450ms cubic-bezier(0.34, 1.7, 0.64, 1), opacity 250ms ease',
+                    transition: 'transform 320ms cubic-bezier(0.34, 1.25, 0.64, 1), opacity 200ms ease',
                   }}
                 />
                 {/* One bold arrow: up = shortest first; it springs round to point down for longest first */}
@@ -581,7 +586,10 @@ const TableViewBase: React.FC<TableViewProps> = ({
                         : sortMode === 'desc'
                           ? 'rotate(180deg) scale(1)'
                           : 'rotate(0deg) scale(1)',
-                    transition: 'transform 520ms cubic-bezier(0.34, 1.7, 0.64, 1), opacity 250ms ease',
+                    transition:
+                      sortSwitch === 'toggle'
+                        ? 'transform 340ms cubic-bezier(0.34, 1.25, 0.64, 1), opacity 200ms ease'
+                        : 'transform 520ms cubic-bezier(0.34, 1.7, 0.64, 1), opacity 250ms ease',
                   }}
                 />
               </button>
