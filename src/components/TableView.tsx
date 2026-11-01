@@ -81,8 +81,18 @@ const TableViewBase: React.FC<TableViewProps> = ({
   // Length sort: off -> shortest first -> longest first -> off
   const [sortMode, setSortMode] = useState<'none' | 'asc' | 'desc'>('none');
   const cycleSort = () => setSortMode((m) => (m === 'none' ? 'asc' : m === 'asc' ? 'desc' : 'none'));
+  // Strings edited here stay in the list until the search/filter changes, even when the edit no longer matches the
+  // filter (typing one letter in an untranslated string makes it "translated", and it must not vanish mid-typing).
+  const [stickyIds, setStickyIds] = useState<Set<string>>(new Set());
   const filtered = useMemo(() => {
-    const base = applyQuickSnapshot(filterProjectItems(items, filter, search, sourceFilter as SourceFilter), quickFilters);
+    const matched = applyQuickSnapshot(filterProjectItems(items, filter, search, sourceFilter as SourceFilter), quickFilters);
+    let base = matched;
+    if (stickyIds.size > 0) {
+      const have = new Set(matched.map((i) => i.id));
+      if (Array.from(stickyIds).some((id) => !have.has(id))) {
+        base = items.filter((i) => have.has(i.id) || stickyIds.has(i.id));
+      }
+    }
     if (sortMode === 'none') return base;
     // Size of a string = its source text length plus the number of variants (plural forms / array elements)
     const size = (it: ResourceItem) =>
@@ -95,7 +105,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
       .map((it, idx) => ({ it, idx, size: size(it), count: count(it) }))
       .sort((a, b) => dir * (a.size - b.size || a.count - b.count) || a.idx - b.idx)
       .map((x) => x.it);
-  }, [items, filter, search, sourceFilter, quickFilters, sortMode]);
+  }, [items, filter, search, sourceFilter, quickFilters, sortMode, stickyIds]);
 
   const total = filtered.length;
   const [win, setWin] = useState(() => {
@@ -123,6 +133,12 @@ const TableViewBase: React.FC<TableViewProps> = ({
     setLastViewKey(viewKey);
     setWin({ start: 0, end: CHUNK });
     setEditingId(null);
+  }
+  const filterKey = `${search}|${filter}|${sourceFilter}|${quickActive.join(',')}`;
+  const [lastFilterKey, setLastFilterKey] = useState(filterKey);
+  if (lastFilterKey !== filterKey) {
+    setLastFilterKey(filterKey);
+    setStickyIds(new Set());
   }
   const firstViewKey = useRef(true);
   useEffect(() => {
@@ -490,6 +506,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
       value,
       onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const val = e.target.value;
+        setStickyIds((prev) => (prev.has(item.id) ? prev : new Set(prev).add(item.id)));
         onUpdateTranslation({
           ...item,
           target: val,
