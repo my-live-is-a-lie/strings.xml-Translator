@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import {
   Search,
-  Check,
   X,
   Sparkles,
   CheckSquare,
@@ -41,6 +40,8 @@ interface StringListProps {
   appLang?: 'ar' | 'en';
   onBulkUpdateTranslations?: (updatedItems: ResourceItem[]) => void;
   onResetItemHistory?: (id: string) => void;
+  /** The host (mobile drawer) provides its own search field in its header. */
+  hideSearch?: boolean;
 }
 
 // Wrapped with React.memo below: re-renders only when its props change
@@ -59,6 +60,7 @@ const StringListBase: React.FC<StringListProps> = ({
   appLang = 'ar',
   onBulkUpdateTranslations,
   onResetItemHistory,
+  hideSearch = false,
 }) => {
   const isAr = appLang === 'ar';
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
@@ -67,6 +69,28 @@ const StringListBase: React.FC<StringListProps> = ({
   const [localSourceFilter, setLocalSourceFilter] = useState<SourceFilter>('all');
   const [qaFilter, setQaFilter] = useState<'all' | 'any_issue' | 'placeholder' | 'html'>('all');
   const [qaListExpanded, setQaListExpanded] = useState(false);
+  // Merged summary card: collapsible to a short bar (remembered between openings)
+  const [summaryCollapsed, setSummaryCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('stringsListSummaryCollapsed') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const toggleSummary = () =>
+    setSummaryCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('stringsListSummaryCollapsed', next ? '1' : '0');
+      } catch {
+        /* storage unavailable: the choice just lasts for this session */
+      }
+      return next;
+    });
+  // Filters + summary slide away when the list is scrolled down and come back when it is scrolled up
+  const [filtersHidden, setFiltersHidden] = useState(false);
+  const lastScrollTopRef = useRef(0);
+  const scrollLockUntilRef = useRef(0);
 
   const qaSummary = useMemo(() => analyzeProjectQa(items), [items]);
 
@@ -156,6 +180,22 @@ const StringListBase: React.FC<StringListProps> = ({
     if (target.scrollTop + target.clientHeight >= target.scrollHeight - 250) {
       setDisplayLimit((prev) => (prev < filteredItems.length ? Math.min(filteredItems.length, prev + 30) : prev));
     }
+
+    const top = target.scrollTop;
+    const delta = top - lastScrollTopRef.current;
+    lastScrollTopRef.current = top;
+    // While the block is sliding, the list resizes and the browser may nudge scrollTop: ignore those events
+    if (Date.now() < scrollLockUntilRef.current) return;
+    const toggle = (hidden: boolean) => {
+      setFiltersHidden((prev) => {
+        if (prev === hidden) return prev;
+        scrollLockUntilRef.current = Date.now() + 320;
+        return hidden;
+      });
+    };
+    if (top <= 8) toggle(false);
+    else if (delta > 6) toggle(true);
+    else if (delta < -6) toggle(false);
   }, [filteredItems.length]);
 
   const filteredUntranslated = filteredItems.filter((i) => i.status === 'untranslated');
@@ -249,7 +289,9 @@ const StringListBase: React.FC<StringListProps> = ({
         />
       )}
       {/* Search & Filter Header */}
-      <div className="p-3.5 space-y-2.5 border-b border-slate-100 dark:border-slate-800/80">
+      <div className="p-3.5 border-b border-slate-100 dark:border-slate-800/80">
+        {!hideSearch && (
+          <div className="mb-2.5">
         {/* M3 Search Bar */}
         <div className="relative flex items-center bg-slate-100 dark:bg-slate-800/80 rounded-full px-3.5 py-2 ring-1 ring-slate-200/60 dark:ring-slate-700/60 focus-within:ring-2 focus-within:ring-[#0B57D0] dark:focus-within:ring-[#A8C7FA] focus-within:bg-white dark:focus-within:bg-[#1E1F20] transition-all">
           <Search className="w-4 h-4 text-slate-600 dark:text-slate-400 shrink-0 me-2.5" />
@@ -272,6 +314,21 @@ const StringListBase: React.FC<StringListProps> = ({
           )}
         </div>
 
+          </div>
+        )}
+
+        {/* Chips + summary slide away while the list is scrolled down */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateRows: filtersHidden ? '0fr' : '1fr',
+            opacity: filtersHidden ? 0 : 1,
+            transition: 'grid-template-rows 280ms cubic-bezier(0.22, 1, 0.36, 1), opacity 200ms ease',
+          }}
+          aria-hidden={filtersHidden}
+        >
+          <div className="overflow-hidden min-h-0">
+            <div className="space-y-2.5 pb-2.5">
         {/* Quick filters (desktop; the mobile bar has its own button) */}
         <div className="hidden md:flex flex-col gap-1.5 text-xs">
           <div><QuickFilterButton appLang={appLang} /></div>
@@ -301,7 +358,6 @@ const StringListBase: React.FC<StringListProps> = ({
                     : 'bg-transparent text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700/80 hover:bg-slate-100 dark:hover:bg-slate-800'
                 }`}
               >
-                {isSelected && <Check className="w-3 h-3 stroke-[2.5]" />}
                 <span>{chip.label}</span>
                 <span className="text-[10px] opacity-90 tabular-nums">({chip.count})</span>
               </button>
@@ -309,27 +365,59 @@ const StringListBase: React.FC<StringListProps> = ({
           })}
         </div>
 
-        {/* AI vs. Manual Input Summary Section */}
+
+        {/* Translation source summary + QA checks, merged into one collapsible card */}
         <div
           id="sidebar-translation-stats-summary"
-          className="rounded-xl bg-slate-50/90 dark:bg-[#191C24] border border-slate-200/80 dark:border-slate-800/90 p-2.5 space-y-2"
+          className="rounded-xl bg-slate-50/90 dark:bg-[#191C24] border border-slate-200/80 dark:border-slate-800/90"
         >
-          <div className="flex items-center justify-between gap-2 text-[11px]">
-            <div className="flex items-center gap-1.5 font-semibold text-slate-700 dark:text-slate-200">
+          <div className="flex items-center justify-between gap-2 px-2.5 py-2 text-[11px]">
+            <div className="flex items-center gap-1.5 font-semibold text-slate-700 dark:text-slate-200 min-w-0">
               <BarChart3 className="w-3.5 h-3.5 text-[#1EB996] shrink-0" />
-              <span>{isAr ? 'ملخص مصدر الترجمة' : 'Translation Source Summary'}</span>
+              <span className="truncate">
+                {summaryCollapsed
+                  ? isAr ? 'المحتوى مخفي' : 'Content hidden'
+                  : isAr ? 'ملخص مصدر الترجمة' : 'Translation Source Summary'}
+              </span>
             </div>
-            {sourceFilter !== 'all' && (
+            <div className="flex items-center gap-1.5 shrink-0">
+              {sourceFilter !== 'all' && !summaryCollapsed && (
+                <button
+                  type="button"
+                  onClick={() => handleSetSourceFilter('all')}
+                  className="text-[10px] font-medium text-[#0B57D0] dark:text-[#A8C7FA] hover:underline cursor-pointer"
+                >
+                  {isAr ? 'عرض الكل' : 'Show All'}
+                </button>
+              )}
               <button
                 type="button"
-                onClick={() => handleSetSourceFilter('all')}
-                className="text-[10px] font-medium text-[#0B57D0] dark:text-[#A8C7FA] hover:underline cursor-pointer"
+                onClick={toggleSummary}
+                aria-expanded={!summaryCollapsed}
+                className="w-6 h-6 inline-flex items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-700/50 transition-colors cursor-pointer"
+                title={summaryCollapsed ? (isAr ? 'إظهار المحتوى' : 'Show content') : (isAr ? 'إخفاء المحتوى' : 'Hide content')}
               >
-                {isAr ? 'عرض الكل' : 'Show All'}
+                <ChevronDown
+                  className="w-4 h-4"
+                  style={{
+                    transform: summaryCollapsed ? 'rotate(0deg)' : 'rotate(180deg)',
+                    transition: 'transform 380ms cubic-bezier(0.34, 1.4, 0.64, 1)',
+                  }}
+                />
               </button>
-            )}
+            </div>
           </div>
 
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateRows: summaryCollapsed ? '0fr' : '1fr',
+              opacity: summaryCollapsed ? 0 : 1,
+              transition: 'grid-template-rows 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease',
+            }}
+          >
+            <div className="overflow-hidden min-h-0">
+              <div className="px-2.5 pb-2.5 space-y-2">
           <div className="grid grid-cols-2 gap-1.5">
             {/* AI Translated Stat Pill */}
             <button
@@ -380,13 +468,11 @@ const StringListBase: React.FC<StringListProps> = ({
             </button>
           </div>
 
-        </div>
+              </div>
 
-        {/* QA Checks Section (Placeholders & HTML Tags Validation) */}
-        <div
-          id="sidebar-qa-checks-section"
-          className="rounded-xl bg-slate-50/90 dark:bg-[#191C24] border border-slate-200/80 dark:border-slate-800/90 p-2.5 space-y-2"
-        >
+              <div className="mx-2.5 border-t border-slate-200/80 dark:border-slate-700/70" />
+
+              <div id="sidebar-qa-checks-section" className="p-2.5 space-y-2">
           <div className="flex items-center justify-between gap-2 text-[11px]">
             <div className="flex items-center gap-1.5 font-semibold text-slate-700 dark:text-slate-200">
               {qaSummary.totalAffectedItemsCount > 0 ? (
@@ -567,11 +653,17 @@ const StringListBase: React.FC<StringListProps> = ({
               )}
             </div>
           )}
+              </div>
+            </div>
+          </div>
+        </div>
+            </div>
+          </div>
         </div>
 
         {/* Bulk Selection & AI Translation Bar */}
         {onBulkUpdateTranslations && (
-          <div className="flex items-center justify-between gap-1.5 pt-1 border-t border-slate-100 dark:border-slate-800/70 text-[11px]">
+          <div className="flex items-center justify-between gap-1.5 pt-2.5 border-t border-slate-100 dark:border-slate-800/70 text-[11px]">
             <div className="flex items-center gap-1.5 min-w-0">
               <button
                 id="stringlist-select-untranslated-btn"

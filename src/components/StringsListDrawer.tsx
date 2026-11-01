@@ -1,5 +1,5 @@
-import React, { useRef } from 'react';
-import { X } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { X, Search } from 'lucide-react';
 import { StringList } from './StringList';
 import { inlineSign } from '../utils/direction';
 import { ResourceItem, FilterStatus, SourceFilter } from '../types';
@@ -50,8 +50,33 @@ const StringsListDrawerBase: React.FC<StringsListDrawerProps> = ({
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const isDraggingRef = useRef(false);
   const currentDeltaXRef = useRef(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  // The search field lives in the header: an icon that opens a bar over the title
+  const [searchOpen, setSearchOpen] = useState(false);
+  // When the drawer opens with a search already active, show the bar (adjusted during render)
+  const [wasOpen, setWasOpen] = useState(isOpen);
+  if (wasOpen !== isOpen) {
+    setWasOpen(isOpen);
+    if (isOpen) setSearchOpen(searchQuery !== '');
+  }
+  useEffect(() => {
+    if (searchOpen) searchInputRef.current?.focus();
+  }, [searchOpen]);
 
   if (!isOpen) return null;
+
+  const isRtl = inlineSign() === 1;
+  // X while searching: clears the text first, a second press closes the bar
+  const handleCloseButton = () => {
+    if (!searchOpen) {
+      handleDismiss();
+    } else if (searchQuery) {
+      onSearchChange('');
+      searchInputRef.current?.focus();
+    } else {
+      setSearchOpen(false);
+    }
+  };
 
   const handleDismiss = () => {
     if (asideRef.current) {
@@ -170,18 +195,69 @@ const StringsListDrawerBase: React.FC<StringsListDrawerProps> = ({
       >
         {/* Drawer Header */}
         <div className="relative flex items-center justify-between gap-2 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] border-b border-slate-200/80 dark:border-[#252C3A]">
-          <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
+          <span
+            className="text-xs font-bold text-slate-800 dark:text-slate-100 transition-opacity duration-200"
+            style={{ opacity: searchOpen ? 0 : 1 }}
+          >
             {appLang === 'ar'
               ? `قائمة النصوص (${items.length})`
               : `Strings List (${items.length})`}
           </span>
-          <button
-            onClick={handleDismiss}
-            className="w-8 h-8 inline-flex items-center justify-center rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#202634] transition cursor-pointer"
-            title={appLang === 'ar' ? 'إغلاق القائمة' : 'Close drawer'}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setSearchOpen(true)}
+              className="w-8 h-8 inline-flex items-center justify-center rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#202634] transition cursor-pointer"
+              style={{ opacity: searchOpen ? 0 : 1, pointerEvents: searchOpen ? 'none' : 'auto' }}
+              tabIndex={searchOpen ? -1 : 0}
+              title={appLang === 'ar' ? 'بحث' : 'Search'}
+              aria-label={appLang === 'ar' ? 'بحث' : 'Search'}
+            >
+              <Search className="w-4 h-4" />
+            </button>
+            <button
+              onClick={handleCloseButton}
+              className="w-8 h-8 inline-flex items-center justify-center rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#202634] transition cursor-pointer"
+              title={
+                !searchOpen
+                  ? appLang === 'ar' ? 'إغلاق القائمة' : 'Close drawer'
+                  : searchQuery
+                    ? appLang === 'ar' ? 'مسح البحث' : 'Clear search'
+                    : appLang === 'ar' ? 'إغلاق البحث' : 'Close search'
+              }
+            >
+              <X
+                className="w-4 h-4"
+                style={{
+                  transform: searchOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+                  transition: 'transform 320ms cubic-bezier(0.34, 1.4, 0.64, 1)',
+                }}
+              />
+            </button>
+          </div>
+
+          {/* Search bar: grows out of the icon and covers the title */}
+          <div
+            className="absolute bottom-2.5 h-9 start-3 end-12 flex items-center rounded-full bg-slate-100 dark:bg-slate-800/80 px-3.5 ring-1 ring-slate-200/60 dark:ring-slate-700/60 focus-within:ring-2 focus-within:ring-[#0B57D0] dark:focus-within:ring-[#A8C7FA]"
+            style={{
+              opacity: searchOpen ? 1 : 0,
+              pointerEvents: searchOpen ? 'auto' : 'none',
+              transform: searchOpen ? 'scaleX(1)' : 'scaleX(0.15)',
+              transformOrigin: isRtl ? 'left center' : 'right center',
+              transition: 'transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease',
+            }}
+            aria-hidden={!searchOpen}
           >
-            <X className="w-4 h-4" />
-          </button>
+            <input
+              ref={searchInputRef}
+              id="drawer-search-input"
+              type="text"
+              tabIndex={searchOpen ? 0 : -1}
+              placeholder={appLang === 'ar' ? 'ابحث بالمفتاح أو النص...' : 'Search key or text...'}
+              value={searchQuery}
+              onChange={(e) => onSearchChange(e.target.value)}
+              className="w-full text-xs bg-transparent text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none"
+            />
+          </div>
         </div>
 
         {/* Drawer Body: StringList */}
@@ -204,6 +280,7 @@ const StringsListDrawerBase: React.FC<StringsListDrawerProps> = ({
             appLang={appLang}
             onBulkUpdateTranslations={onBulkUpdateTranslations}
             onResetItemHistory={onResetItemHistory}
+            hideSearch
           />
         </div>
       </aside>
