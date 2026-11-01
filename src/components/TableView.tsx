@@ -1,8 +1,8 @@
 import { SourceChangeBadge } from './SourceChangeDiff';
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react';
 import { scrollItemIntoView } from '../utils/scrollToItem';
 import { ResourceItem, FilterStatus, SourceFilter, SingleStringItem } from '../types';
-import { Search, CheckCircle2, Circle, AlertCircle, Edit3, Check, Sparkles, CheckSquare, Square, Loader2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp } from 'lucide-react';
+import { Search, CheckCircle2, Circle, AlertCircle, Edit3, Check, Sparkles, CheckSquare, Square, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import { bulkTranslateItems, withTranslationProvider } from '../utils/translator';
 import { BulkProviderModal, EXTERNAL_AI_PROVIDER_ID } from './BulkProviderModal';
 import { ExternalAiModal } from './ExternalAiModal';
@@ -26,7 +26,15 @@ interface TableViewProps {
   searchQuery?: string;
   onSearchChange?: (q: string) => void;
   sourceFilter?: SourceFilter;
+  /** Counts line (translated / untranslated): shown above the search and hidden together with it while scrolling down. */
+  statsNode?: React.ReactNode;
 }
+
+// Windowed list: strings are loaded in chunks near the edges and trimmed on the far side.
+const CHUNK = 40;
+const MAX_RENDERED = 120;
+const PRELOAD_PX = 700;
+const EST_HEIGHT = 120;
 
 // Wrapped with React.memo below: re-renders only when its props change
 const TableViewBase: React.FC<TableViewProps> = ({
@@ -44,6 +52,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
   searchQuery: controlledSearch,
   onSearchChange,
   sourceFilter = 'all',
+  statsNode,
 }) => {
   const isAr = appLang === 'ar';
   const [localSearch, setLocalSearch] = useState('');
@@ -74,33 +83,156 @@ const TableViewBase: React.FC<TableViewProps> = ({
     [items, filter, search, sourceFilter, quickFilters]
   );
 
-  const [pageSize, setPageSize] = useState<number>(50);
-  const [page, setPage] = useState(() => {
+  const total = filtered.length;
+  const [win, setWin] = useState(() => {
     const idx = selectedId ? filtered.findIndex((i) => i.id === selectedId) : -1;
-    return idx >= 0 ? Math.floor(idx / 50) + 1 : 1;
+    const start = idx > 0 ? Math.max(0, idx - Math.floor(CHUNK / 2)) : 0;
+    return { start, end: start + CHUNK };
   });
   const tableRootRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
+  const heightsRef = useRef<Map<string, number>>(new Map());
+  const anchorRef = useRef<{ id: string; top: number } | null>(null);
+  const lastTopRef = useRef(0);
+  const [headerHidden, setHeaderHidden] = useState(false);
+  const [headerH, setHeaderH] = useState(0);
+
   useEffect(() => {
     if (selectedId && tableRootRef.current) scrollItemIntoView(tableRootRef.current, selectedId, 'center');
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only once, when the table opens
   }, []);
-  // Going back to page 1 and closing the editor when the search or filters change (during render)
+  // Back to the top of the list and closing the editor when the search or filters change (during render)
   const viewKey = `${search}|${filter}|${sourceFilter}|${quickActive.join(',')}`;
   const [lastViewKey, setLastViewKey] = useState(viewKey);
   if (lastViewKey !== viewKey) {
     setLastViewKey(viewKey);
-    setPage(1);
+    setWin({ start: 0, end: CHUNK });
     setEditingId(null);
   }
+  const firstViewKey = useRef(true);
+  useEffect(() => {
+    if (firstViewKey.current) {
+      firstViewKey.current = false;
+      return;
+    }
+    anchorRef.current = null;
+    scrollRef.current?.scrollTo({ top: 0 });
+    lastTopRef.current = 0;
+    setHeaderHidden(false);
+  }, [viewKey]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const currentPage = Math.min(page, totalPages);
+  const end = Math.min(win.end, total);
+  const start = Math.min(win.start, end);
+  const pagedItems = useMemo(() => filtered.slice(start, end), [filtered, start, end]);
 
-  const pagedItems = useMemo(() => {
-    if (pageSize >= 10000) return filtered;
-    const start = (currentPage - 1) * pageSize;
-    return filtered.slice(start, start + pageSize);
-  }, [filtered, currentPage, pageSize]);
+  // After every render: remember the real height of each rendered string, size the spacers that stand in for the
+  // strings that are not rendered, and keep the string the reader is looking at in place when the window changed.
+  useLayoutEffect(() => {
+    const root = scrollRef.current;
+    if (!root) return;
+    const heights = heightsRef.current;
+    root.querySelectorAll<HTMLElement>('[data-item-id]').forEach((el) => {
+      if (el.offsetParent === null) return;
+      const h = el.getBoundingClientRect().height;
+      if (h > 0 && el.dataset.itemId) heights.set(el.dataset.itemId, h);
+    });
+    let sum = 0;
+    heights.forEach((h) => {
+      sum += h;
+    });
+    const avg = heights.size ? sum / heights.size : EST_HEIGHT;
+    const spaceFor = (from: number, to: number) => {
+      let space = 0;
+      for (let i = from; i < to; i++) space += heights.get(filtered[i].id) ?? avg;
+      return space;
+    };
+    const topSpace = spaceFor(0, start);
+    const bottomSpace = spaceFor(end, total);
+    root.querySelectorAll<HTMLElement>('[data-spacer="top"]').forEach((el) => {
+      el.style.height = `${topSpace}px`;
+    });
+    root.querySelectorAll<HTMLElement>('[data-spacer="bottom"]').forEach((el) => {
+      el.style.height = `${bottomSpace}px`;
+    });
+
+    const a = anchorRef.current;
+    if (a) {
+      anchorRef.current = null;
+      const safe = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(a.id) : a.id.replace(/"/g, '\\"');
+      const el = Array.from(root.querySelectorAll<HTMLElement>(`[data-item-id="${safe}"]`)).find(
+        (n) => n.offsetParent !== null
+      );
+      if (el) {
+        const delta = el.getBoundingClientRect().top - a.top;
+        if (Math.abs(delta) > 0.5) root.scrollTop += delta;
+      }
+      lastTopRef.current = root.scrollTop;
+    }
+  });
+
+  // The collapsing top block overlays the list, so its height is the list's top padding
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el) return;
+    setHeaderH(el.offsetHeight);
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => setHeaderH(el.offsetHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const captureAnchor = () => {
+    const root = scrollRef.current;
+    if (!root) return;
+    const rootTop = root.getBoundingClientRect().top;
+    const nodes = root.querySelectorAll<HTMLElement>('[data-item-id]');
+    for (const el of Array.from(nodes)) {
+      if (el.offsetParent === null) continue;
+      const r = el.getBoundingClientRect();
+      if (r.bottom > rootTop + 1 && el.dataset.itemId) {
+        anchorRef.current = { id: el.dataset.itemId, top: r.top };
+        return;
+      }
+    }
+  };
+
+  const handleScroll = () => {
+    const root = scrollRef.current;
+    if (!root) return;
+    const top = root.scrollTop;
+    const delta = top - lastTopRef.current;
+    lastTopRef.current = top;
+
+    // Scrolling down hides the top block, scrolling up brings it back
+    if (top <= 8) setHeaderHidden(false);
+    else if (delta > 4) setHeaderHidden(true);
+    else if (delta < -4) setHeaderHidden(false);
+
+    const remainingBottom = root.scrollHeight - top - root.clientHeight;
+    const topSpacer = Array.from(root.querySelectorAll<HTMLElement>('[data-spacer="top"]')).find(
+      (el) => el.offsetParent !== null
+    );
+    const topSpace = topSpacer ? topSpacer.offsetHeight : 0;
+    const distanceFromLoadedTop = top - (topSpace + headerH);
+    if (remainingBottom < PRELOAD_PX && end < total) {
+      // Near the end: load more strings below and drop the oldest ones above
+      captureAnchor();
+      setWin((w) => {
+        const newEnd = Math.min(total, w.end + CHUNK);
+        const newStart = newEnd - w.start > MAX_RENDERED ? newEnd - MAX_RENDERED : w.start;
+        return { start: newStart, end: newEnd };
+      });
+    } else if (distanceFromLoadedTop < PRELOAD_PX && start > 0 && delta <= 0) {
+      // Back near the start of the loaded part: reload the earlier strings and drop the ones far below
+      captureAnchor();
+      setWin((w) => {
+        const newStart = Math.max(0, w.start - CHUNK);
+        const newEnd = w.end - newStart > MAX_RENDERED ? newStart + MAX_RENDERED : w.end;
+        return { start: newStart, end: newEnd };
+      });
+    }
+  };
 
   const filteredUntranslated = useMemo(() => filtered.filter((i) => i.status === 'untranslated'), [filtered]);
   const allPagedSelected = pagedItems.length > 0 && pagedItems.every((i) => checkedIds.has(i.id));
@@ -365,6 +497,14 @@ const TableViewBase: React.FC<TableViewProps> = ({
           onConfirm={runBulkTranslate}
         />
       )}
+      <div className="relative flex-1 min-h-0 overflow-hidden">
+      {/* Top block (counts, search, filters): slides away on scroll down, returns on scroll up */}
+      <div
+        ref={headerRef}
+        className="absolute top-0 inset-x-0 z-20 bg-white dark:bg-[#131314] transition-transform duration-200 ease-out will-change-transform"
+        style={{ transform: headerHidden ? 'translateY(-100%)' : 'translateY(0)' }}
+      >
+      {statsNode}
       {/* Search, Filter & Bulk Actions Header */}
       <div className="p-4 sm:p-5 border-b border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-[#131314] flex flex-wrap items-center justify-between gap-3">
         {/* M3 Search Bar */}
@@ -468,8 +608,15 @@ const TableViewBase: React.FC<TableViewProps> = ({
         </div>
       </div>
 
+      </div>
+
       {/* Table Container */}
-      <div className="flex-1 overflow-auto p-4 sm:p-6">
+      <div
+        ref={scrollRef}
+        onScroll={handleScroll}
+        className="h-full overflow-auto px-4 pb-4 sm:px-6 sm:pb-6"
+        style={{ paddingTop: headerH + 12, overflowAnchor: 'none' }}
+      >
         <div className="bg-white dark:bg-[#1E1F20] rounded-2xl border border-slate-200/80 dark:border-slate-800/80 m3-elevation-1 overflow-hidden">
           {/* Mobile: one stacked card per string (the 6-column table is too wide for phones) */}
           <div className="md:hidden divide-y divide-slate-100 dark:divide-slate-800/60">
@@ -478,7 +625,9 @@ const TableViewBase: React.FC<TableViewProps> = ({
                 {isAr ? 'لا توجد نصوص مطابقة.' : 'No strings match the filter.'}
               </div>
             ) : (
-              pagedItems.map((item) => {
+              <>
+              <div aria-hidden="true" data-spacer="top" style={{ borderTopWidth: 0 }} />
+              {pagedItems.map((item) => {
                 const isChecked = checkedIds.has(item.id);
                 const { sourceSnippet, targetSnippet } = getSnippets(item);
                 const q = search.trim().toLowerCase();
@@ -614,7 +763,9 @@ const TableViewBase: React.FC<TableViewProps> = ({
                     )}
                   </div>
                 );
-              })
+              })}
+              <div aria-hidden="true" data-spacer="bottom" style={{ borderTopWidth: 0 }} />
+              </>
             )}
           </div>
 
@@ -653,7 +804,9 @@ const TableViewBase: React.FC<TableViewProps> = ({
                   </td>
                 </tr>
               ) : (
-                pagedItems.map((item) => {
+                <>
+                <tr aria-hidden="true" data-spacer="top" style={{ borderTopWidth: 0 }}><td colSpan={6} className="p-0" /></tr>
+                {pagedItems.map((item) => {
                   const isChecked = checkedIds.has(item.id);
                   const { sourceSnippet, targetSnippet } = getSnippets(item);
 
@@ -721,86 +874,23 @@ const TableViewBase: React.FC<TableViewProps> = ({
                       </td>
                     </tr>
                   );
-                })
+                })}
+                <tr aria-hidden="true" data-spacer="bottom" style={{ borderTopWidth: 0 }}><td colSpan={6} className="p-0" /></tr>
+                </>
               )}
             </tbody>
           </table>
 
-          {/* Pagination Toolbar */}
+          {/* Loaded-range footer */}
           {filtered.length > 0 && (
-            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-white dark:bg-[#1A1C20] border-t border-slate-200/80 dark:border-slate-800/80 text-xs text-slate-600 dark:text-slate-400">
-              <div className="flex items-center gap-2">
-                <span>
-                  {isAr
-                    ? `عرض ${((currentPage - 1) * pageSize) + 1}–${Math.min(currentPage * pageSize, filtered.length)} من ${filtered.length} نص`
-                    : `Showing ${((currentPage - 1) * pageSize) + 1}–${Math.min(currentPage * pageSize, filtered.length)} of ${filtered.length} strings`}
-                </span>
-                <div className="flex items-center gap-1.5 ms-2 border-s border-slate-200 dark:border-slate-700 ps-2">
-                  <span className="text-[11px] text-slate-400">{isAr ? 'لكل صفحة:' : 'Per page:'}</span>
-                  <select
-                    value={pageSize}
-                    onChange={(e) => {
-                      setPageSize(Number(e.target.value));
-                      setPage(1);
-                    }}
-                    className="bg-slate-100 dark:bg-slate-800 rounded px-1.5 py-0.5 text-xs text-slate-800 dark:text-slate-200 border-none outline-none cursor-pointer"
-                  >
-                    <option value={25}>25</option>
-                    <option value={50}>50</option>
-                    <option value={100}>100</option>
-                    <option value={200}>200</option>
-                  </select>
-                </div>
-              </div>
-
-              {totalPages > 1 && (
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setPage(1)}
-                    disabled={currentPage === 1}
-                    className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
-                    title={isAr ? 'الصفحة الأولى' : 'First page'}
-                  >
-                    <ChevronsLeft className="w-4 h-4 rtl:rotate-180" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                    className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
-                    title={isAr ? 'الصفحة السابقة' : 'Previous page'}
-                  >
-                    <ChevronLeft className="w-4 h-4 rtl:rotate-180" />
-                  </button>
-
-                  <span className="px-2 font-medium tabular-nums text-slate-800 dark:text-slate-200">
-                    {isAr ? `${currentPage} من ${totalPages}` : `${currentPage} of ${totalPages}`}
-                  </span>
-
-                  <button
-                    type="button"
-                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={currentPage === totalPages}
-                    className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
-                    title={isAr ? 'الصفحة التالية' : 'Next page'}
-                  >
-                    <ChevronRight className="w-4 h-4 rtl:rotate-180" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPage(totalPages)}
-                    disabled={currentPage === totalPages}
-                    className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
-                    title={isAr ? 'الصفحة الأخيرة' : 'Last page'}
-                  >
-                    <ChevronsRight className="w-4 h-4 rtl:rotate-180" />
-                  </button>
-                </div>
-              )}
+            <div className="px-4 py-3 bg-white dark:bg-[#1A1C20] border-t border-slate-200/80 dark:border-slate-800/80 text-xs text-slate-600 dark:text-slate-400 tabular-nums text-center">
+              {isAr
+                ? `المحمَّل ${start + 1}–${end} من ${total} نص`
+                : `Loaded ${start + 1}–${end} of ${total} strings`}
             </div>
           )}
         </div>
+      </div>
       </div>
     </div>
   );

@@ -59,7 +59,7 @@ interface HeaderProps {
   /** Narrow container (landscape split half): the top bar wraps instead of overflowing. */
   compact?: boolean;
   /** Landscape split: 'bar' = top app bar + drawer only, 'stats' = progress and counts only, 'all' = both. */
-  part?: 'all' | 'bar' | 'stats' | 'legend' | 'track' | 'dock';
+  part?: 'all' | 'bar' | 'stats' | 'legend' | 'track' | 'dock' | 'barTrack' | 'tableLegend';
   /** Dock only: opens the strings list and how many strings it holds. */
   onOpenStringsList?: () => void;
   stringsCount?: number;
@@ -109,7 +109,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
   // Which physical edge the drawer slides from when it was opened by an edge swipe (null = the default side)
   const [edgeSide, setEdgeSide] = useState<'left' | 'right' | null>(null);
   const drawerSide: 'left' | 'right' = edgeSide ?? (inlineSign() === 1 ? 'right' : 'left');
-  const drawerOwner = part === 'all' || part === 'bar' || part === 'dock';
+  const drawerOwner = part === 'all' || part === 'bar' || part === 'dock' || part === 'barTrack';
 
   // Swipe in from either screen edge to open the drawer from that side
   useEffect(() => {
@@ -242,9 +242,9 @@ const HeaderBase: React.FC<HeaderProps> = ({
   const exactTranslatedWidth = totalItems > 0 ? (translatedCount / totalItems) * 100 : 0;
   const exactReviewWidth = totalItems > 0 ? (needsReviewCount / totalItems) * 100 : 0;
 
-  const showBar = part === 'all' || part === 'bar';
-  const showTrack = part === 'all' || part === 'stats' || part === 'track';
-  const showLegend = part === 'all' || part === 'stats' || part === 'legend';
+  const showBar = part === 'all' || part === 'bar' || part === 'barTrack';
+  const showTrack = part === 'all' || part === 'stats' || part === 'track' || part === 'barTrack';
+  const showLegend = part === 'all' || part === 'stats' || part === 'legend' || part === 'tableLegend';
   const showStatsBlock = showTrack || showLegend;
 
   return (
