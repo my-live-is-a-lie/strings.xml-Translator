@@ -223,28 +223,64 @@ const TableViewBase: React.FC<TableViewProps> = ({
     else if (delta > 4) setHeaderHidden(true);
     else if (delta < -4) setHeaderHidden(false);
 
-    const remainingBottom = root.scrollHeight - top - root.clientHeight;
-    const topSpacer = Array.from(root.querySelectorAll<HTMLElement>('[data-spacer="top"]')).find(
-      (el) => el.offsetParent !== null
-    );
-    const topSpace = topSpacer ? topSpacer.offsetHeight : 0;
-    const distanceFromLoadedTop = top - (topSpace + headerH);
-    if (remainingBottom < PRELOAD_PX && end < total) {
-      // Near the end: load more strings below and drop the oldest ones above
-      captureAnchor();
-      setWin((w) => {
-        const newEnd = Math.min(total, w.end + CHUNK);
-        const newStart = newEnd - w.start > MAX_RENDERED ? newEnd - MAX_RENDERED : w.start;
-        return { start: newStart, end: newEnd };
+    // Where the rendered strings begin and end, in scroll-content coordinates (spacers stand in for the rest)
+    const rootRect = root.getBoundingClientRect();
+    const visible = (kind: 'top' | 'bottom') =>
+      Array.from(root.querySelectorAll<HTMLElement>(`[data-spacer="${kind}"]`)).find((el) => el.offsetParent !== null);
+    const topSpacer = visible('top');
+    const bottomSpacer = visible('bottom');
+    if (!topSpacer || !bottomSpacer) return;
+    const renderedStartY = topSpacer.getBoundingClientRect().bottom - rootRect.top + top;
+    const renderedEndY = bottomSpacer.getBoundingClientRect().top - rootRect.top + top;
+    const viewTop = top;
+    const viewBottom = top + root.clientHeight;
+
+    // Scrolled far into the blank estimate (fast fling): jump the window to where the viewport is
+    const recenter = () => {
+      const heights = heightsRef.current;
+      let sum = 0;
+      heights.forEach((h) => {
+        sum += h;
       });
-    } else if (distanceFromLoadedTop < PRELOAD_PX && start > 0 && delta <= 0) {
-      // Back near the start of the loaded part: reload the earlier strings and drop the ones far below
-      captureAnchor();
-      setWin((w) => {
-        const newStart = Math.max(0, w.start - CHUNK);
-        const newEnd = w.end - newStart > MAX_RENDERED ? newStart + MAX_RENDERED : w.end;
-        return { start: newStart, end: newEnd };
-      });
+      const avg = heights.size ? sum / heights.size : EST_HEIGHT;
+      const target = Math.max(0, viewTop - headerH - 12);
+      let acc = 0;
+      let idx = 0;
+      while (idx < total - 1) {
+        const h = heights.get(filtered[idx].id) ?? avg;
+        if (acc + h > target) break;
+        acc += h;
+        idx += 1;
+      }
+      anchorRef.current = null;
+      const newStart = Math.max(0, Math.min(idx - 10, total - 1));
+      setWin({ start: newStart, end: Math.min(total, newStart + CHUNK + 10) });
+    };
+
+    if (viewBottom > renderedEndY - PRELOAD_PX && end < total) {
+      if (viewTop > renderedEndY) {
+        recenter();
+      } else {
+        // Near the end: load more strings below and drop the oldest ones above
+        captureAnchor();
+        setWin((w) => {
+          const newEnd = Math.min(total, w.end + CHUNK);
+          const newStart = newEnd - w.start > MAX_RENDERED ? newEnd - MAX_RENDERED : w.start;
+          return { start: newStart, end: newEnd };
+        });
+      }
+    } else if (viewTop < renderedStartY + PRELOAD_PX && start > 0 && delta <= 0) {
+      if (viewBottom < renderedStartY) {
+        recenter();
+      } else {
+        // Back near the start of the loaded part: reload the earlier strings and drop the ones far below
+        captureAnchor();
+        setWin((w) => {
+          const newStart = Math.max(0, w.start - CHUNK);
+          const newEnd = w.end - newStart > MAX_RENDERED ? newStart + MAX_RENDERED : w.end;
+          return { start: newStart, end: newEnd };
+        });
+      }
     }
   };
 
@@ -537,7 +573,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
         <div className="flex flex-wrap items-center gap-2">
           {/* Bulk Selection & AI Translation Controls */}
           {onBulkUpdateTranslations && (
-            <div className="flex items-center gap-1.5 text-xs">
+            <div className="flex w-full md:w-auto items-center gap-1.5 text-xs">
 {!isAr && (<button
                 id="table-sort-length-btn"
                 type="button"
@@ -584,34 +620,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
                     : `Select Untranslated (${filteredUntranslated.length})`}
                 </span>
               </button>
-              {isAr && (<button
-                id="table-sort-length-btn"
-                type="button"
-                onClick={cycleSort}
-                aria-pressed={sortMode !== 'none'}
-                className={`inline-flex items-center justify-center w-8 h-8 rounded-full transition cursor-pointer ${
-                  sortMode === 'none'
-                    ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 hover:bg-slate-200/80 dark:hover:bg-slate-700'
-                    : 'bg-[#D3E3FD] dark:bg-[#0842A0] text-[#0B57D0] dark:text-[#D3E3FD] ring-2 ring-[#0B57D0]/40 dark:ring-[#A8C7FA]/50 shadow-[0_0_10px_rgba(11,87,208,0.45)]'
-                }`}
-                title={
-                  sortMode === 'none'
-                    ? isAr ? 'فرز حسب الطول: معطّل' : 'Sort by length: off'
-                    : sortMode === 'asc'
-                      ? isAr ? 'الأقصر أولاً' : 'Shortest first'
-                      : isAr ? 'الأطول أولاً' : 'Longest first'
-                }
-                aria-label={isAr ? 'فرز حسب الطول' : 'Sort by length'}
-              >
-                {sortMode === 'asc' ? (
-                  <ArrowUpNarrowWide className="w-4 h-4" />
-                ) : sortMode === 'desc' ? (
-                  <ArrowDownWideNarrow className="w-4 h-4" />
-                ) : (
-                  <ArrowUpDown className="w-4 h-4" />
-                )}
-              </button>
-              )}
+
 
               {checkedIds.size > 0 && (
                 <button
@@ -643,6 +652,34 @@ const TableViewBase: React.FC<TableViewProps> = ({
                     </>
                   )}
                 </button>
+              )}
+              {isAr && (<button
+                id="table-sort-length-btn"
+                type="button"
+                onClick={cycleSort}
+                aria-pressed={sortMode !== 'none'}
+                className={`ms-auto inline-flex items-center justify-center w-8 h-8 rounded-full transition cursor-pointer ${
+                  sortMode === 'none'
+                    ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 hover:bg-slate-200/80 dark:hover:bg-slate-700'
+                    : 'bg-[#D3E3FD] dark:bg-[#0842A0] text-[#0B57D0] dark:text-[#D3E3FD] ring-2 ring-[#0B57D0]/40 dark:ring-[#A8C7FA]/50 shadow-[0_0_10px_rgba(11,87,208,0.45)]'
+                }`}
+                title={
+                  sortMode === 'none'
+                    ? isAr ? 'فرز حسب الطول: معطّل' : 'Sort by length: off'
+                    : sortMode === 'asc'
+                      ? isAr ? 'الأقصر أولاً' : 'Shortest first'
+                      : isAr ? 'الأطول أولاً' : 'Longest first'
+                }
+                aria-label={isAr ? 'فرز حسب الطول' : 'Sort by length'}
+              >
+                {sortMode === 'asc' ? (
+                  <ArrowUpNarrowWide className="w-4 h-4" />
+                ) : sortMode === 'desc' ? (
+                  <ArrowDownWideNarrow className="w-4 h-4" />
+                ) : (
+                  <ArrowUpDown className="w-4 h-4" />
+                )}
+              </button>
               )}
             </div>
           )}
