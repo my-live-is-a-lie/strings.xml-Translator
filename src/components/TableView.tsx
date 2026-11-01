@@ -546,7 +546,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
                 type="button"
                 onClick={cycleSort}
                 aria-pressed={sortMode !== 'none'}
-                className={`${isAr ? 'ms-auto ' : ''}inline-flex items-center justify-center w-8 h-8 rounded-full border-2 transition cursor-pointer ${
+                className={`${isAr ? 'ms-auto ' : ''}inline-grid place-items-center w-8 h-8 rounded-full border transition-colors duration-300 cursor-pointer ${
                   sortMode === 'none'
                     ? 'border-transparent bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 hover:bg-slate-200/80 dark:hover:bg-slate-700'
                     : 'bg-transparent border-current text-[#0B57D0] dark:text-[#D3E3FD]'
@@ -560,19 +560,30 @@ const TableViewBase: React.FC<TableViewProps> = ({
                 }
                 aria-label={isAr ? 'فرز حسب الطول' : 'Sort by length'}
               >
-                {sortMode === 'none' ? (
-                  <ArrowUpDown className="w-4 h-4" />
-                ) : (
-                  // One bold arrow: up = shortest first; it springs round to point down for longest first
-                  <ArrowUp
-                    className="w-5 h-5 opacity-70"
-                    strokeWidth={3}
-                    style={{
-                      transform: sortMode === 'desc' ? 'rotate(180deg)' : 'rotate(0deg)',
-                      transition: 'transform 520ms cubic-bezier(0.34, 1.7, 0.64, 1)',
-                    }}
-                  />
-                )}
+                {/* Both icons stay mounted so switching on/off springs one in and the other out */}
+                <ArrowUpDown
+                  className="col-start-1 row-start-1 w-4 h-4"
+                  style={{
+                    opacity: sortMode === 'none' ? 1 : 0,
+                    transform: sortMode === 'none' ? 'rotate(0deg) scale(1)' : 'rotate(90deg) scale(0.4)',
+                    transition: 'transform 450ms cubic-bezier(0.34, 1.7, 0.64, 1), opacity 250ms ease',
+                  }}
+                />
+                {/* One bold arrow: up = shortest first; it springs round to point down for longest first */}
+                <ArrowUp
+                  className="col-start-1 row-start-1 w-5 h-5"
+                  strokeWidth={3}
+                  style={{
+                    opacity: sortMode === 'none' ? 0 : 0.7,
+                    transform:
+                      sortMode === 'none'
+                        ? 'rotate(-90deg) scale(0.4)'
+                        : sortMode === 'desc'
+                          ? 'rotate(180deg) scale(1)'
+                          : 'rotate(0deg) scale(1)',
+                    transition: 'transform 520ms cubic-bezier(0.34, 1.7, 0.64, 1), opacity 250ms ease',
+                  }}
+                />
               </button>
   );
 
