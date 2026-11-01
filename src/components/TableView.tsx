@@ -2,7 +2,7 @@ import { SourceChangeBadge } from './SourceChangeDiff';
 import React, { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react';
 import { scrollItemIntoView } from '../utils/scrollToItem';
 import { ResourceItem, FilterStatus, SourceFilter, SingleStringItem } from '../types';
-import { Search, CheckCircle2, Circle, AlertCircle, Edit3, Check, Sparkles, CheckSquare, Square, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Search, CheckCircle2, Circle, AlertCircle, Edit3, Check, Sparkles, CheckSquare, Square, Loader2, ChevronDown, ChevronUp, ArrowUpDown, ArrowUpNarrowWide, ArrowDownWideNarrow } from 'lucide-react';
 import { bulkTranslateItems, withTranslationProvider } from '../utils/translator';
 import { BulkProviderModal, EXTERNAL_AI_PROVIDER_ID } from './BulkProviderModal';
 import { ExternalAiModal } from './ExternalAiModal';
@@ -78,10 +78,24 @@ const TableViewBase: React.FC<TableViewProps> = ({
 
   const quickFilters = useQuickFilters();
   const quickActive = quickFilters.active;
-  const filtered = useMemo(
-    () => applyQuickSnapshot(filterProjectItems(items, filter, search, sourceFilter as SourceFilter), quickFilters),
-    [items, filter, search, sourceFilter, quickFilters]
-  );
+  // Length sort: off -> shortest first -> longest first -> off
+  const [sortMode, setSortMode] = useState<'none' | 'asc' | 'desc'>('none');
+  const cycleSort = () => setSortMode((m) => (m === 'none' ? 'asc' : m === 'asc' ? 'desc' : 'none'));
+  const filtered = useMemo(() => {
+    const base = applyQuickSnapshot(filterProjectItems(items, filter, search, sourceFilter as SourceFilter), quickFilters);
+    if (sortMode === 'none') return base;
+    // Size of a string = its source text length plus the number of variants (plural forms / array elements)
+    const size = (it: ResourceItem) =>
+      it.type === 'string'
+        ? (it.source || '').length
+        : (it.items || []).reduce((n, v) => n + (v.source || '').length, 0);
+    const count = (it: ResourceItem) => (it.type === 'string' ? 1 : (it.items || []).length);
+    const dir = sortMode === 'asc' ? 1 : -1;
+    return base
+      .map((it, idx) => ({ it, idx, size: size(it), count: count(it) }))
+      .sort((a, b) => dir * (a.size - b.size || a.count - b.count) || a.idx - b.idx)
+      .map((x) => x.it);
+  }, [items, filter, search, sourceFilter, quickFilters, sortMode]);
 
   const total = filtered.length;
   const [win, setWin] = useState(() => {
@@ -103,7 +117,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only once, when the table opens
   }, []);
   // Back to the top of the list and closing the editor when the search or filters change (during render)
-  const viewKey = `${search}|${filter}|${sourceFilter}|${quickActive.join(',')}`;
+  const viewKey = `${search}|${filter}|${sourceFilter}|${quickActive.join(',')}|${sortMode}`;
   const [lastViewKey, setLastViewKey] = useState(viewKey);
   if (lastViewKey !== viewKey) {
     setLastViewKey(viewKey);
@@ -524,6 +538,33 @@ const TableViewBase: React.FC<TableViewProps> = ({
           {/* Bulk Selection & AI Translation Controls */}
           {onBulkUpdateTranslations && (
             <div className="flex items-center gap-1.5 text-xs">
+{!isAr && (<button
+                id="table-sort-length-btn"
+                type="button"
+                onClick={cycleSort}
+                aria-pressed={sortMode !== 'none'}
+                className={`inline-flex items-center justify-center w-8 h-8 rounded-full transition cursor-pointer ${
+                  sortMode === 'none'
+                    ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 hover:bg-slate-200/80 dark:hover:bg-slate-700'
+                    : 'bg-[#D3E3FD] dark:bg-[#0842A0] text-[#0B57D0] dark:text-[#D3E3FD] ring-2 ring-[#0B57D0]/40 dark:ring-[#A8C7FA]/50 shadow-[0_0_10px_rgba(11,87,208,0.45)]'
+                }`}
+                title={
+                  sortMode === 'none'
+                    ? isAr ? 'فرز حسب الطول: معطّل' : 'Sort by length: off'
+                    : sortMode === 'asc'
+                      ? isAr ? 'الأقصر أولاً' : 'Shortest first'
+                      : isAr ? 'الأطول أولاً' : 'Longest first'
+                }
+                aria-label={isAr ? 'فرز حسب الطول' : 'Sort by length'}
+              >
+                {sortMode === 'asc' ? (
+                  <ArrowUpNarrowWide className="w-4 h-4" />
+                ) : sortMode === 'desc' ? (
+                  <ArrowDownWideNarrow className="w-4 h-4" />
+                ) : (
+                  <ArrowUpDown className="w-4 h-4" />
+                )}
+              </button>)}
               <button
                 id="table-select-untranslated-btn"
                 type="button"
@@ -543,6 +584,34 @@ const TableViewBase: React.FC<TableViewProps> = ({
                     : `Select Untranslated (${filteredUntranslated.length})`}
                 </span>
               </button>
+              {isAr && (<button
+                id="table-sort-length-btn"
+                type="button"
+                onClick={cycleSort}
+                aria-pressed={sortMode !== 'none'}
+                className={`inline-flex items-center justify-center w-8 h-8 rounded-full transition cursor-pointer ${
+                  sortMode === 'none'
+                    ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 hover:bg-slate-200/80 dark:hover:bg-slate-700'
+                    : 'bg-[#D3E3FD] dark:bg-[#0842A0] text-[#0B57D0] dark:text-[#D3E3FD] ring-2 ring-[#0B57D0]/40 dark:ring-[#A8C7FA]/50 shadow-[0_0_10px_rgba(11,87,208,0.45)]'
+                }`}
+                title={
+                  sortMode === 'none'
+                    ? isAr ? 'فرز حسب الطول: معطّل' : 'Sort by length: off'
+                    : sortMode === 'asc'
+                      ? isAr ? 'الأقصر أولاً' : 'Shortest first'
+                      : isAr ? 'الأطول أولاً' : 'Longest first'
+                }
+                aria-label={isAr ? 'فرز حسب الطول' : 'Sort by length'}
+              >
+                {sortMode === 'asc' ? (
+                  <ArrowUpNarrowWide className="w-4 h-4" />
+                ) : sortMode === 'desc' ? (
+                  <ArrowDownWideNarrow className="w-4 h-4" />
+                ) : (
+                  <ArrowUpDown className="w-4 h-4" />
+                )}
+              </button>
+              )}
 
               {checkedIds.size > 0 && (
                 <button
