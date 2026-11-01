@@ -2,7 +2,7 @@ import { SourceChangeBadge } from './SourceChangeDiff';
 import React, { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react';
 import { scrollItemIntoView } from '../utils/scrollToItem';
 import { ResourceItem, FilterStatus, SourceFilter, SingleStringItem } from '../types';
-import { Search, CheckCircle2, Circle, AlertCircle, Edit3, Check, Sparkles, CheckSquare, Square, Loader2, ChevronDown, ChevronUp, ArrowUpDown, ArrowUpNarrowWide, ArrowDownWideNarrow } from 'lucide-react';
+import { Search, CheckCircle2, Circle, AlertCircle, Edit3, Check, Sparkles, CheckSquare, Square, Loader2, ChevronDown, ChevronUp, ArrowUpDown, ArrowUp } from 'lucide-react';
 import { bulkTranslateItems, withTranslationProvider } from '../utils/translator';
 import { BulkProviderModal, EXTERNAL_AI_PROVIDER_ID } from './BulkProviderModal';
 import { ExternalAiModal } from './ExternalAiModal';
@@ -540,6 +540,42 @@ const TableViewBase: React.FC<TableViewProps> = ({
       <Circle className="w-4 h-4 text-slate-300 dark:text-slate-600 mx-auto" />
     );
 
+  const sortButton = (
+    <button
+                id="table-sort-length-btn"
+                type="button"
+                onClick={cycleSort}
+                aria-pressed={sortMode !== 'none'}
+                className={`${isAr ? 'ms-auto ' : ''}inline-flex items-center justify-center w-8 h-8 rounded-full border-2 transition cursor-pointer ${
+                  sortMode === 'none'
+                    ? 'border-transparent bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 hover:bg-slate-200/80 dark:hover:bg-slate-700'
+                    : 'bg-transparent border-current text-[#0B57D0] dark:text-[#D3E3FD]'
+                }`}
+                title={
+                  sortMode === 'none'
+                    ? isAr ? 'فرز حسب الطول: معطّل' : 'Sort by length: off'
+                    : sortMode === 'asc'
+                      ? isAr ? 'الأقصر أولاً' : 'Shortest first'
+                      : isAr ? 'الأطول أولاً' : 'Longest first'
+                }
+                aria-label={isAr ? 'فرز حسب الطول' : 'Sort by length'}
+              >
+                {sortMode === 'none' ? (
+                  <ArrowUpDown className="w-4 h-4" />
+                ) : (
+                  // One bold arrow: up = shortest first; it springs round to point down for longest first
+                  <ArrowUp
+                    className="w-5 h-5 opacity-70"
+                    strokeWidth={3}
+                    style={{
+                      transform: sortMode === 'desc' ? 'rotate(180deg)' : 'rotate(0deg)',
+                      transition: 'transform 520ms cubic-bezier(0.34, 1.7, 0.64, 1)',
+                    }}
+                  />
+                )}
+              </button>
+  );
+
   return (
     <div ref={tableRootRef} className="flex flex-col h-full bg-[#F8F9FA] dark:bg-[#111318] overflow-hidden">
       {externalAiOpen && (
@@ -591,33 +627,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
           {/* Bulk Selection & AI Translation Controls */}
           {onBulkUpdateTranslations && (
             <div className="flex w-full md:w-auto items-center gap-1.5 text-xs">
-{!isAr && (<button
-                id="table-sort-length-btn"
-                type="button"
-                onClick={cycleSort}
-                aria-pressed={sortMode !== 'none'}
-                className={`inline-flex items-center justify-center w-8 h-8 rounded-full transition cursor-pointer ${
-                  sortMode === 'none'
-                    ? 'border-transparent bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 hover:bg-slate-200/80 dark:hover:bg-slate-700'
-                    : 'bg-transparent border-current text-[#0B57D0] dark:text-[#D3E3FD] shadow-[0_0_8px_currentColor]'
-                }`}
-                title={
-                  sortMode === 'none'
-                    ? isAr ? 'فرز حسب الطول: معطّل' : 'Sort by length: off'
-                    : sortMode === 'asc'
-                      ? isAr ? 'الأقصر أولاً' : 'Shortest first'
-                      : isAr ? 'الأطول أولاً' : 'Longest first'
-                }
-                aria-label={isAr ? 'فرز حسب الطول' : 'Sort by length'}
-              >
-                {sortMode === 'asc' ? (
-                  <ArrowUpNarrowWide className="w-4 h-4 opacity-70" />
-                ) : sortMode === 'desc' ? (
-                  <ArrowDownWideNarrow className="w-4 h-4 opacity-70" />
-                ) : (
-                  <ArrowUpDown className="w-4 h-4" />
-                )}
-              </button>)}
+              {!isAr && sortButton}
               <button
                 id="table-select-untranslated-btn"
                 type="button"
@@ -670,34 +680,8 @@ const TableViewBase: React.FC<TableViewProps> = ({
                   )}
                 </button>
               )}
-              {isAr && (<button
-                id="table-sort-length-btn"
-                type="button"
-                onClick={cycleSort}
-                aria-pressed={sortMode !== 'none'}
-                className={`ms-auto inline-flex items-center justify-center w-8 h-8 rounded-full border-2 transition cursor-pointer ${
-                  sortMode === 'none'
-                    ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 hover:bg-slate-200/80 dark:hover:bg-slate-700'
-                    : 'bg-transparent border-current text-[#0B57D0] dark:text-[#D3E3FD] shadow-[0_0_8px_currentColor]'
-                }`}
-                title={
-                  sortMode === 'none'
-                    ? isAr ? 'فرز حسب الطول: معطّل' : 'Sort by length: off'
-                    : sortMode === 'asc'
-                      ? isAr ? 'الأقصر أولاً' : 'Shortest first'
-                      : isAr ? 'الأطول أولاً' : 'Longest first'
-                }
-                aria-label={isAr ? 'فرز حسب الطول' : 'Sort by length'}
-              >
-                {sortMode === 'asc' ? (
-                  <ArrowUpNarrowWide className="w-4 h-4" />
-                ) : sortMode === 'desc' ? (
-                  <ArrowDownWideNarrow className="w-4 h-4" />
-                ) : (
-                  <ArrowUpDown className="w-4 h-4" />
-                )}
-              </button>
-              )}
+              {isAr && sortButton}
+              
             </div>
           )}
 
