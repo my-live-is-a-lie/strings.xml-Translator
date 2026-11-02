@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import {
   Search,
   X,
@@ -87,9 +87,11 @@ const StringListBase: React.FC<StringListProps> = ({
       }
       return next;
     });
-  // Filters + summary follow the finger: they slide away in step with the list scrolling down and come back
-  // in step with scrolling up (a collapsing header). Driven straight on the DOM, no re-render per scroll event.
-  const collapseWrapRef = useRef<HTMLDivElement>(null);
+  // Collapsing header: the header floats over the list and is translated up in step with the list scrolling, so the
+  // first strings push it away (and pull it back when scrolling up) instead of sliding underneath it.
+  // Driven straight on the DOM: no re-render per scroll event, and the list is never resized or re-scrolled.
+  const listRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
   const collapseInnerRef = useRef<HTMLDivElement>(null);
   const collapseOffsetRef = useRef(0);
   const collapseHeightRef = useRef(0);
@@ -97,35 +99,33 @@ const StringListBase: React.FC<StringListProps> = ({
   const lastDirRef = useRef(0);
   const snapTimerRef = useRef<number | undefined>(undefined);
   const applyCollapse = useCallback((offset: number, animate: boolean) => {
-    const wrap = collapseWrapRef.current;
-    const inner = collapseInnerRef.current;
-    if (!wrap || !inner) return;
-    const h = collapseHeightRef.current;
-    const o = Math.max(0, Math.min(h, offset));
+    const header = headerRef.current;
+    if (!header) return;
+    const o = Math.max(0, Math.min(collapseHeightRef.current, offset));
     collapseOffsetRef.current = o;
-    const t = animate ? 'height 220ms cubic-bezier(0.22, 1, 0.36, 1), transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease' : 'none';
-    wrap.style.transition = t;
-    inner.style.transition = t;
-    if (o <= 0) {
-      wrap.style.height = '';
-      inner.style.transform = '';
-      inner.style.opacity = '';
-    } else {
-      wrap.style.height = `${h - o}px`;
-      inner.style.transform = `translateY(${-o}px)`;
-      inner.style.opacity = String(Math.max(0, 1 - (o / h) * 1.2));
-    }
+    header.style.transition = animate ? 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)' : 'none';
+    header.style.transform = o > 0 ? `translate3d(0, ${-o}px, 0)` : '';
   }, []);
-  useEffect(() => {
+  useLayoutEffect(() => {
+    const header = headerRef.current;
     const inner = collapseInnerRef.current;
-    if (!inner) return;
-    collapseHeightRef.current = inner.offsetHeight;
-    if (typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(() => {
+    if (!header || !inner) return;
+    const measure = () => {
       collapseHeightRef.current = inner.offsetHeight;
-      // the natural height changed (summary card folded, filter chips wrapped...): re-fit the current offset
-      if (collapseOffsetRef.current > 0) applyCollapse(Math.min(collapseOffsetRef.current, inner.offsetHeight), false);
-    });
+      const h = header.offsetHeight;
+      // the list starts below the floating header
+      const list = listRef.current;
+      if (list) {
+        list.style.paddingTop = `${h + 8}px`;
+        list.style.scrollPaddingTop = `${h + 8}px`;
+      }
+      // the natural height changed (summary card folded, chips wrapped...): keep the offset within range
+      if (collapseOffsetRef.current > 0) applyCollapse(collapseOffsetRef.current, false);
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(header);
     ro.observe(inner);
     return () => ro.disconnect();
   }, [applyCollapse]);
@@ -204,7 +204,6 @@ const StringListBase: React.FC<StringListProps> = ({
   }
 
   // Show the string being translated: centre it when the list opens, keep it visible as the selection moves.
-  const listRef = useRef<HTMLDivElement>(null);
   const firstScrollDone = useRef(false);
   useEffect(() => {
     if (!selectedId || !listRef.current) return;
@@ -224,19 +223,19 @@ const StringListBase: React.FC<StringListProps> = ({
     const delta = top - lastScrollTopRef.current;
     lastScrollTopRef.current = top;
     if (delta !== 0) lastDirRef.current = delta;
-    const atBottom = target.scrollTop + target.clientHeight >= target.scrollHeight - 1;
-    // Hiding the block makes the list taller, which can clamp scrollTop at the very end: that is not a scroll up
-    if (!(atBottom && delta < 0)) {
-      applyCollapse(top <= 0 ? 0 : collapseOffsetRef.current + delta, false);
-    }
-    // When the finger lifts and the list settles, finish the slide in the direction it was going
+    // The header moves exactly as far as the list does. It can never be further up than the list has scrolled,
+    // otherwise a blank gap would open between it and the first string.
+    const limit = Math.min(collapseHeightRef.current, top);
+    applyCollapse(top <= 0 ? 0 : Math.min(limit, collapseOffsetRef.current + delta), false);
+    // When the list settles, finish the slide in the direction it was going
     window.clearTimeout(snapTimerRef.current);
     snapTimerRef.current = window.setTimeout(() => {
       const h = collapseHeightRef.current;
       const o = collapseOffsetRef.current;
-      if (o <= 0 || o >= h) return;
+      const reach = Math.min(h, lastScrollTopRef.current);
+      if (o <= 0 || o >= reach) return;
       const dir = lastDirRef.current;
-      applyCollapse(dir > 0 ? h : dir < 0 ? 0 : o > h / 2 ? h : 0, true);
+      applyCollapse(dir < 0 ? 0 : dir > 0 ? reach : o > reach / 2 ? reach : 0, true);
     }, 140);
   }, [filteredItems.length, applyCollapse]);
 
@@ -307,7 +306,7 @@ const StringListBase: React.FC<StringListProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-[#131314] border-e border-slate-200/80 dark:border-slate-800/80 select-none">
+    <div className="relative flex flex-col h-full overflow-hidden bg-white dark:bg-[#131314] border-e border-slate-200/80 dark:border-slate-800/80 select-none">
       {externalAiOpen && (
         <ExternalAiModal
           items={items.filter((i) => checkedIds.has(i.id))}
@@ -331,7 +330,11 @@ const StringListBase: React.FC<StringListProps> = ({
         />
       )}
       {/* Search & Filter Header */}
-      <div className="p-3.5 border-b border-slate-100 dark:border-slate-800/80">
+      <div
+        ref={headerRef}
+        className="absolute top-0 inset-x-0 z-10 p-3.5 border-b border-slate-100 dark:border-slate-800/80 bg-white dark:bg-[#131314] will-change-transform"
+      >
+        <div ref={collapseInnerRef}>
         {!hideSearch && (
           <div className="mb-2.5">
         {/* M3 Search Bar */}
@@ -360,8 +363,8 @@ const StringListBase: React.FC<StringListProps> = ({
         )}
 
         {/* Chips + summary slide away while the list is scrolled down */}
-        <div ref={collapseWrapRef} className="overflow-hidden">
-          <div ref={collapseInnerRef} className="will-change-transform">
+        <div>
+          <div>
             <div className="space-y-2.5 pb-2.5">
         {/* Quick filters (desktop; the mobile bar has its own button) */}
         <div className="hidden md:flex flex-col gap-1.5 text-xs">
@@ -693,6 +696,7 @@ const StringListBase: React.FC<StringListProps> = ({
         </div>
             </div>
           </div>
+        </div>
         </div>
 
         {/* Bulk Selection & AI Translation Bar */}

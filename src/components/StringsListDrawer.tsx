@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { X, Search } from 'lucide-react';
 import { StringList } from './StringList';
 import { inlineSign } from '../utils/direction';
@@ -51,6 +51,8 @@ const StringsListDrawerBase: React.FC<StringsListDrawerProps> = ({
   const isDraggingRef = useRef(false);
   const currentDeltaXRef = useRef(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  // 'h' = horizontal swipe (closes the drawer), 'v' = vertical scroll (never moves the drawer); decided once per touch
+  const gestureRef = useRef<'h' | 'v' | null>(null);
   // The search field lives in the header: an icon that opens a bar over the title
   const [searchOpen, setSearchOpen] = useState(false);
   // When the drawer opens with a search already active, show the bar (adjusted during render)
@@ -59,26 +61,8 @@ const StringsListDrawerBase: React.FC<StringsListDrawerProps> = ({
     setWasOpen(isOpen);
     if (isOpen) setSearchOpen(searchQuery !== '');
   }
-  useEffect(() => {
-    if (searchOpen) searchInputRef.current?.focus();
-  }, [searchOpen]);
 
-  if (!isOpen) return null;
-
-  const isRtl = inlineSign() === 1;
-  // X while searching: clears the text first, a second press closes the bar
-  const handleCloseButton = () => {
-    if (!searchOpen) {
-      handleDismiss();
-    } else if (searchQuery) {
-      onSearchChange('');
-      searchInputRef.current?.focus();
-    } else {
-      setSearchOpen(false);
-    }
-  };
-
-  const handleDismiss = () => {
+  const handleDismiss = useCallback(() => {
     if (asideRef.current) {
       asideRef.current.style.transition = 'transform 0.18s cubic-bezier(0.16, 1, 0.3, 1)';
       asideRef.current.style.transform = `translateX(${-100 * inlineSign()}%)`;
@@ -90,6 +74,34 @@ const StringsListDrawerBase: React.FC<StringsListDrawerProps> = ({
     setTimeout(() => {
       onClose();
     }, 160);
+  }, [onClose]);
+  const handleSelect = useCallback(
+    (id: string) => {
+      onSelect(id);
+      handleDismiss();
+    },
+    [onSelect, handleDismiss]
+  );
+
+  if (!isOpen) return null;
+
+  const isRtl = inlineSign() === 1;
+  // Focus inside the tap itself so the keyboard comes up with the bar instead of a beat later
+  const openSearch = () => {
+    searchInputRef.current?.focus({ preventScroll: true });
+    setSearchOpen(true);
+  };
+  // X while searching: clears the text first, a second press closes the bar (and the keyboard with it)
+  const handleCloseButton = () => {
+    if (!searchOpen) {
+      handleDismiss();
+    } else if (searchQuery) {
+      onSearchChange('');
+      searchInputRef.current?.focus({ preventScroll: true });
+    } else {
+      searchInputRef.current?.blur();
+      setSearchOpen(false);
+    }
   };
 
   return (
@@ -114,6 +126,7 @@ const StringsListDrawerBase: React.FC<StringsListDrawerProps> = ({
             };
             isDraggingRef.current = false;
             currentDeltaXRef.current = 0;
+            gestureRef.current = null;
           }
         }}
         onTouchMove={(e) => {
@@ -121,6 +134,14 @@ const StringsListDrawerBase: React.FC<StringsListDrawerProps> = ({
           const touch = e.touches[0];
           const deltaX = touch.clientX - touchStartRef.current.x;
           const deltaY = touch.clientY - touchStartRef.current.y;
+
+          // Decide the gesture once, from the first real movement: mostly sideways = swipe to close,
+          // anything else = scrolling the list, which must never drag the drawer
+          if (gestureRef.current === null) {
+            if (Math.abs(deltaX) < 10 && Math.abs(deltaY) < 10) return;
+            gestureRef.current = Math.abs(deltaX) > Math.abs(deltaY) * 2 ? 'h' : 'v';
+          }
+          if (gestureRef.current === 'v') return;
 
           // Only track movement towards the drawer's own edge
           // (leftward in LTR, rightward in RTL); `shift` is negative in that direction.
@@ -160,7 +181,7 @@ const StringsListDrawerBase: React.FC<StringsListDrawerProps> = ({
           const isSmallSwipe = shiftEnd < -22;
           const isHorizontal = Math.abs(deltaX) > Math.abs(deltaY) * 0.35;
 
-          if ((isQuickFlick || isSmallSwipe) && isHorizontal) {
+          if ((isQuickFlick || isSmallSwipe) && isHorizontal && gestureRef.current === 'h') {
             handleDismiss();
           } else {
             // Snap back open
@@ -177,6 +198,7 @@ const StringsListDrawerBase: React.FC<StringsListDrawerProps> = ({
           touchStartRef.current = null;
           isDraggingRef.current = false;
           currentDeltaXRef.current = 0;
+          gestureRef.current = null;
         }}
         onTouchCancel={() => {
           if (asideRef.current) {
@@ -190,6 +212,7 @@ const StringsListDrawerBase: React.FC<StringsListDrawerProps> = ({
           touchStartRef.current = null;
           isDraggingRef.current = false;
           currentDeltaXRef.current = 0;
+          gestureRef.current = null;
         }}
         className="relative w-72 sm:w-80 max-w-[85vw] h-dvh max-h-dvh overflow-hidden bg-white dark:bg-[#161922] border-e border-slate-200 dark:border-[#252C3A] shadow-2xl z-10 flex flex-col animate-in slide-in-from-left rtl:slide-in-from-right duration-200 touch-pan-y will-change-transform"
       >
@@ -205,7 +228,7 @@ const StringsListDrawerBase: React.FC<StringsListDrawerProps> = ({
           </span>
           <div className="flex items-center gap-1">
             <button
-              onClick={() => setSearchOpen(true)}
+              onClick={openSearch}
               className="w-8 h-8 inline-flex items-center justify-center rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#202634] transition cursor-pointer"
               style={{ opacity: searchOpen ? 0 : 1, pointerEvents: searchOpen ? 'none' : 'auto' }}
               tabIndex={searchOpen ? -1 : 0}
@@ -235,15 +258,18 @@ const StringsListDrawerBase: React.FC<StringsListDrawerProps> = ({
             </button>
           </div>
 
-          {/* Search bar: grows out of the icon and covers the title */}
+          {/* Search bar: revealed from the icon outwards (clip, so the text is never squished) and covers the title */}
           <div
-            className="absolute bottom-2.5 h-9 start-3 end-12 flex items-center rounded-full bg-slate-100 dark:bg-slate-800/80 px-3.5 ring-1 ring-slate-200/60 dark:ring-slate-700/60 focus-within:ring-2 focus-within:ring-[#0B57D0] dark:focus-within:ring-[#A8C7FA]"
+            className="absolute bottom-2.5 h-9 start-3 end-12 flex items-center rounded-full bg-slate-100 dark:bg-slate-800/80 px-3.5 ring-1 ring-slate-200/60 dark:ring-slate-700/60 focus-within:ring-2 focus-within:ring-[#0B57D0] dark:focus-within:ring-[#A8C7FA] will-change-[clip-path,opacity]"
             style={{
               opacity: searchOpen ? 1 : 0,
               pointerEvents: searchOpen ? 'auto' : 'none',
-              transform: searchOpen ? 'scaleX(1)' : 'scaleX(0.15)',
-              transformOrigin: isRtl ? 'left center' : 'right center',
-              transition: 'transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease',
+              clipPath: searchOpen
+                ? 'inset(0 0 0 0 round 999px)'
+                : isRtl
+                  ? 'inset(0 88% 0 0 round 999px)'
+                  : 'inset(0 0 0 88% round 999px)',
+              transition: 'clip-path 240ms cubic-bezier(0.22, 1, 0.36, 1), opacity 140ms ease-out',
             }}
             aria-hidden={!searchOpen}
           >
@@ -265,10 +291,7 @@ const StringsListDrawerBase: React.FC<StringsListDrawerProps> = ({
           <StringList
             items={items}
             selectedId={selectedId}
-            onSelect={(id) => {
-              onSelect(id);
-              handleDismiss();
-            }}
+            onSelect={handleSelect}
             searchQuery={searchQuery}
             onSearchChange={onSearchChange}
             filterStatus={filterStatus}
