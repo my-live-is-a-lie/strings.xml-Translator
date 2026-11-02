@@ -87,10 +87,49 @@ const StringListBase: React.FC<StringListProps> = ({
       }
       return next;
     });
-  // Filters + summary slide away when the list is scrolled down and come back when it is scrolled up
-  const [filtersHidden, setFiltersHidden] = useState(false);
+  // Filters + summary follow the finger: they slide away in step with the list scrolling down and come back
+  // in step with scrolling up (a collapsing header). Driven straight on the DOM, no re-render per scroll event.
+  const collapseWrapRef = useRef<HTMLDivElement>(null);
+  const collapseInnerRef = useRef<HTMLDivElement>(null);
+  const collapseOffsetRef = useRef(0);
+  const collapseHeightRef = useRef(0);
   const lastScrollTopRef = useRef(0);
-  const scrollLockUntilRef = useRef(0);
+  const lastDirRef = useRef(0);
+  const snapTimerRef = useRef<number | undefined>(undefined);
+  const applyCollapse = useCallback((offset: number, animate: boolean) => {
+    const wrap = collapseWrapRef.current;
+    const inner = collapseInnerRef.current;
+    if (!wrap || !inner) return;
+    const h = collapseHeightRef.current;
+    const o = Math.max(0, Math.min(h, offset));
+    collapseOffsetRef.current = o;
+    const t = animate ? 'height 220ms cubic-bezier(0.22, 1, 0.36, 1), transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease' : 'none';
+    wrap.style.transition = t;
+    inner.style.transition = t;
+    if (o <= 0) {
+      wrap.style.height = '';
+      inner.style.transform = '';
+      inner.style.opacity = '';
+    } else {
+      wrap.style.height = `${h - o}px`;
+      inner.style.transform = `translateY(${-o}px)`;
+      inner.style.opacity = String(Math.max(0, 1 - (o / h) * 1.2));
+    }
+  }, []);
+  useEffect(() => {
+    const inner = collapseInnerRef.current;
+    if (!inner) return;
+    collapseHeightRef.current = inner.offsetHeight;
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      collapseHeightRef.current = inner.offsetHeight;
+      // the natural height changed (summary card folded, filter chips wrapped...): re-fit the current offset
+      if (collapseOffsetRef.current > 0) applyCollapse(Math.min(collapseOffsetRef.current, inner.offsetHeight), false);
+    });
+    ro.observe(inner);
+    return () => ro.disconnect();
+  }, [applyCollapse]);
+  useEffect(() => () => window.clearTimeout(snapTimerRef.current), []);
 
   const qaSummary = useMemo(() => analyzeProjectQa(items), [items]);
 
@@ -181,22 +220,25 @@ const StringListBase: React.FC<StringListProps> = ({
       setDisplayLimit((prev) => (prev < filteredItems.length ? Math.min(filteredItems.length, prev + 30) : prev));
     }
 
-    const top = target.scrollTop;
+    const top = Math.max(0, target.scrollTop);
     const delta = top - lastScrollTopRef.current;
     lastScrollTopRef.current = top;
-    // While the block is sliding, the list resizes and the browser may nudge scrollTop: ignore those events
-    if (Date.now() < scrollLockUntilRef.current) return;
-    const toggle = (hidden: boolean) => {
-      setFiltersHidden((prev) => {
-        if (prev === hidden) return prev;
-        scrollLockUntilRef.current = Date.now() + 320;
-        return hidden;
-      });
-    };
-    if (top <= 8) toggle(false);
-    else if (delta > 6) toggle(true);
-    else if (delta < -6) toggle(false);
-  }, [filteredItems.length]);
+    if (delta !== 0) lastDirRef.current = delta;
+    const atBottom = target.scrollTop + target.clientHeight >= target.scrollHeight - 1;
+    // Hiding the block makes the list taller, which can clamp scrollTop at the very end: that is not a scroll up
+    if (!(atBottom && delta < 0)) {
+      applyCollapse(top <= 0 ? 0 : collapseOffsetRef.current + delta, false);
+    }
+    // When the finger lifts and the list settles, finish the slide in the direction it was going
+    window.clearTimeout(snapTimerRef.current);
+    snapTimerRef.current = window.setTimeout(() => {
+      const h = collapseHeightRef.current;
+      const o = collapseOffsetRef.current;
+      if (o <= 0 || o >= h) return;
+      const dir = lastDirRef.current;
+      applyCollapse(dir > 0 ? h : dir < 0 ? 0 : o > h / 2 ? h : 0, true);
+    }, 140);
+  }, [filteredItems.length, applyCollapse]);
 
   const filteredUntranslated = filteredItems.filter((i) => i.status === 'untranslated');
   const allFilteredUntranslatedSelected =
@@ -318,16 +360,8 @@ const StringListBase: React.FC<StringListProps> = ({
         )}
 
         {/* Chips + summary slide away while the list is scrolled down */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateRows: filtersHidden ? '0fr' : '1fr',
-            opacity: filtersHidden ? 0 : 1,
-            transition: 'grid-template-rows 280ms cubic-bezier(0.22, 1, 0.36, 1), opacity 200ms ease',
-          }}
-          aria-hidden={filtersHidden}
-        >
-          <div className="overflow-hidden min-h-0">
+        <div ref={collapseWrapRef} className="overflow-hidden">
+          <div ref={collapseInnerRef} className="will-change-transform">
             <div className="space-y-2.5 pb-2.5">
         {/* Quick filters (desktop; the mobile bar has its own button) */}
         <div className="hidden md:flex flex-col gap-1.5 text-xs">
@@ -724,7 +758,7 @@ const StringListBase: React.FC<StringListProps> = ({
       </div>
 
       {/* String Items List */}
-      <div ref={listRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-2 space-y-1">
+      <div ref={listRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-2 space-y-1" style={{ overflowAnchor: 'none' }}>
         {filteredItems.length === 0 ? (
           <div className="py-12 px-4 text-center text-xs text-slate-600 dark:text-slate-400 space-y-1.5">
             <p className="font-medium text-slate-700 dark:text-slate-300">
@@ -767,18 +801,6 @@ const StringListBase: React.FC<StringListProps> = ({
           )}
         </>
       )}
-      </div>
-
-      {/* Footer count indicator */}
-      <div className="px-4 py-2 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/50 text-[11px] text-slate-600 dark:text-slate-400 flex items-center justify-between">
-        <span className="tabular-nums">
-          {isAr
-            ? `عرض ${Math.min(displayLimit, filteredItems.length)} من ${filteredItems.length}${filteredItems.length !== items.length ? ` (الإجمالي ${items.length})` : ''}`
-            : `Showing ${Math.min(displayLimit, filteredItems.length)} of ${filteredItems.length}${filteredItems.length !== items.length ? ` (Total ${items.length})` : ''}`}
-        </span>
-        <span className="font-mono text-[10px] text-slate-600 dark:text-slate-400">
-          {isAr ? 'Ctrl+↵ حفظ' : 'Ctrl+↵ Save'}
-        </span>
       </div>
     </div>
   );

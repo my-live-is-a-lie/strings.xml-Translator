@@ -15,7 +15,19 @@ function isLandscapePhone(): boolean {
 export function useLandscapePhone(): boolean {
   const [match, setMatch] = useState<boolean>(isLandscapePhone);
   useEffect(() => {
-    const update = () => setMatch(isLandscapePhone());
+    let lastWidth = window.innerWidth;
+    const update = () => {
+      // The on-screen keyboard shrinks the height but not the width: while a text field is focused and the width is
+      // unchanged, keep the current layout. Otherwise a small preview pane flips to "landscape" the moment the
+      // keyboard opens, which remounts the layout and closes whatever the person was opening (e.g. the search bar).
+      const el = document.activeElement as HTMLElement | null;
+      const typingNow =
+        !!el && (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && !['checkbox', 'radio'].includes((el as HTMLInputElement).type)));
+      const width = window.innerWidth;
+      if (typingNow && width === lastWidth) return;
+      lastWidth = width;
+      setMatch(isLandscapePhone());
+    };
     update();
     // some WebViews only report the new size a moment after the rotation, so listen to every signal
     window.addEventListener('resize', update);
