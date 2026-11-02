@@ -46,8 +46,8 @@ export const EditorActionButtons: React.FC<EditorActionButtonsProps> = ({
   const [row1, row1h] = useResizablePair('editor_buttons_row1_ratio_v1');
   const [row2, row2h] = useResizablePair('editor_buttons_row2_ratio_v1');
   const c = compact
-    ? { sq: 'w-8 h-8', h: 'h-8' }
-    : { sq: 'w-9.5 sm:w-10 h-9.5 sm:h-10', h: 'h-9.5 sm:h-10' };
+    ? { sq: 'w-[calc(2rem_+_var(--ex,0px))] h-8', h: 'h-8' }
+    : { sq: 'w-[calc(2.375rem_+_var(--ex,0px))] sm:w-[calc(2.5rem_+_var(--ex,0px))] h-9.5 sm:h-10', h: 'h-9.5 sm:h-10' };
   return (
     <div className={`${compact ? 'px-2 py-1.5' : 'px-3 sm:px-4 py-2.5 sm:py-3'} bg-slate-50 dark:bg-[#131720] border-t border-slate-200 dark:border-[#232936] ${compact ? 'space-y-1.5' : 'space-y-2'}`}>
       {/* Row 1: Quick delete & Skip button on left, "حفظ ومتابعة" on right */}
@@ -58,9 +58,17 @@ export const EditorActionButtons: React.FC<EditorActionButtonsProps> = ({
           <button
             id="weblate-quick-delete-btn"
             type="button"
+            ref={row1h.setIcon}
+            onPointerDown={(e) => row1h.onDown('I', e)}
+            onPointerMove={row1h.onMove}
+            onPointerUp={row1h.onUp}
+            onPointerCancel={row1h.onUp}
+            onClickCapture={row1h.onClickCapture}
+            onContextMenu={(e) => e.preventDefault()}
+            style={{ ...RESIZE_STYLE, ['--ex' as string]: `${row1.iconExtra}px` }}
             onClick={onClear}
             title={isAr ? 'مسح حقل الترجمة' : 'Clear translation field'}
-            className={`${c.sq} rounded-full bg-slate-100 hover:bg-rose-100 active:bg-rose-200 dark:bg-[#1C2330] dark:hover:bg-rose-950/40 dark:active:bg-rose-900/60 border border-slate-300 hover:border-rose-300 dark:border-[#2B3545] dark:hover:border-rose-800/60 text-slate-600 hover:text-rose-600 dark:text-slate-300 dark:hover:text-rose-400 flex items-center justify-center shrink-0 transition cursor-pointer shadow-xs group`}
+            className={`${c.sq} rounded-full bg-slate-100 hover:bg-rose-100 active:bg-rose-200 dark:bg-[#1C2330] dark:hover:bg-rose-950/40 dark:active:bg-rose-900/60 border border-slate-300 hover:border-rose-300 dark:border-[#2B3545] dark:hover:border-rose-800/60 text-slate-600 hover:text-rose-600 dark:text-slate-300 dark:hover:text-rose-400 flex items-center justify-center shrink-0 max-w-[45%] transition-colors cursor-pointer shadow-xs group ${row1.activeSide === 'I' ? ACTIVE_CLASS : ''}`}
           >
             <Trash2 className="w-4 h-4 group-hover:scale-110 transition-transform" />
           </button>
@@ -71,7 +79,7 @@ export const EditorActionButtons: React.FC<EditorActionButtonsProps> = ({
             ref={row1h.setBtnA}
             type="button"
             onPointerDown={(e) => row1h.onDown('A', e)}
-            onPointerMove={(e) => row1h.onMove('A', e)}
+            onPointerMove={row1h.onMove}
             onPointerUp={row1h.onUp}
             onPointerCancel={row1h.onUp}
             onClickCapture={row1h.onClickCapture}
@@ -91,7 +99,7 @@ export const EditorActionButtons: React.FC<EditorActionButtonsProps> = ({
           ref={row1h.setBtnB}
           type="button"
           onPointerDown={(e) => row1h.onDown('B', e)}
-            onPointerMove={(e) => row1h.onMove('B', e)}
+            onPointerMove={row1h.onMove}
             onPointerUp={row1h.onUp}
             onPointerCancel={row1h.onUp}
             onClickCapture={row1h.onClickCapture}
@@ -111,13 +119,21 @@ export const EditorActionButtons: React.FC<EditorActionButtonsProps> = ({
           <button
             id="editor-switch-lang-btn"
             type="button"
+            ref={row2h.setIcon}
+            onPointerDown={(e) => row2h.onDown('I', e)}
+            onPointerMove={row2h.onMove}
+            onPointerUp={row2h.onUp}
+            onPointerCancel={row2h.onUp}
+            onClickCapture={row2h.onClickCapture}
+            onContextMenu={(e) => e.preventDefault()}
+            style={{ ...RESIZE_STYLE, ['--ex' as string]: `${row2.iconExtra}px` }}
             onClick={onOpenLanguageModal}
             title={
               isAr
                 ? `تغيير لغة الترجمة المستهدفة (${getArabicLanguageName(targetLang, targetLocaleName)} / values-${targetLang})`
                 : `Switch target language (${getLanguageOption(targetLang).name} / values-${targetLang})`
             }
-            className={`${c.sq} rounded-full bg-slate-100 hover:bg-slate-200 active:bg-slate-300 dark:bg-[#1C2330] dark:hover:bg-[#252E3E] dark:active:bg-[#2C374A] border border-slate-300 dark:border-[#2B3545] text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex items-center justify-center shrink-0 transition cursor-pointer shadow-xs group`}
+            className={`${c.sq} rounded-full bg-slate-100 hover:bg-slate-200 active:bg-slate-300 dark:bg-[#1C2330] dark:hover:bg-[#252E3E] dark:active:bg-[#2C374A] border border-slate-300 dark:border-[#2B3545] text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex items-center justify-center shrink-0 max-w-[45%] transition-colors cursor-pointer shadow-xs group ${row2.activeSide === 'I' ? ACTIVE_CLASS : ''}`}
           >
             <Globe className="w-4 h-4 group-hover:rotate-12 transition-transform" />
           </button>
@@ -127,7 +143,7 @@ export const EditorActionButtons: React.FC<EditorActionButtonsProps> = ({
             ref={row2h.setBtnA}
             type="button"
             onPointerDown={(e) => row2h.onDown('A', e)}
-            onPointerMove={(e) => row2h.onMove('A', e)}
+            onPointerMove={row2h.onMove}
             onPointerUp={row2h.onUp}
             onPointerCancel={row2h.onUp}
             onClickCapture={row2h.onClickCapture}
@@ -156,7 +172,7 @@ export const EditorActionButtons: React.FC<EditorActionButtonsProps> = ({
           ref={row2h.setBtnB}
           type="button"
           onPointerDown={(e) => row2h.onDown('B', e)}
-            onPointerMove={(e) => row2h.onMove('B', e)}
+            onPointerMove={row2h.onMove}
             onPointerUp={row2h.onUp}
             onPointerCancel={row2h.onUp}
             onClickCapture={row2h.onClickCapture}
