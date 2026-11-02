@@ -9,6 +9,7 @@ import {
   toggleQuickFilterBar,
   useQuickFilters,
 } from '../utils/quickFilters';
+import { useT } from '../i18n/i18n';
 
 const LABELS: Record<QuickFilterId, { ar: string; en: string }> = {
   new: { ar: 'جديد', en: 'New' },
@@ -30,9 +31,9 @@ interface BarProps extends Props {
 }
 
 /** Toggle button; shows how many filters are active. */
-export const QuickFilterButton: React.FC<Props> = ({ appLang, className = '' }) => {
+export const QuickFilterButton: React.FC<Props> = ({ appLang: _appLang, className = '' }) => {
+  const { t } = useT();
   const { active, open } = useQuickFilters();
-  const isAr = appLang === 'ar';
   return (
     <button
       type="button"
@@ -46,11 +47,11 @@ export const QuickFilterButton: React.FC<Props> = ({ appLang, className = '' }) 
       } ${className}`}
     >
       <ListFilter className="w-4 h-4 text-[#0B57D0] dark:text-[#A8C7FA]" />
-      <span>{isAr ? 'الفلاتر' : 'Filters'}</span>
+      <span data-i18n>{t('filters')}</span>
       {active.length > 0 && (
         <span
           className="min-w-4 h-4 px-1 rounded-full bg-[#0B57D0] dark:bg-[#A8C7FA] text-white dark:text-slate-900 text-[10px] leading-4 text-center tabular-nums"
-          aria-label={isAr ? `${active.length} فلاتر مفعلة` : `${active.length} active filters`}
+          aria-label={t('active_filters', active.length)}
         >
           {active.length}
         </span>
@@ -61,6 +62,7 @@ export const QuickFilterButton: React.FC<Props> = ({ appLang, className = '' }) 
 
 /** The row of toggle chips; only rendered while the bar is open. */
 export const QuickFilterBar: React.FC<BarProps> = ({ appLang, items, className = '' }) => {
+  const { t } = useT();
   const { active, open } = useQuickFilters();
   const counts = useMemo(() => quickFilterCounts(items), [items]);
   const isAr = appLang === 'ar';
@@ -69,7 +71,7 @@ export const QuickFilterBar: React.FC<BarProps> = ({ appLang, items, className =
     <div
       data-quick-filters-bar
       role="group"
-      aria-label={isAr ? 'فلاتر النصوص' : 'String filters'}
+      aria-label={t('string_filters')}
       className={`flex items-center gap-1.5 flex-wrap ${className}`}
     >
       {QUICK_FILTER_IDS.filter(
@@ -84,7 +86,7 @@ export const QuickFilterBar: React.FC<BarProps> = ({ appLang, items, className =
             data-filter={id}
             aria-pressed={on}
             disabled={unavailable}
-            title={unavailable ? (isAr ? 'لا توجد نصوص لهذا الفلتر' : 'No strings for this filter') : undefined}
+            title={unavailable ? (t('no_strings_for_this_filter')) : undefined}
             onClick={() => toggleQuickFilter(id, items)}
             className={`px-3 py-1 rounded-full border text-xs font-medium transition ${
               unavailable ? 'opacity-40 cursor-not-allowed ' : 'cursor-pointer '

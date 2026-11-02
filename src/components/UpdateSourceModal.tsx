@@ -4,6 +4,7 @@ import { TranslationProject } from '../types';
 import { parseAndroidXml, normalizePluralsForLanguage } from '../utils/xmlParser';
 import { diffSources } from '../utils/sourceDiff';
 import { useDialog } from '../utils/useDialog';
+import { useT } from '../i18n/i18n';
 
 const MAX_BYTES = 5 * 1024 * 1024;
 
@@ -20,9 +21,9 @@ export const UpdateSourceModal: React.FC<UpdateSourceModalProps> = ({
   onClose,
   project,
   onApply,
-  appLang = 'ar',
+  appLang: _appLang = 'ar',
 }) => {
-  const isAr = appLang === 'ar';
+  const { t, tb } = useT();
   const dialogRef = useDialog(isOpen, onClose);
   const [xml, setXml] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +46,7 @@ export const UpdateSourceModal: React.FC<UpdateSourceModalProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > MAX_BYTES) {
-      setError(isAr ? 'الملف أكبر من 5 ميغابايت.' : 'The file is larger than 5 MB.');
+      setError(t('the_file_is_larger_than'));
       return;
     }
     setError(null);
@@ -89,20 +90,18 @@ export const UpdateSourceModal: React.FC<UpdateSourceModalProps> = ({
           <div className="flex items-center gap-3">
             <FileDiff className="w-6 h-6 text-[#1EB996]" aria-hidden="true" />
             <div>
-              <h2 id="update-source-title" className="text-lg font-semibold text-slate-900 dark:text-white">
-                {isAr ? 'تحديث ملف المصدر' : 'Update source file'}
+              <h2 data-i18n id="update-source-title" className="text-lg font-semibold text-slate-900 dark:text-white">
+                {t('update_source_file')}
               </h2>
-              <p className="text-xs text-slate-600 dark:text-slate-400">
-                {isAr
-                  ? 'ارفع نسخة جديدة من strings.xml الإنجليزي. تبقى ترجماتك، وتُعلَّم النصوص المتغيرة للمراجعة.'
-                  : 'Load a newer English strings.xml. Your translations are kept and changed strings are flagged for review.'}
+              <p data-i18n className="text-xs text-slate-600 dark:text-slate-400">
+                {t('load_a_newer_english_strings')}
               </p>
             </div>
           </div>
           <button
             type="button"
             onClick={close}
-            aria-label={isAr ? 'إغلاق' : 'Close'}
+            aria-label={t('close')}
             className="p-2 rounded-full text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
           >
             <X className="w-5 h-5" aria-hidden="true" />
@@ -114,7 +113,7 @@ export const UpdateSourceModal: React.FC<UpdateSourceModalProps> = ({
           type="file"
           accept=".xml,text/xml,application/xml"
           onChange={handleFile}
-          aria-label={isAr ? 'اختيار ملف strings.xml جديد' : 'Choose a new strings.xml file'}
+          aria-label={t('choose_a_new_strings_xml')}
           className="text-xs file:me-3 file:px-3 file:py-1.5 file:rounded-full file:border-0 file:bg-slate-100 dark:file:bg-slate-800 file:text-slate-700 dark:file:text-slate-200 file:cursor-pointer"
         />
         <textarea
@@ -123,7 +122,7 @@ export const UpdateSourceModal: React.FC<UpdateSourceModalProps> = ({
           value={xml}
           onChange={(e) => {
             if (e.target.value.length > MAX_BYTES) {
-              setError(isAr ? 'النص أكبر من 5 ميغابايت.' : 'The text is larger than 5 MB.');
+              setError(t('the_text_is_larger_than'));
               return;
             }
             setError(null);
@@ -131,7 +130,7 @@ export const UpdateSourceModal: React.FC<UpdateSourceModalProps> = ({
           }}
           rows={6}
           placeholder="<resources>…</resources>"
-          aria-label={isAr ? 'أو الصق محتوى strings.xml' : 'Or paste the strings.xml content'}
+          aria-label={t('or_paste_the_strings_xml')}
           className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#131720] p-3 text-xs font-mono text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/40"
         />
 
@@ -148,20 +147,18 @@ export const UpdateSourceModal: React.FC<UpdateSourceModalProps> = ({
 
         {diff && (
           <div className="flex flex-col gap-2" aria-live="polite">
-            <p className="text-sm text-slate-700 dark:text-slate-200">
-              {isAr
-                ? `${diff.added.length} جديد · ${diff.changed.length} متغيّر · ${diff.removed.length} محذوف · ${diff.unchanged.length} دون تغيير`
-                : `${diff.added.length} new · ${diff.changed.length} changed · ${diff.removed.length} removed · ${diff.unchanged.length} unchanged`}
+            <p data-i18n className="text-sm text-slate-700 dark:text-slate-200">
+              {t('new_changed_removed_unchanged', diff.added.length, diff.changed.length, diff.removed.length, diff.unchanged.length)}
             </p>
-            {section(isAr ? 'نصوص جديدة' : 'New strings', diff.added, 'text-emerald-600 dark:text-emerald-400')}
-            {section(isAr ? 'نصوص تغيّر مصدرها (تحتاج مراجعة)' : 'Source changed (needs review)', diff.changed, 'text-amber-600 dark:text-amber-400')}
-            {section(isAr ? 'نصوص محذوفة من المصدر (ستُحذف)' : 'Removed from source (will be deleted)', diff.removed, 'text-rose-600 dark:text-rose-400')}
+            {section(t('new_strings'), diff.added, 'text-emerald-600 dark:text-emerald-400')}
+            {section(t('source_changed_needs_review'), diff.changed, 'text-amber-600 dark:text-amber-400')}
+            {section(t('removed_from_source_will_be'), diff.removed, 'text-rose-600 dark:text-rose-400')}
           </div>
         )}
 
         <div className="flex items-center justify-end gap-2 pt-1">
           <button type="button" onClick={close} className="px-4 py-2 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white cursor-pointer">
-            {isAr ? 'إلغاء' : 'Cancel'}
+            {tb('cancel')}
           </button>
           <button
             id="update-source-apply"
@@ -170,7 +167,7 @@ export const UpdateSourceModal: React.FC<UpdateSourceModalProps> = ({
             disabled={!diff}
             className="px-5 py-2.5 rounded-full bg-[#0B57D0] hover:bg-[#0842A0] dark:bg-[#1EB996] dark:hover:bg-[#19A585] text-white text-xs font-semibold shadow-xs disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
           >
-            {isAr ? 'تطبيق التحديث' : 'Apply update'}
+            {tb('apply_update')}
           </button>
         </div>
       </div>

@@ -1,0 +1,20 @@
+// Texts of the "add a language" window itself (kept apart from the generated registry).
+export const MODAL_STRINGS: Record<string, { en: string; ar: string }> = {
+  add_lang_title: { en: 'Add an app language', ar: 'إضافة لغة للتطبيق' },
+  add_lang_tooltip: { en: 'Add a language', ar: 'إضافة لغة' },
+  add_lang_step1: { en: 'Download the app\'s English interface file below.', ar: 'نزّل ملف نصوص واجهة التطبيق الإنجليزي بالزر أدناه.' },
+  add_lang_step2: { en: 'Give it to an AI (or a translator) and ask it to translate the text between the tags into your language, keeping every name="…" and every %1$s as they are.', ar: 'أعطه لذكاء اصطناعي (أو مترجم) واطلب ترجمة النص بين الوسوم إلى لغتك مع إبقاء كل name="…" وكل %1$s كما هي.' },
+  add_lang_step3: { en: 'Download the translated file, you can edit it first: empty text hides an explanation, an empty button label keeps only its icon (or English if it has no icon), a deleted key falls back to English.', ar: 'نزّل الملف المترجم ويمكنك تعديله قبل الرفع: النص الفارغ يخفي الشرح، وزر فارغ النص يبقى بأيقونته فقط (أو بالإنجليزية إن لم تكن له أيقونة)، والمفتاح المحذوف يعود للإنجليزية.' },
+  add_lang_step4: { en: 'Upload it here, type the language name and choose its direction.', ar: 'ارفعه هنا واكتب اسم اللغة واختر اتجاهها.' },
+  add_lang_download: { en: 'Download English file', ar: 'تنزيل الملف الإنجليزي' },
+  add_lang_name: { en: 'Language name', ar: 'اسم اللغة' },
+  add_lang_rtl: { en: 'Right to left', ar: 'من اليمين لليسار' },
+  add_lang_ltr: { en: 'Left to right', ar: 'من اليسار لليمين' },
+  add_lang_upload: { en: 'Choose translated file', ar: 'اختيار الملف المترجم' },
+  add_lang_found: { en: '%1$s texts read, %2$s unknown keys ignored', ar: 'تمت قراءة %1$s نصاً وتجاهل %2$s مفتاحاً غير معروف' },
+  add_lang_add: { en: 'Add language', ar: 'إضافة اللغة' },
+  add_lang_close: { en: 'Close', ar: 'إغلاق' },
+  add_lang_delete: { en: 'Delete', ar: 'حذف' },
+  add_lang_yours: { en: 'Your languages', ar: 'لغاتك المضافة' },
+  add_lang_invalid: { en: 'No valid strings found in that file', ar: 'لم يتم العثور على نصوص صالحة في الملف' },
+};

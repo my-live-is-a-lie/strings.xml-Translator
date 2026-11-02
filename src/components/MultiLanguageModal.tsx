@@ -6,6 +6,7 @@ import { bulkTranslateItems, getActiveProviderId, getAllTranslationProviders, wi
 import { getProviderDisplayName } from './ProvidersPanel';
 import { downloadZip, itemsForLanguage, needsTranslation, valuesDirFor, xmlForLanguage } from '../utils/multiLang';
 import { useDialog } from '../utils/useDialog';
+import { useT } from '../i18n/i18n';
 
 type LangStatus = { state: 'pending' | 'running' | 'done' | 'error'; done: number; total: number; message?: string };
 
@@ -25,6 +26,7 @@ export const MultiLanguageModal: React.FC<MultiLanguageModalProps> = ({
   onSaveLanguages,
   appLang = 'ar',
 }) => {
+  const { t, tb } = useT();
   const isAr = appLang === 'ar';
   const dialogRef = useDialog(isOpen, onClose);
   const [query, setQuery] = useState('');
@@ -125,17 +127,15 @@ export const MultiLanguageModal: React.FC<MultiLanguageModalProps> = ({
           <div className="flex items-center gap-3">
             <Archive className="w-6 h-6 text-[#1EB996]" aria-hidden="true" />
             <div>
-              <h2 id="multilang-title" className="text-lg font-semibold text-slate-900 dark:text-white">
-                {isAr ? 'ترجمة عدة لغات وتصدير ZIP' : 'Translate several languages → ZIP'}
+              <h2 data-i18n id="multilang-title" className="text-lg font-semibold text-slate-900 dark:text-white">
+                {t('translate_several_languages_zip')}
               </h2>
-              <p className="text-xs text-slate-600 dark:text-slate-400">
-                {isAr
-                  ? 'تُترجم النصوص غير المترجمة فقط بالمزود المختار، ويُنشأ مجلد values-xx لكل لغة.'
-                  : 'Only untranslated strings are translated with the selected provider; one values-xx folder is created per language.'}
+              <p data-i18n className="text-xs text-slate-600 dark:text-slate-400">
+                {t('only_untranslated_strings_are_translat')}
               </p>
             </div>
           </div>
-          <button type="button" onClick={close} aria-label={isAr ? 'إغلاق' : 'Close'} className="p-2 rounded-full text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer">
+          <button type="button" onClick={close} aria-label={t('close')} className="p-2 rounded-full text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer">
             <X className="w-5 h-5" aria-hidden="true" />
           </button>
         </div>
@@ -146,12 +146,12 @@ export const MultiLanguageModal: React.FC<MultiLanguageModalProps> = ({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           disabled={running}
-          placeholder={isAr ? 'ابحث عن لغة…' : 'Search languages…'}
-          aria-label={isAr ? 'ابحث عن لغة' : 'Search languages'}
+          placeholder={t('search_languages')}
+          aria-label={t('search_languages_2')}
           className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#131720] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1EB996]/40"
         />
 
-        <ul className="overflow-y-auto min-h-0 max-h-72 grid grid-cols-1 sm:grid-cols-2 gap-1.5 pe-1" aria-label={isAr ? 'اللغات' : 'Languages'}>
+        <ul className="overflow-y-auto min-h-0 max-h-72 grid grid-cols-1 sm:grid-cols-2 gap-1.5 pe-1" aria-label={t('languages')}>
           {visible.map((l) => {
             const st = statuses[l.code];
             const isCurrent = l.code.toLowerCase() === project.targetLang.toLowerCase();
@@ -169,7 +169,7 @@ export const MultiLanguageModal: React.FC<MultiLanguageModalProps> = ({
                   <span className="flex-1 min-w-0 truncate text-slate-800 dark:text-slate-100">
                     {langName(l.code, l.name, l.nativeName)}
                     <span className="ms-1 font-mono text-[10px] text-slate-400" dir="ltr">{l.androidDir}</span>
-                    {isCurrent && <span className="ms-1 text-[10px] text-[#1EB996]">{isAr ? '(الحالية)' : '(current)'}</span>}
+                    {isCurrent && <span data-i18n className="ms-1 text-[10px] text-[#1EB996]">{t('current')}</span>}
                   </span>
                   {st?.state === 'running' && (
                     <span className="inline-flex items-center gap-1 text-[10px] text-slate-500" aria-live="polite">
@@ -177,10 +177,10 @@ export const MultiLanguageModal: React.FC<MultiLanguageModalProps> = ({
                       {st.done}/{st.total}
                     </span>
                   )}
-                  {st?.state === 'done' && <Check className="w-4 h-4 text-emerald-500" aria-label={isAr ? 'تم' : 'Done'} />}
+                  {st?.state === 'done' && <Check className="w-4 h-4 text-emerald-500" aria-label={t('done')} />}
                   {st?.state === 'error' && (
-                    <span className="text-[10px] text-rose-500" title={st.message}>
-                      {isAr ? 'فشل' : 'Failed'}
+                    <span data-i18n className="text-[10px] text-rose-500" title={st.message}>
+                      {t('failed')}
                     </span>
                   )}
                 </label>
@@ -190,7 +190,7 @@ export const MultiLanguageModal: React.FC<MultiLanguageModalProps> = ({
         </ul>
 
         <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300">
-          <span className="shrink-0">{isAr ? 'مزوّد الترجمة:' : 'Translation provider:'}</span>
+          <span data-i18n className="shrink-0">{t('translation_provider')}</span>
           <select
             id="multilang-provider"
             value={providerId}
@@ -208,13 +208,13 @@ export const MultiLanguageModal: React.FC<MultiLanguageModalProps> = ({
 
         <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
           <span className="text-xs text-slate-600 dark:text-slate-400" aria-live="polite">
-            {isAr ? `${selected.size} لغة محددة` : `${selected.size} selected`}
-            {doneCount > 0 && (isAr ? ` · ${doneCount} جاهزة` : ` · ${doneCount} ready`)}
+            {t('selected', selected.size)}
+            {doneCount > 0 && (t('ready', doneCount))}
           </span>
           <div className="flex flex-wrap items-center gap-2">
             {running ? (
               <button type="button" onClick={() => (cancelRef.current = true)} className="px-4 py-2 rounded-full border border-slate-300 dark:border-slate-600 text-xs font-medium text-slate-700 dark:text-slate-200 cursor-pointer">
-                {isAr ? 'إيقاف بعد اللغة الحالية' : 'Stop after current language'}
+                {tb('stop_after_current_language')}
               </button>
             ) : (
               <button
@@ -224,7 +224,7 @@ export const MultiLanguageModal: React.FC<MultiLanguageModalProps> = ({
                 disabled={selected.size === 0}
                 className="px-4 py-2 rounded-full bg-[#0B57D0] hover:bg-[#0842A0] dark:bg-[#1EB996] dark:hover:bg-[#19A585] text-white text-xs font-semibold disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
               >
-                {isAr ? 'ابدأ الترجمة' : 'Start translating'}
+                {tb('start_translating_2')}
               </button>
             )}
             <button
@@ -237,7 +237,7 @@ export const MultiLanguageModal: React.FC<MultiLanguageModalProps> = ({
               disabled={Object.keys(results).length === 0 || running}
               className="px-4 py-2 rounded-full border border-slate-300 dark:border-slate-600 text-xs font-medium text-slate-700 dark:text-slate-200 disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
             >
-              {saved ? (isAr ? 'تم الحفظ في المشروع' : 'Saved to project') : isAr ? 'حفظ في المشروع' : 'Save to project'}
+              {saved ? (t('saved_to_project')) : t('save_to_project')}
             </button>
             <button
               id="multilang-download"
@@ -247,7 +247,7 @@ export const MultiLanguageModal: React.FC<MultiLanguageModalProps> = ({
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#1EB996] hover:bg-[#19A585] text-white text-xs font-semibold disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
             >
               {zipping && <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />}
-              {isAr ? 'تنزيل ZIP' : 'Download ZIP'}
+              {t('download_zip')}
             </button>
           </div>
         </div>

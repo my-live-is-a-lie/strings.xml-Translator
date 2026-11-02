@@ -4,6 +4,7 @@ import { AlertCircle, CheckCircle2, CheckSquare, Circle, RotateCcw, ShieldAlert,
 import { ResourceItem } from '../types';
 import { ItemQaResult } from '../utils/placeholderCheck';
 import { engineLabel } from '../utils/translator';
+import { useT } from '../i18n/i18n';
 
 export function highlightText(text: string, query: string): React.ReactNode {
   const trimmed = query.trim();
@@ -60,6 +61,7 @@ const StringListRowBase: React.FC<StringListRowProps> = ({
   onToggleChecked,
   onResetItemHistory,
 }) => {
+  const { t } = useT();
   // Preview snippets (prefer the sub-item matching the search for plurals and arrays)
   let sourceSnippet = '';
   let targetSnippet = '';
@@ -109,13 +111,13 @@ const StringListRowBase: React.FC<StringListRowProps> = ({
                   type="button"
                   role="checkbox"
                   aria-checked={isChecked}
-                  aria-label={isAr ? `تحديد ${item.name} للترجمة الجماعية` : `Select ${item.name} for bulk translation`}
+                  aria-label={t('select_for_bulk_translation', item.name)}
                   onClick={(e) => {
                     e.stopPropagation();
                     onToggleChecked(item.id);
                   }}
                   className="pointer-events-auto relative z-10 p-0.5 -ms-1 rounded hover:bg-slate-200/70 dark:hover:bg-slate-700/70 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition shrink-0 cursor-pointer"
-                  title={isAr ? 'تحديد للترجمة الجماعية' : 'Select for bulk translation'}
+                  title={t('select_for_bulk_translation_2')}
                 >
                   {isChecked ? (
                     <CheckSquare className="w-3.5 h-3.5 text-[#1EB996]" />
@@ -159,9 +161,7 @@ const StringListRowBase: React.FC<StringListRowProps> = ({
                     <ShieldAlert className="w-2.5 h-2.5 shrink-0" />
                     <span>
                       {itemQa.hasPlaceholderIssue && itemQa.hasHtmlIssue
-                        ? isAr
-                          ? 'جودة'
-                          : 'QA'
+                        ? t('qa')
                         : itemQa.hasPlaceholderIssue
                           ? '%s'
                           : 'HTML'}
@@ -179,37 +179,33 @@ const StringListRowBase: React.FC<StringListRowProps> = ({
                     }`}
                     title={
                       item.translationSource === 'ai'
-                        ? `${isAr ? 'مترجم بالذكاء الاصطناعي' : 'Translated with AI'}${
+                        ? `${t('translated_with_ai')}${
                             item.translationEngine ? ` (${engineLabel(item.translationEngine)})` : ''
                           }`
-                        : isAr
-                          ? 'إدخال يدوي'
-                          : 'Manual input'
+                        : t('manual_input_2')
                     }
                   >
                     {item.translationSource === 'ai' ? (
                       <>
                         <Sparkles className="w-2.5 h-2.5" />
-                        <span>{isAr ? 'ذكاء اصطناعي' : 'AI'}</span>
+                        <span data-i18n>{t('ai')}</span>
                       </>
                     ) : (
-                      <span>{isAr ? 'يدوي' : 'Manual'}</span>
+                      <span data-i18n>{t('manual')}</span>
                     )}
                   </span>
 
                   {onResetItemHistory && (
                     <button
                       type="button"
-                      aria-label={isAr ? `إعادة تعيين ترجمة ${item.name}` : `Reset translation of ${item.name}`}
+                      aria-label={t('reset_translation_of', item.name)}
                       onClick={(e) => {
                         e.stopPropagation();
                         onResetItemHistory(item.id);
                       }}
                       className="pointer-events-auto relative z-10 p-1 rounded-md text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-500/10 transition cursor-pointer"
                       title={
-                        isAr
-                          ? 'إعادة تعيين سجل وترجمة هذا النص'
-                          : 'Reset individual translation history'
+                        t('reset_individual_translation_history')
                       }
                     >
                       <RotateCcw className="w-3 h-3" aria-hidden="true" />
@@ -232,7 +228,7 @@ const StringListRowBase: React.FC<StringListRowProps> = ({
             {sourceSnippet ? (
               <bdi>{highlightText(sourceSnippet, searchQuery)}</bdi>
             ) : (
-              <span className="italic text-slate-400">{isAr ? 'نص فارغ' : 'Empty string'}</span>
+              <span data-i18n className="italic text-slate-400">{t('empty_string')}</span>
             )}
           </p>
 
@@ -243,8 +239,8 @@ const StringListRowBase: React.FC<StringListRowProps> = ({
                 <bdi>{highlightText(targetSnippet, searchQuery)}</bdi>
               </span>
             ) : (
-              <span className="text-slate-600 dark:text-slate-400 italic">
-                {isAr ? 'غير مترجم' : 'Untranslated'}
+              <span data-i18n className="text-slate-600 dark:text-slate-400 italic">
+                {t('untranslated')}
               </span>
             )}
           </p>

@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Braces, ChevronDown, Code2, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { TranslationProject } from '../types';
 import { analyzeProjectQa } from '../utils/placeholderCheck';
+import { useT } from '../i18n/i18n';
 
 interface QaSectionProps {
   project: TranslationProject;
@@ -12,6 +13,7 @@ interface QaSectionProps {
 }
 
 export const QaSection: React.FC<QaSectionProps> = ({ project, isAr, onSelectString, onClose }) => {
+  const { t } = useT();
   const [qaDrawerExpanded, setQaDrawerExpanded] = useState(false);
   const [qaDrawerFilter, setQaDrawerFilter] = useState<'all' | 'placeholder' | 'html'>('all');
 
@@ -36,8 +38,8 @@ export const QaSection: React.FC<QaSectionProps> = ({ project, isAr, onSelectStr
           ) : (
             <ShieldCheck className="w-4 h-4 text-[#1EB996] shrink-0" />
           )}
-          <span className="text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
-            {isAr ? 'فحوصات الجودة' : 'QA Checks'}
+          <span data-i18n className="text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
+            {t('qa_checks')}
           </span>
         </div>
         <span
@@ -51,9 +53,7 @@ export const QaSection: React.FC<QaSectionProps> = ({ project, isAr, onSelectStr
             ? isAr
               ? `${qaSummary.totalAffectedItemsCount} مشاكل`
               : `${qaSummary.totalAffectedItemsCount} issue${qaSummary.totalAffectedItemsCount > 1 ? 's' : ''}`
-            : isAr
-              ? 'سليم 100%'
-              : 'All Clear'}
+            : t('all_clear')}
         </span>
       </div>
 
@@ -79,8 +79,8 @@ export const QaSection: React.FC<QaSectionProps> = ({ project, isAr, onSelectStr
           <div className="flex items-center justify-between gap-1">
             <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-600 dark:text-slate-300 truncate">
               <Braces className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-              <span className="truncate">
-                {isAr ? 'المتغيرات (%s, %d)' : 'Placeholders (%s)'}
+              <span data-i18n className="truncate">
+                {t('placeholders_s')}
               </span>
             </span>
           </div>
@@ -115,8 +115,8 @@ export const QaSection: React.FC<QaSectionProps> = ({ project, isAr, onSelectStr
           <div className="flex items-center justify-between gap-1">
             <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-600 dark:text-slate-300 truncate">
               <Code2 className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-              <span className="truncate">
-                {isAr ? 'وسوم HTML' : 'HTML Tags'}
+              <span data-i18n className="truncate">
+                {t('html_tags')}
               </span>
             </span>
           </div>
@@ -148,10 +148,8 @@ export const QaSection: React.FC<QaSectionProps> = ({ project, isAr, onSelectStr
         >
           <span className="flex items-center gap-1.5 truncate">
             <ShieldAlert className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-            <span className="truncate">
-              {isAr
-                ? `تفاصيل فحوصات الجودة (${filteredQaIssues.length})`
-                : `Detected QA Issues (${filteredQaIssues.length})`}
+            <span data-i18n className="truncate">
+              {t('detected_qa_issues', filteredQaIssues.length)}
             </span>
           </span>
           <ChevronDown
@@ -164,10 +162,8 @@ export const QaSection: React.FC<QaSectionProps> = ({ project, isAr, onSelectStr
         {qaDrawerExpanded && (
           <div className="mt-2 space-y-1.5 max-h-52 overflow-y-auto pe-0.5">
             {filteredQaIssues.length === 0 ? (
-              <p className="text-[11px] text-emerald-600 dark:text-emerald-400 text-center py-3">
-                {isAr
-                  ? 'لا توجد أخطاء في المتغيرات أو وسوم HTML'
-                  : 'No placeholder or HTML tag issues detected'}
+              <p data-i18n className="text-[11px] text-emerald-600 dark:text-emerald-400 text-center py-3">
+                {t('no_placeholder_or_html_tag')}
               </p>
             ) : (
               filteredQaIssues.map((iss) => (

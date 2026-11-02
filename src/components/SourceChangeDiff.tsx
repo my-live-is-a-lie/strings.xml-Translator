@@ -1,6 +1,7 @@
 import React from 'react';
 import { ResourceItem } from '../types';
 import { DiffSegment, diffWords } from '../utils/textDiff';
+import { useT } from '../i18n/i18n';
 
 function Segments({ segs }: { segs: DiffSegment[] }) {
   return (
@@ -29,7 +30,8 @@ function currentSource(item: ResourceItem, key: string): string {
 }
 
 /** Weblate-style view of how the source text changed: removed words in red, added words in green. */
-export const SourceChangeDiff: React.FC<{ item: ResourceItem; isAr: boolean }> = ({ item, isAr }) => {
+export const SourceChangeDiff: React.FC<{ item: ResourceItem; isAr: boolean }> = ({ item }) => {
+  const { t } = useT();
   const entries = Object.entries(item.previousSources ?? {});
   if (entries.length === 0) return null;
   return (
@@ -37,8 +39,8 @@ export const SourceChangeDiff: React.FC<{ item: ResourceItem; isAr: boolean }> =
       data-source-diff
       className="rounded-lg border border-amber-300/60 dark:border-amber-500/30 bg-amber-50/70 dark:bg-amber-500/5 px-3 py-2 space-y-2 text-xs"
     >
-      <p className="font-semibold text-amber-800 dark:text-amber-300">
-        {isAr ? 'تغيّر نص المصدر منذ آخر ترجمة' : 'The source text changed since it was translated'}
+      <p data-i18n className="font-semibold text-amber-800 dark:text-amber-300">
+        {t('the_source_text_changed_since')}
       </p>
       {entries.map(([key, previous]) => {
         const { old, next } = diffWords(previous, currentSource(item, key));
@@ -46,11 +48,11 @@ export const SourceChangeDiff: React.FC<{ item: ResourceItem; isAr: boolean }> =
           <div key={key} className="space-y-1">
             {key !== '' && <p className="font-mono text-[10px] text-slate-500 dark:text-slate-400">{key}</p>}
             <p dir="auto" className="leading-relaxed break-words text-slate-700 dark:text-slate-200">
-              <span className="font-semibold text-slate-500 dark:text-slate-400 me-1.5">{isAr ? 'قبل:' : 'Before:'}</span>
+              <span data-i18n className="font-semibold text-slate-500 dark:text-slate-400 me-1.5">{t('before')}</span>
               <Segments segs={old} />
             </p>
             <p dir="auto" className="leading-relaxed break-words text-slate-700 dark:text-slate-200">
-              <span className="font-semibold text-slate-500 dark:text-slate-400 me-1.5">{isAr ? 'بعد:' : 'After:'}</span>
+              <span data-i18n className="font-semibold text-slate-500 dark:text-slate-400 me-1.5">{t('after')}</span>
               <Segments segs={next} />
             </p>
           </div>
@@ -61,7 +63,8 @@ export const SourceChangeDiff: React.FC<{ item: ResourceItem; isAr: boolean }> =
 };
 
 /** Small badge for the list, table and editor header. */
-export const SourceChangeBadge: React.FC<{ item: ResourceItem; isAr: boolean }> = ({ item, isAr }) => {
+export const SourceChangeBadge: React.FC<{ item: ResourceItem; isAr: boolean }> = ({ item }) => {
+  const { t } = useT();
   if (!item.sourceChange) return null;
   const added = item.sourceChange === 'added';
   return (
@@ -73,7 +76,7 @@ export const SourceChangeBadge: React.FC<{ item: ResourceItem; isAr: boolean }> 
           : 'bg-amber-500/10 text-amber-800 dark:text-amber-300 border-amber-500/30'
       }`}
     >
-      {added ? (isAr ? 'جديد' : 'New') : isAr ? 'معدّل' : 'Updated'}
+      {added ? (t('new')) : t('updated')}
     </span>
   );
 };

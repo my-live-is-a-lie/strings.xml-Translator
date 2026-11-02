@@ -18,6 +18,8 @@ import { QuickFilterButton } from './QuickFilters';
 import { Menu as MenuIcon } from 'lucide-react';
 import { SidebarIcon } from './SidebarIcon';
 import { getAllTranslationProviders, getActiveProviderId } from '../utils/translator';
+import { useT, useCustomLanguages } from '../i18n/i18n';
+import AddLanguageModal from './AddLanguageModal';
 
 const ACCENT_COLORS = [
   { id: 'teal', label: 'Teal', labelAr: 'زمردي', swatchClass: 'bg-emerald-500' },
@@ -40,7 +42,8 @@ interface HeaderProps {
   onLanguageChange: (locale: string) => void;
   onOpenLanguageModal?: () => void;
   appLang?: 'ar' | 'en';
-  onAppLangChange?: (lang: 'ar' | 'en') => void;
+  onAppLangChange?: (lang: string) => void;
+  uiLang?: string;
   appTheme?: AppTheme;
   onAppThemeChange?: (theme: AppTheme) => void;
   canUndo?: boolean;
@@ -83,6 +86,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
   onOpenLanguageModal,
   appLang = 'ar',
   onAppLangChange,
+  uiLang,
   appTheme: propAppTheme,
   onAppThemeChange,
   autoTranslate = false,
@@ -104,6 +108,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
   savedFilesCount = 0,
   currentFileName,
 }) => {
+  const { t } = useT();
   const [rightDrawerOpen, setRightDrawerOpen] = useState(false);
   // Which physical edge the drawer slides from when it was opened by an edge swipe (null = the default side)
   const [edgeSide, setEdgeSide] = useState<'left' | 'right' | null>(null);
@@ -195,10 +200,24 @@ const HeaderBase: React.FC<HeaderProps> = ({
     };
   }, [drawerOwner, rightDrawerOpen, onOpenStringsList]);
   const [appLangMenuOpen, setAppLangMenuOpen] = useState(false);
+  const [addLangOpen, setAddLangOpen] = useState(false);
+  const customLangs = useCustomLanguages();
+  const langDrag = useRef<{ x: number; left: number } | null>(null);
   const [drawerSwipeX, setDrawerSwipeX] = useState(0);
   const [isSwipingDrawer, setIsSwipingDrawer] = useState(false);
   const drawerTouchStartRef = useRef<{ x: number; y: number } | null>(null);
   const isAr = appLang === 'ar';
+  const addLangButton = (
+    <button
+      type="button"
+      onClick={() => setAddLangOpen(true)}
+      title={t('add_lang_tooltip')}
+      aria-label="Add a language"
+      className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center text-lg leading-none text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white bg-slate-200/70 dark:bg-[#252F42] cursor-pointer"
+    >
+      +
+    </button>
+  );
 
   const [accentColor, setAccentColor] = useState<AccentColorId>(() => {
     const saved = getStoredItem('app_accent_color') as AccentColorId | null;
@@ -292,7 +311,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
               className="flex items-center gap-2 h-9 px-2.5 rounded-xl bg-slate-100 dark:bg-[#1E2430] text-slate-800 dark:text-slate-100 shrink-0 min-w-0 cursor-pointer"
             >
               <FolderOpen className="w-4 h-4 text-[#0B57D0] dark:text-[#1EB996] shrink-0" />
-              <span className="font-semibold">{isAr ? 'الملفات' : 'Files'}</span>
+              <span data-i18n className="font-semibold">{t('files')}</span>
               {currentFileName && (
                 <span className="max-w-[90px] truncate font-mono text-slate-600 dark:text-slate-400" dir="ltr">({currentFileName})</span>
               )}
@@ -307,7 +326,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
               className="inline-flex items-center gap-1.5 h-9 px-3 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-transparent font-medium text-slate-800 dark:text-slate-200 shrink-0 cursor-pointer"
             >
               <MenuIcon className="w-4 h-4 text-[#0B57D0] dark:text-[#A8C7FA]" />
-              <span>{isAr ? `قائمة النصوص (${stringsCount})` : `Strings List (${stringsCount})`}</span>
+              <span data-i18n>{t('strings_list', stringsCount)}</span>
             </button>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
@@ -318,7 +337,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
               className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60 text-slate-800 dark:text-slate-200 font-medium shrink-0 cursor-pointer"
             >
               <LayoutList className="w-3.5 h-3.5 text-[#0B57D0] dark:text-[#A8C7FA]" />
-              <span>{isAr ? 'الجدول' : 'Table'}</span>
+              <span data-i18n>{t('table')}</span>
             </button>
             <button
               id="header-right-drawer-btn"
@@ -329,7 +348,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
                 setRightDrawerOpen(true);
               }}
               className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60 shrink-0 cursor-pointer"
-              title={isAr ? 'فتح القائمة الجانبية' : 'Open Sidebar Menu'}
+              title={t('open_sidebar_menu')}
               aria-label="Open Actions Menu"
             >
               <SidebarIcon className="w-4.5 h-4.5 text-slate-700 dark:text-slate-200" />
@@ -349,14 +368,14 @@ const HeaderBase: React.FC<HeaderProps> = ({
               type="button"
               onClick={onOpenFilesModal}
               className="flex items-center gap-2 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 dark:bg-[#1E2430] dark:hover:bg-[#283244] text-slate-800 dark:text-slate-100 transition cursor-pointer shadow-xs group"
-              title={isAr ? 'عرض وإدارة ملفات XML المستوردة' : 'View & manage imported XML files'}
+              title={t('view_manage_imported_xml_files')}
             >
               <div className="w-6 h-6 rounded-lg bg-[#0B57D0]/10 dark:bg-[#1EB996]/15 flex items-center justify-center text-[#0B57D0] dark:text-[#1EB996] group-hover:scale-105 transition-transform shrink-0">
                 <FolderOpen className="w-3.5 h-3.5" />
               </div>
               <div className="flex items-center gap-1.5 min-w-0">
-                <span className="font-semibold text-xs sm:text-sm text-slate-900 dark:text-white">
-                  {isAr ? 'الملفات' : 'Files'}
+                <span data-i18n className="font-semibold text-xs sm:text-sm text-slate-900 dark:text-white">
+                  {t('files')}
                 </span>
                 {currentFileName && (
                   <span className="hidden sm:inline-block max-w-[110px] md:max-w-[150px] truncate text-xs text-slate-600 dark:text-slate-400 font-mono">
@@ -387,7 +406,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
                 }`}
               >
                 <Layers className="w-3.5 h-3.5" />
-                <span>{isAr ? 'المحرّر' : 'Editor'}</span>
+                <span data-i18n>{t('editor')}</span>
               </button>
               <button
                 id="view-table-btn"
@@ -399,7 +418,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
                 }`}
               >
                 <LayoutList className="w-3.5 h-3.5" />
-                <span>{isAr ? 'جميع النصوص' : 'All Strings'}</span>
+                <span data-i18n>{t('all_strings_3')}</span>
               </button>
             </div>
 
@@ -409,7 +428,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
                 id="header-open-lang-modal-btn"
                 onClick={onOpenLanguageModal}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800/90 border border-slate-200/60 dark:border-slate-700/60 text-xs font-medium text-slate-800 dark:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition cursor-pointer shadow-xs group"
-                title={isAr ? 'تغيير لغة الترجمة' : 'Switch Target Language'}
+                title={t('switch_target_language')}
               >
                 <Globe className="w-3.5 h-3.5 text-[#0B57D0] dark:text-[#A8C7FA] group-hover:rotate-12 transition-transform" />
                 <span className="font-semibold">
@@ -435,10 +454,10 @@ const HeaderBase: React.FC<HeaderProps> = ({
               id="header-load-sample-btn"
               onClick={onLoadSample}
               className="hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-medium transition cursor-pointer m3-state-layer"
-              title={isAr ? 'تحميل ملف strings.xml تجريبي' : 'Load sample Android strings.xml'}
+              title={t('load_sample_android_strings_xml')}
             >
               <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span>{isAr ? 'مثال' : 'Sample'}</span>
+              <span data-i18n>{t('sample')}</span>
             </button>
 
             {/* Table / Editor View Switch Button next to the top-right Sidebar Button */}
@@ -449,23 +468,19 @@ const HeaderBase: React.FC<HeaderProps> = ({
               className="md:hidden inline-flex items-center gap-1.5 h-9 px-3 rounded-xl bg-slate-100 hover:bg-slate-200/80 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200/60 dark:border-slate-700/60 text-xs font-medium transition cursor-pointer m3-state-layer"
               title={
                 activeView === 'editor'
-                  ? isAr
-                    ? 'التبديل إلى عرض الجدول'
-                    : 'Switch to Table View'
-                  : isAr
-                    ? 'التبديل إلى عرض المحرّر'
-                    : 'Switch to Editor View'
+                  ? t('switch_to_table_view')
+                  : t('switch_to_editor_view')
               }
             >
               {activeView === 'editor' ? (
                 <>
                   <LayoutList className="w-3.5 h-3.5 text-[#0B57D0] dark:text-[#A8C7FA]" />
-                  <span>{isAr ? 'الجدول' : 'Table'}</span>
+                  <span data-i18n>{t('table')}</span>
                 </>
               ) : (
                 <>
                   <Layers className="w-3.5 h-3.5 text-[#0B57D0] dark:text-[#A8C7FA]" />
-                  <span>{isAr ? 'المحرّر' : 'Editor'}</span>
+                  <span data-i18n>{t('editor')}</span>
                 </>
               )}
             </button>
@@ -480,7 +495,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
                 setRightDrawerOpen(true);
               }}
               className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200/80 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200/60 dark:border-slate-700/60 transition cursor-pointer m3-state-layer"
-              title={isAr ? 'فتح القائمة الجانبية' : 'Open Sidebar Menu'}
+              title={t('open_sidebar_menu')}
               aria-label="Open Actions Menu"
             >
               <SidebarIcon className="w-4.5 h-4.5 text-slate-700 dark:text-slate-200" />
@@ -549,7 +564,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
                 <div className="inline-flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-[#1EB996] shrink-0" />
                   <span className="font-semibold text-slate-900 dark:text-slate-100 tabular-nums">
-                    {translatedPercent}% {isAr ? 'مترجم' : 'Translated'}
+                    {translatedPercent}% {t('translated')}
                   </span>
                   <span className="text-slate-600 dark:text-slate-400 tabular-nums">
                     ({translatedCount}/{totalItems})
@@ -562,7 +577,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
                 <div className="inline-flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-600 shrink-0" />
                   <span className="font-medium text-slate-700 dark:text-slate-300 tabular-nums">
-                    {untranslatedPercent}% {isAr ? 'غير مترجم' : 'Untranslated'}
+                    {untranslatedPercent}% {t('untranslated')}
                   </span>
                   <span className="text-slate-600 dark:text-slate-400 tabular-nums">
                     ({untranslatedCount})
@@ -576,7 +591,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
                     <div className="inline-flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
                       <span className="text-amber-700 dark:text-amber-300 font-medium tabular-nums">
-                        {reviewPercent}% {isAr ? 'مراجعة' : 'Review'} ({needsReviewCount})
+                        {reviewPercent}% {t('review')} ({needsReviewCount})
                       </span>
                     </div>
                   </>
@@ -669,7 +684,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
                       ? 'bg-slate-200 dark:bg-[#252F42] border-[var(--accent-primary)]/70 shadow-xs'
                       : 'bg-slate-100 hover:bg-slate-200/80 dark:bg-[#1C2333] dark:hover:bg-[#242E40] border-slate-200/80 dark:border-[#2A3446]'
                   }`}
-                  title={isAr ? 'تغيير لغة التطبيق' : 'Change App Language'}
+                  title={t('change_app_language')}
                   aria-label="Change app language"
                 >
                   <Languages style={{ color: 'var(--accent-primary)' }} className="w-5 h-5" />
@@ -689,7 +704,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
                       ? 'bg-slate-200 dark:bg-[#252F42] border-[var(--accent-primary)]/70 shadow-xs'
                       : 'bg-slate-100 hover:bg-slate-200/80 dark:bg-[#1C2333] dark:hover:bg-[#242E40] border-slate-200/80 dark:border-[#2A3446]'
                   }`}
-                  title={isAr ? 'تغيير مظهر التطبيق (نهار / ليل / ثقب أسود)' : 'Change app theme (Day / Night / Black Hole)'}
+                  title={t('change_app_theme_day_night')}
                   aria-label="Change app theme"
                 >
                   <Contrast style={{ color: 'var(--accent-primary)' }} className="w-5 h-5" />
@@ -701,7 +716,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
                   type="button"
                   onClick={handleRandomAccentColor}
                   className="w-9.5 h-9.5 rounded-2xl flex items-center justify-center transition cursor-pointer shrink-0 border bg-slate-100 hover:bg-slate-200/80 dark:bg-[#1C2333] dark:hover:bg-[#242E40] border-slate-200/80 dark:border-[#2A3446] active:scale-95"
-                  title={isAr ? 'اختيار لون عشوائي للتمييز' : 'Pick random accent color'}
+                  title={t('pick_random_accent_color')}
                   aria-label="Pick random accent color"
                 >
                   <Paintbrush style={{ color: 'var(--accent-primary)' }} className="w-5 h-5" />
@@ -721,7 +736,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
                       ? 'bg-slate-200 dark:bg-[#252F42] border-[var(--accent-primary)]/70 shadow-xs'
                       : 'bg-slate-100 hover:bg-slate-200/80 dark:bg-[#1C2333] dark:hover:bg-[#242E40] border-slate-200/80 dark:border-[#2A3446]'
                   }`}
-                  title={isAr ? 'لوحة ألوان التمييز' : 'Accent color palette'}
+                  title={t('accent_color_palette')}
                   aria-label="Choose accent color"
                 >
                   <Palette style={{ color: 'var(--accent-primary)' }} className="w-5 h-5" />
@@ -746,9 +761,21 @@ const HeaderBase: React.FC<HeaderProps> = ({
 
             {/* Sub-menu Row: Language Options */}
             {appLangMenuOpen && (
-              <div className="px-4 py-2.5 flex items-center gap-6 border-b border-slate-200/80 dark:border-[#252C3A] bg-slate-50/70 dark:bg-[#141822]/60 animate-in fade-in duration-150">
-                {APP_LANGUAGES.map((lang) => {
-                  const isSelected = appLang === lang.code;
+              <div className="px-4 py-2.5 flex items-center gap-3 border-b border-slate-200/80 dark:border-[#252C3A] bg-slate-50/70 dark:bg-[#141822]/60 animate-in fade-in duration-150">
+                {!isAr && addLangButton}
+                <div
+                  className="flex-1 min-w-0 flex items-center gap-6 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                  onPointerDown={(e) => {
+                    if (e.pointerType === 'mouse') langDrag.current = { x: e.clientX, left: e.currentTarget.scrollLeft };
+                  }}
+                  onPointerMove={(e) => {
+                    if (langDrag.current) e.currentTarget.scrollLeft = langDrag.current.left - (e.clientX - langDrag.current.x);
+                  }}
+                  onPointerUp={() => (langDrag.current = null)}
+                  onPointerLeave={() => (langDrag.current = null)}
+                >
+                {[...APP_LANGUAGES, ...customLangs.map((l) => ({ code: l.code, label: l.label }))].map((lang) => {
+                  const isSelected = (uiLang ?? appLang) === lang.code;
                   return (
                     <button
                       key={lang.code}
@@ -756,7 +783,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
                       onClick={() => {
                         onAppLangChange?.(lang.code);
                       }}
-                      className={`relative pb-1 text-sm font-medium transition cursor-pointer ${
+                      className={`relative pb-1 text-sm font-medium transition cursor-pointer shrink-0 whitespace-nowrap ${
                         isSelected
                           ? 'text-slate-900 dark:text-white font-semibold'
                           : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
@@ -769,6 +796,8 @@ const HeaderBase: React.FC<HeaderProps> = ({
                     </button>
                   );
                 })}
+                </div>
+                {isAr && addLangButton}
               </div>
             )}
 
@@ -841,7 +870,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
                 className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200/80 dark:bg-[#202634] dark:hover:bg-[#2A3244] border border-slate-200/80 dark:border-[#2F384B] text-slate-800 dark:text-slate-100 text-sm font-medium transition cursor-pointer shadow-xs shrink-0"
               >
                 <Upload className="w-4 h-4 text-slate-600 dark:text-slate-300" />
-                <span>{isAr ? 'استيراد' : 'Import'}</span>
+                <span data-i18n>{t('import')}</span>
               </button>
 
               {/* Export Button */}
@@ -856,7 +885,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
                 className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-[#0B57D0] hover:bg-[#0842A0] dark:bg-[#1EB996] dark:hover:bg-[#19A585] text-white text-sm font-semibold shadow-sm transition cursor-pointer shrink-0"
               >
                 <Download className="w-4 h-4" />
-                <span>{isAr ? 'تصدير XML' : 'Export XML'}</span>
+                <span data-i18n>{t('export_xml')}</span>
               </button>
 
               {onOpenMultiLang && (
@@ -871,7 +900,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
                   className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl border border-slate-200/90 dark:border-[#2F384B] text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#202634] text-xs font-medium transition cursor-pointer shrink-0"
                 >
                   <Archive className="w-4 h-4" aria-hidden="true" />
-                  <span>{isAr ? 'ترجمة عدة لغات (ZIP)' : 'Multi-language ZIP'}</span>
+                  <span data-i18n>{t('multi_language_zip')}</span>
                 </button>
               )}
 
@@ -887,7 +916,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
                   className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl border border-slate-200/90 dark:border-[#2F384B] text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#202634] text-xs font-medium transition cursor-pointer shrink-0"
                 >
                   <FileDiff className="w-4 h-4" aria-hidden="true" />
-                  <span>{isAr ? 'تحديث ملف المصدر' : 'Update source file'}</span>
+                  <span data-i18n>{t('update_source_file')}</span>
                 </button>
               )}
 
@@ -913,8 +942,8 @@ const HeaderBase: React.FC<HeaderProps> = ({
                     }`}
                   />
                   <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-                    <span className="w-full text-xs sm:text-sm font-semibold leading-snug truncate">
-                      {isAr ? 'الترجمة التلقائية' : 'Auto Translate'}
+                    <span data-i18n className="w-full text-xs sm:text-sm font-semibold leading-snug truncate">
+                      {t('auto_translate')}
                     </span>
                     <span className="w-full text-[11px] text-slate-600 dark:text-slate-400 leading-snug truncate">
                       {isAr
@@ -960,11 +989,11 @@ const HeaderBase: React.FC<HeaderProps> = ({
                     }`}
                   />
                   <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-                    <span className="w-full text-xs sm:text-sm font-semibold leading-snug truncate">
-                      {isAr ? 'تنبؤ بالكلمات التالية' : 'Predict next words'}
+                    <span data-i18n className="w-full text-xs sm:text-sm font-semibold leading-snug truncate">
+                      {t('predict_next_words')}
                     </span>
-                    <span className="w-full text-[11px] text-slate-600 dark:text-slate-400 leading-snug truncate">
-                      {isAr ? 'إكمال الكلمة بالمسافة، والرجوع لرفضها' : 'Space accepts, Backspace rejects'}
+                    <span data-i18n className="w-full text-[11px] text-slate-600 dark:text-slate-400 leading-snug truncate">
+                      {t('space_accepts_backspace_rejects')}
                     </span>
                   </div>
                 </div>
@@ -1001,11 +1030,11 @@ const HeaderBase: React.FC<HeaderProps> = ({
                     }`}
                   />
                   <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-                    <span className="w-full text-xs sm:text-sm font-semibold leading-snug truncate">
-                      {isAr ? 'التصحيح التلقائي' : 'Auto-correct'}
+                    <span data-i18n className="w-full text-xs sm:text-sm font-semibold leading-snug truncate">
+                      {t('auto_correct')}
                     </span>
-                    <span className="w-full text-[11px] text-slate-600 dark:text-slate-400 leading-snug truncate">
-                      {isAr ? 'عطّله للكتابة بحرية دون تنبيهات' : 'Turn off to type freely, without warnings'}
+                    <span data-i18n className="w-full text-[11px] text-slate-600 dark:text-slate-400 leading-snug truncate">
+                      {t('turn_off_to_type_freely')}
                     </span>
                   </div>
                 </div>
@@ -1036,11 +1065,19 @@ const HeaderBase: React.FC<HeaderProps> = ({
                   className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl border border-slate-200/90 dark:border-[#2F384B] text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#202634] text-xs font-medium transition cursor-pointer shrink-0"
                 >
                   <Keyboard className="w-4 h-4" aria-hidden="true" />
-                  <span>{isAr ? 'اختصارات لوحة المفاتيح (?)' : 'Keyboard shortcuts (?)'}</span>
+                  <span data-i18n>{t('keyboard_shortcuts')}</span>
                 </button>
               )}
             </div>
           </aside>
+          {addLangOpen && (
+            <AddLanguageModal
+              activeCode={uiLang ?? appLang}
+              onClose={() => setAddLangOpen(false)}
+              onAdded={(code) => onAppLangChange?.(code)}
+              onRemoved={() => onAppLangChange?.('en')}
+            />
+          )}
         </div>
       )}
 

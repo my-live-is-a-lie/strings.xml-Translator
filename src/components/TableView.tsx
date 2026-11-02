@@ -9,6 +9,7 @@ import { ExternalAiModal } from './ExternalAiModal';
 import { filterProjectItems } from '../utils/xmlExporter';
 import { applyQuickSnapshot, useQuickFilters } from '../utils/quickFilters';
 import { getLanguageOption } from '../utils/languages';
+import { useT } from '../i18n/i18n';
 
 interface TableViewProps {
   items: ResourceItem[];
@@ -54,6 +55,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
   sourceFilter = 'all',
   statsNode,
 }) => {
+  const { t } = useT();
   const isAr = appLang === 'ar';
   const [localSearch, setLocalSearch] = useState('');
   const [localFilter, setLocalFilter] = useState<FilterStatus>('all');
@@ -459,7 +461,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
                     : 'text-slate-400 italic'
               }
             >
-              {text || (side === 'target' ? (isAr ? 'غير مترجم' : 'Untranslated') : '')}
+              {text || (side === 'target' ? (t('untranslated')) : '')}
             </span>
           </div>
         );
@@ -500,7 +502,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
             targetSnippet ? 'text-emerald-700 dark:text-emerald-300 font-medium' : 'text-slate-400 italic'
           }
         >
-          {targetSnippet || (isAr ? 'غير مترجم' : 'Untranslated')}
+          {targetSnippet || (t('untranslated'))}
         </span>
       );
     }
@@ -519,7 +521,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
           translationSource: val.trim() ? 'manual' : undefined,
         });
       },
-      placeholder: isAr ? 'اكتب الترجمة...' : 'Type translation...',
+      placeholder: t('type_translation'),
       className: inputClassName,
     };
     // Multi-line (mobile cards): grows with the text so long translations are fully readable.
@@ -558,12 +560,12 @@ const TableViewBase: React.FC<TableViewProps> = ({
                 }`}
                 title={
                   sortMode === 'none'
-                    ? isAr ? 'فرز حسب الطول: معطّل' : 'Sort by length: off'
+                    ? t('sort_by_length_off')
                     : sortMode === 'asc'
-                      ? isAr ? 'الأقصر أولاً' : 'Shortest first'
-                      : isAr ? 'الأطول أولاً' : 'Longest first'
+                      ? t('shortest_first')
+                      : t('longest_first')
                 }
-                aria-label={isAr ? 'فرز حسب الطول' : 'Sort by length'}
+                aria-label={t('sort_by_length')}
               >
                 {/* Both icons stay mounted so switching on/off springs one in and the other out */}
                 <ArrowUpDown
@@ -635,7 +637,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
           <input
             id="table-search-input"
             type="text"
-            placeholder={isAr ? 'ابحث في جميع النصوص حسب المفتاح أو المحتوى...' : 'Search all strings by key or content...'}
+            placeholder={t('search_all_strings_by_key')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full text-xs bg-transparent text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none"
@@ -653,17 +655,15 @@ const TableViewBase: React.FC<TableViewProps> = ({
                 onClick={handleToggleSelectUntranslated}
                 disabled={filteredUntranslated.length === 0 || isBulkTranslating}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200/80 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-medium transition cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
-                title={isAr ? 'تحديد كل النصوص غير المترجمة' : 'Select all untranslated strings in current view'}
+                title={t('select_all_untranslated_strings_in')}
               >
                 {allFilteredUntranslatedSelected ? (
                   <CheckSquare className="w-3.5 h-3.5 text-[#0B57D0] dark:text-[#A8C7FA]" />
                 ) : (
                   <Square className="w-3.5 h-3.5 text-slate-400" />
                 )}
-                <span>
-                  {isAr
-                    ? `تحديد غير المترجم (${filteredUntranslated.length})`
-                    : `Select Untranslated (${filteredUntranslated.length})`}
+                <span data-i18n>
+                  {t('select_untranslated', filteredUntranslated.length)}
                 </span>
               </button>
 
@@ -681,19 +681,15 @@ const TableViewBase: React.FC<TableViewProps> = ({
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
                       <span>
                         {bulkProgress
-                          ? isAr
-                            ? `جارٍ الترجمة ${bulkProgress.completed}/${bulkProgress.total}...`
-                            : `Translating ${bulkProgress.completed}/${bulkProgress.total}...`
-                          : isAr
-                            ? 'جارٍ الترجمة...'
-                            : 'Translating...'}
+                          ? t('translating_2', bulkProgress.completed, bulkProgress.total)
+                          : t('translating')}
                       </span>
                     </>
                   ) : (
                     <>
                       <Sparkles className="w-3.5 h-3.5" />
-                      <span>
-                        {isAr ? `ترجمة جماعية (${checkedIds.size})` : `Bulk Translate (${checkedIds.size})`}
+                      <span data-i18n>
+                        {t('bulk_translate', checkedIds.size)}
                       </span>
                     </>
                   )}
@@ -708,10 +704,10 @@ const TableViewBase: React.FC<TableViewProps> = ({
           <div className="flex items-center gap-1.5 text-xs overflow-x-auto no-scrollbar">
             {(
               [
-                { id: 'all', label: isAr ? 'الكل' : 'All' },
-                { id: 'untranslated', label: isAr ? 'غير مترجم' : 'Untranslated' },
-                { id: 'translated', label: isAr ? 'مترجم' : 'Done' },
-                { id: 'needs_review', label: isAr ? 'مراجعة' : 'Review' },
+                { id: 'all', label: t('all') },
+                { id: 'untranslated', label: t('untranslated') },
+                { id: 'translated', label: t('done_2') },
+                { id: 'needs_review', label: t('review') },
               ] as const
             ).map((st) => {
               const isSelected = filter === st.id;
@@ -747,8 +743,8 @@ const TableViewBase: React.FC<TableViewProps> = ({
           {/* Mobile: one stacked card per string (the 6-column table is too wide for phones) */}
           <div className="md:hidden divide-y divide-slate-100 dark:divide-slate-800/60">
             {filtered.length === 0 ? (
-              <div className="py-16 text-center text-slate-400 text-xs">
-                {isAr ? 'لا توجد نصوص مطابقة.' : 'No strings match the filter.'}
+              <div data-i18n className="py-16 text-center text-slate-400 text-xs">
+                {t('no_strings_match_the_filter')}
               </div>
             ) : (
               <>
@@ -780,7 +776,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
                           onClick={() => toggleItemChecked(item.id)}
                           disabled={isBulkTranslating}
                           className="shrink-0 inline-flex items-center justify-center text-slate-400 cursor-pointer"
-                          title={isAr ? 'تحديد الصف للترجمة الجماعية' : 'Select row for bulk translation'}
+                          title={t('select_row_for_bulk_translation')}
                         >
                           {isChecked ? (
                             <CheckSquare className="w-4 h-4 text-[#1EB996]" />
@@ -805,7 +801,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
                       <button
                         onClick={() => onSelectString(item.id)}
                         className="shrink-0 p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-[#0B57D0] dark:text-[#A8C7FA] transition cursor-pointer m3-state-layer"
-                        title={isAr ? 'فتح في محرّر الترجمة' : 'Open in Translation Editor'}
+                        title={t('open_in_translation_editor')}
                       >
                         <Edit3 className="w-4 h-4" />
                       </button>
@@ -825,7 +821,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
                                   v.target ? 'text-emerald-700 dark:text-emerald-300 font-medium' : 'text-slate-400 italic'
                                 }`}
                               >
-                                <bdi>{v.target ? highlightText(v.target, q) : isAr ? 'غير مترجم' : 'Untranslated'}</bdi>
+                                <bdi>{v.target ? highlightText(v.target, q) : t('untranslated')}</bdi>
                               </p>
                             </div>
                           </div>
@@ -875,16 +871,10 @@ const TableViewBase: React.FC<TableViewProps> = ({
                       >
                         {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                         {expanded
-                          ? isAr
-                            ? 'عرض أقل'
-                            : 'Show less'
+                          ? t('show_less')
                           : item.type === 'string'
-                            ? isAr
-                              ? 'عرض المزيد'
-                              : 'Show more'
-                            : isAr
-                              ? `عرض ${variants.length - 2} صيغ أخرى`
-                              : `Show ${variants.length - 2} more`}
+                            ? t('show_more')
+                            : t('show_more_2', variants.length - 2)}
                       </button>
                     )}
                   </div>
@@ -905,7 +895,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
                       onClick={handleToggleSelectAllPaged}
                       disabled={pagedItems.length === 0 || isBulkTranslating}
                       className="inline-flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer disabled:opacity-40"
-                      title={isAr ? 'تحديد كل الصفوف المعروضة في الصفحة' : 'Select all rows on this page'}
+                      title={t('select_all_rows_on_this')}
                     >
                       {allPagedSelected ? (
                         <CheckSquare className="w-4 h-4 text-[#1EB996]" />
@@ -915,18 +905,18 @@ const TableViewBase: React.FC<TableViewProps> = ({
                     </button>
                   </th>
                 )}
-                <th className="py-3 px-3 w-12 text-center">{isAr ? 'الحالة' : 'Status'}</th>
-                <th className="py-3 px-4 w-52">{isAr ? 'المفتاح' : 'Key Name'}</th>
-                <th className="py-3 px-4">{isAr ? 'النص الإنجليزي' : 'English Source'}</th>
-                <th className="py-3 px-4">{isAr ? 'الترجمة' : 'Target Translation'}</th>
-                <th className="py-3 px-3 w-16 text-center">{isAr ? 'فتح' : 'Open'}</th>
+                <th data-i18n className="py-3 px-3 w-12 text-center">{t('status')}</th>
+                <th data-i18n className="py-3 px-4 w-52">{t('key_name')}</th>
+                <th data-i18n className="py-3 px-4">{t('english_source')}</th>
+                <th data-i18n className="py-3 px-4">{t('target_translation')}</th>
+                <th data-i18n className="py-3 px-3 w-16 text-center">{t('open')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={onBulkUpdateTranslations ? 6 : 5} className="py-16 text-center text-slate-400 text-xs">
-                    {isAr ? 'لا توجد نصوص مطابقة.' : 'No strings match the filter.'}
+                  <td data-i18n colSpan={onBulkUpdateTranslations ? 6 : 5} className="py-16 text-center text-slate-400 text-xs">
+                    {t('no_strings_match_the_filter')}
                   </td>
                 </tr>
               ) : (
@@ -953,7 +943,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
                             onClick={() => toggleItemChecked(item.id)}
                             disabled={isBulkTranslating}
                             className="inline-flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
-                            title={isAr ? 'تحديد الصف للترجمة الجماعية' : 'Select row for bulk translation'}
+                            title={t('select_row_for_bulk_translation')}
                           >
                             {isChecked ? (
                               <CheckSquare className="w-4 h-4 text-[#1EB996]" />
@@ -993,7 +983,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
                         <button
                           onClick={() => onSelectString(item.id)}
                           className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-[#0B57D0] dark:text-[#A8C7FA] transition cursor-pointer m3-state-layer"
-                          title={isAr ? 'فتح في محرّر الترجمة' : 'Open in Translation Editor'}
+                          title={t('open_in_translation_editor')}
                         >
                           <Edit3 className="w-4 h-4" />
                         </button>
@@ -1009,10 +999,8 @@ const TableViewBase: React.FC<TableViewProps> = ({
 
           {/* Loaded-range footer */}
           {filtered.length > 0 && (
-            <div className="px-4 py-3 bg-white dark:bg-[#1A1C20] border-t border-slate-200/80 dark:border-slate-800/80 text-xs text-slate-600 dark:text-slate-400 tabular-nums text-center">
-              {isAr
-                ? `المحمَّل ${start + 1}–${end} من ${total} نص`
-                : `Loaded ${start + 1}–${end} of ${total} strings`}
+            <div data-i18n className="px-4 py-3 bg-white dark:bg-[#1A1C20] border-t border-slate-200/80 dark:border-slate-800/80 text-xs text-slate-600 dark:text-slate-400 tabular-nums text-center">
+              {t('loaded_of_strings', start + 1, end, total)}
             </div>
           )}
         </div>

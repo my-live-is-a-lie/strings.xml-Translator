@@ -3,6 +3,7 @@ import { X, Search } from 'lucide-react';
 import { StringList } from './StringList';
 import { inlineSign } from '../utils/direction';
 import { ResourceItem, FilterStatus, SourceFilter } from '../types';
+import { useT } from '../i18n/i18n';
 
 interface StringsListDrawerProps {
   /** Show on wide phone screens too (landscape split layout). */
@@ -45,6 +46,7 @@ const StringsListDrawerBase: React.FC<StringsListDrawerProps> = ({
   onBulkUpdateTranslations,
   onResetItemHistory,
 }) => {
+  const { t } = useT();
   const asideRef = useRef<HTMLElement>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
@@ -218,13 +220,11 @@ const StringsListDrawerBase: React.FC<StringsListDrawerProps> = ({
       >
         {/* Drawer Header */}
         <div className="relative flex items-center justify-between gap-2 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] border-b border-slate-200/80 dark:border-[#252C3A]">
-          <span
+          <span data-i18n
             className="text-xs font-bold text-slate-800 dark:text-slate-100 transition-opacity duration-200"
             style={{ opacity: searchOpen ? 0 : 1 }}
           >
-            {appLang === 'ar'
-              ? `قائمة النصوص (${items.length})`
-              : `Strings List (${items.length})`}
+            {t('strings_list', items.length)}
           </span>
           <div className="flex items-center gap-1">
             <button
@@ -232,8 +232,8 @@ const StringsListDrawerBase: React.FC<StringsListDrawerProps> = ({
               className="w-8 h-8 inline-flex items-center justify-center rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#202634] transition cursor-pointer"
               style={{ opacity: searchOpen ? 0 : 1, pointerEvents: searchOpen ? 'none' : 'auto' }}
               tabIndex={searchOpen ? -1 : 0}
-              title={appLang === 'ar' ? 'بحث' : 'Search'}
-              aria-label={appLang === 'ar' ? 'بحث' : 'Search'}
+              title={t('search')}
+              aria-label={t('search')}
             >
               <Search className="w-4 h-4" />
             </button>
@@ -242,10 +242,10 @@ const StringsListDrawerBase: React.FC<StringsListDrawerProps> = ({
               className="w-8 h-8 inline-flex items-center justify-center rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#202634] transition cursor-pointer"
               title={
                 !searchOpen
-                  ? appLang === 'ar' ? 'إغلاق القائمة' : 'Close drawer'
+                  ? t('close_drawer')
                   : searchQuery
-                    ? appLang === 'ar' ? 'مسح البحث' : 'Clear search'
-                    : appLang === 'ar' ? 'إغلاق البحث' : 'Close search'
+                    ? t('clear_search')
+                    : t('close_search')
               }
             >
               <X
@@ -278,7 +278,7 @@ const StringsListDrawerBase: React.FC<StringsListDrawerProps> = ({
               id="drawer-search-input"
               type="text"
               tabIndex={searchOpen ? 0 : -1}
-              placeholder={appLang === 'ar' ? 'ابحث بالمفتاح أو النص...' : 'Search key or text...'}
+              placeholder={t('search_key_or_text')}
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
               className="w-full text-xs bg-transparent text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none"

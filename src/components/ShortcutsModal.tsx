@@ -1,6 +1,7 @@
 import React from 'react';
 import { Keyboard, X } from 'lucide-react';
 import { useDialog } from '../utils/useDialog';
+import { useT } from '../i18n/i18n';
 
 interface ShortcutsModalProps {
   isOpen: boolean;
@@ -20,6 +21,7 @@ const SHORTCUTS: Array<{ keys: string[]; en: string; ar: string }> = [
 ];
 
 export const ShortcutsModal: React.FC<ShortcutsModalProps> = ({ isOpen, onClose, appLang = 'ar' }) => {
+  const { t } = useT();
   const isAr = appLang === 'ar';
   const dialogRef = useDialog(isOpen, onClose);
   if (!isOpen) return null;
@@ -41,14 +43,14 @@ export const ShortcutsModal: React.FC<ShortcutsModalProps> = ({ isOpen, onClose,
         <div className="flex items-center justify-between gap-3 pb-3">
           <div className="flex items-center gap-2.5">
             <Keyboard className="w-5 h-5 text-[#1EB996]" aria-hidden="true" />
-            <h2 id="shortcuts-title" className="text-base font-semibold text-slate-900 dark:text-white">
-              {isAr ? 'اختصارات لوحة المفاتيح' : 'Keyboard shortcuts'}
+            <h2 data-i18n id="shortcuts-title" className="text-base font-semibold text-slate-900 dark:text-white">
+              {t('keyboard_shortcuts_2')}
             </h2>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label={isAr ? 'إغلاق' : 'Close'}
+            aria-label={t('close')}
             className="p-1.5 rounded-full text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
           >
             <X className="w-5 h-5" aria-hidden="true" />

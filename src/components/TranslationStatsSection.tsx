@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { BarChart3, ChevronDown, Keyboard, RotateCcw, Sparkles } from 'lucide-react';
 import { TranslationProject } from '../types';
+import { useT } from '../i18n/i18n';
 
 interface TranslationStatsSectionProps {
   project: TranslationProject;
@@ -13,11 +14,11 @@ interface TranslationStatsSectionProps {
 
 export const TranslationStatsSection: React.FC<TranslationStatsSectionProps> = ({
   project,
-  isAr,
   onSelectString,
   onResetItemHistory,
   onClose,
 }) => {
+  const { t } = useT();
   const [historyListExpanded, setHistoryListExpanded] = useState(false);
   const [historyFilter, setHistoryFilter] = useState<'all' | 'ai' | 'manual'>('all');
 
@@ -55,8 +56,8 @@ export const TranslationStatsSection: React.FC<TranslationStatsSectionProps> = (
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <BarChart3 className="w-4 h-4 text-[#1EB996] shrink-0" />
-          <span className="text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
-            {isAr ? 'إحصائيات الترجمة' : 'Translation Statistics'}
+          <span data-i18n className="text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
+            {t('translation_statistics')}
           </span>
         </div>
         <span className="text-[11px] font-mono text-slate-600 dark:text-slate-400 shrink-0 tabular-nums">
@@ -86,7 +87,7 @@ export const TranslationStatsSection: React.FC<TranslationStatsSectionProps> = (
           <div className="flex items-center justify-between gap-1">
             <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-600 dark:text-slate-300 truncate">
               <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-              <span className="truncate">{isAr ? 'ذكاء اصطناعي' : 'AI Translated'}</span>
+              <span data-i18n className="truncate">{t('ai_translated')}</span>
             </span>
             <span className="text-[10px] font-mono text-amber-600 dark:text-amber-400 tabular-nums">
               {aiPercent}%
@@ -117,7 +118,7 @@ export const TranslationStatsSection: React.FC<TranslationStatsSectionProps> = (
           <div className="flex items-center justify-between gap-1">
             <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-600 dark:text-slate-300 truncate">
               <Keyboard className="w-3.5 h-3.5 text-[#1EB996] shrink-0" />
-              <span className="truncate">{isAr ? 'إدخال يدوي' : 'Manual Input'}</span>
+              <span data-i18n className="truncate">{t('manual_input')}</span>
             </span>
             <span className="text-[10px] font-mono text-[#1EB996] tabular-nums">
               {manualPercent}%
@@ -165,10 +166,8 @@ export const TranslationStatsSection: React.FC<TranslationStatsSectionProps> = (
         >
           <span className="flex items-center gap-1.5 truncate">
             <RotateCcw className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-            <span className="truncate">
-              {isAr
-                ? `سجل الترجمات وإعادة التعيين (${filteredHistoryItems.length})`
-                : `Translation History & Reset (${filteredHistoryItems.length})`}
+            <span data-i18n className="truncate">
+              {t('translation_history_reset', filteredHistoryItems.length)}
             </span>
           </span>
           <ChevronDown
@@ -181,8 +180,8 @@ export const TranslationStatsSection: React.FC<TranslationStatsSectionProps> = (
         {historyListExpanded && (
           <div className="mt-2 space-y-1.5 max-h-52 overflow-y-auto pe-0.5">
             {filteredHistoryItems.length === 0 ? (
-              <p className="text-[11px] text-slate-600 dark:text-slate-400 text-center py-3">
-                {isAr ? 'لا توجد نصوص مترجمة حالياً' : 'No translated strings yet'}
+              <p data-i18n className="text-[11px] text-slate-600 dark:text-slate-400 text-center py-3">
+                {t('no_translated_strings_yet')}
               </p>
             ) : (
               filteredHistoryItems.map((tItem) => {
@@ -216,7 +215,7 @@ export const TranslationStatsSection: React.FC<TranslationStatsSectionProps> = (
                               : 'bg-[#1EB996]/15 text-emerald-700 dark:text-[#1EB996]'
                           }`}
                         >
-                          {isAi ? (isAr ? 'ذكاء اصطناعي' : 'AI') : isAr ? 'يدوي' : 'Manual'}
+                          {isAi ? (t('ai')) : t('manual')}
                         </span>
                       </div>
                       <span className="text-[10px] text-slate-600 dark:text-slate-400 truncate w-full">
@@ -229,14 +228,12 @@ export const TranslationStatsSection: React.FC<TranslationStatsSectionProps> = (
                         type="button"
                         onClick={() => onResetItemHistory(tItem.id)}
                         title={
-                          isAr
-                            ? `إعادة تعيين ترجمة "${tItem.name}"`
-                            : `Reset translation history for "${tItem.name}"`
+                          t('reset_translation_history_for', tItem.name)
                         }
                         className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 hover:bg-rose-500/15 dark:bg-[#222938] dark:hover:bg-rose-500/20 text-slate-600 hover:text-rose-600 dark:text-slate-300 dark:hover:text-rose-300 text-[10px] font-medium transition cursor-pointer shrink-0"
                       >
                         <RotateCcw className="w-3 h-3" />
-                        <span>{isAr ? 'إعادة تعيين' : 'Reset'}</span>
+                        <span data-i18n>{t('reset')}</span>
                       </button>
                     )}
                   </div>

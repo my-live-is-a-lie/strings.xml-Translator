@@ -11,6 +11,7 @@ import {
   defaultExportOptions,
   filterProjectItems,
 } from '../utils/xmlExporter';
+import { useT } from '../i18n/i18n';
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -35,6 +36,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   searchQuery = '',
   appLang = 'ar',
 }) => {
+  const { t, tb } = useT();
   const isAr = appLang === 'ar';
   const dialogRef = useDialog(isOpen, onClose);
   const [options, setOptions] = useState<ExportOptions>(defaultExportOptions);
@@ -113,17 +115,17 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   // Describe active filter for badge
   const activeFilterParts: string[] = [];
   if (activeFilterStatus === 'untranslated') {
-    activeFilterParts.push(isAr ? 'غير مترجم' : 'Untranslated');
+    activeFilterParts.push(t('untranslated'));
   } else if (activeFilterStatus === 'translated') {
-    activeFilterParts.push(isAr ? 'مترجم' : 'Translated');
+    activeFilterParts.push(t('translated'));
   } else if (activeFilterStatus === 'needs_review') {
-    activeFilterParts.push(isAr ? 'يحتاج مراجعة' : 'Needs Review');
+    activeFilterParts.push(t('needs_review'));
   }
 
   if (activeSourceFilter === 'ai') {
-    activeFilterParts.push(isAr ? 'ذكاء اصطناعي' : 'AI Translated');
+    activeFilterParts.push(t('ai_translated'));
   } else if (activeSourceFilter === 'manual') {
-    activeFilterParts.push(isAr ? 'إدخال يدوي' : 'Manual Input');
+    activeFilterParts.push(t('manual_input'));
   }
 
   if (searchQuery.trim()) activeFilterParts.push(`"${searchQuery.trim()}"`);
@@ -131,9 +133,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const activeFilterLabel =
     activeFilterParts.length > 0
       ? activeFilterParts.join(' • ')
-      : isAr
-        ? 'جميع النصوص'
-        : 'All strings';
+      : t('all_strings');
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 overflow-y-auto">
@@ -146,23 +146,19 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               <Download className="w-5 h-5" />
             </div>
             <div>
-              <h2 id="ExportModal-title" className="text-lg font-semibold text-slate-900 dark:text-white">
-                {isAr ? 'تصدير ملف strings.xml لأندرويد' : 'Export Android strings.xml'}
+              <h2 data-i18n id="ExportModal-title" className="text-lg font-semibold text-slate-900 dark:text-white">
+                {t('export_android_strings_xml')}
               </h2>
               <p className="text-xs text-slate-600 dark:text-slate-400">
                 {options.onlyMatchingFilter
-                  ? isAr
-                    ? `تصدير ${filteredItems.length} من أصل ${totalCount} نص (${activeFilterLabel})`
-                    : `Exporting ${filteredItems.length} of ${totalCount} strings (${activeFilterLabel})`
-                  : isAr
-                    ? `ملف موارد جاهز للإنتاج (${translatedCount} من ${totalCount} مترجم)`
-                    : `Production-ready resource file (${translatedCount} of ${totalCount} translated)`}
+                  ? t('exporting_of_strings', filteredItems.length, totalCount, activeFilterLabel)
+                  : t('production_ready_resource_file_of', translatedCount, totalCount)}
               </p>
             </div>
           </div>
           <button
             type="button"
-            aria-label={isAr ? 'إغلاق' : 'Close'}
+            aria-label={t('close')}
             onClick={onClose}
             className="p-2 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer m3-state-layer"
           >
@@ -176,8 +172,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           <div className="flex items-start gap-3 p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/70 dark:border-slate-700/60 text-xs text-slate-700 dark:text-slate-300">
             <Folder className="w-4 h-4 text-[#0B57D0] dark:text-[#A8C7FA] shrink-0 mt-0.5" />
             <div>
-              <p className="font-semibold text-slate-900 dark:text-slate-100">
-                {isAr ? 'مسار المجلد في أندرويد ستوديو:' : 'Android Studio Destination:'}
+              <p data-i18n className="font-semibold text-slate-900 dark:text-slate-100">
+                {t('android_studio_destination')}
               </p>
               <code
                 dir="ltr"
@@ -192,7 +188,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           <div className="bg-slate-50/60 dark:bg-slate-800/40 p-4 rounded-2xl border border-slate-200/70 dark:border-slate-800/80 space-y-3">
             <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
               <Sliders className="w-3.5 h-3.5 text-slate-500" />
-              <span>{isAr ? 'خيارات التصدير' : 'Export Options'}</span>
+              <span data-i18n>{t('export_options')}</span>
             </span>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
@@ -203,10 +199,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   onChange={(e) => setOptions({ ...options, fallbackToSource: e.target.checked })}
                   className="rounded border-slate-300 text-[#0B57D0] focus:ring-[#0B57D0] cursor-pointer"
                 />
-                <span>
-                  {isAr
-                    ? 'استخدام النص الإنجليزي للنصوص غير المترجمة'
-                    : 'Fallback to English for untranslated'}
+                <span data-i18n>
+                  {t('fallback_to_english_for_untranslated')}
                 </span>
               </label>
 
@@ -217,10 +211,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   onChange={(e) => setOptions({ ...options, autoEscapeApostrophes: e.target.checked })}
                   className="rounded border-slate-300 text-[#0B57D0] focus:ring-[#0B57D0] cursor-pointer"
                 />
-                <span>
-                  {isAr
-                    ? "تهريب الفواصل العلوية تلقائياً \u2066(\\')\u2069"
-                    : "Auto-escape apostrophes (\\') for AAPT2"}
+                <span data-i18n>
+                  {t('auto_escape_apostrophes_for_aapt2')}
                 </span>
               </label>
 
@@ -231,7 +223,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   onChange={(e) => setOptions({ ...options, includeComments: e.target.checked })}
                   className="rounded border-slate-300 text-[#0B57D0] focus:ring-[#0B57D0] cursor-pointer"
                 />
-                <span>{isAr ? 'تضمين التعليقات' : 'Include comments'}</span>
+                <span data-i18n>{t('include_comments')}</span>
               </label>
             </div>
 
@@ -248,10 +240,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                     }
                     className="rounded border-slate-300 text-[#0B57D0] focus:ring-[#0B57D0] cursor-pointer"
                   />
-                  <span>
-                    {isAr
-                      ? 'تصدير النصوص المطابقة للتصفية النشطة فقط'
-                      : 'Export only strings matching active filter'}
+                  <span data-i18n>
+                    {t('export_only_strings_matching_active')}
                   </span>
                 </label>
 
@@ -267,22 +257,22 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
                 {(
                   [
-                    { id: 'all', label: isAr ? 'الكل' : 'All', count: totalCount },
+                    { id: 'all', label: t('all'), count: totalCount },
                     {
                       id: 'untranslated',
-                      label: isAr ? 'غير مترجم' : 'Untranslated',
+                      label: t('untranslated'),
                       count: untranslatedCount,
                     },
                     {
                       id: 'translated',
-                      label: isAr ? 'مترجم' : 'Translated',
+                      label: t('translated'),
                       count: translatedCount,
                     },
                     ...(reviewCount > 0
                       ? [
                           {
                             id: 'needs_review',
-                            label: isAr ? 'يحتاج مراجعة' : 'Needs Review',
+                            label: t('needs_review'),
                             count: reviewCount,
                           },
                         ]
@@ -317,8 +307,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
                 {(
                   [
-                    { id: 'ai', label: isAr ? 'ذكاء اصطناعي' : 'AI Translated', count: aiCount },
-                    { id: 'manual', label: isAr ? 'إدخال يدوي' : 'Manual Input', count: manualCount },
+                    { id: 'ai', label: t('ai_translated'), count: aiCount },
+                    { id: 'manual', label: t('manual_input'), count: manualCount },
                   ] as const
                 ).map((srcChip) => {
                   const isSelected = activeSourceFilter === srcChip.id;
@@ -352,8 +342,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           {/* Live XML Preview */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
-              <span className="font-semibold text-slate-700 dark:text-slate-300">
-                {isAr ? 'معاينة مباشرة لملف XML' : 'Live Preview'}
+              <span data-i18n className="font-semibold text-slate-700 dark:text-slate-300">
+                {t('live_preview')}
               </span>
               <button
                 onClick={handleCopy}
@@ -362,12 +352,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
                 <span>
                   {copied
-                    ? isAr
-                      ? 'تم النسخ!'
-                      : 'Copied!'
-                    : isAr
-                      ? 'نسخ كود XML الخام'
-                      : 'Copy raw XML'}
+                    ? t('copied')
+                    : t('copy_raw_xml')}
                 </span>
               </button>
             </div>
@@ -376,7 +362,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               dir="ltr"
               tabIndex={0}
               role="region"
-              aria-label={isAr ? 'معاينة ملف XML' : 'XML preview'}
+              aria-label={t('xml_preview')}
               className="max-h-60 overflow-y-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-[#111318] text-slate-100 p-4 font-mono text-[11px] leading-relaxed select-all"
             >
               <pre className="whitespace-pre">{generatedXml}</pre>
@@ -392,10 +378,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           >
             <div className="flex items-center gap-2 font-semibold">
               <ShieldAlert className="w-4 h-4 shrink-0" aria-hidden="true" />
-              <span>
-                {isAr
-                  ? `${blockingIssues.length} خطأ في المتغيرات أو الوسوم قد يُعطّل التطبيق`
-                  : `${blockingIssues.length} placeholder/tag error(s) may break the app`}
+              <span data-i18n>
+                {t('placeholder_tag_error_s_may', blockingIssues.length)}
               </span>
             </div>
             <ul className="mt-2 space-y-0.5 ps-5 list-disc">
@@ -405,7 +389,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 </li>
               ))}
               {blockingIssues.length > 5 && (
-                <li>{isAr ? `و${blockingIssues.length - 5} أخرى…` : `and ${blockingIssues.length - 5} more…`}</li>
+                <li data-i18n>{t('and_more', blockingIssues.length - 5)}</li>
               )}
             </ul>
             <label className="mt-2 flex items-center gap-2 cursor-pointer select-none">
@@ -416,7 +400,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 onChange={(e) => setAllowBroken(e.target.checked)}
                 className="w-4 h-4 accent-rose-600"
               />
-              <span>{isAr ? 'أفهم المخاطر وأريد التصدير رغم ذلك' : 'I understand the risk, export anyway'}</span>
+              <span data-i18n>{t('i_understand_the_risk_export')}</span>
             </label>
           </div>
         )}
@@ -430,12 +414,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
             <span>
               {copied
-                ? isAr
-                  ? 'تم النسخ'
-                  : 'Copied'
-                : isAr
-                  ? 'نسخ XML'
-                  : 'Copy XML'}
+                ? t('copied_2')
+                : t('copy_xml')}
             </span>
           </button>
 
@@ -444,7 +424,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               onClick={onClose}
               className="px-4 py-2 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition cursor-pointer"
             >
-              {isAr ? 'إغلاق' : 'Close'}
+              {tb('close')}
             </button>
             <button
               onClick={handleDownload}
@@ -453,7 +433,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               className="disabled:opacity-40 disabled:pointer-events-none inline-flex items-center gap-1.5 px-5 py-2.5 rounded-full bg-[#0B57D0] hover:bg-[#0842A0] dark:bg-[#A8C7FA] dark:hover:bg-[#82AAFA] text-white dark:text-[#062E6F] text-xs font-semibold shadow-xs transition cursor-pointer m3-state-layer"
             >
               <Download className="w-4 h-4" />
-              <span>{isAr ? 'تنزيل strings.xml' : 'Download strings.xml'}</span>
+              <span data-i18n>{t('download_strings_xml')}</span>
             </button>
           </div>
         </div>

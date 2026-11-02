@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useT } from '../i18n/i18n';
 
 interface Props {
   appLang?: 'ar' | 'en';
 }
 
 /** Small status dot: tap it and it widens for a few seconds to say whether the app is online, then shrinks back. */
-export const OfflineDot: React.FC<Props> = ({ appLang = 'ar' }) => {
-  const isAr = appLang === 'ar';
+export const OfflineDot: React.FC<Props> = ({ appLang: _appLang = 'ar' }) => {
+  const { t } = useT();
   const [expanded, setExpanded] = useState(false);
   const [online, setOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine));
   const probeRef = useRef<(() => Promise<void>) | null>(null);
@@ -57,8 +58,8 @@ export const OfflineDot: React.FC<Props> = ({ appLang = 'ar' }) => {
   };
 
   const label = online
-    ? isAr ? 'متصل بالإنترنت' : 'Online'
-    : isAr ? 'غير متصل بالإنترنت' : 'Offline';
+    ? t('online')
+    : t('offline');
 
   return (
     <button

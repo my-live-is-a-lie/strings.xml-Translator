@@ -1,5 +1,6 @@
 import React from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useT } from '../i18n/i18n';
 
 interface EditorNavFooterProps {
   isAr: boolean;
@@ -11,13 +12,13 @@ interface EditorNavFooterProps {
 }
 
 export const EditorNavFooter: React.FC<EditorNavFooterProps> = ({
-  isAr,
   currentIndex,
   totalCount,
   onPrevious,
   onNext,
   onNextUntranslated,
 }) => {
+  const { t, tb } = useT();
   return (
     <div className="flex items-center justify-between text-[11px] text-slate-400 px-2 py-0.5">
       <div className="flex items-center gap-1.5">
@@ -27,14 +28,14 @@ export const EditorNavFooter: React.FC<EditorNavFooterProps> = ({
           className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full hover:bg-slate-800/60 disabled:opacity-30 disabled:pointer-events-none transition cursor-pointer"
         >
           <ChevronLeft className="w-3 h-3 rtl:rotate-180" />
-          <span>{isAr ? 'السابق' : 'Previous'}</span>
+          <span data-i18n>{t('previous')}</span>
         </button>
         <button
           onClick={() => onNext()}
           disabled={currentIndex === totalCount - 1}
           className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full hover:bg-slate-800/60 disabled:opacity-30 disabled:pointer-events-none transition cursor-pointer"
         >
-          <span>{isAr ? 'التالي' : 'Next'}</span>
+          <span data-i18n>{t('next')}</span>
           <ChevronRight className="w-3 h-3 rtl:rotate-180" />
         </button>
       </div>
@@ -47,7 +48,7 @@ export const EditorNavFooter: React.FC<EditorNavFooterProps> = ({
         onClick={onNextUntranslated}
         className="text-[#1EB996] hover:underline cursor-pointer"
       >
-        {isAr ? 'التالي غير المترجم' : 'Next Untranslated'}
+        {tb('next_untranslated')}
       </button>
     </div>
   );

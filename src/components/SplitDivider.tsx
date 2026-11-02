@@ -1,6 +1,7 @@
 import React, { useRef } from 'react';
 import { ArrowLeftRight } from 'lucide-react';
 import { SPLIT_MAX, SPLIT_MIN } from '../hooks/useLandscapeSplit';
+import { useT } from '../i18n/i18n';
 
 interface Props {
   containerRef: React.RefObject<HTMLDivElement | null>;
@@ -12,7 +13,8 @@ interface Props {
 }
 
 /** Vertical divider with a handle at its top: drag to resize (limited to ±15%), tap to swap the halves. */
-export const SplitDivider: React.FC<Props> = ({ containerRef, infoOnLeft, onRatioChange, onSwap, isAr }) => {
+export const SplitDivider: React.FC<Props> = ({ containerRef, infoOnLeft, onRatioChange, onSwap }) => {
+  const { t } = useT();
   const start = useRef<{ x: number; moved: boolean } | null>(null);
 
   const onDown = (e: React.PointerEvent<HTMLButtonElement>) => {
@@ -47,8 +49,8 @@ export const SplitDivider: React.FC<Props> = ({ containerRef, infoOnLeft, onRati
         onPointerMove={onMove}
         onPointerUp={onUp}
         onPointerCancel={() => (start.current = null)}
-        title={isAr ? 'اسحب لتغيير العرض، انقر لعكس الجانبين' : 'Drag to resize, tap to swap sides'}
-        aria-label={isAr ? 'فاصل الشاشة' : 'Split divider'}
+        title={t('drag_to_resize_tap_to')}
+        aria-label={t('split_divider')}
         className="absolute top-3 left-1/2 -translate-x-1/2 w-6 h-10 rounded-full bg-slate-200 dark:bg-[#232C3A] border border-slate-300 dark:border-slate-600 shadow-md flex items-center justify-center text-slate-600 dark:text-slate-300 touch-none cursor-col-resize select-none"
       >
         <ArrowLeftRight className="w-3 h-3" />

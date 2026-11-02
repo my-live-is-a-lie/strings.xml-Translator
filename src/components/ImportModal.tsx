@@ -5,14 +5,13 @@ import { useDialog } from '../utils/useDialog';
 import { parseAndroidXml, mergeTargetXml, normalizePluralsForLanguage } from '../utils/xmlParser';
 import { TranslationProject } from '../types';
 import { getArabicLanguageName } from '../utils/languages';
+import { useT, tg } from '../i18n/i18n';
 
 // Larger files freeze the page while parsing; real strings.xml files are far smaller than this.
 const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
 
-function importTooLargeMessage(isAr: boolean): string {
-  return isAr
-    ? 'الملف كبير جداً (الحد 5 MB). / The file is too large (limit 5 MB).'
-    : 'The file is too large (limit 5 MB).';
+function importTooLargeMessage(_isAr: boolean): string {
+  return tg('the_file_is_too_large');
 }
 
 interface ImportModalProps {
@@ -30,6 +29,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   onLoadSample,
   appLang = 'ar',
 }) => {
+  const { t, tb } = useT();
   const isAr = appLang === 'ar';
   const dialogRef = useDialog(isOpen, onClose);
   const [activeTab, setActiveTab] = useState<'upload' | 'paste'>('upload');
@@ -87,9 +87,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
 
     if (!xmlToParse || !xmlToParse.trim()) {
       setErrorMsg(
-        isAr
-          ? 'يرجى اختيار أو لصق ملف strings.xml الخاص بأندرويد.'
-          : 'Please select or paste an Android strings.xml file.'
+        t('please_select_or_paste_an')
       );
       return;
     }
@@ -98,9 +96,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     if (errors.length > 0 || items.length === 0) {
       setErrorMsg(
         errors.join('\n') ||
-          (isAr
-            ? 'تعذر تحليل أي نصوص من ملف XML هذا.'
-            : 'Could not parse any strings from this XML.')
+          (t('could_not_parse_any_strings'))
       );
       return;
     }
@@ -115,7 +111,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
 
     const newProject: TranslationProject = {
       id: `proj_${Date.now()}`,
-      name: projectName.trim() || (isAr ? 'مترجم XML' : 'Android Strings'),
+      name: projectName.trim() || (t('android_strings')),
       sourceFileName: fileName,
       sourceLang: 'en',
       targetLang,
@@ -143,19 +139,17 @@ export const ImportModal: React.FC<ImportModalProps> = ({
               <FolderUp className="w-5 h-5" />
             </div>
             <div>
-              <h2 id="ImportModal-title" className="text-lg font-semibold text-slate-900 dark:text-white">
-                {isAr ? 'استيراد ملف strings.xml' : 'Import strings.xml'}
+              <h2 data-i18n id="ImportModal-title" className="text-lg font-semibold text-slate-900 dark:text-white">
+                {t('import_strings_xml')}
               </h2>
-              <p className="text-xs text-slate-600 dark:text-slate-400">
-                {isAr
-                  ? 'قم بتحميل ملف نصوص موارد أندرويد للبدء في الترجمة'
-                  : 'Load your Android resource strings file to begin translating'}
+              <p data-i18n className="text-xs text-slate-600 dark:text-slate-400">
+                {t('load_your_android_resource_strings')}
               </p>
             </div>
           </div>
           <button
             type="button"
-            aria-label={isAr ? 'إغلاق' : 'Close'}
+            aria-label={t('close')}
             onClick={onClose}
             className="p-2 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer m3-state-layer"
           >
@@ -175,7 +169,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
-              {isAr ? 'رفع ملف (.xml)' : 'Upload File (.xml)'}
+              {tb('upload_file_xml')}
             </button>
             <button
               onClick={() => setActiveTab('paste')}
@@ -185,49 +179,49 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
-              {isAr ? 'لصق نص XML' : 'Paste XML Text'}
+              {tb('paste_xml_text')}
             </button>
           </div>
 
           {/* Project & Target Locale Config */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
             <div>
-              <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                {isAr ? 'اسم المشروع' : 'Project Name'}
+              <label data-i18n className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                {t('project_name')}
               </label>
               <input
                 type="text"
                 value={projectName}
                 onChange={(e) => setProjectName(e.target.value)}
-                placeholder={isAr ? 'مثال: نصوص تطبيقي' : 'e.g. My App Strings'}
+                placeholder={t('e_g_my_app_strings')}
                 className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-[#0B57D0] focus:ring-2 focus:ring-[#0B57D0]/20 transition"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                {isAr ? 'اللغة المستهدفة' : 'Target Language'}
+              <label data-i18n className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                {t('target_language')}
               </label>
               <select
                 value={targetLang}
                 onChange={(e) => setTargetLang(e.target.value)}
                 className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-[#0B57D0] focus:ring-2 focus:ring-[#0B57D0]/20 transition cursor-pointer"
               >
-                <option value="ar">{isAr ? 'العربية (values-ar)' : 'Arabic (values-ar)'}</option>
-                <option value="es">{isAr ? 'الإسبانية (values-es)' : 'Spanish (values-es)'}</option>
-                <option value="fr">{isAr ? 'الفرنسية (values-fr)' : 'French (values-fr)'}</option>
-                <option value="de">{isAr ? 'الألمانية (values-de)' : 'German (values-de)'}</option>
+                <option value="ar">{t('arabic_values_ar')}</option>
+                <option value="es">{t('spanish_values_es')}</option>
+                <option value="fr">{t('french_values_fr')}</option>
+                <option value="de">{t('german_values_de')}</option>
                 <option value="pt-rBR">
-                  {isAr ? 'البرتغالية - البرازيل (values-pt-rBR)' : 'Portuguese BR (values-pt-rBR)'}
+                  {t('portuguese_br_values_pt_rbr')}
                 </option>
-                <option value="ja">{isAr ? 'اليابانية (values-ja)' : 'Japanese (values-ja)'}</option>
+                <option value="ja">{t('japanese_values_ja')}</option>
                 <option value="zh-rCN">
-                  {isAr ? 'الصينية المبسطة (values-zh-rCN)' : 'Chinese Simplified (values-zh-rCN)'}
+                  {t('chinese_simplified_values_zh_rcn')}
                 </option>
-                <option value="it">{isAr ? 'الإيطالية (values-it)' : 'Italian (values-it)'}</option>
-                <option value="ru">{isAr ? 'الروسية (values-ru)' : 'Russian (values-ru)'}</option>
-                <option value="hi">{isAr ? 'الهندية (values-hi)' : 'Hindi (values-hi)'}</option>
-                <option value="tr">{isAr ? 'التركية (values-tr)' : 'Turkish (values-tr)'}</option>
-                <option value="pl">{isAr ? 'البولندية (values-pl)' : 'Polish (values-pl)'}</option>
+                <option value="it">{t('italian_values_it')}</option>
+                <option value="ru">{t('russian_values_ru')}</option>
+                <option value="hi">{t('hindi_values_hi')}</option>
+                <option value="tr">{t('turkish_values_tr')}</option>
+                <option value="pl">{t('polish_values_pl')}</option>
               </select>
             </div>
           </div>
@@ -236,10 +230,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({
           {activeTab === 'upload' && (
             <div className="space-y-3 pt-1">
               <div>
-                <label className="block text-xs font-semibold text-slate-800 dark:text-slate-200 mb-1.5">
-                  {isAr
-                    ? '1. ملف strings.xml المصدر (الإنجليزي / الأساسي) *'
-                    : '1. Source strings.xml (English / Base) *'}
+                <label data-i18n className="block text-xs font-semibold text-slate-800 dark:text-slate-200 mb-1.5">
+                  {t('1_source_strings_xml_english')}
                 </label>
                 <label className="border-2 border-dashed border-slate-200 dark:border-slate-700 hover:border-[#0B57D0] dark:hover:border-[#A8C7FA] rounded-2xl p-5 flex flex-col items-center justify-center gap-2 cursor-pointer bg-slate-50/50 dark:bg-slate-800/30 transition">
                   <Upload className="w-6 h-6 text-slate-400" />
@@ -247,14 +239,10 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                     <span className="text-xs font-semibold text-[#0B57D0] dark:text-[#A8C7FA]">
                       {sourceFile
                         ? sourceFile.name
-                        : isAr
-                          ? 'انقر لاختيار ملف strings.xml'
-                          : 'Click to select strings.xml'}
+                        : t('click_to_select_strings_xml')}
                     </span>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      {isAr
-                        ? 'ملف XML لأندرويد من المسار res/values/strings.xml'
-                        : 'Android XML file from res/values/strings.xml'}
+                    <p data-i18n className="text-[11px] text-slate-400 mt-0.5">
+                      {t('android_xml_file_from_res')}
                     </p>
                   </div>
                   <input
@@ -267,10 +255,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-800 dark:text-slate-200 mb-1.5">
-                  {isAr
-                    ? '2. ملف الترجمة المستهدف الحالي (اختياري)'
-                    : '2. Existing Target Translation (Optional)'}
+                <label data-i18n className="block text-xs font-semibold text-slate-800 dark:text-slate-200 mb-1.5">
+                  {t('2_existing_target_translation_optional')}
                 </label>
                 <label className="border border-slate-200 dark:border-slate-700 hover:border-[#0B57D0] rounded-2xl p-3 flex items-center justify-between cursor-pointer bg-slate-50/50 dark:bg-slate-800/20 transition">
                   <div className="flex items-center gap-2.5">
@@ -278,19 +264,13 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                     <span className="text-xs text-slate-600 dark:text-slate-300">
                       {targetFile
                         ? targetFile.name
-                        : isAr
-                          ? 'دمج ملف strings.xml المترجم مسبقاً'
-                          : 'Merge existing target strings.xml'}
+                        : t('merge_existing_target_strings_xml')}
                     </span>
                   </div>
                   <span className="text-xs font-medium text-[#0B57D0] dark:text-[#A8C7FA]">
                     {targetFile
-                      ? isAr
-                        ? 'تغيير'
-                        : 'Change'
-                      : isAr
-                        ? 'تصفح'
-                        : 'Browse'}
+                      ? t('change')
+                      : t('browse')}
                   </span>
                   <input
                     type="file"
@@ -306,10 +286,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({
           {/* Paste Tab */}
           {activeTab === 'paste' && (
             <div className="pt-1">
-              <label className="block text-xs font-semibold text-slate-800 dark:text-slate-200 mb-1.5">
-                {isAr
-                  ? 'الصق محتوى ملف strings.xml لأندرويد:'
-                  : 'Paste Android strings.xml content:'}
+              <label data-i18n className="block text-xs font-semibold text-slate-800 dark:text-slate-200 mb-1.5">
+                {t('paste_android_strings_xml_content')}
               </label>
               <textarea
                 dir="ltr"
@@ -341,7 +319,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
             className="inline-flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white font-medium cursor-pointer"
           >
             <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-            <span>{isAr ? 'تحميل مشروع تجريبي' : 'Load Sample App'}</span>
+            <span data-i18n>{t('load_sample_app')}</span>
           </button>
 
           <div className="flex items-center gap-2">
@@ -349,13 +327,13 @@ export const ImportModal: React.FC<ImportModalProps> = ({
               onClick={onClose}
               className="px-4 py-2 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition cursor-pointer"
             >
-              {isAr ? 'إلغاء' : 'Cancel'}
+              {tb('cancel')}
             </button>
             <button
               onClick={handleProcessImport}
               className="px-5 py-2 rounded-full bg-[#0B57D0] hover:bg-[#0842A0] dark:bg-[#A8C7FA] dark:hover:bg-[#82AAFA] text-white dark:text-[#062E6F] text-xs font-semibold shadow-xs transition cursor-pointer m3-state-layer"
             >
-              {isAr ? 'بدء الترجمة' : 'Start Translating'}
+              {tb('start_translating')}
             </button>
           </div>
         </div>

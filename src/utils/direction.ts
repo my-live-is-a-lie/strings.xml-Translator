@@ -1,7 +1,8 @@
+import { isRtlLanguageCode } from '../i18n/i18n';
 export type AppLanguage = 'ar' | 'en';
 
 /** Languages whose UI should be laid out right-to-left. */
-export const isRtlAppLanguage = (lang: string): boolean => lang === 'ar';
+export const isRtlAppLanguage = (lang: string): boolean => isRtlLanguageCode(lang);
 
 /**
  * Applies the reading direction (and `lang`) of the chosen interface language to the whole

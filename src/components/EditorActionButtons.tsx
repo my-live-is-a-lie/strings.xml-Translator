@@ -4,6 +4,7 @@ import React from 'react';
 import { getArabicLanguageName, getLanguageOption } from '../utils/languages';
 import { CheckCircle2, Globe, Sparkles, Trash2 } from 'lucide-react';
 import { useResizablePair } from '../hooks/useResizablePair';
+import { useT } from '../i18n/i18n';
 
 // Held-and-dragged buttons: lifted look, and no text selection / context menu / page panning while resizing
 const RESIZE_STYLE: React.CSSProperties = {
@@ -43,6 +44,7 @@ export const EditorActionButtons: React.FC<EditorActionButtonsProps> = ({
   onOpenLanguageModal,
   compact = false,
 }) => {
+  const { t, tb } = useT();
   const [row1, row1h] = useResizablePair('editor_buttons_row1_ratio_v1');
   const [row2, row2h] = useResizablePair('editor_buttons_row2_ratio_v1');
   const c = compact
@@ -67,7 +69,7 @@ export const EditorActionButtons: React.FC<EditorActionButtonsProps> = ({
             onContextMenu={(e) => e.preventDefault()}
             style={{ ...RESIZE_STYLE, ['--ex' as string]: `${row1.iconExtra}px` }}
             onClick={onClear}
-            title={isAr ? 'مسح حقل الترجمة' : 'Clear translation field'}
+            title={t('clear_translation_field')}
             className={`${c.sq} rounded-full bg-slate-100 hover:bg-rose-100 active:bg-rose-200 dark:bg-[#1C2330] dark:hover:bg-rose-950/40 dark:active:bg-rose-900/60 border border-slate-300 hover:border-rose-300 dark:border-[#2B3545] dark:hover:border-rose-800/60 text-slate-600 hover:text-rose-600 dark:text-slate-300 dark:hover:text-rose-400 flex items-center justify-center shrink-0 max-w-[45%] transition-colors cursor-pointer shadow-xs group ${row1.activeSide === 'I' ? ACTIVE_CLASS : ''}`}
           >
             <Trash2 className="w-4 h-4 group-hover:scale-110 transition-transform" />
@@ -86,10 +88,10 @@ export const EditorActionButtons: React.FC<EditorActionButtonsProps> = ({
             onContextMenu={(e) => e.preventDefault()}
             style={RESIZE_STYLE}
             onClick={onSkip}
-            title={isAr ? 'تخطّي إلى السلسلة التالية' : 'Skip to next string'}
+            title={t('skip_to_next_string')}
             className={`flex-1 min-w-0 ${c.h} rounded-full bg-[#185F54] hover:bg-[#1C6F63] active:bg-[#144F46] text-white font-medium text-xs sm:text-sm flex items-center justify-center transition cursor-pointer shadow-xs overflow-hidden ${row1.activeSide === 'A' ? ACTIVE_CLASS : ''}`}
           >
-            <span className="whitespace-nowrap">{isAr ? 'تخطّي' : 'Skip'}</span>
+            <span data-i18n className="whitespace-nowrap">{tb('skip')}</span>
           </button>
         </div>
 
@@ -108,7 +110,7 @@ export const EditorActionButtons: React.FC<EditorActionButtonsProps> = ({
           onClick={onSaveAndContinue}
           className={`w-full ${c.h} rounded-full bg-[#1EB996] hover:bg-[#19A585] active:bg-[#158C71] text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition cursor-pointer shadow-sm overflow-hidden ${row1.activeSide === 'B' ? ACTIVE_CLASS : ''}`}
         >
-          <span className="whitespace-nowrap">{isAr ? 'حفظ ومتابعة' : 'Save & Continue'}</span>
+          <span data-i18n className="whitespace-nowrap">{tb('save_continue')}</span>
         </button>
       </div>
 
@@ -156,12 +158,8 @@ export const EditorActionButtons: React.FC<EditorActionButtonsProps> = ({
             <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
             <span className="whitespace-nowrap">
               {isSuggesting
-                ? isAr
-                  ? 'جارٍ الاقتراح...'
-                  : 'Suggesting...'
-                : isAr
-                  ? 'اقترح'
-                  : 'Suggest'}
+                ? t('suggesting')
+                : t('suggest')}
             </span>
           </button>
         </div>
@@ -184,10 +182,10 @@ export const EditorActionButtons: React.FC<EditorActionButtonsProps> = ({
           {showSavedFeedback ? (
             <span className="flex items-center gap-1.5 text-emerald-300 whitespace-nowrap">
               <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>{isAr ? 'تم الحفظ!' : 'Saved!'}</span>
+              <span data-i18n>{t('saved')}</span>
             </span>
           ) : (
-            <span className="whitespace-nowrap">{isAr ? 'حفظ بدون متابعة' : 'Save & Stay'}</span>
+            <span data-i18n className="whitespace-nowrap">{t('save_stay')}</span>
           )}
         </button>
       </div>

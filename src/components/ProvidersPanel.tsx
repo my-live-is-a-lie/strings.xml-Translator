@@ -18,9 +18,10 @@ import {
   removeCustomProvider,
   testProviderApiKey,
 } from '../utils/translator';
+import { useT, tg } from '../i18n/i18n';
 
 export function getProviderDisplayName(prov: TranslationProviderConfig | undefined, isAr: boolean): string {
-  if (!prov) return isAr ? 'ترجمة جوجل' : 'Google Translate';
+  if (!prov) return tg('google_translate');
   if (!isAr || !prov.isBuiltIn) return prov.name;
   if (prov.id === 'google') return 'ترجمة جوجل';
   if (prov.id === 'mymemory') return 'ذاكرة الترجمة (MyMemory)';
@@ -34,6 +35,7 @@ interface ProvidersPanelProps {
 }
 
 export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged }) => {
+  const { t, tb } = useT();
   // Translation Providers state inside the sidebar
   const [providersPanelOpen, setProvidersPanelOpen] = useState(false);
   const [providersList, setProvidersList] = useState<TranslationProviderConfig[]>(() =>
@@ -276,8 +278,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
             <div className="flex items-center gap-2.5 flex-1 min-w-0 overflow-hidden">
               <Cpu className="w-4 h-4 text-[#1EB996] shrink-0" />
               <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-                <span className="w-full text-xs sm:text-sm font-semibold truncate">
-                  {isAr ? 'مزودو الترجمة الآلية' : 'Translate Providers'}
+                <span data-i18n className="w-full text-xs sm:text-sm font-semibold truncate">
+                  {t('translate_providers')}
                 </span>
                 <span className="w-full text-[11px] text-[#1EB996] font-medium truncate">
                   {providerLabel(activeProviderObj)}
@@ -294,20 +296,18 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
           {providersPanelOpen && (
             <div className="p-3 flex flex-col gap-3 border-t border-slate-200/80 dark:border-[#2A3244]">
               {gtxDown && (
-                <p
+                <p data-i18n
                   role="status"
                   className="text-[11px] leading-snug rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 px-2.5 py-2"
                 >
-                  {isAr
-                    ? 'محرك جوجل المجاني لا يستجيب حالياً. أضف مزوداً بمفتاح أو خادم LibreTranslate لضمان استمرار الترجمة.'
-                    : 'The free Google engine is not responding. Add a provider with a key, or a LibreTranslate server, to keep translating.'}
+                  {t('the_free_google_engine_is')}
                 </p>
               )}
 
               {/* Providers Selection List */}
               <div className="flex flex-col gap-1.5">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 px-1">
-                  {isAr ? 'اختر مزود الترجمة لزر الاقتراح' : 'Select Provider for Suggest'}
+                <span data-i18n className="text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 px-1">
+                  {t('select_provider_for_suggest')}
                 </span>
 
                 <div className="flex flex-col gap-1.5 pe-0.5">
@@ -342,36 +342,20 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                               </div>
                               <span className="text-[10px] text-slate-600 dark:text-slate-400 truncate">
                                 {prov.type === 'lara'
-                                  ? isAr
-                                    ? 'محرك Lara الذكي للترجمة'
-                                    : 'Lara Translate AI'
+                                  ? t('lara_translate_ai')
                                   : prov.type === 'yandex'
-                                    ? isAr
-                                      ? 'محرك Yandex الذكي'
-                                      : 'Yandex AI Translator'
+                                    ? t('yandex_ai_translator')
                                     : prov.type === 'gemini'
-                                      ? isAr
-                                        ? 'محرك ذكاء Gemini الاصطناعي'
-                                        : 'Gemini AI Engine'
+                                      ? t('gemini_ai_engine')
                                       : prov.type === 'google' || prov.type === 'google_cloud'
-                                        ? isAr
-                                          ? 'الترجمة العصبية من جوجل'
-                                          : 'Google Neural Translate'
+                                        ? t('google_neural_translate')
                                         : prov.type === 'deepl'
-                                          ? isAr
-                                            ? 'الترجمة العصبية من DeepL'
-                                            : 'DeepL Neural MT'
+                                          ? t('deepl_neural_mt')
                                           : prov.type === 'openai'
-                                            ? isAr
-                                              ? 'مترجم OpenAI GPT الذكي'
-                                              : 'OpenAI GPT Translator'
+                                            ? t('openai_gpt_translator')
                                             : prov.type === 'microsoft'
-                                              ? isAr
-                                                ? 'مترجم Microsoft Azure'
-                                                : 'Microsoft Azure MT'
-                                              : isAr
-                                                ? 'ذاكرة الترجمة التشاركية'
-                                                : 'MyMemory TM'}
+                                              ? t('microsoft_azure_mt')
+                                              : t('mymemory_tm')}
                               </span>
                             </div>
                             {isSelected && <Check className="w-4 h-4 text-[#1EB996] shrink-0" />}
@@ -391,7 +375,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                     ? 'text-[#1EB996] bg-[#1EB996]/15'
                                     : 'text-slate-400 hover:text-[#1EB996] hover:bg-[#1EB996]/10'
                                 }`}
-                                title={isAr ? 'تعديل الاسم أو مفتاح API' : 'Edit name or API key'}
+                                title={t('edit_name_or_api_key')}
                                 aria-label={`Edit ${prov.name}`}
                               >
                                 <Pencil className="w-3.5 h-3.5" />
@@ -403,7 +387,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                   setProviderToDelete(prov);
                                 }}
                                 className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 transition cursor-pointer shrink-0"
-                                title={isAr ? 'حذف مزود الترجمة' : 'Delete provider'}
+                                title={t('delete_provider')}
                                 aria-label={`Delete ${prov.name}`}
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -420,8 +404,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                             className="mt-2.5 pt-2.5 border-t border-slate-200/80 dark:border-[#262E3E] flex flex-col gap-2.5"
                           >
                             <div className="flex flex-col gap-1">
-                              <label className="text-[10px] font-semibold text-slate-600 dark:text-slate-300">
-                                {isAr ? 'تعديل اسم المزود' : 'Edit Provider Name'}
+                              <label data-i18n className="text-[10px] font-semibold text-slate-600 dark:text-slate-300">
+                                {t('edit_provider_name')}
                               </label>
                               <div className="relative flex items-center">
                                 <input
@@ -432,7 +416,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                   onChange={(e) => setEditProviderName(e.target.value)}
                                   onKeyDown={(e) => e.stopPropagation()}
                                   onTouchStart={(e) => e.stopPropagation()}
-                                  placeholder={isAr ? 'اسم المزود...' : 'Provider name...'}
+                                  placeholder={t('provider_name')}
                                   required
                                   className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
                                 />
@@ -456,12 +440,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                               <label className="text-[10px] font-semibold text-slate-600 dark:text-slate-300">
                                 {prov.type === 'lara' ||
                                 inferEngineFromName(editProviderName, 'auto') === 'lara'
-                                  ? isAr
-                                    ? 'معرّف مفتاح Lara (أو المعرّف:السر)'
-                                    : 'Lara Access Key ID (or ID:Secret)'
-                                  : isAr
-                                    ? 'تعديل مفتاح API'
-                                    : 'Edit API Key'}
+                                  ? t('lara_access_key_id_or')
+                                  : t('edit_api_key')}
                               </label>
                               <input
                                 type="text"
@@ -473,12 +453,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                 placeholder={
                                   prov.type === 'lara' ||
                                   inferEngineFromName(editProviderName, 'auto') === 'lara'
-                                    ? isAr
-                                      ? 'معرّف المفتاح (أو المعرّف:السر)...'
-                                      : 'Access Key ID (or ID:Secret)...'
-                                    : isAr
-                                      ? 'مفتاح API...'
-                                      : 'API Key...'
+                                    ? t('access_key_id_or_id')
+                                    : t('api_key')
                                 }
                                 required
                                 className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
@@ -488,10 +464,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                             {(prov.type === 'lara' ||
                               inferEngineFromName(editProviderName, 'auto') === 'lara') && (
                               <div className="flex flex-col gap-1">
-                                <label className="text-[10px] font-semibold text-slate-600 dark:text-slate-300">
-                                  {isAr
-                                    ? 'السر الخاص بمفتاح Lara'
-                                    : 'Lara Access Key Secret'}
+                                <label data-i18n className="text-[10px] font-semibold text-slate-600 dark:text-slate-300">
+                                  {t('lara_access_key_secret')}
                                 </label>
                                 <input
                                   type="text"
@@ -501,9 +475,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                   onKeyDown={(e) => e.stopPropagation()}
                                   onTouchStart={(e) => e.stopPropagation()}
                                   placeholder={
-                                    isAr
-                                      ? 'السر الخاص بالمفتاح (اختياري إذا كان مدمجاً أعلاه)...'
-                                      : 'Access Key Secret (optional if ID:Secret above)...'
+                                    t('access_key_secret_optional_if')
                                   }
                                   className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
                                 />
@@ -512,8 +484,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
 
                             {prov.type === 'libretranslate' && (
                               <div className="flex flex-col gap-1">
-                                <label className="text-[10px] font-semibold text-slate-600 dark:text-slate-300">
-                                  {isAr ? 'عنوان الخادم' : 'Server URL'}
+                                <label data-i18n className="text-[10px] font-semibold text-slate-600 dark:text-slate-300">
+                                  {t('server_url')}
                                 </label>
                                 <input
                                   type="url"
@@ -533,8 +505,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                               inferEngineFromName(editProviderName, 'auto') === 'yandex' ||
                               editApiKey.trim().startsWith('t1.')) && (
                               <div className="flex flex-col gap-1">
-                                <label className="text-[10px] font-semibold text-slate-600 dark:text-slate-300">
-                                  {isAr ? 'معرّف المجلد (Folder ID)' : 'Folder ID'}
+                                <label data-i18n className="text-[10px] font-semibold text-slate-600 dark:text-slate-300">
+                                  {t('folder_id')}
                                 </label>
                                 <input
                                   type="text"
@@ -545,9 +517,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                   onKeyDown={(e) => e.stopPropagation()}
                                   onTouchStart={(e) => e.stopPropagation()}
                                   placeholder={
-                                    isAr
-                                      ? 'b1g... (مع رمز IAM لحساب شخصي)'
-                                      : 'b1g... (with a personal-account IAM token)'
+                                    t('b1g_with_a_personal_account')
                                   }
                                   className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
                                 />
@@ -558,10 +528,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                               <div className="p-2 rounded-lg border bg-rose-500/10 border-rose-500/30 text-rose-700 dark:text-rose-300 text-[10px] flex flex-col gap-1">
                                 <div className="flex items-center gap-1 font-semibold">
                                   <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                                  <span>
-                                    {isAr
-                                      ? 'فشل التحقق من مفتاح API الجديد'
-                                      : 'New API key verification failed'}
+                                  <span data-i18n>
+                                    {t('new_api_key_verification_failed')}
                                   </span>
                                 </div>
                                 {editTestResult.error && (
@@ -579,7 +547,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                 }}
                                 className="px-2.5 py-1.5 rounded-lg bg-slate-200/70 hover:bg-slate-200 dark:bg-[#252D3D] dark:hover:bg-[#2E384B] text-slate-700 dark:text-slate-200 text-[11px] font-semibold transition cursor-pointer"
                               >
-                                {isAr ? 'إلغاء' : 'Cancel'}
+                                {tb('cancel')}
                               </button>
                               <button
                                 type="submit"
@@ -593,12 +561,12 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                 {isTestingEditKey ? (
                                   <>
                                     <Loader2 className="w-3 h-3 animate-spin" />
-                                    <span>{isAr ? 'جاري الفحص...' : 'Verifying...'}</span>
+                                    <span data-i18n>{t('verifying')}</span>
                                   </>
                                 ) : (
                                   <>
                                     <Check className="w-3 h-3" />
-                                    <span>{isAr ? 'حفظ التعديلات' : 'Save Changes'}</span>
+                                    <span data-i18n>{t('save_changes')}</span>
                                   </>
                                 )}
                               </button>
@@ -629,8 +597,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                   className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-slate-200/70 hover:bg-slate-200 dark:bg-[#252D3D] dark:hover:bg-[#2D374B] text-slate-800 dark:text-slate-200 text-xs font-semibold transition cursor-pointer shrink-0"
                 >
                   <KeyRound className="w-3.5 h-3.5 text-[#1EB996]" />
-                  <span>
-                    {isAr ? 'إضافة مفتاح API لمزود ترجمة' : 'Add Translator API Key'}
+                  <span data-i18n>
+                    {t('add_translator_api_key')}
                   </span>
                   <Plus
                     className={`w-3.5 h-3.5 transition-transform ${
@@ -647,11 +615,11 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                   >
                     {/* Provider Custom Name Input (Typable) */}
                     <div className="flex flex-col gap-1.5">
-                      <label
+                      <label data-i18n
                         htmlFor="provider-custom-name-input"
                         className="text-[11px] font-semibold text-slate-700 dark:text-slate-300"
                       >
-                        {isAr ? 'اسم المزود (اكتب الاسم أو اختر من القائمة أدناه)' : 'Provider Name (Type or swipe list below)'}
+                        {t('provider_name_type_or_swipe')}
                       </label>
                       <div className="relative flex items-center">
                         <input
@@ -671,7 +639,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                           onKeyDown={(e) => e.stopPropagation()}
                           onTouchStart={(e) => e.stopPropagation()}
                           placeholder={
-                            isAr ? 'اكتب اسم المزود (مثال: Yandex AI)...' : 'Type provider name (e.g. Yandex AI)...'
+                            t('type_provider_name_e_g')
                           }
                           className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
                         />
@@ -693,8 +661,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
 
                     {/* Swipeable / Scrollable Provider Engine List */}
                     <div className="flex flex-col gap-1.5">
-                      <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
-                        {isAr ? 'اسحب القائمة لاختيار نوع المزود:' : 'Swipe list to choose provider engine:'}
+                      <span data-i18n className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+                        {t('swipe_list_to_choose_provider')}
                       </span>
                       <div
                         id="provider-swipe-list"
@@ -737,12 +705,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                         className="text-[11px] font-semibold text-slate-700 dark:text-slate-300"
                       >
                         {inferEngineFromName(newProviderName, newProviderEngine) === 'lara'
-                          ? isAr
-                            ? 'معرّف مفتاح Lara (أو المعرّف:السر)'
-                            : 'Lara Access Key ID (or ID:Secret)'
-                          : isAr
-                            ? 'مفتاح API للمزود'
-                            : 'Translator API Key'}
+                          ? t('lara_access_key_id_or')
+                          : t('translator_api_key')}
                       </label>
                       <input
                         id="provider-api-key-input"
@@ -754,12 +718,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                         onTouchStart={(e) => e.stopPropagation()}
                         placeholder={
                           inferEngineFromName(newProviderName, newProviderEngine) === 'lara'
-                            ? isAr
-                              ? 'الصق معرّف المفتاح (أو المعرّف:السر)...'
-                              : 'Paste Access Key ID (or ID:Secret)...'
-                            : isAr
-                              ? 'الصق مفتاح API هنا...'
-                              : 'Paste API key here...'
+                            ? t('paste_access_key_id_or')
+                            : t('paste_api_key_here')
                         }
                         required
                         className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
@@ -769,13 +729,11 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                     {/* Optional Lara Access Key Secret Input when Lara Translate is selected */}
                     {inferEngineFromName(newProviderName, newProviderEngine) === 'lara' && (
                       <div className="flex flex-col gap-1.5">
-                        <label
+                        <label data-i18n
                           htmlFor="provider-api-secret-input"
                           className="text-[11px] font-semibold text-slate-700 dark:text-slate-300"
                         >
-                          {isAr
-                            ? 'السر الخاص بمفتاح Lara'
-                            : 'Lara Access Key Secret'}
+                          {t('lara_access_key_secret')}
                         </label>
                         <input
                           id="provider-api-secret-input"
@@ -786,9 +744,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                           onKeyDown={(e) => e.stopPropagation()}
                           onTouchStart={(e) => e.stopPropagation()}
                           placeholder={
-                            isAr
-                              ? 'الصق السر الخاص بالمفتاح (اختياري إذا كتبت المعرّف:السر أعلاه)...'
-                              : 'Paste Access Key Secret (optional if ID:Secret above)...'
+                            t('paste_access_key_secret_optional')
                           }
                           className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
                         />
@@ -796,20 +752,18 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                     )}
 
                     {/* Where the key is kept; the user should restrict it in the provider's console */}
-                    <p className="text-[10px] leading-snug text-slate-600 dark:text-slate-400">
-                      {isAr
-                        ? 'تُحفظ المفاتيح مشفّرة على هذا الجهاز فقط، ولا تُرسل إلا إلى المزود الذي تختاره. ينصح بتقييد المفتاح من لوحة تحكم المزود.'
-                        : 'Keys are encrypted on this device and sent only to the provider you choose. Restrict the key in your provider console.'}
+                    <p data-i18n className="text-[10px] leading-snug text-slate-600 dark:text-slate-400">
+                      {t('keys_are_encrypted_on_this')}
                     </p>
 
                     {/* LibreTranslate: the instance to use (self-hosted or public) */}
                     {inferEngineFromName(newProviderName, newProviderEngine) === 'libretranslate' && (
                       <div className="flex flex-col gap-1.5">
-                        <label
+                        <label data-i18n
                           htmlFor="provider-server-url-input"
                           className="text-[11px] font-semibold text-slate-700 dark:text-slate-300"
                         >
-                          {isAr ? 'عنوان الخادم' : 'Server URL'}
+                          {t('server_url')}
                         </label>
                         <input
                           id="provider-server-url-input"
@@ -823,10 +777,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                           placeholder="https://libretranslate.example.com"
                           className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
                         />
-                        <p className="text-[10px] leading-snug text-slate-600 dark:text-slate-400">
-                          {isAr
-                            ? 'يجب أن يبدأ بـ https. مفتاح API اختياري: اتركه فارغاً إذا كان الخادم لا يطلبه.'
-                            : 'Must start with https. The API key is optional: leave it empty if the server does not require one.'}
+                        <p data-i18n className="text-[10px] leading-snug text-slate-600 dark:text-slate-400">
+                          {t('must_start_with_https_the')}
                         </p>
                       </div>
                     )}
@@ -835,11 +787,11 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                     {(inferEngineFromName(newProviderName, newProviderEngine) === 'yandex' ||
                       newApiKey.trim().startsWith('t1.')) && (
                       <div className="flex flex-col gap-1.5">
-                        <label
+                        <label data-i18n
                           htmlFor="provider-folder-id-input"
                           className="text-[11px] font-semibold text-slate-700 dark:text-slate-300"
                         >
-                          {isAr ? 'معرّف المجلد (Folder ID)' : 'Folder ID'}
+                          {t('folder_id')}
                         </label>
                         <input
                           id="provider-folder-id-input"
@@ -853,10 +805,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                           placeholder="b1g..."
                           className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
                         />
-                        <p className="text-[10px] leading-snug text-slate-600 dark:text-slate-400">
-                          {isAr
-                            ? 'مطلوب مع رمز IAM لحساب Yandex شخصي. الرمز يبدأ بـ t1 وصلاحيته 12 ساعة كحد أقصى. غير مطلوب مع مفتاح API لحساب خدمة.'
-                            : 'Required with an IAM token from a personal Yandex account (starts with t1., valid for at most 12 hours). Not needed with a service-account API key.'}
+                        <p data-i18n className="text-[10px] leading-snug text-slate-600 dark:text-slate-400">
+                          {t('required_with_an_iam_token')}
                         </p>
                       </div>
                     )}
@@ -874,19 +824,15 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                       {isTestingKey ? (
                         <>
                           <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          <span>
-                            {isAr
-                              ? 'جاري الاختبار والمقارنة مع Google...'
-                              : 'Testing & comparing with Google...'}
+                          <span data-i18n>
+                            {t('testing_comparing_with_google')}
                           </span>
                         </>
                       ) : (
                         <>
                           <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>
-                            {isAr
-                              ? 'فحص المفتاح وإضافته للمزودين'
-                              : 'Verify & Add to Providers'}
+                          <span data-i18n>
+                            {t('verify_add_to_providers')}
                           </span>
                         </>
                       )}
@@ -905,19 +851,15 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                           {testResult.success && testResult.matched ? (
                             <>
                               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                              <span>
-                                {isAr
-                                  ? 'المفتاح يعمل! تطابقت الترجمة وتمت الإضافة'
-                                  : 'API Key works! Translation matched & added'}
+                              <span data-i18n>
+                                {t('api_key_works_translation_matched')}
                               </span>
                             </>
                           ) : (
                             <>
                               <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                              <span>
-                                {isAr
-                                  ? 'فشل التحقق من المفتاح'
-                                  : 'API Key verification failed'}
+                              <span data-i18n>
+                                {t('api_key_verification_failed')}
                               </span>
                             </>
                           )}
@@ -926,15 +868,15 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                         {testResult.testSource && (
                           <div className="text-[10px] space-y-0.5 text-slate-600 dark:text-slate-300 bg-black/5 dark:bg-black/25 p-1.5 rounded">
                             <div>
-                              <span className="opacity-70">
-                                {isAr ? 'نص الاختبار: ' : 'Test: '}
+                              <span data-i18n className="opacity-70">
+                                {t('test')}
                               </span>
                               <span className="font-mono">{testResult.testSource}</span>
                             </div>
                             {testResult.googleTranslation && (
                               <div>
-                                <span className="opacity-70">
-                                  {isAr ? 'ترجمة جوجل: ' : 'Google Translate: '}
+                                <span data-i18n className="opacity-70">
+                                  {t('google_translate_2')}
                                 </span>
                                 <span className="font-semibold">
                                   {testResult.googleTranslation}
@@ -943,8 +885,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                             )}
                             {testResult.providerTranslation && (
                               <div>
-                                <span className="opacity-70">
-                                  {isAr ? 'ترجمة المزود: ' : 'Provider: '}
+                                <span data-i18n className="opacity-70">
+                                  {t('provider')}
                                 </span>
                                 <span className="font-semibold">
                                   {testResult.providerTranslation}
@@ -981,8 +923,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                     <Trash2 className="w-4.5 h-4.5" />
                   </div>
                   <div>
-                    <h3 id="delete-provider-title" className="text-sm font-bold text-slate-900 dark:text-white">
-                      {isAr ? 'حذف مزود الترجمة؟' : 'Delete Translation Provider?'}
+                    <h3 data-i18n id="delete-provider-title" className="text-sm font-bold text-slate-900 dark:text-white">
+                      {t('delete_translation_provider')}
                     </h3>
                     <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
                       {providerToDelete.name}
@@ -998,10 +940,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                 </button>
               </div>
 
-              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                {isAr
-                  ? `هل أنت متأكد أنك تريد حذف "${providerToDelete.name}" ومفتاح API المرتبط به من قائمة مزودي الترجمة؟`
-                  : `Are you sure you want to remove "${providerToDelete.name}" and its API key from your translation providers list?`}
+              <p data-i18n className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                {t('are_you_sure_you_want', providerToDelete.name)}
               </p>
 
               <div className="flex items-center justify-end gap-2 pt-1">
@@ -1010,7 +950,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                   onClick={() => setProviderToDelete(null)}
                   className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-[#252D3D] dark:hover:bg-[#2E384B] text-slate-700 dark:text-slate-200 text-xs font-semibold transition cursor-pointer"
                 >
-                  {isAr ? 'إلغاء' : 'Cancel'}
+                  {tb('cancel')}
                 </button>
                 <button
                   id="confirm-delete-provider-btn"
@@ -1018,7 +958,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                   onClick={handleConfirmDeleteProvider}
                   className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold transition cursor-pointer shadow-xs"
                 >
-                  {isAr ? 'تأكيد الحذف' : 'Delete'}
+                  {tb('delete_2')}
                 </button>
               </div>
             </div>

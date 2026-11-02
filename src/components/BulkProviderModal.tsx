@@ -4,6 +4,7 @@ import { Sparkles } from 'lucide-react';
 import { getActiveProviderId, getAllTranslationProviders } from '../utils/translator';
 import { getProviderDisplayName } from './ProvidersPanel';
 import { useDialog } from '../utils/useDialog';
+import { useT } from '../i18n/i18n';
 
 /** Not a real provider: opens the copy/paste (or file) flow through an external AI app. */
 export const EXTERNAL_AI_PROVIDER_ID = '__external_ai__';
@@ -17,6 +18,7 @@ interface Props {
 
 /** Asks which translation provider to use before a bulk translation starts. Only mounted while open. */
 export const BulkProviderModal: React.FC<Props> = ({ count, appLang, onClose, onConfirm }) => {
+  const { t, tb } = useT();
   const isAr = appLang === 'ar';
   // Providers that need a key are only offered once a key has been saved
   const [providers] = useState(() => getAllTranslationProviders().filter((p) => p.isBuiltIn || p.apiKey));
@@ -37,8 +39,8 @@ export const BulkProviderModal: React.FC<Props> = ({ count, appLang, onClose, on
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-sm rounded-2xl bg-white dark:bg-[#1E1F20] border border-slate-200 dark:border-slate-700 shadow-xl p-4 space-y-3 text-slate-800 dark:text-slate-100"
       >
-        <h2 id="bulk-provider-title" className="text-sm font-semibold">
-          {isAr ? `اختر مزوّد الترجمة (${count} نص)` : `Choose a translation provider (${count} strings)`}
+        <h2 data-i18n id="bulk-provider-title" className="text-sm font-semibold">
+          {t('choose_a_translation_provider_strings', count)}
         </h2>
         <div role="radiogroup" aria-labelledby="bulk-provider-title" className="space-y-1.5 max-h-64 overflow-y-auto">
           {providers.map((p) => (
@@ -76,8 +78,8 @@ export const BulkProviderModal: React.FC<Props> = ({ count, appLang, onClose, on
               onChange={() => setSelected(EXTERNAL_AI_PROVIDER_ID)}
               className="accent-[#0B57D0]"
             />
-            <span className="flex-1 min-w-0">
-              {isAr ? 'تطبيق ذكاء اصطناعي خارجي (ChatGPT، Gemini…) — نسخ/لصق أو ملف' : 'External AI app (ChatGPT, Gemini…) — copy/paste or file'}
+            <span data-i18n className="flex-1 min-w-0">
+              {t('external_ai_app_chatgpt_gemini')}
             </span>
           </label>
         </div>
@@ -87,7 +89,7 @@ export const BulkProviderModal: React.FC<Props> = ({ count, appLang, onClose, on
             onClick={onClose}
             className="px-4 py-1.5 rounded-full text-sm border border-slate-200 dark:border-slate-700 cursor-pointer"
           >
-            {isAr ? 'إلغاء' : 'Cancel'}
+            {tb('cancel')}
           </button>
           <button
             type="button"
@@ -97,7 +99,7 @@ export const BulkProviderModal: React.FC<Props> = ({ count, appLang, onClose, on
             className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-medium bg-[#1EB996] text-white cursor-pointer disabled:opacity-50"
           >
             <Sparkles className="w-4 h-4" />
-            {selected === EXTERNAL_AI_PROVIDER_ID ? (isAr ? 'متابعة' : 'Continue') : isAr ? 'ابدأ الترجمة' : 'Start'}
+            {selected === EXTERNAL_AI_PROVIDER_ID ? (t('continue')) : t('start')}
           </button>
         </div>
       </div>

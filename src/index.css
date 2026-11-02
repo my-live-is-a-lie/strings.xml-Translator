@@ -695,3 +695,14 @@ html:not(.dark) .dark\:border-\[\#2E384D\] {
 .kb-open .kb-r2 > div > * + * { margin-top: 0.25rem !important; }
 .kb-open .kb-r2 button { height: 1.75rem !important; min-height: 0 !important; }
 .kb-open .kb-r2 button.shrink-0 { width: 1.75rem !important; }
+
+/* Interface texts coming from a translation file: an emptied text disappears, an over-long one is clipped. */
+[data-i18n]:empty {
+  display: none;
+}
+[data-i18n] {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: clip;
+}

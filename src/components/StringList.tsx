@@ -24,6 +24,7 @@ import { scrollItemIntoView } from '../utils/scrollToItem';
 import { StringListRow } from './StringListRow';
 import { QuickFilterButton, QuickFilterBar } from './QuickFilters';
 import { applyQuickSnapshot, useQuickFilters } from '../utils/quickFilters';
+import { useT } from '../i18n/i18n';
 
 interface StringListProps {
   items: ResourceItem[];
@@ -62,6 +63,7 @@ const StringListBase: React.FC<StringListProps> = ({
   onResetItemHistory,
   hideSearch = false,
 }) => {
+  const { t, tb } = useT();
   const isAr = appLang === 'ar';
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [isBulkTranslating, setIsBulkTranslating] = useState(false);
@@ -330,7 +332,7 @@ const StringListBase: React.FC<StringListProps> = ({
           <input
             id="string-search-input"
             type="text"
-            placeholder={isAr ? 'ابحث بالمفتاح أو النص...' : 'Search key or text...'}
+            placeholder={t('search_key_or_text')}
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             className="w-full text-xs bg-transparent text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none"
@@ -339,7 +341,7 @@ const StringListBase: React.FC<StringListProps> = ({
             <button
               onClick={() => onSearchChange('')}
               className="p-0.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-              title={isAr ? 'مسح البحث' : 'Clear search'}
+              title={t('clear_search')}
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -363,11 +365,11 @@ const StringListBase: React.FC<StringListProps> = ({
         <div className="flex flex-wrap items-center gap-1.5">
           {(
             [
-              { id: 'all', label: isAr ? 'الكل' : 'All', count: counts.all },
-              { id: 'untranslated', label: isAr ? 'غير مترجم' : 'Untranslated', count: counts.untranslated },
-              { id: 'translated', label: isAr ? 'مترجم' : 'Done', count: counts.translated },
+              { id: 'all', label: t('all'), count: counts.all },
+              { id: 'untranslated', label: t('untranslated'), count: counts.untranslated },
+              { id: 'translated', label: t('done_2'), count: counts.translated },
               ...(counts.needs_review > 0
-                ? [{ id: 'needs_review', label: isAr ? 'مراجعة' : 'Review', count: counts.needs_review }]
+                ? [{ id: 'needs_review', label: t('review'), count: counts.needs_review }]
                 : []),
             ] as const
           ).map((chip) => {
@@ -400,8 +402,8 @@ const StringListBase: React.FC<StringListProps> = ({
               <BarChart3 className="w-3.5 h-3.5 text-[#1EB996] shrink-0" />
               <span className="truncate">
                 {summaryCollapsed
-                  ? isAr ? 'المحتوى مخفي' : 'Content hidden'
-                  : isAr ? 'ملخص مصدر الترجمة' : 'Translation Source Summary'}
+                  ? t('content_hidden')
+                  : t('translation_source_summary')}
               </span>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
@@ -411,7 +413,7 @@ const StringListBase: React.FC<StringListProps> = ({
                   onClick={() => handleSetSourceFilter('all')}
                   className="text-[10px] font-medium text-[#0B57D0] dark:text-[#A8C7FA] hover:underline cursor-pointer"
                 >
-                  {isAr ? 'عرض الكل' : 'Show All'}
+                  {tb('show_all')}
                 </button>
               )}
               <button
@@ -419,7 +421,7 @@ const StringListBase: React.FC<StringListProps> = ({
                 onClick={toggleSummary}
                 aria-expanded={!summaryCollapsed}
                 className="w-6 h-6 inline-flex items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-700/50 transition-colors cursor-pointer"
-                title={summaryCollapsed ? (isAr ? 'إظهار المحتوى' : 'Show content') : (isAr ? 'إخفاء المحتوى' : 'Hide content')}
+                title={summaryCollapsed ? (t('show_content')) : (t('hide_content'))}
               >
                 <ChevronDown
                   className="w-4 h-4"
@@ -448,9 +450,7 @@ const StringListBase: React.FC<StringListProps> = ({
               type="button"
               onClick={() => handleSetSourceFilter(sourceFilter === 'ai' ? 'all' : 'ai')}
               title={
-                isAr
-                  ? 'انقر لتصفية النصوص المترجمة بالذكاء الاصطناعي'
-                  : 'Click to filter strings translated by AI'
+                t('click_to_filter_strings_translated')
               }
               className={`flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg border text-start transition cursor-pointer ${
                 sourceFilter === 'ai'
@@ -472,9 +472,7 @@ const StringListBase: React.FC<StringListProps> = ({
               type="button"
               onClick={() => handleSetSourceFilter(sourceFilter === 'manual' ? 'all' : 'manual')}
               title={
-                isAr
-                  ? 'انقر لتصفية النصوص المترجمة يدوياً'
-                  : 'Click to filter strings translated manually'
+                t('click_to_filter_strings_translated_2')
               }
               className={`flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg border text-start transition cursor-pointer ${
                 sourceFilter === 'manual'
@@ -504,7 +502,7 @@ const StringListBase: React.FC<StringListProps> = ({
               ) : (
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
               )}
-              <span>{isAr ? 'فحوصات الجودة' : 'QA Checks'}</span>
+              <span data-i18n>{t('qa_checks')}</span>
             </div>
 
             <div className="flex items-center gap-1.5">
@@ -517,7 +515,7 @@ const StringListBase: React.FC<StringListProps> = ({
                   }}
                   className="text-[10px] font-medium text-[#0B57D0] dark:text-[#A8C7FA] hover:underline cursor-pointer"
                 >
-                  {isAr ? 'إلغاء التصفية' : 'Clear Filter'}
+                  {tb('clear_filter')}
                 </button>
               )}
               <span
@@ -531,9 +529,7 @@ const StringListBase: React.FC<StringListProps> = ({
                   ? isAr
                     ? `${qaSummary.totalAffectedItemsCount} تنبيه`
                     : `${qaSummary.totalAffectedItemsCount} issue${qaSummary.totalAffectedItemsCount > 1 ? 's' : ''}`
-                  : isAr
-                    ? 'سليم'
-                    : 'All Clear'}
+                  : t('all_clear_2')}
               </span>
             </div>
           </div>
@@ -552,9 +548,7 @@ const StringListBase: React.FC<StringListProps> = ({
                 }
               }}
               title={
-                isAr
-                  ? 'انقر لتصفية النصوص التي تحتوي على أخطاء في العناصر النائبة (%s, %d)'
-                  : 'Click to filter strings with missing or mismatched placeholders (%s, %d)'
+                t('click_to_filter_strings_with')
               }
               className={`flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg border text-start transition cursor-pointer ${
                 qaFilter === 'placeholder'
@@ -564,8 +558,8 @@ const StringListBase: React.FC<StringListProps> = ({
             >
               <div className="flex items-center gap-1.5 min-w-0">
                 <Braces className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                <span className="text-[11px] font-medium truncate">
-                  {isAr ? 'المتغيرات %s' : 'Placeholders'}
+                <span data-i18n className="text-[11px] font-medium truncate">
+                  {t('placeholders')}
                 </span>
               </div>
               <span
@@ -592,9 +586,7 @@ const StringListBase: React.FC<StringListProps> = ({
                 }
               }}
               title={
-                isAr
-                  ? 'انقر لتصفية النصوص التي تحتوي على أخطاء في وسوم HTML'
-                  : 'Click to filter strings with invalid or missing HTML tags'
+                t('click_to_filter_strings_with_2')
               }
               className={`flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg border text-start transition cursor-pointer ${
                 qaFilter === 'html'
@@ -604,8 +596,8 @@ const StringListBase: React.FC<StringListProps> = ({
             >
               <div className="flex items-center gap-1.5 min-w-0">
                 <Code2 className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                <span className="text-[11px] font-medium truncate">
-                  {isAr ? 'وسوم HTML' : 'HTML Tags'}
+                <span data-i18n className="text-[11px] font-medium truncate">
+                  {t('html_tags')}
                 </span>
               </div>
               <span
@@ -627,10 +619,8 @@ const StringListBase: React.FC<StringListProps> = ({
                 onClick={() => setQaListExpanded((prev) => !prev)}
                 className="w-full flex items-center justify-between gap-1.5 text-[11px] font-medium text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 transition cursor-pointer"
               >
-                <span className="truncate">
-                  {isAr
-                    ? `عرض تفاصيل المشاكل (${qaSummary.allIssues.length})`
-                    : `View Detected Issues (${qaSummary.allIssues.length})`}
+                <span data-i18n className="truncate">
+                  {t('view_detected_issues', qaSummary.allIssues.length)}
                 </span>
                 <ChevronDown
                   className={`w-3.5 h-3.5 shrink-0 transition-transform duration-200 ${
@@ -696,15 +686,15 @@ const StringListBase: React.FC<StringListProps> = ({
                 onClick={handleToggleSelectUntranslated}
                 disabled={filteredUntranslated.length === 0 || isBulkTranslating}
                 className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200/80 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-medium transition cursor-pointer disabled:opacity-40 disabled:pointer-events-none truncate"
-                title={isAr ? 'تحديد كل النصوص غير المترجمة' : 'Select all untranslated strings in current view'}
+                title={t('select_all_untranslated_strings_in')}
               >
                 {allFilteredUntranslatedSelected ? (
                   <CheckSquare className="w-3.5 h-3.5 text-[#0B57D0] dark:text-[#A8C7FA] shrink-0" />
                 ) : (
                   <Square className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                 )}
-                <span className="truncate">
-                  {isAr ? `تحديد غير المترجم (${filteredUntranslated.length})` : `Select Untranslated (${filteredUntranslated.length})`}
+                <span data-i18n className="truncate">
+                  {t('select_untranslated', filteredUntranslated.length)}
                 </span>
               </button>
 
@@ -713,9 +703,9 @@ const StringListBase: React.FC<StringListProps> = ({
                   type="button"
                   onClick={() => setCheckedIds(new Set())}
                   className="px-1.5 py-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition cursor-pointer shrink-0"
-                  title={isAr ? 'إلغاء التحديد' : 'Clear selection'}
+                  title={t('clear_selection')}
                 >
-                  {isAr ? 'إلغاء' : 'Clear'}
+                  {tb('clear')}
                 </button>
               )}
             </div>
@@ -727,19 +717,19 @@ const StringListBase: React.FC<StringListProps> = ({
                 onClick={handleBulkTranslate}
                 disabled={isBulkTranslating}
                 className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#1EB996] hover:bg-[#19A585] text-white font-semibold shadow-2xs transition cursor-pointer disabled:opacity-60 shrink-0"
-                title={isAr ? 'ترجمة النصوص المحددة دفعة واحدة' : 'Bulk translate selected strings'}
+                title={t('bulk_translate_selected_strings')}
               >
                 {isBulkTranslating ? (
                   <>
                     <Loader2 className="w-3 h-3 animate-spin" />
                     <span>
-                      {bulkProgress ? `${bulkProgress.completed}/${bulkProgress.total}` : isAr ? 'جارٍ الترجمة...' : 'Translating...'}
+                      {bulkProgress ? `${bulkProgress.completed}/${bulkProgress.total}` : t('translating')}
                     </span>
                   </>
                 ) : (
                   <>
                     <Sparkles className="w-3 h-3" />
-                    <span>{isAr ? `ترجمة (${checkedIds.size})` : `Translate (${checkedIds.size})`}</span>
+                    <span data-i18n>{t('translate', checkedIds.size)}</span>
                   </>
                 )}
               </button>
@@ -751,11 +741,11 @@ const StringListBase: React.FC<StringListProps> = ({
       <div className="p-2 space-y-1">
         {filteredItems.length === 0 ? (
           <div className="py-12 px-4 text-center text-xs text-slate-600 dark:text-slate-400 space-y-1.5">
-            <p className="font-medium text-slate-700 dark:text-slate-300">
-              {isAr ? 'لا توجد نصوص مطابقة' : 'No strings match filter'}
+            <p data-i18n className="font-medium text-slate-700 dark:text-slate-300">
+              {t('no_strings_match_filter')}
             </p>
-            <p className="text-[11px]">
-              {isAr ? 'جرّب مسح البحث أو تغيير عوامل التصفية.' : 'Try clearing search or changing the filter chips.'}
+            <p data-i18n className="text-[11px]">
+              {t('try_clearing_search_or_changing')}
             </p>
           </div>
         ) : (
@@ -783,9 +773,7 @@ const StringListBase: React.FC<StringListProps> = ({
                 onClick={() => setDisplayLimit((prev) => Math.min(filteredItems.length, prev + 100))}
                 className="text-xs text-[#0B57D0] dark:text-[#A8C7FA] hover:underline px-3 py-1 font-medium cursor-pointer"
               >
-                {isAr
-                  ? `عرض المزيد (${displayLimit} من ${filteredItems.length})`
-                  : `Show more (${displayLimit} of ${filteredItems.length})`}
+                {tb('show_more_of', displayLimit, filteredItems.length)}
               </button>
             </div>
           )}

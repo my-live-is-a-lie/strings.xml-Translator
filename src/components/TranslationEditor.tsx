@@ -17,6 +17,7 @@ import { autoCloseOnDoubleSpace } from '../utils/autoCloseBracket';
 import { usePredictiveWords, PredictField } from '../hooks/usePredictiveWords';
 import { getItemQaIssues, QaIssue } from '../utils/placeholderCheck';
 import { copyTextToClipboard, readTextFromClipboard } from '../utils/storage';
+import { useT } from '../i18n/i18n';
 
 const PLURAL_QUANTITY_LABELS_AR: Record<string, string> = {
   zero: 'صفر (0)',
@@ -86,6 +87,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   bottomPortal = null,
   onResetItemHistory,
 }) => {
+  const { t, tb } = useT();
   const isAr = appLang === 'ar';
   const pluralLabels = isAr ? PLURAL_QUANTITY_LABELS_AR : PLURAL_QUANTITY_LABELS_EN;
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -671,7 +673,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     targetField?: { fieldType: 'plural'; quantity: string } | { fieldType: 'array'; index: number }
   ) => {
     if (!text) {
-      return <span className="italic text-slate-500">{isAr ? 'نص فارغ' : 'Empty string'}</span>;
+      return <span data-i18n className="italic text-slate-500">{t('empty_string')}</span>;
     }
 
     const tokenRegex = /(%(?:\d+\$)?[+# 0,-]*\d*(?:\.\d+)?[bcdefgopsx%]|\\\\[nt]|\\[nt]|\{[a-zA-Z0-9_-]+\}|<\/?[a-zA-Z][^>]*>)/gi;
@@ -687,7 +689,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             role="button"
             tabIndex={0}
             dir="ltr"
-            title={isAr ? 'انقر لإدراج هذا الرمز في موضع المؤشر' : 'Tap to insert at cursor'}
+            title={t('tap_to_insert_at_cursor')}
             onMouseDown={(e) => {
               // Prevent blurring the active textarea so the line indicator stays in place
               e.preventDefault();
@@ -1364,14 +1366,14 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                 <span className="font-mono text-xs sm:text-sm font-semibold text-slate-900 dark:text-slate-100 truncate select-all">
                   {item.name}
                 </span>
-                <span className="text-slate-600 dark:text-slate-400 text-[11px] sm:text-xs font-medium">
-                  {isAr ? 'مفاتيح' : 'Keys'}
+                <span data-i18n className="text-slate-600 dark:text-slate-400 text-[11px] sm:text-xs font-medium">
+                  {t('keys')}
                 </span>
                 <SourceChangeBadge item={item} isAr={isAr} />
               </div>
 
-              <span className="text-slate-600 dark:text-slate-300 text-xs sm:text-sm font-medium shrink-0">
-                {isAr ? 'الإنجليزية' : 'English'}
+              <span data-i18n className="text-slate-600 dark:text-slate-300 text-xs sm:text-sm font-medium shrink-0">
+                {t('english')}
               </span>
             </div>
 
@@ -1382,7 +1384,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                 id="weblate-clone-to-target-btn"
                 onClick={handleCloneSourceToTarget}
                 className="ps-1.5 pe-1 py-1 rounded-md text-slate-500 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-[#1C2330] transition cursor-pointer shrink-0"
-                title={isAr ? 'نسخ المصدر إلى حقل الترجمة' : 'Clone source to translation'}
+                title={t('clone_source_to_translation')}
               >
                 {/* Exact Weblate clone-to-translation icon: back sheet + right arrow into front sheet */}
                 <svg
@@ -1410,7 +1412,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                   id="copy-source-text-btn"
                   onClick={handleCopySource}
                   className="p-1 rounded-md text-slate-500 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-[#202736] transition cursor-pointer shrink-0"
-                  title={isAr ? 'نسخ النص الإنجليزي' : 'Copy English source text'}
+                  title={t('copy_english_source_text')}
                 >
                   {copiedSource ? (
                     <Check className="w-4 h-4 text-emerald-400" />
@@ -1443,10 +1445,10 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                       {item.translationSource === 'ai' ? (
                         <>
                           <Sparkles className="w-2.5 h-2.5 text-amber-400" />
-                          <span>{isAr ? 'مترجم بالذكاء الاصطناعي' : 'AI Translated'}</span>
+                          <span data-i18n>{t('ai_translated_2')}</span>
                         </>
                       ) : (
-                        <span>{isAr ? 'إدخال يدوي' : 'Manual Input'}</span>
+                        <span data-i18n>{t('manual_input')}</span>
                       )}
                     </span>
                     {onResetItemHistory && (
@@ -1454,14 +1456,12 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                         type="button"
                         onClick={() => onResetItemHistory(item.id)}
                         title={
-                          isAr
-                            ? 'إعادة تعيين سجل وترجمة هذا النص'
-                            : 'Reset translation & history for this string'
+                          t('reset_translation_history_for_this')
                         }
                         className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-slate-100 dark:bg-[#1C2330] hover:bg-rose-100 dark:hover:bg-rose-950/50 text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-300 border border-slate-200/90 dark:border-[#2B3545] hover:border-rose-400 dark:hover:border-rose-800/60 transition cursor-pointer"
                       >
                         <RotateCcw className="w-2.5 h-2.5" />
-                        <span>{isAr ? 'إعادة تعيين' : 'Reset'}</span>
+                        <span data-i18n>{t('reset')}</span>
                       </button>
                     )}
                   </>
@@ -1480,17 +1480,17 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               {/* Toolbar Row 1: Punctuation & Typography */}
               <div dir="ltr" className="flex items-center bg-slate-100 dark:bg-[#171D27] border border-slate-200/90 dark:border-[#283242] rounded-lg overflow-x-auto divide-x divide-slate-200 dark:divide-[#283242] rtl:divide-x-reverse no-scrollbar">
                 {[
-                  { label: '-', value: '-', title: isAr ? 'شرطة (-)' : 'Hyphen (-)' },
-                  { label: '_', value: '_', title: isAr ? 'شرطة سفلية (_)' : 'Underscore (_)' },
-                  { label: '( - )', value: '( - )', title: isAr ? 'أقواس ( - )' : 'Parentheses ( - )' },
-                  { label: "'", value: "'", title: isAr ? "فاصلة علوية مفردة (')" : "Single quote (')" },
-                  { label: '‘', value: '‘', title: isAr ? 'علامة تنصيص مفردة (‘)' : 'Arabic quote / comma (‘)' },
-                  { label: '"', value: '"', title: isAr ? 'علامة تنصيص مزدوجة (")' : 'Double quote (")' },
-                  { label: '“', value: '“', title: isAr ? 'علامة تنصيص منحنية (“)' : 'Curly quote (“)' },
-                  { label: '...', value: '…', title: isAr ? 'نقاط حذف أفقية (…)' : 'Horizontal Ellipsis (…)' },
-                  { label: 'NBS', value: '\u00A0', title: isAr ? 'مسافة غير فاصلة (NBS)' : 'Non-Breaking Space (U+00A0)' },
-                  { label: '↵', value: '\\n', title: isAr ? 'سطر جديد (\\n)' : 'Newline (\\n)' },
-                  { label: '⇄', value: '\\t', title: isAr ? 'مسافة جدولة (\\t)' : 'Tabulation (\\t)' },
+                  { label: '-', value: '-', title: t('hyphen') },
+                  { label: '_', value: '_', title: t('underscore') },
+                  { label: '( - )', value: '( - )', title: t('parentheses') },
+                  { label: "'", value: "'", title: t('single_quote') },
+                  { label: '‘', value: '‘', title: t('arabic_quote_comma') },
+                  { label: '"', value: '"', title: t('double_quote') },
+                  { label: '“', value: '“', title: t('curly_quote') },
+                  { label: '...', value: '…', title: t('horizontal_ellipsis') },
+                  { label: 'NBS', value: '\u00A0', title: t('non_breaking_space_u_00a0') },
+                  { label: '↵', value: '\\n', title: t('newline_n') },
+                  { label: '⇄', value: '\\t', title: t('tabulation_t') },
                 ].map((btn, idx) => (
                   <button
                     key={idx}
@@ -1508,13 +1508,13 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               {/* Toolbar Row 2: BiDi Unicode Directional Controls */}
               <div dir="ltr" className="flex items-center bg-slate-100 dark:bg-[#171D27] border border-slate-200/90 dark:border-[#283242] rounded-lg overflow-x-auto divide-x divide-slate-200 dark:divide-[#283242] rtl:divide-x-reverse no-scrollbar">
                 {[
-                  { label: 'PDF', value: '\u202C', title: isAr ? 'إنهاء تنسيق الاتجاه (PDF)' : 'Pop Directional Formatting (U+202C)' },
-                  { label: 'RLE', value: '\u202B', title: isAr ? 'تضمين من اليمين إلى اليسار (RLE)' : 'Right-to-Left Embedding (U+202B)' },
-                  { label: 'LRE', value: '\u202A', title: isAr ? 'تضمين من اليسار إلى اليمين (LRE)' : 'Left-to-Right Embedding (U+202A)' },
-                  { label: 'RLM', value: '\u200F', title: isAr ? 'علامة من اليمين إلى اليسار (RLM)' : 'Right-to-Left Mark (U+200F)' },
-                  { label: 'LRM', value: '\u200E', title: isAr ? 'علامة من اليسار إلى اليمين (LRM)' : 'Left-to-Right Mark (U+200E)' },
-                  { label: 'ZWJ', value: '\u200D', title: isAr ? 'رابط بعرض صفري (ZWJ)' : 'Zero-Width Joiner (U+200D)' },
-                  { label: 'ZWNJ', value: '\u200C', title: isAr ? 'فاصل بعرض صفري (ZWNJ)' : 'Zero-Width Non-Joiner (U+200C)' },
+                  { label: 'PDF', value: '\u202C', title: t('pop_directional_formatting_u_202c') },
+                  { label: 'RLE', value: '\u202B', title: t('right_to_left_embedding_u') },
+                  { label: 'LRE', value: '\u202A', title: t('left_to_right_embedding_u') },
+                  { label: 'RLM', value: '\u200F', title: t('right_to_left_mark_u') },
+                  { label: 'LRM', value: '\u200E', title: t('left_to_right_mark_u') },
+                  { label: 'ZWJ', value: '\u200D', title: t('zero_width_joiner_u_200d') },
+                  { label: 'ZWNJ', value: '\u200C', title: t('zero_width_non_joiner_u') },
                 ].map((btn, idx) => (
                   <button
                     key={idx}
@@ -1536,10 +1536,8 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               <div className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-rose-500/15 border border-rose-500/40 text-rose-200 text-xs font-medium animate-in fade-in duration-150 gap-2">
                 <div className="flex items-center gap-1.5 min-w-0">
                   <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-                  <span className="truncate">
-                    {isAr
-                      ? 'مسافات متتالية زائدة بين الكلمات'
-                      : 'Multiple spaces detected between words'}
+                  <span data-i18n className="truncate">
+                    {t('multiple_spaces_detected_between_words')}
                   </span>
                 </div>
                 <button
@@ -1547,7 +1545,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                   onClick={handleFixMultipleSpaces}
                   className="px-2.5 py-0.5 rounded-md bg-rose-600 hover:bg-rose-500 text-white font-bold text-[11px] shadow-xs transition cursor-pointer shrink-0"
                 >
-                  {isAr ? 'إصلاح المسافات' : 'Fix spaces'}
+                  {tb('fix_spaces')}
                 </button>
               </div>
             )}
@@ -1574,7 +1572,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                   adjustTextareaHeight(e.currentTarget);
                   applyAutoClose(e.currentTarget, draftItem.target, 'string', handleSingleTextChange);
                 }}
-                placeholder={isAr ? 'اكتب الترجمة هنا...' : 'Type translation here...'}
+                placeholder={t('type_translation_here')}
                 rows={1}
                 containerClassName="rounded-xl bg-slate-100/90 dark:bg-[#0E121A] border border-slate-200/90 dark:border-transparent"
                 backdropClassName="border-0 border-b-2 border-transparent px-3.5 pt-2 pb-3.5 sm:pt-2.5 sm:pb-4 text-xs sm:text-sm leading-relaxed"
@@ -1663,8 +1661,8 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                 {draftItem.items.map((ai) => (
                   <div key={ai.index} className="space-y-1">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="font-mono font-semibold text-[#1EB996]">
-                        {isAr ? `العنصر [${ai.index}]` : `Item [${ai.index}]`}
+                      <span data-i18n className="font-mono font-semibold text-[#1EB996]">
+                        {t('item', ai.index)}
                       </span>
                       <span className="text-slate-300 text-[11px] truncate max-w-xs">
                         {renderSourceWithSyntaxHighlights(ai.source, {
@@ -1712,7 +1710,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                         applyAutoClose(e.currentTarget, ai.target, `array:${ai.index}`, (v) => handleArrayItemChange(ai.index, v));
                       }}
                       placeholder={
-                        isAr ? `ترجمة العنصر ${ai.index}...` : `Translate item ${ai.index}...`
+                        t('translate_item', ai.index)
                       }
                       containerClassName="rounded-lg bg-slate-100/90 dark:bg-[#0E121A] border border-slate-200/90 dark:border-transparent"
                       backdropClassName="border-0 border-b-2 border-transparent px-3.5 pt-1.5 pb-3 text-xs sm:text-sm leading-relaxed"
@@ -1779,8 +1777,8 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                   type="button"
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={handleCopyTarget}
-                  title={isAr ? 'نسخ نص الترجمة' : 'Copy translation text'}
-                  aria-label={isAr ? 'نسخ نص الترجمة' : 'Copy translation text'}
+                  title={t('copy_translation_text')}
+                  aria-label={t('copy_translation_text')}
                   className="p-1.5 rounded-lg hover:bg-slate-200/90 dark:hover:bg-[#202A3A] active:bg-slate-300 dark:active:bg-[#263246] text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white transition cursor-pointer flex items-center justify-center focus:outline-none"
                 >
                   {copiedTarget ? (
@@ -1806,8 +1804,8 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                   onClick={() => {
                     void handlePasteTarget();
                   }}
-                  title={isAr ? 'لصق من الحافظة' : 'Paste from clipboard'}
-                  aria-label={isAr ? 'لصق من الحافظة' : 'Paste from clipboard'}
+                  title={t('paste_from_clipboard')}
+                  aria-label={t('paste_from_clipboard')}
                   className="p-1.5 rounded-lg hover:bg-slate-200/90 dark:hover:bg-[#202A3A] active:bg-slate-300 dark:active:bg-[#263246] text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white transition cursor-pointer flex items-center justify-center focus:outline-none"
                 >
                   <ClipboardPaste className="w-3.5 h-3.5" />
@@ -1864,16 +1862,10 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                 <span className="font-semibold">
                   {saveGuard.empty
-                    ? isAr
-                      ? 'لم يُحفظ شيء: لم تكتب أي ترجمة بعد.'
-                      : 'Nothing saved: no translation has been typed yet.'
+                    ? t('nothing_saved_no_translation_has')
                     : saveGuard.notes.length > 0
-                    ? isAr
-                      ? 'لم يُحفظ النص. صحّحتُ الترجمة تلقائياً، راجعها ثم اضغط حفظ مرة أخرى:'
-                      : 'Not saved. The translation was corrected automatically, review it and press Save again:'
-                    : isAr
-                      ? 'لم يُحفظ النص. توجد أخطاء لم أستطع إصلاحها، اضغط حفظ مرة أخرى لتجاهلها:'
-                      : 'Not saved. Some errors could not be fixed automatically, press Save again to ignore them:'}
+                    ? t('not_saved_the_translation_was')
+                    : t('not_saved_some_errors_could')}
                 </span>
               </div>
               {saveGuard.notes.length > 0 && (

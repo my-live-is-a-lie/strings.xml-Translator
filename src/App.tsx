@@ -1,3 +1,4 @@
+import { findCustomLanguage, isRtlLanguageCode, setActiveLanguage } from './i18n/i18n';
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Header } from './components/Header';
 import { applyAppTheme, getInitialAppTheme, AppTheme } from './utils/theme';
@@ -50,6 +51,7 @@ import {
   setAutoTranslateEnabled,
 } from './utils/translator';
 import { Menu } from 'lucide-react';
+import { useT } from './i18n/i18n';
 
 const TYPING_COALESCE_MS = 700;
 
@@ -134,6 +136,7 @@ function createDefaultProject(): TranslationProject {
 }
 
 export default function App() {
+  const { t } = useT();
   const [storedFiles, setStoredFiles] = useState<StoredXmlFile[]>(() => getStoredFiles());
   const [isFilesModalOpen, setIsFilesModalOpen] = useState(false);
 
@@ -233,10 +236,18 @@ export default function App() {
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [isLanguageModalOpen, setIsLanguageModalOpen] = useState(false);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
-  const [appLang, setAppLang] = useState<'ar' | 'en'>(() => {
+  const [uiLang, setUiLangState] = useState<string>(() => {
     const saved = getStoredItem('app_ui_language');
-    return saved === 'en' ? 'en' : 'ar';
+    const code = saved === 'en' || (saved && findCustomLanguage(saved)) ? (saved as string) : 'ar';
+    setActiveLanguage(code);
+    return code;
   });
+  const setAppLang = useCallback((code: string) => {
+    setActiveLanguage(code);
+    setUiLangState(code);
+  }, []);
+  // Layout language: right-to-left interface languages use the Arabic layout, the others the English one
+  const appLang: 'ar' | 'en' = isRtlLanguageCode(uiLang) ? 'ar' : 'en';
   const [appTheme, setAppTheme] = useState<AppTheme>(() => getInitialAppTheme());
 
   useEffect(() => {
@@ -268,10 +279,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    setStoredItem('app_ui_language', appLang);
+    setStoredItem('app_ui_language', uiLang);
     // Mirror the whole layout for right-to-left interface languages (Arabic).
     applyAppDirection(appLang);
-  }, [appLang]);
+  }, [appLang, uiLang]);
 
   // Auto-save project locally on change and sync to stored files if modified
   // Saved-file bookkeeping runs after edits settle (300 ms), not on every keystroke.
@@ -818,6 +829,7 @@ export default function App() {
         onOpenLanguageModal={openLanguageModal}
         appLang={appLang}
         onAppLangChange={setAppLang}
+        uiLang={uiLang}
         appTheme={appTheme}
         onAppThemeChange={setAppTheme}
         canUndo={canUndo}
@@ -874,10 +886,8 @@ export default function App() {
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-transparent shadow-sm font-medium text-slate-800 dark:text-slate-200 cursor-pointer m3-state-layer"
                 >
                   <Menu className="w-4 h-4 text-[#0B57D0] dark:text-[#A8C7FA]" />
-                  <span>
-                    {appLang === 'ar'
-                      ? `قائمة النصوص (${project.items.length})`
-                      : `Strings List (${project.items.length})`}
+                  <span data-i18n>
+                    {t('strings_list', project.items.length)}
                   </span>
                 </button>
                 <QuickFilterButton appLang={appLang} />
@@ -913,13 +923,11 @@ currentItem ? (
                 />
               ) : (
                 <div className="flex flex-col items-center justify-center h-full p-8 text-center text-slate-400">
-                  <p className="text-base font-semibold text-slate-600 dark:text-slate-300">
-                    {appLang === 'ar' ? 'لم يتم العثور على نصوص' : 'No strings found'}
+                  <p data-i18n className="text-base font-semibold text-slate-600 dark:text-slate-300">
+                    {t('no_strings_found')}
                   </p>
-                  <p className="text-xs mt-1">
-                    {appLang === 'ar'
-                      ? 'قم باستيراد ملف strings.xml للبدء.'
-                      : 'Import a strings.xml file to get started.'}
+                  <p data-i18n className="text-xs mt-1">
+                    {t('import_a_strings_xml_file')}
                   </p>
                 </div>
               )

@@ -7,6 +7,7 @@ import {
   getLanguageOption,
   getArabicLanguageName,
 } from '../utils/languages';
+import { useT } from '../i18n/i18n';
 
 interface LanguageSelectorModalProps {
   isOpen: boolean;
@@ -23,6 +24,7 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
   onSelectLanguage,
   appLang = 'ar',
 }) => {
+  const { t } = useT();
   const isAr = appLang === 'ar';
   const dialogRef = useDialog(isOpen, onClose);
   const [search, setSearch] = useState('');
@@ -75,19 +77,17 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
               <Globe className="w-5 h-5" />
             </div>
             <div>
-              <h2 id="language-modal-title" className="text-base font-semibold text-slate-900 dark:text-white">
-                {isAr ? 'تغيير لغة الترجمة المستهدفة' : 'Switch Target Language'}
+              <h2 data-i18n id="language-modal-title" className="text-base font-semibold text-slate-900 dark:text-white">
+                {t('switch_target_language_2')}
               </h2>
-              <p className="text-xs text-slate-600 dark:text-slate-400">
-                {isAr
-                  ? 'اختر لغة أندرويد لترجمة النصوص إليها'
-                  : 'Select an Android locale to translate your strings into'}
+              <p data-i18n className="text-xs text-slate-600 dark:text-slate-400">
+                {t('select_an_android_locale_to')}
               </p>
             </div>
           </div>
           <button
             type="button"
-            aria-label={isAr ? 'إغلاق' : 'Close'}
+            aria-label={t('close')}
             onClick={onClose}
             className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#202736] transition cursor-pointer"
           >
@@ -102,7 +102,7 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
             <input
               type="text"
               placeholder={
-                isAr ? 'ابحث باسم اللغة، الرمز' : 'Search by language name or code'
+                t('search_by_language_name_or')
               }
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -123,10 +123,8 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
         {/* Languages List */}
         <div className="flex-1 overflow-y-auto p-3 space-y-1">
           {filteredLanguages.length === 0 ? (
-            <div className="py-8 text-center text-xs text-slate-400">
-              {isAr
-                ? 'لم يتم العثور على لغات مطابقة. يمكنك إضافتها أدناه كرمز لغة مخصص.'
-                : 'No matching languages found. You can add it below as a custom locale.'}
+            <div data-i18n className="py-8 text-center text-xs text-slate-400">
+              {t('no_matching_languages_found_you')}
             </div>
           ) : (
             filteredLanguages.map((lang) => {
@@ -155,7 +153,7 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
                         </span>
                       </div>
                       <div className="text-[10px] font-mono text-slate-600 dark:text-slate-400">
-                        {lang.androidDir} {lang.isRtl && (isAr ? '· من اليمين لليسار' : '· RTL')}
+                        {lang.androidDir} {lang.isRtl && (t('rtl'))}
                       </div>
                     </div>
                   </div>
@@ -175,10 +173,8 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
         {/* Custom Locale Entry Footer */}
         <div className="p-4 border-t border-slate-100 dark:border-[#242D3D] bg-slate-50/50 dark:bg-[#121620]">
           <form onSubmit={handleAddCustom} className="space-y-2">
-            <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 block">
-              {isAr
-                ? 'أو أدخل رمز لغة أندرويد مخصص:'
-                : 'Or enter custom Android locale code:'}
+            <span data-i18n className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 block">
+              {t('or_enter_custom_android_locale')}
             </span>
             <div className="flex items-center gap-2">
               <input
@@ -195,7 +191,7 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
                 className="px-3 py-1.5 rounded-xl bg-[#1EB996] hover:bg-[#18A283] disabled:opacity-40 text-white text-xs font-semibold cursor-pointer transition inline-flex items-center gap-1 shrink-0"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>{isAr ? 'تبديل' : 'Switch'}</span>
+                <span data-i18n>{t('switch')}</span>
               </button>
             </div>
           </form>

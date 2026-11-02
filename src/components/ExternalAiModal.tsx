@@ -16,6 +16,7 @@ import {
   requestJson,
   splitParts,
 } from '../utils/externalAi';
+import { useT } from '../i18n/i18n';
 
 interface Props {
   items: ResourceItem[];
@@ -41,6 +42,7 @@ const ISSUE_LABELS: Record<IssueKind, { ar: string; en: string }> = {
 
 /** Translate through any AI app by copy/paste or file, then validate and review before applying. */
 export const ExternalAiModal: React.FC<Props> = ({ items: selectedItems, reviewPool, targetLang, targetLocaleName, appLang, onClose, onApply }) => {
+  const { t, tb } = useT();
   const isAr = appLang === 'ar';
   const dialogRef = useDialog<HTMLDivElement>(true, onClose);
   const label = targetLocaleName ? `${targetLocaleName} (${targetLang})` : targetLang;
@@ -79,8 +81,8 @@ export const ExternalAiModal: React.FC<Props> = ({ items: selectedItems, reviewP
       const code = e instanceof Error ? e.message : '';
       setError(
         code === 'BAD_JSON'
-          ? isAr ? 'الرد ليس JSON صالحاً (ربما قُطع في المنتصف). اطلب من الذكاء الاصطناعي إكماله.' : 'The reply is not valid JSON (it may have been cut off). Ask the AI to continue.'
-          : isAr ? 'لم أجد ترجمات في هذا النص.' : 'No translations found in this text.'
+          ? t('the_reply_is_not_valid')
+          : t('no_translations_found_in_this')
       );
     }
   };
@@ -119,19 +121,19 @@ export const ExternalAiModal: React.FC<Props> = ({ items: selectedItems, reviewP
         className="w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-2xl bg-white dark:bg-[#1E1F20] border border-slate-200 dark:border-slate-700 shadow-xl p-4 space-y-4 text-sm text-slate-800 dark:text-slate-100"
       >
         <div className="flex items-start justify-between gap-3">
-          <h2 id="external-ai-title" className="font-semibold">
-            {isAr ? `الترجمة عبر تطبيق ذكاء اصطناعي (${segments.length} نص → ${label})` : `Translate with an AI app (${segments.length} strings → ${label})`}
+          <h2 data-i18n id="external-ai-title" className="font-semibold">
+            {t('translate_with_an_ai_app', segments.length, label)}
           </h2>
-          <button type="button" onClick={onClose} className="px-2 text-slate-500 cursor-pointer" aria-label={isAr ? 'إغلاق' : 'Close'}>✕</button>
+          <button type="button" onClick={onClose} className="px-2 text-slate-500 cursor-pointer" aria-label={t('close')}>✕</button>
         </div>
 
-        <p className="text-xs text-amber-700 dark:text-amber-300">
-          {isAr ? 'تنبيه: نصوص التطبيق ستُرسل إلى خدمة الذكاء الاصطناعي التي تختارها. لا تُرسل مفاتيح API.' : 'Note: the strings will be sent to the AI service you choose. No API keys are included.'}
+        <p data-i18n className="text-xs text-amber-700 dark:text-amber-300">
+          {t('note_the_strings_will_be')}
         </p>
 
         {/* Step 1 */}
         <section className="space-y-2" aria-labelledby="ext-step1">
-          <h3 id="ext-step1" className="font-semibold">{isAr ? '١) جهّز الطلب وأرسله' : '1) Prepare and send the request'}</h3>
+          <h3 data-i18n id="ext-step1" className="font-semibold">{t('1_prepare_and_send_the')}</h3>
           {reviewExtra.length > 0 && (
             <label className="flex items-center gap-2 text-xs">
               <input
@@ -147,24 +149,22 @@ export const ExternalAiModal: React.FC<Props> = ({ items: selectedItems, reviewP
                   setError('');
                 }}
               />
-              <span>
-                {isAr
-                  ? `إضافة النصوص التي تحتاج مراجعة (${reviewExtra.length}) إلى الطلب`
-                  : `Also include strings that need review (${reviewExtra.length})`}
+              <span data-i18n>
+                {t('also_include_strings_that_need', reviewExtra.length)}
               </span>
             </label>
           )}
           <label className="flex items-center gap-2 text-xs">
-            <span>{isAr ? 'التقسيم:' : 'Split:'}</span>
+            <span data-i18n>{t('split')}</span>
             <select
               id="ext-part-size"
               value={partSize}
               onChange={(e) => setPartSize(Number(e.target.value))}
               className="px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-[#1E1F20]"
             >
-              <option value={0}>{isAr ? 'ملف واحد' : 'One file'}</option>
-              <option value={150}>{isAr ? 'أجزاء من 150 نصاً' : 'Parts of 150'}</option>
-              <option value={80}>{isAr ? 'أجزاء من 80 نصاً' : 'Parts of 80'}</option>
+              <option value={0}>{t('one_file')}</option>
+              <option value={150}>{t('parts_of_150')}</option>
+              <option value={80}>{t('parts_of_80')}</option>
             </select>
           </label>
           <ul className="space-y-1.5">
@@ -174,41 +174,41 @@ export const ExternalAiModal: React.FC<Props> = ({ items: selectedItems, reviewP
               return (
                 <li key={i} className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2">
                   <span className="text-xs flex-1 min-w-24">
-                    {parts.length > 1 ? (isAr ? `جزء ${i + 1} من ${parts.length}` : `Part ${i + 1} of ${parts.length}`) : isAr ? 'كل النصوص' : 'All strings'} · {part.length}
+                    {parts.length > 1 ? (t('part_of', i + 1, parts.length)) : t('all_strings_2')} · {part.length}
                   </span>
-                  <button type="button" data-ext="copy-text" className="btn-ext" onClick={() => copy(buildTextRequest(buildPrompt(label, 'text'), json), isAr ? 'تم نسخ الطلب' : 'Request copied')}>
-                    {isAr ? 'نسخ كنص' : 'Copy as text'}
+                  <button type="button" data-ext="copy-text" className="btn-ext" onClick={() => copy(buildTextRequest(buildPrompt(label, 'text'), json), t('request_copied'))}>
+                    {tb('copy_as_text')}
                   </button>
                   <button type="button" data-ext="download" className="btn-ext" onClick={() => downloadText(`strings-to-translate${suffix}.json`, json)}>
-                    {isAr ? 'تنزيل ملف' : 'Download file'}
+                    {tb('download_file')}
                   </button>
                 </li>
               );
             })}
           </ul>
-          <button type="button" data-ext="copy-prompt" className="btn-ext" onClick={() => copy(buildPrompt(label, 'file'), isAr ? 'تم نسخ الموجّه' : 'Prompt copied')}>
-            {isAr ? 'نسخ الموجّه فقط (للإرسال مع الملف)' : 'Copy the prompt only (to send with the file)'}
+          <button type="button" data-ext="copy-prompt" className="btn-ext" onClick={() => copy(buildPrompt(label, 'file'), t('prompt_copied'))}>
+            {tb('copy_the_prompt_only_to')}
           </button>
         </section>
 
         {/* Step 2 */}
         <section className="space-y-2" aria-labelledby="ext-step2">
-          <h3 id="ext-step2" className="font-semibold">{isAr ? '٢) الصق الرد أو ارفع ملفه' : '2) Paste the reply or upload its file'}</h3>
+          <h3 data-i18n id="ext-step2" className="font-semibold">{t('2_paste_the_reply_or')}</h3>
           <textarea
             id="ext-reply"
             value={pasted}
             onChange={(e) => setPasted(e.target.value)}
             rows={4}
-            placeholder={isAr ? 'الصق رد الذكاء الاصطناعي هنا…' : 'Paste the AI reply here…'}
+            placeholder={t('paste_the_ai_reply_here')}
             className="w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-[#151922] p-2 text-xs font-mono"
             dir="auto"
           />
           <div className="flex flex-wrap gap-2">
             <button type="button" id="ext-check" className="btn-ext" disabled={!pasted.trim()} onClick={() => absorb(pasted)}>
-              {isAr ? 'تحقق من الرد' : 'Check the reply'}
+              {tb('check_the_reply')}
             </button>
             <button type="button" className="btn-ext" onClick={() => fileRef.current?.click()}>
-              {isAr ? 'رفع ملف الرد' : 'Upload reply file'}
+              {tb('upload_reply_file')}
             </button>
             <input
               ref={fileRef}
@@ -225,10 +225,8 @@ export const ExternalAiModal: React.FC<Props> = ({ items: selectedItems, reviewP
           {error && <p role="alert" className="text-xs text-rose-600 dark:text-rose-400">{error}</p>}
           {reply.size > 0 && (
             <p className="text-xs text-slate-600 dark:text-slate-300" aria-live="polite" data-ext="summary">
-              {isAr
-                ? `${answered} من ${segments.length} مترجمة · ${problems.length} فيها مشاكل`
-                : `${answered} of ${segments.length} answered · ${problems.length} with problems`}
-              {checked.unknownIds.length > 0 && (isAr ? ` · ${checked.unknownIds.length} أرقام غير معروفة تم تجاهلها` : ` · ${checked.unknownIds.length} unknown ids ignored`)}
+              {t('of_answered_with_problems', answered, segments.length, problems.length)}
+              {checked.unknownIds.length > 0 && (t('unknown_ids_ignored', checked.unknownIds.length))}
             </p>
           )}
         </section>
@@ -236,15 +234,15 @@ export const ExternalAiModal: React.FC<Props> = ({ items: selectedItems, reviewP
         {/* Step 3 */}
         {reply.size > 0 && (
           <section className="space-y-2" aria-labelledby="ext-step3">
-            <h3 id="ext-step3" className="font-semibold">{isAr ? '٣) راجع ثم اعتمد' : '3) Review, then apply'}</h3>
+            <h3 data-i18n id="ext-step3" className="font-semibold">{t('3_review_then_apply')}</h3>
             <div className="flex flex-wrap items-center gap-2">
               <label className="inline-flex items-center gap-1.5 text-xs">
                 <input type="checkbox" checked={onlyProblems} onChange={(e) => setOnlyProblems(e.target.checked)} />
-                {isAr ? 'عرض المشاكل فقط' : 'Show problems only'}
+                {t('show_problems_only')}
               </label>
               {problems.length > 0 && (
-                <button type="button" className="btn-ext" onClick={() => copy(missingRequest(), isAr ? 'تم نسخ طلب النصوص الناقصة' : 'Request for the missing strings copied')}>
-                  {isAr ? 'نسخ طلب للنصوص الناقصة/الخاطئة فقط' : 'Copy a request for the missing/wrong ones'}
+                <button type="button" className="btn-ext" onClick={() => copy(missingRequest(), t('request_for_the_missing_strings'))}>
+                  {tb('copy_a_request_for_the')}
                 </button>
               )}
             </div>
@@ -260,7 +258,7 @@ export const ExternalAiModal: React.FC<Props> = ({ items: selectedItems, reviewP
                           type="checkbox"
                           checked={on && !!r.text.trim()}
                           disabled={!r.text.trim()}
-                          aria-label={isAr ? `اعتماد ${r.segment.key}` : `Accept ${r.segment.key}`}
+                          aria-label={t('accept', r.segment.key)}
                           onChange={() =>
                             setExcluded((prev) => {
                               const next = new Set(prev);
@@ -283,7 +281,7 @@ export const ExternalAiModal: React.FC<Props> = ({ items: selectedItems, reviewP
                         onChange={(e) => setEdited((prev) => ({ ...prev, [r.segment.id]: e.target.value }))}
                         rows={2}
                         dir="auto"
-                        aria-label={isAr ? `الترجمة: ${r.segment.key}` : `Translation: ${r.segment.key}`}
+                        aria-label={t('translation', r.segment.key)}
                         className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-[#151922] p-1.5 text-xs"
                       />
                     </li>
@@ -296,7 +294,7 @@ export const ExternalAiModal: React.FC<Props> = ({ items: selectedItems, reviewP
         <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
           <span className="text-xs text-emerald-600 dark:text-emerald-400" aria-live="polite">{notice}</span>
           <div className="flex gap-2">
-            <button type="button" onClick={onClose} className="btn-ext">{isAr ? 'إلغاء' : 'Cancel'}</button>
+            <button type="button" onClick={onClose} className="btn-ext">{tb('cancel')}</button>
             <button
               type="button"
               id="ext-apply"
@@ -307,7 +305,7 @@ export const ExternalAiModal: React.FC<Props> = ({ items: selectedItems, reviewP
               }}
               className="px-4 py-1.5 rounded-full text-sm font-medium bg-[#1EB996] text-white cursor-pointer disabled:opacity-50"
             >
-              {isAr ? `اعتماد ${accepted.length}` : `Apply ${accepted.length}`}
+              {tb('apply', accepted.length)}
             </button>
           </div>
         </div>

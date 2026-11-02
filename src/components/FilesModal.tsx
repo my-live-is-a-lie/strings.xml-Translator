@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { StoredXmlFile, TranslationProject } from '../types';
 import { extractAppNameFromItems } from '../utils/filesStorage';
+import { useT } from '../i18n/i18n';
 
 interface FilesModalProps {
   isOpen: boolean;
@@ -39,9 +40,9 @@ export const FilesModal: React.FC<FilesModalProps> = ({
   onDeleteFile,
   onResetFile,
   onOpenImport,
-  appLang = 'ar',
+  appLang: _appLang = 'ar',
 }) => {
-  const isAr = appLang === 'ar';
+  const { t } = useT();
   const dialogRef = useDialog(isOpen, onClose);
 
   // Inline editing state for renaming
@@ -106,13 +107,13 @@ export const FilesModal: React.FC<FilesModalProps> = ({
 
   const formatTimeAgo = (timestamp: number) => {
     const seconds = Math.floor((now - timestamp) / 1000);
-    if (seconds < 60) return isAr ? 'الآن' : 'Just now';
+    if (seconds < 60) return t('just_now');
     const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return isAr ? `منذ ${minutes} دقيقة` : `${minutes}m ago`;
+    if (minutes < 60) return t('m_ago', minutes);
     const hours = Math.floor(minutes / 60);
-    if (hours < 24) return isAr ? `منذ ${hours} ساعة` : `${hours}h ago`;
+    if (hours < 24) return t('h_ago', hours);
     const days = Math.floor(hours / 24);
-    return isAr ? `منذ ${days} يوم` : `${days}d ago`;
+    return t('d_ago', days);
   };
 
   const getStats = (file: StoredXmlFile) => {
@@ -154,13 +155,13 @@ export const FilesModal: React.FC<FilesModalProps> = ({
                 onOpenImport();
               }}
               className="w-8 h-8 rounded-lg bg-[#0B57D0]/10 hover:bg-[#0B57D0]/20 dark:bg-[#1EB996]/15 dark:hover:bg-[#1EB996]/25 flex items-center justify-center text-[#0B57D0] dark:text-[#1EB996] transition cursor-pointer"
-              title={isAr ? 'استيراد ملف إضافي' : 'Import another file'}
-              aria-label={isAr ? 'استيراد ملف إضافي' : 'Import another file'}
+              title={t('import_another_file')}
+              aria-label={t('import_another_file')}
             >
               <Plus className="w-4 h-4" />
             </button>
-            <h2 id="files-modal-title" className="text-base font-bold tracking-tight">
-              {isAr ? 'المشاريع' : 'Projects'}
+            <h2 data-i18n id="files-modal-title" className="text-base font-bold tracking-tight">
+              {t('projects')}
             </h2>
           </div>
 
@@ -182,13 +183,11 @@ export const FilesModal: React.FC<FilesModalProps> = ({
               <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-[#202938] flex items-center justify-center mx-auto mb-3 text-slate-400">
                 <FileCode2 className="w-6 h-6" />
               </div>
-              <h3 className="text-sm font-semibold mb-1">
-                {isAr ? 'لا توجد ملفات معدلة محفوظة بعد' : 'No saved files yet'}
+              <h3 data-i18n className="text-sm font-semibold mb-1">
+                {t('no_saved_files_yet')}
               </h3>
-              <p className="text-xs text-slate-600 dark:text-slate-400 max-w-md mx-auto mb-4 leading-relaxed">
-                {isAr
-                  ? 'الملف المستورد يتم حفظه وتخزينه تلقائياً في هذه القائمة بمجرد إجراء أي تعديل على نصوصه. يمكنك بعدها التبديل بين عدة ملفات دون فقدان عملك.'
-                  : 'Imported files are automatically saved and synced here as soon as you make any edits. You can then switch between multiple files without losing work.'}
+              <p data-i18n className="text-xs text-slate-600 dark:text-slate-400 max-w-md mx-auto mb-4 leading-relaxed">
+                {t('imported_files_are_automatically_saved')}
               </p>
               <button
                 type="button"
@@ -199,7 +198,7 @@ export const FilesModal: React.FC<FilesModalProps> = ({
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#0B57D0] hover:bg-[#0842A0] dark:bg-[#1EB996] dark:hover:bg-[#19A585] text-white text-xs font-semibold transition cursor-pointer shadow-xs"
               >
                 <Plus className="w-4 h-4" />
-                <span>{isAr ? 'استيراد ملف XML الآن' : 'Import XML File Now'}</span>
+                <span data-i18n>{t('import_xml_file_now')}</span>
               </button>
             </div>
           ) : (
@@ -265,8 +264,8 @@ export const FilesModal: React.FC<FilesModalProps> = ({
                                 type="button"
                                 onClick={() => handleSaveRename(file.id)}
                                 className="p-1 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white transition cursor-pointer shadow-xs"
-                                title={isAr ? 'حفظ' : 'Save'}
-                                aria-label={isAr ? 'حفظ الاسم' : 'Save Name'}
+                                title={t('save')}
+                                aria-label={t('save_name')}
                               >
                                 <Check className="w-3.5 h-3.5" />
                               </button>
@@ -274,8 +273,8 @@ export const FilesModal: React.FC<FilesModalProps> = ({
                                 type="button"
                                 onClick={handleCancelRename}
                                 className="p-1 rounded-md bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 transition cursor-pointer"
-                                title={isAr ? 'إلغاء' : 'Cancel'}
-                                aria-label={isAr ? 'إلغاء' : 'Cancel'}
+                                title={t('cancel')}
+                                aria-label={t('cancel')}
                               >
                                 <X className="w-3.5 h-3.5" />
                               </button>
@@ -298,8 +297,8 @@ export const FilesModal: React.FC<FilesModalProps> = ({
                                   handleStartRename(file);
                                 }}
                                 className="p-1 -my-0.5 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-[#263143] transition cursor-pointer shrink-0"
-                                title={isAr ? 'إعادة التسمية' : 'Rename'}
-                                aria-label={isAr ? 'إعادة تسمية' : 'Rename'}
+                                title={t('rename')}
+                                aria-label={t('rename_2')}
                               >
                                 <Edit2 className="w-3 h-3" />
                               </button>
@@ -335,14 +334,10 @@ export const FilesModal: React.FC<FilesModalProps> = ({
                             }`}
                             title={
                               isConfirmingReset
-                                ? isAr
-                                  ? 'إغلاق تأكيد الاستعادة'
-                                  : 'Cancel reset confirmation'
-                                : isAr
-                                  ? 'استعادة الحالة الأصلية للملف'
-                                  : 'Reset to original state'
+                                ? t('cancel_reset_confirmation')
+                                : t('reset_to_original_state')
                             }
-                            aria-label={isAr ? 'استعادة الأصل' : 'Reset to original'}
+                            aria-label={t('reset_to_original')}
                           >
                             <RotateCcw className="w-3.5 h-3.5" />
                           </button>
@@ -360,14 +355,10 @@ export const FilesModal: React.FC<FilesModalProps> = ({
                             }`}
                             title={
                               isConfirmingDelete
-                                ? isAr
-                                  ? 'إغلاق تأكيد الحذف'
-                                  : 'Cancel delete confirmation'
-                                : isAr
-                                  ? 'حذف الملف'
-                                  : 'Delete file'
+                                ? t('cancel_delete_confirmation')
+                                : t('delete_file')
                             }
-                            aria-label={isAr ? 'حذف' : 'Delete'}
+                            aria-label={t('delete')}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -378,15 +369,13 @@ export const FilesModal: React.FC<FilesModalProps> = ({
                     {/* Progress Bar & Stats */}
                     <div className="flex items-center justify-between text-[11px] text-slate-600 dark:text-slate-400">
                       <div className="flex items-center gap-2">
-                        <span>
-                          {isAr
-                            ? `${stats.translated} من ${stats.total}`
-                            : `${stats.translated} of ${stats.total}`}
+                        <span data-i18n>
+                          {t('of', stats.translated, stats.total)}
                         </span>
                         {isActive && (
                           <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-[#0B57D0]/10 dark:bg-[#1EB996]/20 text-[#0B57D0] dark:text-[#1EB996]">
                             <span className="w-1.5 h-1.5 rounded-full bg-[#0B57D0] dark:bg-[#1EB996]" />
-                            <span>{isAr ? 'النشط' : 'Active'}</span>
+                            <span data-i18n>{t('active')}</span>
                           </span>
                         )}
                       </div>
@@ -417,8 +406,8 @@ export const FilesModal: React.FC<FilesModalProps> = ({
                       >
                         <div className="flex items-center gap-1.5 min-w-0">
                           <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-amber-500" />
-                          <span className="truncate">
-                            {isAr ? 'استعادة الحالة الأصلية للملف؟' : 'Reset to original state?'}
+                          <span data-i18n className="truncate">
+                            {t('reset_to_original_state_2')}
                           </span>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
@@ -430,8 +419,8 @@ export const FilesModal: React.FC<FilesModalProps> = ({
                               setConfirmResetId(null);
                             }}
                             className="p-1.5 rounded bg-amber-600 hover:bg-amber-500 text-white transition cursor-pointer"
-                            title={isAr ? 'تأكيد الاستعادة' : 'Confirm Reset'}
-                            aria-label={isAr ? 'تأكيد الاستعادة' : 'Confirm Reset'}
+                            title={t('confirm_reset')}
+                            aria-label={t('confirm_reset')}
                           >
                             <Check className="w-3.5 h-3.5" />
                           </button>
@@ -442,8 +431,8 @@ export const FilesModal: React.FC<FilesModalProps> = ({
                               setConfirmResetId(null);
                             }}
                             className="p-1.5 rounded bg-slate-200 dark:bg-[#283244] text-slate-700 dark:text-slate-300 transition cursor-pointer"
-                            title={isAr ? 'إلغاء' : 'Cancel'}
-                            aria-label={isAr ? 'إلغاء' : 'Cancel'}
+                            title={t('cancel')}
+                            aria-label={t('cancel')}
                           >
                             <X className="w-3.5 h-3.5" />
                           </button>
@@ -458,8 +447,8 @@ export const FilesModal: React.FC<FilesModalProps> = ({
                       >
                         <div className="flex items-center gap-1.5 min-w-0">
                           <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-rose-500" />
-                          <span className="truncate">
-                            {isAr ? 'حذف هذا الملف نهائياً؟' : 'Delete file permanently?'}
+                          <span data-i18n className="truncate">
+                            {t('delete_file_permanently')}
                           </span>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
@@ -471,8 +460,8 @@ export const FilesModal: React.FC<FilesModalProps> = ({
                               setConfirmDeleteId(null);
                             }}
                             className="p-1.5 rounded bg-rose-600 hover:bg-rose-500 text-white transition cursor-pointer"
-                            title={isAr ? 'تأكيد الحذف' : 'Confirm Delete'}
-                            aria-label={isAr ? 'تأكيد الحذف' : 'Confirm Delete'}
+                            title={t('confirm_delete')}
+                            aria-label={t('confirm_delete')}
                           >
                             <Check className="w-3.5 h-3.5" />
                           </button>
@@ -483,8 +472,8 @@ export const FilesModal: React.FC<FilesModalProps> = ({
                               setConfirmDeleteId(null);
                             }}
                             className="p-1.5 rounded bg-slate-200 dark:bg-[#283244] text-slate-700 dark:text-slate-300 transition cursor-pointer"
-                            title={isAr ? 'إلغاء' : 'Cancel'}
-                            aria-label={isAr ? 'إلغاء' : 'Cancel'}
+                            title={t('cancel')}
+                            aria-label={t('cancel')}
                           >
                             <X className="w-3.5 h-3.5" />
                           </button>
