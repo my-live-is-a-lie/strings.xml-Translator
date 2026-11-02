@@ -1,5 +1,5 @@
 import { debugIgnored } from '../utils/debug';
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
 import { Archive, Upload, Download, Sparkles, Languages, Layers, LayoutList, Globe, FileDiff, Keyboard, ChevronDown, X, Palette, Contrast, Paintbrush, FolderOpen, TextCursorInput, SpellCheck } from 'lucide-react';
 import { TranslationProject } from '../types';
 
@@ -17,7 +17,6 @@ import { OfflineDot } from './OfflineDot';
 import { QuickFilterButton } from './QuickFilters';
 import { Menu as MenuIcon } from 'lucide-react';
 import { SidebarIcon } from './SidebarIcon';
-import { inlineSign } from '../utils/direction';
 import { getAllTranslationProviders, getActiveProviderId } from '../utils/translator';
 
 const ACCENT_COLORS = [
@@ -108,7 +107,41 @@ const HeaderBase: React.FC<HeaderProps> = ({
   const [rightDrawerOpen, setRightDrawerOpen] = useState(false);
   // Which physical edge the drawer slides from when it was opened by an edge swipe (null = the default side)
   const [edgeSide, setEdgeSide] = useState<'left' | 'right' | null>(null);
-  const drawerSide: 'left' | 'right' = edgeSide ?? (inlineSign() === 1 ? 'right' : 'left');
+  // The side follows the chosen language (not the document direction, which is applied a moment later):
+  // LTR languages open the menu from the right, RTL ones from the left.
+  const wantedSide: 'left' | 'right' = edgeSide ?? (appLang === 'ar' ? 'left' : 'right');
+  // Side the open menu is actually drawn on. When the language changes while the menu is open it first slides out
+  // on the old side, then is rebuilt on the new one (see the effect below), keeping all of its state.
+  const [shownSide, setShownSide] = useState<'left' | 'right'>(wantedSide);
+  const [prevDrawerOpen, setPrevDrawerOpen] = useState(rightDrawerOpen);
+  if (prevDrawerOpen !== rightDrawerOpen) {
+    setPrevDrawerOpen(rightDrawerOpen);
+    if (rightDrawerOpen) setShownSide(wantedSide); // opening: always start on the right side
+  }
+  if (!rightDrawerOpen && shownSide !== wantedSide) setShownSide(wantedSide);
+  const sideSwitching = rightDrawerOpen && shownSide !== wantedSide;
+  const drawerSide = shownSide;
+  // Changing the language drops an edge-swipe override so the menu goes to the language's own side
+  const [prevAppLang, setPrevAppLang] = useState(appLang);
+  if (prevAppLang !== appLang) {
+    setPrevAppLang(appLang);
+    setEdgeSide(null);
+  }
+  const drawerScrollElRef = useRef<HTMLDivElement>(null);
+  const drawerScrollTopRef = useRef(0);
+  useEffect(() => {
+    if (!sideSwitching) return;
+    const t = window.setTimeout(() => setShownSide(wantedSide), 210);
+    return () => window.clearTimeout(t);
+  }, [sideSwitching, wantedSide]);
+  useEffect(() => {
+    if (!rightDrawerOpen) drawerScrollTopRef.current = 0;
+  }, [rightDrawerOpen]);
+  // The rebuilt menu returns to where the person was scrolled
+  useLayoutEffect(() => {
+    const el = drawerScrollElRef.current;
+    if (el && drawerScrollTopRef.current > 0) el.scrollTop = drawerScrollTopRef.current;
+  }, [shownSide]);
   const drawerOwner = part === 'all' || part === 'bar' || part === 'dock' || part === 'barTrack';
 
   // Swipe in from either screen edge to open the drawer from that side
@@ -571,6 +604,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
 
           {/* Drawer Content on the Right Side */}
           <aside
+            key={shownSide}
             onTouchStart={(e) => {
               if (e.touches.length === 1) {
                 drawerTouchStartRef.current = {
@@ -608,9 +642,13 @@ const HeaderBase: React.FC<HeaderProps> = ({
               drawerTouchStartRef.current = null;
             }}
             style={{
-              transform: drawerSwipeX > 0 ? `translateX(${drawerSwipeX * (drawerSide === 'right' ? 1 : -1)}px)` : undefined,
+              transform: sideSwitching
+                ? `translateX(${drawerSide === 'right' ? '100%' : '-100%'})`
+                : drawerSwipeX > 0
+                  ? `translateX(${drawerSwipeX * (drawerSide === 'right' ? 1 : -1)}px)`
+                  : undefined,
               transition: isSwipingDrawer ? 'none' : 'transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
-              direction: inlineSign() === 1 ? 'ltr' : 'rtl',
+              direction: appLang === 'ar' ? 'rtl' : 'ltr',
             }}
             className={`relative w-72 sm:w-80 max-w-[85vw] h-dvh max-h-dvh overflow-hidden bg-white dark:bg-[#161922] ${drawerSide === 'right' ? 'border-l' : 'border-r'} border-slate-200 dark:border-[#252C3A] shadow-2xl z-10 flex flex-col animate-in ${drawerSide === 'right' ? 'slide-in-from-right' : 'slide-in-from-left'} duration-200`}
           >
@@ -784,7 +822,13 @@ const HeaderBase: React.FC<HeaderProps> = ({
             )}
 
             {/* Drawer Body: Import, Export, and Translate Providers Button */}
-            <div className="p-5 pb-28 flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y flex flex-col gap-3">
+            <div
+              ref={drawerScrollElRef}
+              onScroll={(e) => {
+                drawerScrollTopRef.current = e.currentTarget.scrollTop;
+              }}
+              className="p-5 pb-28 flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y flex flex-col gap-3"
+            >
               {/* Import Button */}
               <button
                 id="drawer-import-btn"
