@@ -87,40 +87,33 @@ const StringListBase: React.FC<StringListProps> = ({
       }
       return next;
     });
-  // Collapsing header: the header floats over the list and is translated up in step with the list scrolling, so the
-  // first strings push it away (and pull it back when scrolling up) instead of sliding underneath it.
-  // Driven straight on the DOM: no re-render per scroll event, and the list is never resized or re-scrolled.
+  // Collapsing header. The header is the first thing inside the scrolling list and sticks to the top with a negative
+  // offset, so while scrolling down it leaves with the first strings natively, in exact step with them (no JS per
+  // frame). Scrolling back up mid-list slides it in again with a short animation.
   const listRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const collapseInnerRef = useRef<HTMLDivElement>(null);
-  const collapseOffsetRef = useRef(0);
-  const collapseHeightRef = useRef(0);
+  const hiddenOffsetRef = useRef(0);
+  const headerShownRef = useRef(false);
   const lastScrollTopRef = useRef(0);
-  const lastDirRef = useRef(0);
-  const snapTimerRef = useRef<number | undefined>(undefined);
-  const applyCollapse = useCallback((offset: number, animate: boolean) => {
+  const placeHeader = useCallback((shown: boolean, animate: boolean) => {
     const header = headerRef.current;
     if (!header) return;
-    const o = Math.max(0, Math.min(collapseHeightRef.current, offset));
-    collapseOffsetRef.current = o;
-    header.style.transition = animate ? 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)' : 'none';
-    header.style.transform = o > 0 ? `translate3d(0, ${-o}px, 0)` : '';
+    headerShownRef.current = shown;
+    header.style.transition = animate ? 'top 240ms cubic-bezier(0.22, 1, 0.36, 1)' : 'none';
+    header.style.top = shown ? '0px' : `${-hiddenOffsetRef.current}px`;
   }, []);
   useLayoutEffect(() => {
     const header = headerRef.current;
     const inner = collapseInnerRef.current;
     if (!header || !inner) return;
     const measure = () => {
-      collapseHeightRef.current = inner.offsetHeight;
-      const h = header.offsetHeight;
-      // the list starts below the floating header
+      // what leaves the screen: the header's top padding plus the filters / summary block
+      hiddenOffsetRef.current = inner.offsetTop + inner.offsetHeight;
+      placeHeader(headerShownRef.current, false);
+      // keep "scroll into view" from parking a string behind the part that stays
       const list = listRef.current;
-      if (list) {
-        list.style.paddingTop = `${h + 8}px`;
-        list.style.scrollPaddingTop = `${h + 8}px`;
-      }
-      // the natural height changed (summary card folded, chips wrapped...): keep the offset within range
-      if (collapseOffsetRef.current > 0) applyCollapse(collapseOffsetRef.current, false);
+      if (list) list.style.scrollPaddingTop = `${Math.max(0, header.offsetHeight - hiddenOffsetRef.current) + 8}px`;
     };
     measure();
     if (typeof ResizeObserver === 'undefined') return;
@@ -128,8 +121,7 @@ const StringListBase: React.FC<StringListProps> = ({
     ro.observe(header);
     ro.observe(inner);
     return () => ro.disconnect();
-  }, [applyCollapse]);
-  useEffect(() => () => window.clearTimeout(snapTimerRef.current), []);
+  }, [placeHeader]);
 
   const qaSummary = useMemo(() => analyzeProjectQa(items), [items]);
 
@@ -222,22 +214,15 @@ const StringListBase: React.FC<StringListProps> = ({
     const top = Math.max(0, target.scrollTop);
     const delta = top - lastScrollTopRef.current;
     lastScrollTopRef.current = top;
-    if (delta !== 0) lastDirRef.current = delta;
-    // The header moves exactly as far as the list does. It can never be further up than the list has scrolled,
-    // otherwise a blank gap would open between it and the first string.
-    const limit = Math.min(collapseHeightRef.current, top);
-    applyCollapse(top <= 0 ? 0 : Math.min(limit, collapseOffsetRef.current + delta), false);
-    // When the list settles, finish the slide in the direction it was going
-    window.clearTimeout(snapTimerRef.current);
-    snapTimerRef.current = window.setTimeout(() => {
-      const h = collapseHeightRef.current;
-      const o = collapseOffsetRef.current;
-      const reach = Math.min(h, lastScrollTopRef.current);
-      if (o <= 0 || o >= reach) return;
-      const dir = lastDirRef.current;
-      applyCollapse(dir < 0 ? 0 : dir > 0 ? reach : o > reach / 2 ? reach : 0, true);
-    }, 140);
-  }, [filteredItems.length, applyCollapse]);
+    if (top <= 1) {
+      // At the very top the header is simply in its natural place: go back to leaving with the list
+      if (headerShownRef.current) placeHeader(false, false);
+    } else if (delta < -6 && !headerShownRef.current && top > hiddenOffsetRef.current) {
+      placeHeader(true, true); // scrolling up in the middle of the list: bring the header back
+    } else if (delta > 6 && headerShownRef.current) {
+      placeHeader(false, true); // scrolling down again: let it leave
+    }
+  }, [filteredItems.length, placeHeader]);
 
   const filteredUntranslated = filteredItems.filter((i) => i.status === 'untranslated');
   const allFilteredUntranslatedSelected =
@@ -329,10 +314,12 @@ const StringListBase: React.FC<StringListProps> = ({
           onConfirm={runBulkTranslate}
         />
       )}
+      {/* String Items List */}
+      <div ref={listRef} onScroll={handleScroll} className="flex-1 overflow-y-auto" style={{ overflowAnchor: 'none' }}>
       {/* Search & Filter Header */}
       <div
         ref={headerRef}
-        className="absolute top-0 inset-x-0 z-10 p-3.5 border-b border-slate-100 dark:border-slate-800/80 bg-white dark:bg-[#131314] will-change-transform"
+        className="sticky top-0 z-30 p-3.5 border-b border-slate-100 dark:border-slate-800/80 bg-white dark:bg-[#131314]"
       >
         <div ref={collapseInnerRef}>
         {!hideSearch && (
@@ -761,8 +748,7 @@ const StringListBase: React.FC<StringListProps> = ({
         )}
       </div>
 
-      {/* String Items List */}
-      <div ref={listRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-2 space-y-1" style={{ overflowAnchor: 'none' }}>
+      <div className="p-2 space-y-1">
         {filteredItems.length === 0 ? (
           <div className="py-12 px-4 text-center text-xs text-slate-600 dark:text-slate-400 space-y-1.5">
             <p className="font-medium text-slate-700 dark:text-slate-300">
@@ -805,6 +791,7 @@ const StringListBase: React.FC<StringListProps> = ({
           )}
         </>
       )}
+      </div>
       </div>
     </div>
   );
