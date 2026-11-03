@@ -358,7 +358,7 @@ function fixTags(source: string, target: string, notes: FixNote[]): string {
 
 // ---------- brackets ----------
 
-const BRACKET_PAIRS: Record<string, string> = { '(': ')', '[': ']', '{': '}', '«': '»', '“': '”' };
+const BRACKET_PAIRS: Record<string, string> = { '(': ')', '[': ']', '{': '}', '«': '»', '“': '”', '﴿': '﴾', '‘': '’', '‹': '›' };
 const CLOSERS = new Set(Object.values(BRACKET_PAIRS));
 const CLOSER_TO_OPENER: Record<string, string> = Object.fromEntries(Object.entries(BRACKET_PAIRS).map(([o, c]) => [c, o]));
 
