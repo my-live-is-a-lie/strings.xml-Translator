@@ -13,3 +13,35 @@ Last updated: 2026-11-02. Branch `main`, working tree clean after the add-langua
 - Not exhaustively tested in a browser: every deletion case (e.g. text-only button emptied) and clipping in all screens.
 - Optional earlier offer: progressive collapsing header for table view like the strings list.
 - User must delete remote branch `table-scroll-header` on GitHub.
+
+---
+
+# Landscape / editor session (separate Claude session, 2026-11-03)
+
+
+### Repo state
+- Branch `main`, last pushed commit `e817b77` ("Landscape: stop writing-half blocks from collapsing…"). Working tree clean apart from this `.claude/` handoff.
+- Lint, 65 unit tests and `vite build` pass locally. e2e only runs in CI.
+
+### Done and pushed (not yet confirmed on a real device)
+All items below were verified only in headless Chromium (landscape ~780x360), not on the user's phone:
+- Landscape split layout, bottom dock, offline dot with real connectivity probe, filters replacing stats, compact buttons.
+- Keyboard-open compaction (hide bars/labels, tighten spacing).
+- Edge-swipe drawers (strings list vs sidebar by nearest button).
+- ZIP/XML/JSON saving on Android via share sheet.
+- Long text scrolling to the save buttons in the writing half.
+
+### Waiting on the user
+- Start a NEW release run (Actions → Release signed Android APK → Run workflow; Re-run reuses old code) and test on the phone. Report back with screenshots if anything differs. The ZIP fix needs this build because it adds two Capacitor plugins.
+
+### Open points / risks
+- Keyboard-open detection is focus-based (a text field is focused), not real keyboard height; if the keyboard is dismissed with Back while the caret stays in the field the bars stay hidden until focus leaves. Offered but not requested: measure viewport height instead.
+- Edge swipe may clash with Android's system back gesture at screen edges; widening the edge zone (currently 28 px) or other tuning may be needed.
+- "Connected" state of the offline dot could not be tested in the sandbox (no external network).
+- Whether the landscape split appears on the user's APK after rotation was reported broken once and fixed (cf3ae53/f369fa7); confirm on device.
+- User asked for a handoff (`.claude/PROJECT_CONTEXT.md`, `WORK_STATE.md`, `CHANGELOG_HANDOFF.md`); these three files are that handoff.
+
+### Suggested next steps
+1. Confirm the new release on device; fix whatever the user reports.
+2. Consider tying keyboard-open mode to actual viewport shrink.
+3. Possible follow-ups the user hasn't asked for: an in-app compact keyboard (declined as too big for now); float/one-handed keyboard advice was given instead.
