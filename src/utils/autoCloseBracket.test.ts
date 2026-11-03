@@ -20,3 +20,14 @@ describe('autoCloseOnDoubleSpace', () => {
     expect(type('<a href="x">link')).toBeUndefined();
   });
 });
+
+describe('keyboards that turn a double space into ". "', () => {
+  it('drops the added period and closes', () => {
+    const prev = 'قال "نعم ';
+    const next = 'قال "نعم. ';
+    expect(autoCloseOnDoubleSpace(prev, next, next.length)?.text).toBe('قال "نعم" ');
+  });
+  it('leaves a typed period alone', () => {
+    expect(autoCloseOnDoubleSpace('قال "نعم.', 'قال "نعم. ', 10)).toBeNull();
+  });
+});

@@ -9,9 +9,13 @@ const OPENER_TO_CLOSER: Record<string, string> = { '(': ')', '[': ']', '{': '}',
  */
 export function autoCloseOnDoubleSpace(prev: string, next: string, caret: number): { text: string; caret: number } | null {
   if (next.length !== prev.length + 1 || caret < 2) return null;
-  if (next.slice(caret - 2, caret) !== '  ') return null;
-  if (next.slice(0, caret - 1) + next.slice(caret) !== prev) return null; // a single typed character
-  const head = next.slice(0, caret - 2);
+  let head: string;
+  if (next.slice(caret - 2, caret) === '  ' && next.slice(0, caret - 1) + next.slice(caret) === prev) {
+    head = next.slice(0, caret - 2); // two plain spaces
+  } else if (next.slice(caret - 2, caret) === '. ' && next.slice(0, caret - 2) + next.slice(caret - 1) === prev && /\s$/.test(prev.slice(0, caret - 1))) {
+    // Keyboards that turn a double space into ". " (period + space): the period it adds is not wanted
+    head = next.slice(0, caret - 2);
+  } else return null;
   const { unclosed } = scanBrackets(head);
   const candidates: { idx: number; closer: string }[] = unclosed.map((u) => ({ idx: u.idx, closer: OPENER_TO_CLOSER[u.ch] }));
   // Straight quotes open and close with the same character: an odd count means the last one is still open.
