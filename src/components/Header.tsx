@@ -762,7 +762,6 @@ const HeaderBase: React.FC<HeaderProps> = ({
             {/* Sub-menu Row: Language Options */}
             {appLangMenuOpen && (
               <div className="px-4 py-2.5 flex items-center gap-3 border-b border-slate-200/80 dark:border-[#252C3A] bg-slate-50/70 dark:bg-[#141822]/60 animate-in fade-in duration-150">
-                {addLangButton}
                 <div
                   className="flex-1 min-w-0 flex items-center gap-6 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                   onPointerDown={(e) => {
@@ -797,6 +796,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
                   );
                 })}
                 </div>
+                {addLangButton}
               </div>
             )}
 
