@@ -416,6 +416,13 @@ const StringListBase: React.FC<StringListProps> = ({
                   {tb('show_all')}
                 </button>
               )}
+              {summaryCollapsed && qaSummary.totalAffectedItemsCount > 0 && (
+                <span className="px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-rose-500/15 text-rose-700 dark:text-rose-300 whitespace-nowrap">
+                  {isAr
+                    ? `${qaSummary.totalAffectedItemsCount} تنبيه`
+                    : `${qaSummary.totalAffectedItemsCount} issue${qaSummary.totalAffectedItemsCount > 1 ? 's' : ''}`}
+                </span>
+              )}
               <button
                 type="button"
                 onClick={toggleSummary}
