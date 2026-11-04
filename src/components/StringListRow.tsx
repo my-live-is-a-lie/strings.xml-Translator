@@ -1,6 +1,6 @@
 import { SourceChangeBadge } from './SourceChangeDiff';
-import React from 'react';
-import { AlertCircle, CheckCircle2, CheckSquare, Circle, RotateCcw, ShieldAlert, Sparkles, Square } from 'lucide-react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
+import { AlertCircle, CheckCircle2, CheckSquare, ChevronDown, Circle, RotateCcw, ShieldAlert, Sparkles, Square } from 'lucide-react';
 import { ResourceItem } from '../types';
 import { ItemQaResult } from '../utils/placeholderCheck';
 import { engineLabel } from '../utils/translator';
@@ -62,6 +62,10 @@ const StringListRowBase: React.FC<StringListRowProps> = ({
   onResetItemHistory,
 }) => {
   const { t } = useT();
+  const [expanded, setExpanded] = useState(false);
+  const [overflowing, setOverflowing] = useState(false);
+  const srcRef = useRef<HTMLParagraphElement>(null);
+  const tgtRef = useRef<HTMLParagraphElement>(null);
   // Preview snippets (prefer the sub-item matching the search for plurals and arrays)
   let sourceSnippet = '';
   let targetSnippet = '';
@@ -82,6 +86,21 @@ const StringListRowBase: React.FC<StringListRowProps> = ({
     sourceSnippet = previewItem?.source || '';
     targetSnippet = previewItem?.target || '';
   }
+
+  // Does any of the one-line previews hide part of its text? Then the arrow to expand it is shown.
+  useLayoutEffect(() => {
+    if (expanded) return;
+    const check = () => {
+      const hidden = (el: HTMLElement | null) => !!el && el.scrollHeight > el.clientHeight + 1;
+      setOverflowing(hidden(srcRef.current) || hidden(tgtRef.current));
+    };
+    check();
+    const ro = new ResizeObserver(check);
+    if (srcRef.current) ro.observe(srcRef.current);
+    return () => ro.disconnect();
+  }, [expanded, sourceSnippet, targetSnippet]);
+  const padSide = isAr ? 'pr-5.5' : 'pl-5.5';
+  const align = isAr ? 'right' : 'left';
 
   return (
     <div
@@ -126,14 +145,8 @@ const StringListRowBase: React.FC<StringListRowProps> = ({
                   )}
                 </button>
               )}
-              {item.status === 'translated' ? (
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-              ) : item.status === 'needs_review' ? (
-                <AlertCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-              ) : (
-                <Circle className="w-3.5 h-3.5 text-slate-600 dark:text-slate-400 shrink-0" />
-              )}
               <span
+                dir="ltr"
                 className={`font-mono text-xs truncate ${
                   isSelected
                     ? 'font-semibold text-[#0B57D0] dark:text-[#A8C7FA]'
@@ -169,6 +182,13 @@ const StringListRowBase: React.FC<StringListRowProps> = ({
                   </span>
                 );
               })()}
+              {item.status === 'translated' ? (
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              ) : item.status === 'needs_review' ? (
+                <AlertCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+              ) : (
+                <Circle className="w-3.5 h-3.5 text-slate-600 dark:text-slate-400 shrink-0" />
+              )}
               {item.status !== 'untranslated' && (
                 <>
                   {item.translationSource === 'ai' && (
@@ -187,7 +207,6 @@ const StringListRowBase: React.FC<StringListRowProps> = ({
                     }
                   >
                     <Sparkles className="w-2.5 h-2.5" />
-                    <span data-i18n>{t('ai')}</span>
                   </span>
                   )}
 
@@ -219,27 +238,52 @@ const StringListRowBase: React.FC<StringListRowProps> = ({
             </div>
           </div>
 
-          {/* Source English preview */}
-          <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-1 ps-5.5">
-            {sourceSnippet ? (
-              <bdi>{highlightText(sourceSnippet, searchQuery)}</bdi>
-            ) : (
-              <span data-i18n className="italic text-slate-400">{t('empty_string')}</span>
+          {/* Source English preview + target preview; the arrow expands / collapses clipped text */}
+          <div className="relative">
+            {(overflowing || expanded) && (
+              <button
+                type="button"
+                aria-label={expanded ? 'Collapse' : 'Expand'}
+                aria-expanded={expanded}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setExpanded((v) => !v);
+                }}
+                className={`pointer-events-auto absolute top-0 z-10 p-0.5 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/70 dark:hover:bg-slate-700/70 transition cursor-pointer ${isAr ? 'right-0' : 'left-0'}`}
+              >
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+              </button>
             )}
-          </p>
+            <p
+              ref={srcRef}
+              dir="auto"
+              style={{ textAlign: align }}
+              className={`text-xs text-slate-600 dark:text-slate-400 ${expanded ? 'whitespace-pre-wrap break-words' : 'line-clamp-1'} ${padSide}`}
+            >
+              {sourceSnippet ? (
+                <bdi>{highlightText(sourceSnippet, searchQuery)}</bdi>
+              ) : (
+                <span data-i18n className="italic text-slate-400">{t('empty_string')}</span>
+              )}
+            </p>
 
-          {/* Target translation preview */}
-          <p className="text-[11px] line-clamp-1 ps-5.5">
-            {targetSnippet ? (
-              <span className="text-emerald-700 dark:text-emerald-300 font-medium">
-                <bdi>{highlightText(targetSnippet, searchQuery)}</bdi>
-              </span>
-            ) : (
-              <span data-i18n className="text-slate-600 dark:text-slate-400 italic">
-                {t('untranslated')}
-              </span>
-            )}
-          </p>
+            <p
+              ref={tgtRef}
+              dir="auto"
+              style={{ textAlign: align }}
+              className={`text-[11px] mt-1 ${expanded ? 'whitespace-pre-wrap break-words' : 'line-clamp-1'} ${padSide}`}
+            >
+              {targetSnippet ? (
+                <span className="text-emerald-700 dark:text-emerald-300 font-medium">
+                  <bdi>{highlightText(targetSnippet, searchQuery)}</bdi>
+                </span>
+              ) : (
+                <span data-i18n className="text-slate-600 dark:text-slate-400 italic">
+                  {t('untranslated')}
+                </span>
+              )}
+            </p>
+          </div>
       </div>
     </div>
   );
