@@ -171,6 +171,7 @@ const StringListRowBase: React.FC<StringListRowProps> = ({
               })()}
               {item.status !== 'untranslated' && (
                 <>
+                  {item.translationSource === 'ai' && (
                   <span
                     className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-semibold ${
                       item.translationSource === 'ai'
@@ -185,15 +186,10 @@ const StringListRowBase: React.FC<StringListRowProps> = ({
                         : t('manual_input_2')
                     }
                   >
-                    {item.translationSource === 'ai' ? (
-                      <>
-                        <Sparkles className="w-2.5 h-2.5" />
-                        <span data-i18n>{t('ai')}</span>
-                      </>
-                    ) : (
-                      <span data-i18n>{t('manual')}</span>
-                    )}
+                    <Sparkles className="w-2.5 h-2.5" />
+                    <span data-i18n>{t('ai')}</span>
                   </span>
+                  )}
 
                   {onResetItemHistory && (
                     <button
