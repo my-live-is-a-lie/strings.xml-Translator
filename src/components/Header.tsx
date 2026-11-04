@@ -855,7 +855,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
               onScroll={(e) => {
                 drawerScrollTopRef.current = e.currentTarget.scrollTop;
               }}
-              className="p-5 pb-28 flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y flex flex-col gap-3"
+              className="p-5 pb-28 flex-1 min-h-0 overflow-y-auto no-scrollbar overscroll-contain touch-pan-y flex flex-col gap-3"
             >
               {/* Import Button */}
               <button
