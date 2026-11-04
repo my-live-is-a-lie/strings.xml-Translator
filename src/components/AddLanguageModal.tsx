@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Download, Trash2, Upload, X } from 'lucide-react';
 import { addCustomLanguage, removeCustomLanguage, useCustomLanguages, useT } from '../i18n/i18n';
+import { saveFile } from '../utils/saveFile';
+import { debugIgnored } from '../utils/debug';
 import { generateEnglishUiXml, parseUiXml } from '../i18n/stringsXml';
 
 type Props = { onClose: () => void; activeCode: string; onAdded: (code: string) => void; onRemoved: (code: string) => void };
@@ -14,12 +16,9 @@ export default function AddLanguageModal({ onClose, activeCode, onAdded, onRemov
   const [parsed, setParsed] = useState<ReturnType<typeof parseUiXml> | null>(null);
 
   const download = () => {
-    const blob = new Blob([generateEnglishUiXml()], { type: 'application/xml' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'strings.xml';
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    void saveFile(new Blob([generateEnglishUiXml()], { type: 'application/xml' }), 'strings.xml').catch((err) =>
+      debugIgnored('AddLanguageModal.download', err)
+    );
   };
   const onFile = async (f: File | undefined) => {
     if (!f) return;
