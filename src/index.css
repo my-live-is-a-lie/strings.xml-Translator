@@ -706,3 +706,11 @@ html:not(.dark) .dark\:border-\[\#2E384D\] {
   overflow: hidden;
   text-overflow: clip;
 }
+
+/* Scrolling still works, the bar itself is not drawn (editor panels) */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

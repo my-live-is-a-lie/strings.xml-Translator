@@ -1355,7 +1355,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     );
 
   return (
-    <div className="flex flex-col h-full bg-[#F8F9FA] dark:bg-[#0E1015] text-slate-800 dark:text-slate-100 overflow-y-auto p-2 sm:p-3">
+    <div className="flex flex-col h-full bg-[#F8F9FA] dark:bg-[#0E1015] text-slate-800 dark:text-slate-100 overflow-y-auto no-scrollbar p-2 sm:p-3">
       <div className="max-w-2xl w-full mx-auto flex flex-col gap-2">
         {/* Weblate / M3 Main Card Frame */}
         <div className="bg-white dark:bg-[#151922] rounded-2xl border border-slate-200/80 dark:border-transparent shadow-sm dark:shadow-lg overflow-hidden">
