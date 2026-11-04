@@ -16,7 +16,7 @@ import { debugIgnored } from '../utils/debug';
 import { autoCloseOnDoubleSpace } from '../utils/autoCloseBracket';
 import { usePredictiveWords, PredictField } from '../hooks/usePredictiveWords';
 import { getItemQaIssues, QaIssue } from '../utils/placeholderCheck';
-import { copyTextToClipboard, readTextFromClipboard } from '../utils/storage';
+import { getStoredItem, setStoredItem, copyTextToClipboard, readTextFromClipboard } from '../utils/storage';
 import { useT } from '../i18n/i18n';
 
 const PLURAL_QUANTITY_LABELS_AR: Record<string, string> = {
@@ -512,6 +512,28 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       }
     }, 0);
   };
+
+  // How often each shortcut button was used: the most used ones move to the start of their bar
+  const [shortcutUsage, setShortcutUsage] = useState<Record<string, number>>(() => {
+    try {
+      const raw = JSON.parse(getStoredItem('app_shortcut_usage') ?? '{}');
+      return raw && typeof raw === 'object' ? raw : {};
+    } catch {
+      return {};
+    }
+  });
+  const bumpShortcut = (label: string) => {
+    setShortcutUsage((prev) => {
+      const next = { ...prev, [label]: (prev[label] ?? 0) + 1 };
+      setStoredItem('app_shortcut_usage', JSON.stringify(next));
+      return next;
+    });
+  };
+  const sortByUsage = <T extends { label: string }>(list: T[]): T[] =>
+    list
+      .map((b, i) => ({ b, i }))
+      .sort((x, y) => (shortcutUsage[y.b.label] ?? 0) - (shortcutUsage[x.b.label] ?? 0) || x.i - y.i)
+      .map((x) => x.b);
 
   // Insert character, symbol, or Android syntax token at cursor (line indicator) position in the active textarea
   const insertAtCursor = (
@@ -1474,8 +1496,8 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             {/* Two Connected Typographic / Formatting Toolbars */}
             <div className="kb-tools space-y-1 select-none">
               {/* Toolbar Row 1: Punctuation & Typography */}
-              <div dir="ltr" className="flex items-center bg-slate-100 dark:bg-[#171D27] border border-slate-200/90 dark:border-[#283242] rounded-lg overflow-x-auto divide-x divide-slate-200 dark:divide-[#283242] rtl:divide-x-reverse no-scrollbar">
-                {[
+              <div className="flex items-center bg-slate-100 dark:bg-[#171D27] border border-slate-200/90 dark:border-[#283242] rounded-lg overflow-x-auto divide-x divide-slate-200 dark:divide-[#283242] rtl:divide-x-reverse no-scrollbar">
+                {sortByUsage([
                   { label: '-', value: '-', title: t('hyphen') },
                   { label: '_', value: '_', title: t('underscore') },
                   { label: '( - )', value: '( - )', title: t('parentheses') },
@@ -1487,12 +1509,15 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                   { label: 'NBS', value: '\u00A0', title: t('non_breaking_space_u_00a0') },
                   { label: '↵', value: '\\n', title: t('newline_n') },
                   { label: '⇄', value: '\\t', title: t('tabulation_t') },
-                ].map((btn, idx) => (
+                ]).map((btn) => (
                   <button
-                    key={idx}
+                    key={btn.label}
                     type="button"
                     onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => insertAtCursor(btn.value)}
+                    onClick={() => {
+                      insertAtCursor(btn.value);
+                      bumpShortcut(btn.label);
+                    }}
                     title={btn.title}
                     className="flex-1 min-w-[30px] sm:min-w-[38px] h-7 sm:h-7.5 whitespace-nowrap px-1 flex items-center justify-center text-xs font-mono font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-[#232C3A] active:bg-slate-300 dark:active:bg-[#2C3748] transition cursor-pointer"
                   >
@@ -1502,8 +1527,8 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               </div>
 
               {/* Toolbar Row 2: BiDi Unicode Directional Controls */}
-              <div dir="ltr" className="flex items-center bg-slate-100 dark:bg-[#171D27] border border-slate-200/90 dark:border-[#283242] rounded-lg overflow-x-auto divide-x divide-slate-200 dark:divide-[#283242] rtl:divide-x-reverse no-scrollbar">
-                {[
+              <div className="flex items-center bg-slate-100 dark:bg-[#171D27] border border-slate-200/90 dark:border-[#283242] rounded-lg overflow-x-auto divide-x divide-slate-200 dark:divide-[#283242] rtl:divide-x-reverse no-scrollbar">
+                {sortByUsage([
                   { label: 'PDF', value: '\u202C', title: t('pop_directional_formatting_u_202c') },
                   { label: 'RLE', value: '\u202B', title: t('right_to_left_embedding_u') },
                   { label: 'LRE', value: '\u202A', title: t('left_to_right_embedding_u') },
@@ -1511,12 +1536,15 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                   { label: 'LRM', value: '\u200E', title: t('left_to_right_mark_u') },
                   { label: 'ZWJ', value: '\u200D', title: t('zero_width_joiner_u_200d') },
                   { label: 'ZWNJ', value: '\u200C', title: t('zero_width_non_joiner_u') },
-                ].map((btn, idx) => (
+                ]).map((btn) => (
                   <button
-                    key={idx}
+                    key={btn.label}
                     type="button"
                     onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => insertAtCursor(btn.value)}
+                    onClick={() => {
+                      insertAtCursor(btn.value);
+                      bumpShortcut(btn.label);
+                    }}
                     title={btn.title}
                     className="flex-1 min-w-[40px] sm:min-w-[48px] h-7 sm:h-7.5 flex items-center justify-center text-[10px] sm:text-[11px] font-mono font-semibold text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-[#232C3A] active:bg-slate-300 dark:active:bg-[#2C3748] transition cursor-pointer tracking-wider"
                   >
