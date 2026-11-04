@@ -1435,6 +1435,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                 {item.status !== 'untranslated' && (
                   <>
+                    {item.translationSource === 'ai' && (
                     <span
                       className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold border ${
                         item.translationSource === 'ai'
@@ -1442,15 +1443,10 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                           : 'bg-[#1EB996]/10 text-[#1EB996] border-[#1EB996]/25'
                       }`}
                     >
-                      {item.translationSource === 'ai' ? (
-                        <>
-                          <Sparkles className="w-2.5 h-2.5 text-amber-400" />
-                          <span data-i18n>{t('ai_translated_2')}</span>
-                        </>
-                      ) : (
-                        <span data-i18n>{t('manual_input')}</span>
-                      )}
+                      <Sparkles className="w-2.5 h-2.5 text-amber-400" />
+                      <span data-i18n>{t('ai_translated_2')}</span>
                     </span>
+                    )}
                     {onResetItemHistory && (
                       <button
                         type="button"
