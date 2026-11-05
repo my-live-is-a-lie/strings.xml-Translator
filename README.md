@@ -4,11 +4,14 @@
 
 # XML Translator
 
+<a href="https://github.com/my-live-is-a-lie/strings.xml-translator/releases/latest"><img src="https://img.shields.io/github/downloads/my-live-is-a-lie/strings.xml-translator/total?style=flat&logo=android&logoColor=white&label=Downloads&color=1eb996" alt="Downloads" height="34" /></a>
+<br />
+<a href="https://github.com/my-live-is-a-lie/strings.xml-translator/releases/latest"><img src="https://img.shields.io/github/v/release/my-live-is-a-lie/strings.xml-translator?style=flat&label=Version&color=119eff&include_prereleases" alt="Latest version" height="34" /></a>
+
 **Translate Android `strings.xml` files faster, safer and in your own language.**
 
 A focused editor for Android localization — with machine translation and built-in quality checks — as a web app and a native Android app.
 
-[![Download](https://img.shields.io/github/downloads/my-live-is-a-lie/strings.xml-translator/total?style=flat-square&logo=android&logoColor=white&label=Download&color=1eb996)](https://github.com/my-live-is-a-lie/strings.xml-translator/releases/latest)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue?style=flat-square)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-Web%20%7C%20Android-1eb996?style=flat-square)
 ![React](https://img.shields.io/badge/React-19-20232a?style=flat-square&logo=react&logoColor=61dafb)
