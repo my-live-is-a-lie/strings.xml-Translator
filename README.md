@@ -9,6 +9,7 @@
 A focused editor for Android localization — with machine translation, built-in quality checks and full right-to-left support — as a web app and a native Android app.
 
 [![Build](https://github.com/my-live-is-a-lie/strings.xml-translator/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/my-live-is-a-lie/strings.xml-translator/actions/workflows/build.yml)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue?style=flat-square)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-Web%20%7C%20Android-1eb996?style=flat-square)
 ![React](https://img.shields.io/badge/React-19-20232a?style=flat-square&logo=react&logoColor=61dafb)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white)
@@ -120,6 +121,10 @@ Continuous integration builds a debug APK on every push. See [RELEASE.md](RELEAS
 ## Contributing
 
 Issues and pull requests are welcome. Please run `npm run lint` and `npm test` before submitting.
+
+## License
+
+Distributed under the **GNU General Public License v3.0**. See [LICENSE](LICENSE) for the full text.
 
 ---
 
