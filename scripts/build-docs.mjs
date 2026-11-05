@@ -2,8 +2,12 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { marked } from 'marked';
 
+const REPO = 'https://github.com/my-live-is-a-lie/strings.xml-translator';
+const SITE = 'https://my-live-is-a-lie.github.io/strings.xml-Translator/';
 const md = readFileSync('docs/GUIDE.md', 'utf8');
 const body = md.slice(md.indexOf('## 1. What it is'));
+const css = readFileSync('scripts/docs.css', 'utf8');
+const client = readFileSync('scripts/docs-client.js', 'utf8');
 
 const slug = (t) =>
   t
@@ -13,27 +17,115 @@ const slug = (t) =>
     .trim()
     .replace(/\s/g, '-');
 
+// ---- image size (PNG / JPEG header) so figures get the right frame and no layout shift
+function imageSize(path) {
+  const b = readFileSync('docs/' + path);
+  if (b[0] === 0x89 && b[1] === 0x50) return { w: b.readUInt32BE(16), h: b.readUInt32BE(20) };
+  let i = 2;
+  while (i < b.length) {
+    if (b[i] !== 0xff) { i++; continue; }
+    const m = b[i + 1];
+    if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) return { h: b.readUInt16BE(i + 5), w: b.readUInt16BE(i + 7) };
+    i += 2 + b.readUInt16BE(i + 2);
+  }
+  throw new Error('unknown image ' + path);
+}
+const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
 const sections = [];
+let curSection = null;
 const renderer = new marked.Renderer();
 renderer.heading = (text, level) => {
   const id = slug(text.replace(/&[a-z]+;/g, ''));
-  if (level === 2) sections.push({ id, title: text.replace(/^\d+\.\s*/, ''), n: text.match(/^(\d+)\./)?.[1] ?? '' });
+  if (level === 2) {
+    curSection = { id, title: text.replace(/^\d+\.\s*/, ''), n: text.match(/^(\d+)\./)?.[1] ?? '', subs: [] };
+    sections.push(curSection);
+  } else if (level === 3 && curSection) curSection.subs.push({ id, title: text });
   const anchor = level <= 3 ? `<a class="anchor" href="#${id}" aria-label="Link to this section">#</a>` : '';
   return `<h${level} id="${id}">${text}${anchor}</h${level}>\n`;
 };
 renderer.blockquote = (quote) => `<aside class="callout">${quote}</aside>\n`;
 renderer.table = (header, bodyHtml) => `<div class="table-wrap"><table><thead>${header}</thead><tbody>${bodyHtml}</tbody></table></div>\n`;
 renderer.hr = () => '<hr class="sep" />\n';
+renderer.image = (href, title, text) => {
+  const { w, h } = imageSize(href);
+  const r = h / w;
+  const kind = r > 1.5 ? 'phone' : r < 0.6 ? 'strip' : 'card-fig';
+  const img = `<img src="${href}" alt="${esc(text)}" width="${w}" height="${h}" loading="lazy" data-zoom />`;
+  const cap = title ? `<figcaption>${esc(title)}</figcaption>` : '';
+  const inner =
+    kind === 'phone'
+      ? `<div class="frame"><div class="scroller">${img}</div><span class="hint">Scroll ↕ · tap to zoom</span></div>`
+      : img;
+  return `<figure class="shot ${kind} reveal">${inner}${cap}</figure>`;
+};
+renderer.paragraph = (text) => (/^(<figure[\s\S]*?<\/figure>\s*)+$/.test(text.trim()) ? `<div class="figs">${text}</div>\n` : `<p>${text}</p>\n`);
+renderer.html = (h) => {
+  if (h.includes('demo:double-space')) {
+    return `<div class="demo" id="demo-ds">
+  <div class="demo-h"><b>Try it</b><span>Open a quote or bracket, type something, then press <kbd>Space</kbd> twice.</span></div>
+  <div class="chips">
+    <button type="button" data-t="He said &quot;hello">He said "hello</button>
+    <button type="button" data-t="Call support (Mon–Fri">Call support (Mon–Fri</button>
+    <button type="button" data-t="قال “مرحبا">قال “مرحبا</button>
+    <button type="button" data-t="Hello, %1$s! (you have %2$d tasks">Hello, %1$s! (you have %2$d tasks</button>
+  </div>
+  <textarea rows="3" spellcheck="false" dir="auto" placeholder="Type here…  e.g.  She said &quot;thanks"></textarea>
+  <div class="demo-foot"><label><input type="checkbox" checked /> Auto-correct on</label><span class="status" aria-live="polite"></span></div>
+</div>\n`;
+  }
+  return h;
+};
 
-// the "---" right after the contents list only separates the header from the content
 let html = marked.parse(body, { renderer, gfm: true });
 html = html.replace(/<h2 id="(\d+)-([^"]+)">/g, '<h2 id="$1-$2" data-section>');
 
-const nav = sections
-  .map((s) => `<a href="#${s.id}" data-nav="${s.id}"><span class="num">${s.n}</span>${s.title}</a>`)
+// wrap every top-level section and add previous/next links
+const chunks = html.split(/(?=<h2 id=)/).filter((c) => c.trim());
+if (chunks.length !== sections.length) throw new Error(`sections mismatch ${chunks.length} vs ${sections.length}`);
+html = chunks
+  .map((c, i) => {
+    const p = sections[i - 1], n = sections[i + 1];
+    const pager = `<nav class="pager" aria-label="Section navigation">${
+      p ? `<a class="prev" href="#${p.id}"><small>← Previous</small>${p.n}. ${p.title}</a>` : ''
+    }${n ? `<a class="next" href="#${n.id}"><small>Next →</small>${n.n}. ${n.title}</a>` : ''}</nav>`;
+    return `<section class="sec">${c}${pager}</section>`;
+  })
   .join('\n');
 
-const REPO = 'https://github.com/my-live-is-a-lie/strings.xml-translator';
+const nav = sections
+  .map(
+    (s) =>
+      `<div class="grp" data-grp="${s.id}"><a href="#${s.id}" data-nav="${s.id}"><span class="num">${s.n}</span>${s.title}</a>` +
+      (s.subs.length ? `<div class="subs">${s.subs.map((u) => `<a href="#${u.id}" data-nav="${u.id}">${u.title}</a>`).join('')}</div>` : '') +
+      `</div>`,
+  )
+  .join('\n');
+
+// ---- feature gallery (every card links to a real section)
+const gallery = [
+  { t: 'Smart auto-correct', d: 'Restores broken placeholders and tags and matches the source punctuation.', img: 'img/save-guard.png', href: '#auto-correct' },
+  { t: 'Double-space closing', d: 'Press Space twice to close the nearest open quote or bracket.', img: 'img/double-space-after.png', href: '#double-space-closes-open-symbols', fit: 'contain' },
+  { t: 'Quality checks', d: 'Counters and a list for placeholder and HTML-tag problems.', img: 'img/qa-checks.png', href: '#6-quality-checks' },
+  { t: 'Quick-insert bars', d: 'Punctuation and direction marks that learn your habits.', img: 'img/quick-insert.png', href: '#quick-insert-bars', fit: 'contain' },
+  { t: 'Translation providers', d: 'Gemini, OpenAI, DeepL, Azure, Yandex and more with your own key.', img: 'img/providers.png', href: '#providers' },
+  { t: 'Powerful filters', d: 'Combine status and AI / manual origin to review what matters.', img: 'img/filters.png', href: '#filters', fit: 'contain' },
+  { t: 'Strings list', d: 'Collapsed one-line rows that expand on tap.', img: 'img/row-expanded.png', href: '#strings-list-drawer' },
+  { t: 'Table view', d: 'Every string as an editable row, even in huge files.', img: 'img/table-view.png', href: '#table-view' },
+  { t: 'Multi-language ZIP', d: 'Translate several languages in one run and export a ZIP.', img: 'screenshots/multi-language-zip.jpg', href: '#multi-language-zip' },
+  { t: 'Projects', d: 'Switch files without losing work; everything stays on your device.', img: 'screenshots/projects.png', href: '#10-projects-and-saved-work' },
+  { t: 'Clean export', d: 'A production-ready strings.xml that keeps your file structure.', img: 'img/export.png', href: '#11-exporting' },
+  { t: 'Your own UI language', d: 'Download, translate and upload the app text to add a language.', img: 'img/add-language.png', href: '#13-interface-languages-and-themes' },
+];
+const ids = new Set([...html.matchAll(/ id="([^"]+)"/g)].map((m) => m[1]));
+for (const g of gallery) if (!ids.has(g.href.slice(1))) throw new Error('gallery link has no target: ' + g.href);
+const cards = gallery
+  .map(
+    (g) =>
+      `<a class="card reveal" href="${g.href}"><div class="thumb${g.fit === 'contain' ? ' contain' : ''}"><img src="${g.img}" alt="" loading="lazy" /></div><div class="t"><b>${g.t}</b><span>${g.d}</span><i>Read more →</i></div></a>`,
+  )
+  .join('\n');
+
 const page = `<!doctype html>
 <html lang="en">
 <head>
@@ -42,65 +134,17 @@ const page = `<!doctype html>
 <title>XML Translator — Documentation</title>
 <meta name="description" content="Guide to XML Translator: translate Android strings.xml files with machine translation, quality checks and smart typing helpers." />
 <meta name="theme-color" content="#1eb996" />
+<meta property="og:title" content="XML Translator — Documentation" />
+<meta property="og:description" content="Translate Android strings.xml files faster, safer and in your own language." />
+<meta property="og:image" content="${SITE}screenshots/editor.jpg" />
+<meta property="og:url" content="${SITE}" />
 <link rel="icon" href="icon.svg" type="image/svg+xml" />
 <script>try{var t=localStorage.getItem('docs-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
 <style>
-:root{--bg:#ffffff;--bg2:#f5f8f8;--panel:#ffffff;--text:#16202a;--muted:#5b6b78;--line:#e3eaee;--brand:#1eb996;--brand-ink:#0b7a64;--code:#eef3f5;--shadow:0 1px 2px rgba(16,24,40,.06),0 8px 24px rgba(16,24,40,.06)}
-@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0d1117;--bg2:#131a22;--panel:#141b24;--text:#e6edf3;--muted:#94a3b0;--line:#222c37;--brand-ink:#35d3b0;--code:#1a232e;--shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35)}}
-:root[data-theme=dark]{--bg:#0d1117;--bg2:#131a22;--panel:#141b24;--text:#e6edf3;--muted:#94a3b0;--line:#222c37;--brand-ink:#35d3b0;--code:#1a232e;--shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35)}
-*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:84px}
-body{margin:0;background:var(--bg);color:var(--text);font:16px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased}
-a{color:var(--brand-ink);text-decoration:none}a:hover{text-decoration:underline}
-.top{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:12px;height:64px;padding:0 20px;background:color-mix(in srgb,var(--bg) 85%,transparent);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
-.brand{white-space:nowrap;display:flex;align-items:center;gap:10px;font-weight:700;color:var(--text);font-size:17px}.brand:hover{text-decoration:none}
-.brand img{width:30px;height:30px;border-radius:8px}
-.spacer{flex:1}
-.btn{display:inline-flex;align-items:center;gap:8px;height:38px;padding:0 14px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--text);font:600 14px/1 inherit;cursor:pointer}
-.btn:hover{border-color:var(--brand);text-decoration:none}
-.btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
-.icon-btn{width:38px;padding:0;justify-content:center}
-.menu{display:none}
-.layout{display:grid;grid-template-columns:280px minmax(0,1fr);max-width:1240px;margin:0 auto}
-.side{position:sticky;top:64px;align-self:start;height:calc(100dvh - 64px);overflow:auto;padding:24px 16px 32px 20px;border-inline-end:1px solid var(--line)}
-.search{width:100%;height:40px;padding:0 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg2);color:var(--text);font:inherit;font-size:14px;margin-bottom:14px}
-.search:focus{outline:2px solid var(--brand);outline-offset:1px}
-.side nav a{display:flex;gap:10px;align-items:baseline;padding:7px 10px;border-radius:8px;color:var(--muted);font-size:14.5px;line-height:1.35}
-.side nav a:hover{background:var(--bg2);color:var(--text);text-decoration:none}
-.side nav a.active{background:color-mix(in srgb,var(--brand) 14%,transparent);color:var(--brand-ink);font-weight:600}
-.side nav a.hide{display:none}
-.num{min-width:1.4em;opacity:.55;font-variant-numeric:tabular-nums}
-main{padding:36px clamp(20px,4vw,56px) 80px;min-width:0}
-.hero{display:grid;gap:18px;padding:34px;border:1px solid var(--line);border-radius:20px;background:linear-gradient(135deg,color-mix(in srgb,var(--brand) 14%,var(--panel)),var(--panel));box-shadow:var(--shadow);margin-bottom:36px}
-.hero h1{margin:0;font-size:clamp(28px,4vw,40px);line-height:1.15;letter-spacing:-.02em}
-.hero p{margin:0;color:var(--muted);font-size:18px;max-width:60ch}
-.hero .row{display:flex;gap:10px;flex-wrap:wrap}
-.shots{display:flex;gap:14px;overflow:auto;padding:4px 2px 10px;scroll-snap-type:x mandatory}
-.shots img{height:340px;width:auto;border-radius:16px;border:1px solid var(--line);box-shadow:var(--shadow);scroll-snap-align:start;flex:none}
-article{max-width:820px}
-article h2{font-size:28px;line-height:1.25;margin:56px 0 14px;padding-top:8px;letter-spacing:-.01em}
-article h2:first-child{margin-top:0}
-article h3{font-size:20px;margin:34px 0 8px}
-article h4{font-size:16px;margin:24px 0 6px}
-.anchor{margin-inline-start:8px;opacity:0;font-weight:400;color:var(--muted)}h2:hover .anchor,h3:hover .anchor{opacity:1}
-article p,article li{color:var(--text)}article li{margin:5px 0}article ul,article ol{padding-inline-start:24px}
-code{font:.88em ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--code);padding:.15em .4em;border-radius:6px}
-pre{background:var(--code);padding:14px 16px;border-radius:12px;overflow:auto}pre code{background:none;padding:0}
-kbd{font:600 .82em ui-monospace,monospace;background:var(--bg2);border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;padding:.1em .45em}
-.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:12px;margin:16px 0;background:var(--panel)}
-table{border-collapse:collapse;width:100%;font-size:15px}
-th,td{padding:10px 14px;text-align:start;vertical-align:top;border-bottom:1px solid var(--line)}
-th{background:var(--bg2);font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}tr:last-child td{border-bottom:0}
-.callout{border-inline-start:4px solid var(--brand);background:color-mix(in srgb,var(--brand) 9%,var(--panel));border-radius:0 12px 12px 0;padding:4px 18px;margin:18px 0}
-.callout p{margin:10px 0}
-hr.sep{border:0;border-top:1px solid var(--line);margin:40px 0}
-.foot{margin-top:64px;padding-top:20px;border-top:1px solid var(--line);color:var(--muted);font-size:14px}
-mark{background:color-mix(in srgb,var(--brand) 35%,transparent);color:inherit;border-radius:3px}
-@media (max-width:900px){.layout{grid-template-columns:1fr}.menu{display:inline-flex}
-.side{position:fixed;inset:64px 0 0 0;height:auto;z-index:25;background:var(--bg);transform:translateX(-102%);transition:transform .2s;border:0;max-width:340px;border-inline-end:1px solid var(--line)}
-body.nav-open .side{transform:none}.shots img{height:260px}.hero{padding:22px}.top .label,.brand span{display:none}}
-</style>
+${css}</style>
 </head>
 <body>
+<div id="progress"></div>
 <header class="top">
   <button class="btn icon-btn menu" id="menu" aria-label="Toggle navigation"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
   <a class="brand" href="#top"><img src="icon.svg" alt="" />XML Translator <span style="color:var(--muted);font-weight:500">Docs</span></a>
@@ -110,54 +154,51 @@ body.nav-open .side{transform:none}.shots img{height:260px}.hero{padding:22px}.t
 </header>
 <div class="layout" id="top">
   <aside class="side">
-    <input class="search" id="q" type="search" placeholder="Search the guide…" aria-label="Search the guide" />
+    <div class="searchbox">
+      <input class="search" id="q" type="search" placeholder="Search the guide…" aria-label="Search the guide" autocomplete="off" />
+      <kbd>/</kbd>
+    </div>
+    <div id="results" aria-live="polite"></div>
     <nav id="nav">
 ${nav}
     </nav>
   </aside>
   <main>
     <section class="hero">
-      <h1>XML Translator</h1>
-      <p>Translate Android <code>strings.xml</code> files faster, safer and in your own language — with machine translation, built-in quality checks and smart typing helpers.</p>
+      <h1>Translate <span>strings.xml</span><br />faster and safer</h1>
+      <p>Machine translation, built-in quality checks and smart typing helpers for Android localization — on the web, as a PWA and as a native Android app.</p>
+      <div class="pills"><span>Works offline</span><span>Your data stays on your device</span><span>30+ locales</span><span>Open source · GPLv3</span></div>
       <div class="row">
         <a class="btn primary" href="${REPO}/releases/latest" target="_blank" rel="noopener">Download the app</a>
         <a class="btn" href="#2-quick-start">Quick start</a>
         <a class="btn" href="${REPO}" target="_blank" rel="noopener">Source code</a>
       </div>
       <div class="shots">
-        <img src="screenshots/editor.jpg" alt="Translation editor" loading="lazy" />
-        <img src="screenshots/strings-list.jpg" alt="Strings list with QA checks" loading="lazy" />
-        <img src="screenshots/table.jpg" alt="Table view" loading="lazy" />
-        <img src="screenshots/providers.png" alt="Translation providers" loading="lazy" />
-        <img src="screenshots/multi-language-zip.jpg" alt="Multi-language ZIP" loading="lazy" />
+        <img src="screenshots/editor.jpg" alt="Translation editor" loading="lazy" data-zoom />
+        <img src="screenshots/strings-list.jpg" alt="Strings list with QA checks" loading="lazy" data-zoom />
+        <img src="screenshots/table.jpg" alt="Table view" loading="lazy" data-zoom />
+        <img src="screenshots/providers.png" alt="Translation providers" loading="lazy" data-zoom />
+        <img src="screenshots/multi-language-zip.jpg" alt="Multi-language ZIP" loading="lazy" data-zoom />
       </div>
     </section>
+    <div class="gal-h"><h2>Features at a glance</h2><span>Tap a card to jump to its section</span></div>
+    <div class="gallery">
+${cards}
+    </div>
     <article id="content">
 ${html}
       <div class="foot">Released under the <a href="${REPO}/blob/main/LICENSE">GNU GPL v3</a>. Found a mistake? <a href="${REPO}/edit/main/docs/GUIDE.md">Edit this page</a>.</div>
     </article>
   </main>
 </div>
+<div id="lb" role="dialog" aria-modal="true" aria-label="Image viewer"><button class="x" aria-label="Close">×</button><button class="p" aria-label="Previous image">‹</button><img alt="" /><div class="cap"></div><div class="cnt"></div><button class="n" aria-label="Next image">›</button></div>
+<div id="toast" role="status"></div>
+<button id="totop" aria-label="Back to top"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
 <script>
-(function(){
-  var root=document.documentElement,body=document.body;
-  document.getElementById('theme').onclick=function(){var dark=root.dataset.theme?root.dataset.theme==='dark':matchMedia('(prefers-color-scheme:dark)').matches;var n=dark?'light':'dark';root.dataset.theme=n;try{localStorage.setItem('docs-theme',n)}catch(e){}};
-  document.getElementById('menu').onclick=function(){body.classList.toggle('nav-open')};
-  document.querySelectorAll('#nav a').forEach(function(a){a.addEventListener('click',function(){body.classList.remove('nav-open')})});
-  // scroll spy
-  var links={};document.querySelectorAll('#nav a').forEach(function(a){links[a.dataset.nav]=a});
-  var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){Object.values(links).forEach(function(l){l.classList.remove('active')});var l=links[e.target.id];if(l){l.classList.add('active');l.scrollIntoView({block:'nearest'})}}})},{rootMargin:'-80px 0px -70% 0px'});
-  document.querySelectorAll('h2[data-section]').forEach(function(h){io.observe(h)});
-  // search: filter the section list and highlight matches in the page
-  var q=document.getElementById('q'),content=document.getElementById('content');
-  var secs=[];document.querySelectorAll('h2[data-section]').forEach(function(h){var t=h.textContent.toLowerCase(),n=h.nextElementSibling;while(n&&!(n.tagName==='H2')){t+=' '+n.textContent.toLowerCase();n=n.nextElementSibling}secs.push({id:h.id,t:t})});
-  q.addEventListener('input',function(){var v=q.value.trim().toLowerCase();secs.forEach(function(s){links[s.id].classList.toggle('hide',!!v&&s.t.indexOf(v)<0)})});
-  q.addEventListener('keydown',function(e){if(e.key==='Enter'){var first=Object.values(links).find(function(l){return !l.classList.contains('hide')});if(first)location.hash=first.getAttribute('href')}});
-})();
-</script>
+${client}</script>
 </body>
 </html>
 `;
 writeFileSync('docs/index.html', page);
 writeFileSync('docs/.nojekyll', '');
-console.log('docs/index.html', page.length, 'bytes,', sections.length, 'sections');
+console.log('docs/index.html', page.length, 'bytes,', sections.length, 'sections,', gallery.length, 'cards');
