@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>XML Translator — Documentation</title>
+<meta name="description" content="Guide to XML Translator: translate Android strings.xml files with machine translation, quality checks and smart typing helpers." />
+<meta name="theme-color" content="#1eb996" />
+<link rel="icon" href="icon.svg" type="image/svg+xml" />
+<script>try{var t=localStorage.getItem('docs-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+<style>
+:root{--bg:#ffffff;--bg2:#f5f8f8;--panel:#ffffff;--text:#16202a;--muted:#5b6b78;--line:#e3eaee;--brand:#1eb996;--brand-ink:#0b7a64;--code:#eef3f5;--shadow:0 1px 2px rgba(16,24,40,.06),0 8px 24px rgba(16,24,40,.06)}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0d1117;--bg2:#131a22;--panel:#141b24;--text:#e6edf3;--muted:#94a3b0;--line:#222c37;--brand-ink:#35d3b0;--code:#1a232e;--shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35)}}
+:root[data-theme=dark]{--bg:#0d1117;--bg2:#131a22;--panel:#141b24;--text:#e6edf3;--muted:#94a3b0;--line:#222c37;--brand-ink:#35d3b0;--code:#1a232e;--shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35)}
+*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:84px}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--brand-ink);text-decoration:none}a:hover{text-decoration:underline}
+.top{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:12px;height:64px;padding:0 20px;background:color-mix(in srgb,var(--bg) 85%,transparent);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+.brand{white-space:nowrap;display:flex;align-items:center;gap:10px;font-weight:700;color:var(--text);font-size:17px}.brand:hover{text-decoration:none}
+.brand img{width:30px;height:30px;border-radius:8px}
+.spacer{flex:1}
+.btn{display:inline-flex;align-items:center;gap:8px;height:38px;padding:0 14px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--text);font:600 14px/1 inherit;cursor:pointer}
+.btn:hover{border-color:var(--brand);text-decoration:none}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+.icon-btn{width:38px;padding:0;justify-content:center}
+.menu{display:none}
+.layout{display:grid;grid-template-columns:280px minmax(0,1fr);max-width:1240px;margin:0 auto}
+.side{position:sticky;top:64px;align-self:start;height:calc(100dvh - 64px);overflow:auto;padding:24px 16px 32px 20px;border-inline-end:1px solid var(--line)}
+.search{width:100%;height:40px;padding:0 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg2);color:var(--text);font:inherit;font-size:14px;margin-bottom:14px}
+.search:focus{outline:2px solid var(--brand);outline-offset:1px}
+.side nav a{display:flex;gap:10px;align-items:baseline;padding:7px 10px;border-radius:8px;color:var(--muted);font-size:14.5px;line-height:1.35}
+.side nav a:hover{background:var(--bg2);color:var(--text);text-decoration:none}
+.side nav a.active{background:color-mix(in srgb,var(--brand) 14%,transparent);color:var(--brand-ink);font-weight:600}
+.side nav a.hide{display:none}
+.num{min-width:1.4em;opacity:.55;font-variant-numeric:tabular-nums}
+main{padding:36px clamp(20px,4vw,56px) 80px;min-width:0}
+.hero{display:grid;gap:18px;padding:34px;border:1px solid var(--line);border-radius:20px;background:linear-gradient(135deg,color-mix(in srgb,var(--brand) 14%,var(--panel)),var(--panel));box-shadow:var(--shadow);margin-bottom:36px}
+.hero h1{margin:0;font-size:clamp(28px,4vw,40px);line-height:1.15;letter-spacing:-.02em}
+.hero p{margin:0;color:var(--muted);font-size:18px;max-width:60ch}
+.hero .row{display:flex;gap:10px;flex-wrap:wrap}
+.shots{display:flex;gap:14px;overflow:auto;padding:4px 2px 10px;scroll-snap-type:x mandatory}
+.shots img{height:340px;width:auto;border-radius:16px;border:1px solid var(--line);box-shadow:var(--shadow);scroll-snap-align:start;flex:none}
+article{max-width:820px}
+article h2{font-size:28px;line-height:1.25;margin:56px 0 14px;padding-top:8px;letter-spacing:-.01em}
+article h2:first-child{margin-top:0}
+article h3{font-size:20px;margin:34px 0 8px}
+article h4{font-size:16px;margin:24px 0 6px}
+.anchor{margin-inline-start:8px;opacity:0;font-weight:400;color:var(--muted)}h2:hover .anchor,h3:hover .anchor{opacity:1}
+article p,article li{color:var(--text)}article li{margin:5px 0}article ul,article ol{padding-inline-start:24px}
+code{font:.88em ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--code);padding:.15em .4em;border-radius:6px}
+pre{background:var(--code);padding:14px 16px;border-radius:12px;overflow:auto}pre code{background:none;padding:0}
+kbd{font:600 .82em ui-monospace,monospace;background:var(--bg2);border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;padding:.1em .45em}
+.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:12px;margin:16px 0;background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:15px}
+th,td{padding:10px 14px;text-align:start;vertical-align:top;border-bottom:1px solid var(--line)}
+th{background:var(--bg2);font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}tr:last-child td{border-bottom:0}
+.callout{border-inline-start:4px solid var(--brand);background:color-mix(in srgb,var(--brand) 9%,var(--panel));border-radius:0 12px 12px 0;padding:4px 18px;margin:18px 0}
+.callout p{margin:10px 0}
+hr.sep{border:0;border-top:1px solid var(--line);margin:40px 0}
+.foot{margin-top:64px;padding-top:20px;border-top:1px solid var(--line);color:var(--muted);font-size:14px}
+mark{background:color-mix(in srgb,var(--brand) 35%,transparent);color:inherit;border-radius:3px}
+@media (max-width:900px){.layout{grid-template-columns:1fr}.menu{display:inline-flex}
+.side{position:fixed;inset:64px 0 0 0;height:auto;z-index:25;background:var(--bg);transform:translateX(-102%);transition:transform .2s;border:0;max-width:340px;border-inline-end:1px solid var(--line)}
+body.nav-open .side{transform:none}.shots img{height:260px}.hero{padding:22px}.top .label,.brand span{display:none}}
+</style>
+</head>
+<body>
+<header class="top">
+  <button class="btn icon-btn menu" id="menu" aria-label="Toggle navigation"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+  <a class="brand" href="#top"><img src="icon.svg" alt="" />XML Translator <span style="color:var(--muted);font-weight:500">Docs</span></a>
+  <span class="spacer"></span>
+  <a class="btn" href="https://github.com/my-live-is-a-lie/strings.xml-translator" target="_blank" rel="noopener"><span class="label">GitHub</span><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg></a>
+  <button class="btn icon-btn" id="theme" aria-label="Toggle theme"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3v18" /><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg></button>
+</header>
+<div class="layout" id="top">
+  <aside class="side">
+    <input class="search" id="q" type="search" placeholder="Search the guide…" aria-label="Search the guide" />
+    <nav id="nav">
+<a href="#1-what-it-is" data-nav="1-what-it-is"><span class="num">1</span>What it is</a>
+<a href="#2-quick-start" data-nav="2-quick-start"><span class="num">2</span>Quick start</a>
+<a href="#3-finding-your-way-around" data-nav="3-finding-your-way-around"><span class="num">3</span>Finding your way around</a>
+<a href="#4-the-translation-editor" data-nav="4-the-translation-editor"><span class="num">4</span>The translation editor</a>
+<a href="#5-typing-helpers-the-hidden-details" data-nav="5-typing-helpers-the-hidden-details"><span class="num">5</span>Typing helpers (the hidden details)</a>
+<a href="#6-quality-checks" data-nav="6-quality-checks"><span class="num">6</span>Quality checks</a>
+<a href="#7-getting-translations" data-nav="7-getting-translations"><span class="num">7</span>Getting translations</a>
+<a href="#8-organising-your-work" data-nav="8-organising-your-work"><span class="num">8</span>Organising your work</a>
+<a href="#9-updating-the-source-file" data-nav="9-updating-the-source-file"><span class="num">9</span>Updating the source file</a>
+<a href="#10-projects-and-saved-work" data-nav="10-projects-and-saved-work"><span class="num">10</span>Projects and saved work</a>
+<a href="#11-exporting" data-nav="11-exporting"><span class="num">11</span>Exporting</a>
+<a href="#12-plurals-and-arrays" data-nav="12-plurals-and-arrays"><span class="num">12</span>Plurals and arrays</a>
+<a href="#13-interface-languages-and-themes" data-nav="13-interface-languages-and-themes"><span class="num">13</span>Interface, languages and themes</a>
+<a href="#14-privacy-and-offline-use" data-nav="14-privacy-and-offline-use"><span class="num">14</span>Privacy and offline use</a>
+<a href="#15-keyboard-shortcuts" data-nav="15-keyboard-shortcuts"><span class="num">15</span>Keyboard shortcuts</a>
+<a href="#16-tips" data-nav="16-tips"><span class="num">16</span>Tips</a>
+    </nav>
+  </aside>
+  <main>
+    <section class="hero">
+      <h1>XML Translator</h1>
+      <p>Translate Android <code>strings.xml</code> files faster, safer and in your own language — with machine translation, built-in quality checks and smart typing helpers.</p>
+      <div class="row">
+        <a class="btn primary" href="https://github.com/my-live-is-a-lie/strings.xml-translator/releases/latest" target="_blank" rel="noopener">Download the app</a>
+        <a class="btn" href="#2-quick-start">Quick start</a>
+        <a class="btn" href="https://github.com/my-live-is-a-lie/strings.xml-translator" target="_blank" rel="noopener">Source code</a>
+      </div>
+      <div class="shots">
+        <img src="screenshots/editor.jpg" alt="Translation editor" loading="lazy" />
+        <img src="screenshots/strings-list.jpg" alt="Strings list with QA checks" loading="lazy" />
+        <img src="screenshots/table.jpg" alt="Table view" loading="lazy" />
+        <img src="screenshots/providers.png" alt="Translation providers" loading="lazy" />
+        <img src="screenshots/multi-language-zip.jpg" alt="Multi-language ZIP" loading="lazy" />
+      </div>
+    </section>
+    <article id="content">
+<h2 id="1-what-it-is" data-section>1. What it is<a class="anchor" href="#1-what-it-is" aria-label="Link to this section">#</a></h2>
+<p>XML Translator is an editor for Android localization files. You load the app&#39;s <code>strings.xml</code> (the English or base file), pick a target language, and translate string by string. The app keeps the structure of the original file, protects placeholders and markup while you work, and exports a clean <code>strings.xml</code> (or a ZIP with one <code>values-xx</code> folder per language) that you drop straight into your Android project.</p>
+<p>It runs as a web app, as an installable PWA and as a native Android app. All of your work is stored on your own device.</p>
+<h2 id="2-quick-start" data-section>2. Quick start<a class="anchor" href="#2-quick-start" aria-label="Link to this section">#</a></h2>
+<ol>
+<li><strong>Import</strong> – open the import screen and choose your source <code>strings.xml</code> (usually <code>res/values/strings.xml</code>). Optionally add an <strong>existing translation</strong> for the target language, so you only translate what is missing.</li>
+<li><strong>Choose the target language</strong> – pick from 30+ Android locales (<code>values-ar</code>, <code>values-fr</code>, <code>values-pt-rBR</code>, …) or type a custom locale code such as <code>es-rMX</code>.</li>
+<li><strong>Translate</strong> – work in the editor, or let a provider translate for you (see <a href="#7-getting-translations">Getting translations</a>).</li>
+<li><strong>Export</strong> – download <code>strings.xml</code> for the language, or a ZIP with several languages.</li>
+</ol>
+<p>Imported files are saved automatically as soon as you edit them, so you can close the app and continue later.</p>
+<h2 id="3-finding-your-way-around" data-section>3. Finding your way around<a class="anchor" href="#3-finding-your-way-around" aria-label="Link to this section">#</a></h2>
+<div class="table-wrap"><table><thead><tr>
+<th>Area</th>
+<th>What it does</th>
+</tr>
+</thead><tbody><tr>
+<td><strong>Header</strong></td>
+<td><em>Files</em> opens your projects. The <em>Table</em> / <em>Editor</em> button switches views. The side button opens the settings drawer.</td>
+</tr>
+<tr>
+<td><strong>Progress bar &amp; counters</strong></td>
+<td>Shows translated, untranslated and <em>Review</em> percentages for the whole file.</td>
+</tr>
+<tr>
+<td><strong>Strings List</strong></td>
+<td>A side drawer with every string, its status and a one-line preview of the source and the translation.</td>
+</tr>
+<tr>
+<td><strong>Filters</strong></td>
+<td>Narrow the list by status and origin (see <a href="#filters">Filters</a>).</td>
+</tr>
+<tr>
+<td><strong>Editor</strong></td>
+<td>The main workspace for one string at a time.</td>
+</tr>
+<tr>
+<td><strong>Table view</strong></td>
+<td>All strings as editable rows for fast bulk work.</td>
+</tr>
+</tbody></table></div>
+<p>The strings list <strong>remembers where you left it</strong>: closing and reopening it returns to the same position.</p>
+<h2 id="4-the-translation-editor" data-section>4. The translation editor<a class="anchor" href="#4-the-translation-editor" aria-label="Link to this section">#</a></h2>
+<p>The editor shows the string&#39;s <strong>key</strong> and a <em>New</em> badge when the string is new after a source update, then the <strong>source text</strong> and the <strong>translation box</strong>.</p>
+<h3 id="buttons">Buttons<a class="anchor" href="#buttons" aria-label="Link to this section">#</a></h3>
+<div class="table-wrap"><table><thead><tr>
+<th>Button</th>
+<th>What it does</th>
+</tr>
+</thead><tbody><tr>
+<td><strong>Save &amp; Continue</strong></td>
+<td>Saves the translation and opens the next string.</td>
+</tr>
+<tr>
+<td><strong>Save &amp; Stay</strong></td>
+<td>Saves and stays on the same string.</td>
+</tr>
+<tr>
+<td><strong>Skip</strong></td>
+<td>Moves on without saving.</td>
+</tr>
+<tr>
+<td><strong>Suggest</strong> ✨</td>
+<td>Fills the box with a machine suggestion (see <a href="#suggestions">Suggestions</a>). Undo removes it.</td>
+</tr>
+<tr>
+<td>🗑 <strong>Delete</strong></td>
+<td>Clears the translation.</td>
+</tr>
+<tr>
+<td>🌐 <strong>Language</strong></td>
+<td>Switches the target language.</td>
+</tr>
+<tr>
+<td><strong>Undo / Redo</strong></td>
+<td>Step through your edits in this string.</td>
+</tr>
+<tr>
+<td><strong>Copy / Paste</strong></td>
+<td>Copy the source into the box, copy your text out, or paste.</td>
+</tr>
+<tr>
+<td><strong>RTL / LTR</strong></td>
+<td>Sets the text direction of the translation box for mixed-direction text.</td>
+</tr>
+<tr>
+<td><strong>Previous / Next / Next Untranslated</strong></td>
+<td>Navigation at the bottom, with a position counter such as <code>991 / 1135</code>.</td>
+</tr>
+</tbody></table></div>
+<p><strong>Resizing buttons:</strong> press and hold an action button, then drag left or right to widen it at the expense of its neighbour. The split is remembered. A plain long press without dragging still acts as a tap.</p>
+<p><strong>Reset a string:</strong> the circular-arrow button on a string resets its translation and its history.</p>
+<h3 id="translation-source-tracking">Translation source tracking<a class="anchor" href="#translation-source-tracking" aria-label="Link to this section">#</a></h3>
+<p>Every saved translation is marked as <strong>AI</strong> (it came from a provider or an AI app) or <strong>manual</strong> (you typed it). The strings list shows a small AI badge on AI translations; no badge means manual. You can filter by origin.</p>
+<h2 id="5-typing-helpers-the-hidden-details" data-section>5. Typing helpers (the hidden details)<a class="anchor" href="#5-typing-helpers-the-hidden-details" aria-label="Link to this section">#</a></h2>
+<h3 id="auto-correct">Auto-correct<a class="anchor" href="#auto-correct" aria-label="Link to this section">#</a></h3>
+<p>Auto-correct is <strong>on by default</strong> and can be switched off in the settings drawer (<em>Auto-correct — turn off to type freely, without warnings</em>).</p>
+<p>When you press <strong>Save</strong>, the app compares your translation with the source and repairs what it safely can:</p>
+<ul>
+<li><strong>Placeholders</strong> – missing, malformed or wrongly indexed placeholders are restored from the source. It recognises damaged copies such as <code>% s</code>, <code>%1 $s</code>, <code>%١$s</code>, <code>{ 0 }</code> or <code>%S</code>, and a placeholder with the wrong index (<code>%s</code> where the source has <code>%1$s</code>). If one is still missing it is inserted where the source has it.</li>
+<li><strong>HTML tags</strong> – spacing and case inside simple tags are normalised (<code>&lt; /b &gt;</code> → <code>&lt;/b&gt;</code>), and missing opening or closing tags and self-closing tags like <code>&lt;br/&gt;</code> are restored.</li>
+<li><strong>Final punctuation</strong> – the ending mark and the spacing before it are made to match the source (<code>...</code> and <code>…</code> count as equal, <code>؟</code> equals <code>?</code>, and a space before a question mark is added or removed to match). Arabic-script translations use the Arabic question mark. Trailing spaces and newlines the source does not have are removed.</li>
+</ul>
+<p>If anything was changed, <strong>the save is blocked once</strong> and a message lists what was corrected. Review the text and press <strong>Save again</strong> to confirm. If errors remain that could not be fixed automatically, the same happens: pressing Save a second time accepts them as they are.</p>
+<p>With auto-correct <strong>off</strong>, the text is saved exactly as typed.</p>
+<h3 id="double-space-closes-open-symbols">Double space closes open symbols<a class="anchor" href="#double-space-closes-open-symbols" aria-label="Link to this section">#</a></h3>
+<p>If you leave a bracket or quote open and press the <strong>space bar twice</strong>, the app closes it for you and keeps the caret after it. It closes the <strong>nearest unclosed</strong> symbol before the caret.</p>
+<div class="table-wrap"><table><thead><tr>
+<th>Opens</th>
+<th>Closes with</th>
+</tr>
+</thead><tbody><tr>
+<td><code>(</code> <code>[</code> <code>{</code></td>
+<td><code>)</code> <code>]</code> <code>}</code></td>
+</tr>
+<tr>
+<td><code>&quot;</code></td>
+<td><code>&quot;</code></td>
+</tr>
+<tr>
+<td><code>&#39;</code></td>
+<td><code>&#39;</code></td>
+</tr>
+<tr>
+<td><code>“</code> <code>‘</code> <code>«</code> <code>‹</code></td>
+<td><code>”</code> <code>’</code> <code>»</code> <code>›</code></td>
+</tr>
+<tr>
+<td><code>﴿</code></td>
+<td><code>﴾</code></td>
+</tr>
+</tbody></table></div>
+<p>Details:</p>
+<ul>
+<li>Straight quotes <code>&quot;</code> and <code>&#39;</code> open and close with the same character, so an <strong>odd</strong> count means the last one is still open.</li>
+<li>An apostrophe inside a word (<code>don&#39;t</code>) is not treated as a quote, and quotes inside HTML tags (<code>&lt;a href=&quot;…&quot;&gt;</code>) are ignored.</li>
+<li>Placeholders such as <code>%1$s</code> and HTML tags are never mistaken for brackets.</li>
+<li>Some keyboards turn a double space into <strong>a period plus a space</strong>. The app detects this: when an unclosed symbol is waiting, it removes the period the keyboard added and closes the symbol instead. A period you type yourself is left alone.</li>
+<li>This helper follows the <strong>Auto-correct</strong> setting.</li>
+</ul>
+<h3 id="word-prediction">Word prediction<a class="anchor" href="#word-prediction" aria-label="Link to this section">#</a></h3>
+<p>With <strong>Predict next words</strong> enabled (settings drawer), the editor offers completions taken from your <strong>own earlier translations</strong>, so terminology stays consistent.</p>
+<ul>
+<li>Start typing a word and the first stored word that begins with what you typed is suggested. After a finished word, the stored word that followed it is suggested.</li>
+<li>Press <strong>Space</strong> to accept a suggestion and <strong>Backspace</strong> to reject it.</li>
+<li>Words you already used in the text and words you rejected are not offered again.</li>
+<li>Placeholders and tags count as words, so they can be completed too.</li>
+</ul>
+<h3 id="quick-insert-bars">Quick-insert bars<a class="anchor" href="#quick-insert-bars" aria-label="Link to this section">#</a></h3>
+<p>Two bars above the box insert characters at the caret with one tap:</p>
+<ul>
+<li><strong>Punctuation row:</strong> <code>-</code> <code>_</code> <code>( - )</code> <code>&#39;</code> <code>‘</code> <code>&quot;</code> <code>“</code> <code>...</code> <code>NBS</code> and a line-break / tab marker.</li>
+<li><strong>Direction row:</strong> <code>PDF</code> <code>RLE</code> <code>LRE</code> <code>RLM</code> <code>LRM</code> <code>ZWJ</code> <code>ZWNJ</code> — Unicode direction and joining marks.</li>
+</ul>
+<p>The bars <strong>learn from you</strong>: every button you use moves toward the start of its row, following the page direction, so your most-used symbols are always closest. The usage counts are kept on your device.</p>
+<h2 id="6-quality-checks" data-section>6. Quality checks<a class="anchor" href="#6-quality-checks" aria-label="Link to this section">#</a></h2>
+<p>The <strong>QA Checks</strong> card in the strings list counts problems across the file and lists them under <em>View Detected Issues</em>:</p>
+<ul>
+<li><strong>Placeholders</strong> – missing or mismatched format specifiers (<code>%s</code>, <code>%d</code>, <code>%1$s</code>, …).</li>
+<li><strong>HTML tags</strong> – invalid or missing tags (<code>&lt;b&gt;</code>, <code>&lt;i&gt;</code>, <code>&lt;u&gt;</code>, <code>&lt;font …&gt;</code>, …).</li>
+</ul>
+<p>Tap a counter to filter the list to just those strings. When the card is collapsed, the number of issues is shown next to its arrow. A banner also warns before export if the file contains errors that may break the app.</p>
+<h2 id="7-getting-translations" data-section>7. Getting translations<a class="anchor" href="#7-getting-translations" aria-label="Link to this section">#</a></h2>
+<h3 id="suggestions">Suggestions<a class="anchor" href="#suggestions" aria-label="Link to this section">#</a></h3>
+<p><strong>Suggest</strong> translates the current string. The pipeline is:</p>
+<ol>
+<li><strong>Untouched cases</strong> – resource references (<code>@string/…</code>) and strings that are only a format token are returned as they are.</li>
+<li><strong>Offline glossary</strong> – an Android UI terminology glossary answers common terms instantly (also Arabic plural forms), with no network.</li>
+<li><strong>Your selected provider</strong> – or the free Google engine by default.</li>
+</ol>
+<p><code>\n</code>, <code>\\n</code> and tab separators are split off before translating and kept exactly as written, so line breaks are never damaged. Placeholders and tags are protected during translation and checked afterwards.</p>
+<aside class="callout"><p>The free Google engine uses an unofficial endpoint that can stop working without notice. If it keeps failing, the app tells you; add a provider with your own key to keep going.</p>
+</aside>
+<h3 id="auto-translate">Auto Translate<a class="anchor" href="#auto-translate" aria-label="Link to this section">#</a></h3>
+<p>The <strong>Auto Translate</strong> switch (settings drawer) translates each <strong>untranslated</strong> string automatically when you open it in the editor, using your active provider. Strings that already have a translation, and strings marked as not translatable, are left alone. Each string is only auto-translated once per visit.</p>
+<h3 id="providers">Providers<a class="anchor" href="#providers" aria-label="Link to this section">#</a></h3>
+<p>Open <strong>Translate Providers</strong> in the settings drawer. Supported: <strong>Gemini, OpenAI GPT, DeepL, Google Cloud Translate, Microsoft Azure Translator, Yandex, Lara Translate, LibreTranslate</strong> and the built-in <strong>Google Translate</strong>.</p>
+<ul>
+<li>Tap <strong>Add Translator API Key</strong>, type a name or pick an engine from the list (or <em>Auto-Detect Provider</em> to recognise it from the key), paste the key, then <strong>Verify &amp; Add to Providers</strong>. The key is tested first.</li>
+<li>Keys are <strong>encrypted on your device</strong> and sent only to the provider you chose. Restrict the key in the provider&#39;s console.</li>
+<li><strong>LibreTranslate:</strong> enter your server address (must start with <code>https</code>); the key is optional.</li>
+<li><strong>Yandex:</strong> a service-account API key works directly; with a personal-account IAM token (starts with <code>t1.</code>, valid for at most 12 hours) a folder ID is required.</li>
+<li>In the Android app, key providers are called <strong>directly from the device</strong>; on the web they go through the app&#39;s server.</li>
+<li>The active provider is shown on the card. Edit or remove providers with the pencil and trash buttons.</li>
+</ul>
+<h3 id="translate-many-strings-at-once">Translate many strings at once<a class="anchor" href="#translate-many-strings-at-once" aria-label="Link to this section">#</a></h3>
+<p>In the table or strings list, select strings (or tap <strong>Select Untranslated</strong>) and use the bulk action to translate them with a chosen provider. Strings that need review can be included optionally.</p>
+<h3 id="translate-with-an-ai-app-chatgpt-gemini">Translate with an AI app (ChatGPT, Gemini, …)<a class="anchor" href="#translate-with-an-ai-app-chatgpt-gemini" aria-label="Link to this section">#</a></h3>
+<p>No API key? Use any chat AI by copy and paste:</p>
+<ol>
+<li>Choose <strong>External AI app</strong> and select the strings and target language.</li>
+<li>Copy the generated <strong>prompt</strong> and the <strong>request</strong> (or attach the generated JSON file) in your AI app. The prompt already tells the AI to keep placeholders, tags and <code>\n</code> untouched, to answer with JSON only, and to return every <code>id</code>.</li>
+<li>Paste the AI&#39;s reply (or upload its JSON file) back into the app.</li>
+</ol>
+<p>The app checks every answer and reports how many came back, how many have <strong>problems</strong> — <code>missing</code>, <code>placeholder</code> mismatch, <code>same</code> as the source, or <code>empty</code> — and can <strong>copy a follow-up request</strong> covering only the missing or wrong ones. Long replies cut off mid-way are detected so you can ask the AI to continue. No API keys are ever included in what you copy.</p>
+<h3 id="multi-language-zip">Multi-language ZIP<a class="anchor" href="#multi-language-zip" aria-label="Link to this section">#</a></h3>
+<p><strong>Multi-language ZIP</strong> translates the untranslated strings into several languages in one go and builds a ZIP with one <code>values-xx</code> folder each. Choose the languages, pick the provider, then <strong>Start translating</strong>, and either <strong>Save to project</strong> or <strong>Download ZIP</strong>.</p>
+<h2 id="8-organising-your-work" data-section>8. Organising your work<a class="anchor" href="#8-organising-your-work" aria-label="Link to this section">#</a></h2>
+<h3 id="statuses">Statuses<a class="anchor" href="#statuses" aria-label="Link to this section">#</a></h3>
+<p>Each string is <strong>Translated</strong>, <strong>Untranslated</strong> or <strong>Review</strong> (needs review). After a source update, changed and new strings carry a <strong>New</strong> / review flag.</p>
+<h3 id="filters">Filters<a class="anchor" href="#filters" aria-label="Link to this section">#</a></h3>
+<p>Quick filters: <strong>New</strong>, <strong>Review</strong>, <strong>Untranslated</strong>, <strong>Translated</strong>, <strong>AI</strong>, <strong>Manual</strong>.</p>
+<ul>
+<li>Filters in the same group are combined with <strong>OR</strong> (status: Untranslated/Translated; origin: AI/Manual).</li>
+<li>The two groups are combined with <strong>AND</strong>, so <em>Translated + AI</em> shows only AI-translated strings.</li>
+<li>Origin filters only match translated strings.</li>
+<li>A filter with no matching strings cannot be switched on.</li>
+<li>The list is <strong>frozen at the moment you apply a filter</strong>: a string you just saved stays visible instead of disappearing, so you do not lose your place.</li>
+</ul>
+<h3 id="search-sort-and-selection">Search, sort and selection<a class="anchor" href="#search-sort-and-selection" aria-label="Link to this section">#</a></h3>
+<ul>
+<li><strong>Search</strong> matches both the key and the text.</li>
+<li><strong>Sort by length</strong> (the arrows button in the table view) cycles through <em>shortest first</em>, <em>longest first</em> and <em>off</em>.</li>
+<li><strong>Checkboxes</strong> select strings for bulk actions; <strong>Select Untranslated</strong> selects all untranslated strings in the current view.</li>
+</ul>
+<h3 id="strings-list-drawer">Strings list drawer<a class="anchor" href="#strings-list-drawer" aria-label="Link to this section">#</a></h3>
+<ul>
+<li>Tap a string&#39;s <strong>key line</strong> to open it in the editor.</li>
+<li>Tap its <strong>text</strong> to expand it (source, translation and the full key); tap again to collapse. Long keys and texts are clipped to one line until expanded.</li>
+<li>The header collapses as you scroll down and returns as you scroll up.</li>
+</ul>
+<h3 id="table-view">Table view<a class="anchor" href="#table-view" aria-label="Link to this section">#</a></h3>
+<p>Shows all strings as rows for quick scanning and editing. It loads strings in chunks as you scroll and unloads the ones far behind you, so very large files stay smooth.</p>
+<h2 id="9-updating-the-source-file" data-section>9. Updating the source file<a class="anchor" href="#9-updating-the-source-file" aria-label="Link to this section">#</a></h2>
+<p>When your English file changes, use <strong>Update source file</strong> (settings drawer) and load the newer version. Your translations are kept. The app shows a summary — <em>new · changed · removed · unchanged</em> — and a diff, and <strong>flags changed strings for review</strong> and new ones as <em>New</em>. Use the <strong>New</strong> filter to work through them.</p>
+<h2 id="10-projects-and-saved-work" data-section>10. Projects and saved work<a class="anchor" href="#10-projects-and-saved-work" aria-label="Link to this section">#</a></h2>
+<p>Open <strong>Files</strong> to see your projects with their progress and last-modified time.</p>
+<ul>
+<li>Switch between files without losing work; every file keeps its own translations and history.</li>
+<li><strong>Rename</strong> with the pencil, <strong>reset</strong> with the circular arrow, or <strong>delete</strong> with the trash can.</li>
+<li>Everything is saved automatically on your device.</li>
+</ul>
+<h2 id="11-exporting" data-section>11. Exporting<a class="anchor" href="#11-exporting" aria-label="Link to this section">#</a></h2>
+<ul>
+<li><strong>Export XML</strong> produces the <code>strings.xml</code> for the current target language, keeping the structure and indentation of your source file. A line shows how many strings are translated, for example <em>production-ready file (988 of 1135 translated)</em>.</li>
+<li>Optionally <strong>export only the strings matching the active filter</strong>.</li>
+<li>A warning appears if placeholder or tag errors remain.</li>
+<li><strong>Multi-language ZIP</strong> exports several languages together.</li>
+</ul>
+<h2 id="12-plurals-and-arrays" data-section>12. Plurals and arrays<a class="anchor" href="#12-plurals-and-arrays" aria-label="Link to this section">#</a></h2>
+<p><code>&lt;plurals&gt;</code> and <code>&lt;string-array&gt;</code> are fully supported. Plural items are shown per quantity (<code>zero</code>, <code>one</code>, <code>two</code>, <code>few</code>, <code>many</code>, <code>other</code>), and the forms are adjusted to the target language. For Arabic there is an offline glossary for plural forms.</p>
+<h2 id="13-interface-languages-and-themes" data-section>13. Interface, languages and themes<a class="anchor" href="#13-interface-languages-and-themes" aria-label="Link to this section">#</a></h2>
+<ul>
+<li><strong>Interface language</strong> – switch between Arabic and English from the settings drawer.</li>
+<li><strong>Add your own interface language</strong> – tap the <strong>+</strong> button next to the language tabs, download the app&#39;s text file, have it translated (for example by an AI), then upload it, type the language&#39;s name and choose its direction. Rules for the uploaded file:<ul>
+<li>A <strong>deleted text</strong> (empty between the tags) hides that explanation.</li>
+<li>A button with an icon and a deleted text keeps just the icon.</li>
+<li>A text-only button with a deleted text shows the English text.</li>
+<li>A <strong>removed key</strong> falls back to English.</li>
+<li>A text that is too long widens its control when possible and is clipped when there is no room.</li>
+</ul>
+</li>
+<li><strong>Themes</strong> – <em>Day</em>, <em>Night</em> and <em>Black Hole</em>, from the theme button in the settings drawer.</li>
+</ul>
+<h2 id="14-privacy-and-offline-use" data-section>14. Privacy and offline use<a class="anchor" href="#14-privacy-and-offline-use" aria-label="Link to this section">#</a></h2>
+<ul>
+<li>Your files, translations, history and settings are <strong>stored locally</strong> on your device.</li>
+<li>The app works <strong>offline</strong>: the glossary, editing, QA checks, import and export need no connection. Only machine translation and provider tests use the network.</li>
+<li>Strings are sent only to the provider or AI service <strong>you</strong> choose. API keys are encrypted on the device and never included in the text you copy for an AI app.</li>
+<li>Install the app from your browser as a <strong>PWA</strong> (on iPhone/iPad: <em>Share → Add to Home Screen</em>) to use it offline.</li>
+</ul>
+<h2 id="15-keyboard-shortcuts" data-section>15. Keyboard shortcuts<a class="anchor" href="#15-keyboard-shortcuts" aria-label="Link to this section">#</a></h2>
+<div class="table-wrap"><table><thead><tr>
+<th>Keys</th>
+<th>Action</th>
+</tr>
+</thead><tbody><tr>
+<td><code>Ctrl</code> + <code>Enter</code></td>
+<td>Save and go to the next string</td>
+</tr>
+<tr>
+<td><code>Alt</code> + <code>→</code> / <code>←</code></td>
+<td>Next / previous string (follows the page direction)</td>
+</tr>
+<tr>
+<td><code>Ctrl</code> + <code>J</code> or <code>Alt</code> + <code>U</code></td>
+<td>Jump to the next untranslated string</td>
+</tr>
+<tr>
+<td><code>Ctrl</code> + <code>Z</code></td>
+<td>Undo</td>
+</tr>
+<tr>
+<td><code>Ctrl</code> + <code>Y</code> or <code>Ctrl</code> + <code>Shift</code> + <code>Z</code></td>
+<td>Redo</td>
+</tr>
+<tr>
+<td><code>?</code></td>
+<td>Show the shortcuts list</td>
+</tr>
+<tr>
+<td><code>Esc</code></td>
+<td>Close the open dialog</td>
+</tr>
+</tbody></table></div>
+<h2 id="16-tips" data-section>16. Tips<a class="anchor" href="#16-tips" aria-label="Link to this section">#</a></h2>
+<ul>
+<li>Press <strong>Space twice</strong> to close an opened quote or bracket instead of reaching for the symbol.</li>
+<li>Turn <strong>Predict next words</strong> on when translating a big file: it keeps your terms consistent.</li>
+<li>Translate the bulk with a provider, then switch to the <strong>AI</strong> filter to review machine translations.</li>
+<li>Use <strong>Next Untranslated</strong> (<code>Ctrl</code> + <code>J</code>) to move straight to what is left.</li>
+<li>After a source update, open the <strong>New</strong> filter first.</li>
+<li>Keep <strong>Auto-correct</strong> on while you work: it catches broken placeholders before they reach your app.</li>
+</ul>
+
+      <div class="foot">Released under the <a href="https://github.com/my-live-is-a-lie/strings.xml-translator/blob/main/LICENSE">GNU GPL v3</a>. Found a mistake? <a href="https://github.com/my-live-is-a-lie/strings.xml-translator/edit/main/docs/GUIDE.md">Edit this page</a>.</div>
+    </article>
+  </main>
+</div>
+<script>
+(function(){
+  var root=document.documentElement,body=document.body;
+  document.getElementById('theme').onclick=function(){var dark=root.dataset.theme?root.dataset.theme==='dark':matchMedia('(prefers-color-scheme:dark)').matches;var n=dark?'light':'dark';root.dataset.theme=n;try{localStorage.setItem('docs-theme',n)}catch(e){}};
+  document.getElementById('menu').onclick=function(){body.classList.toggle('nav-open')};
+  document.querySelectorAll('#nav a').forEach(function(a){a.addEventListener('click',function(){body.classList.remove('nav-open')})});
+  // scroll spy
+  var links={};document.querySelectorAll('#nav a').forEach(function(a){links[a.dataset.nav]=a});
+  var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){Object.values(links).forEach(function(l){l.classList.remove('active')});var l=links[e.target.id];if(l){l.classList.add('active');l.scrollIntoView({block:'nearest'})}}})},{rootMargin:'-80px 0px -70% 0px'});
+  document.querySelectorAll('h2[data-section]').forEach(function(h){io.observe(h)});
+  // search: filter the section list and highlight matches in the page
+  var q=document.getElementById('q'),content=document.getElementById('content');
+  var secs=[];document.querySelectorAll('h2[data-section]').forEach(function(h){var t=h.textContent.toLowerCase(),n=h.nextElementSibling;while(n&&!(n.tagName==='H2')){t+=' '+n.textContent.toLowerCase();n=n.nextElementSibling}secs.push({id:h.id,t:t})});
+  q.addEventListener('input',function(){var v=q.value.trim().toLowerCase();secs.forEach(function(s){links[s.id].classList.toggle('hide',!!v&&s.t.indexOf(v)<0)})});
+  q.addEventListener('keydown',function(e){if(e.key==='Enter'){var first=Object.values(links).find(function(l){return !l.classList.contains('hide')});if(first)location.hash=first.getAttribute('href')}});
+})();
+</script>
+</body>
+</html>
