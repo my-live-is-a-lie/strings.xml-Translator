@@ -4,9 +4,9 @@
 
 # XML Translator
 
-<a href="https://github.com/my-live-is-a-lie/strings.xml-translator/releases/latest"><img src="https://img.shields.io/github/downloads/my-live-is-a-lie/strings.xml-translator/total?style=flat&logo=android&logoColor=white&label=Downloads&color=1eb996" alt="Downloads" height="56" /></a>
+<a href="https://github.com/my-live-is-a-lie/strings.xml-translator/releases/latest"><img src="https://img.shields.io/github/downloads/my-live-is-a-lie/strings.xml-translator/total?style=flat&logo=android&logoColor=white&label=Downloads&color=1eb996" alt="Downloads" width="300" /></a>
 <br />
-<a href="https://github.com/my-live-is-a-lie/strings.xml-translator/releases/latest"><img src="https://img.shields.io/github/v/release/my-live-is-a-lie/strings.xml-translator?style=flat&label=Release&color=119eff&include_prereleases" alt="Latest release" height="56" /></a>
+<a href="https://github.com/my-live-is-a-lie/strings.xml-translator/releases/latest"><img src="https://img.shields.io/github/v/release/my-live-is-a-lie/strings.xml-translator?style=flat&label=Release&color=119eff&include_prereleases" alt="Latest release" width="265" /></a>
 
 **Translate Android `strings.xml` files faster, safer and in your own language.**
 
