@@ -6,9 +6,9 @@
 
 **Translate Android `strings.xml` files faster, safer and in your own language.**
 
-A focused editor for Android localization — with machine translation, built-in quality checks and full right-to-left support — as a web app and a native Android app.
+A focused editor for Android localization — with machine translation and built-in quality checks — as a web app and a native Android app.
 
-[![Build](https://github.com/my-live-is-a-lie/strings.xml-translator/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/my-live-is-a-lie/strings.xml-translator/actions/workflows/build.yml)
+[![Download](https://img.shields.io/github/downloads/my-live-is-a-lie/strings.xml-translator/total?style=flat-square&logo=android&logoColor=white&label=Download&color=1eb996)](https://github.com/my-live-is-a-lie/strings.xml-translator/releases/latest)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue?style=flat-square)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-Web%20%7C%20Android-1eb996?style=flat-square)
 ![React](https://img.shields.io/badge/React-19-20232a?style=flat-square&logo=react&logoColor=61dafb)
@@ -16,23 +16,24 @@ A focused editor for Android localization — with machine translation, built-in
 ![Vite](https://img.shields.io/badge/Vite-646cff?style=flat-square&logo=vite&logoColor=white)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-06b6d4?style=flat-square&logo=tailwindcss&logoColor=white)
 ![Capacitor](https://img.shields.io/badge/Capacitor-119eff?style=flat-square&logo=capacitor&logoColor=white)
-![RTL](https://img.shields.io/badge/RTL-supported-1eb996?style=flat-square)
 
 </div>
 
 <br />
 
-<div align="center">
-  <img src="docs/screenshots/editor.jpg" alt="Translation editor" width="220" />
-  <img src="docs/screenshots/strings-list.jpg" alt="Strings list with QA checks" width="220" />
-  <img src="docs/screenshots/table.jpg" alt="Table view" width="220" />
-</div>
+<table align="center">
+  <tr>
+    <td width="33%"><img src="docs/screenshots/editor.jpg" alt="Translation editor" width="100%" /></td>
+    <td width="33%"><img src="docs/screenshots/strings-list.jpg" alt="Strings list with QA checks" width="100%" /></td>
+    <td width="33%"><img src="docs/screenshots/table.jpg" alt="Table view" width="100%" /></td>
+  </tr>
+</table>
 
 ## Overview
 
 XML Translator takes the `strings.xml` of an Android app, shows every string next to its source text, and helps you translate it — by hand, with a built-in glossary, or with the machine-translation provider of your choice. It checks your work as you go, so placeholders and markup survive translation, and exports a clean `strings.xml` that keeps the original structure and formatting.
 
-It was built for translators who work from a phone as comfortably as from a desktop, and it treats Arabic and other right-to-left languages as first-class citizens.
+It was built for translators who work from a phone as comfortably as from a desktop.
 
 ## Features
 
@@ -41,6 +42,8 @@ It was built for translators who work from a phone as comfortably as from a desk
 - **Strings list & table view** – jump to any string, select in bulk, sort by length, and filter by *Untranslated*, *Done* or *Review*.
 - **Every resource type** – `<string>`, `<plurals>` and `<string-array>`, including language-specific plural forms.
 - **Update source file** – import a newer English file and see exactly what was added, changed or removed.
+- **30+ target languages** plus any custom Android locale code.
+- **Your own interface language** – download the app's text as a `strings.xml`, have it translated, and upload it. Missing texts safely fall back to English.
 - **Multiple projects** – keep several files side by side and switch between them instantly; progress is saved automatically.
 
 ### Machine translation, your way
@@ -56,30 +59,25 @@ It was built for translators who work from a phone as comfortably as from a desk
 - **Quick-insert bar** for special characters and Unicode direction marks (RLM, LRM, ZWJ, NBS, …) that adapts to what you use most.
 - Per-string **RTL / LTR** switch for mixed-direction text.
 
-### Made for right-to-left languages
-- Full **Arabic / English interface** that mirrors the whole layout.
-- **Add your own interface language** – download the app's text as a `strings.xml`, have it translated, upload it, and choose RTL or LTR. Missing texts safely fall back to English.
-- 30+ target languages, plus any custom Android locale code.
-
-### Built for mobile
-- Native **Android app** (Capacitor) and an installable **PWA**.
-- Touch-first UI: drag-to-resize action buttons, collapsing headers, lazy-loaded lists that stay smooth with thousands of strings.
-- Three themes: **Day**, **Night** and **Black Hole**.
-
 ## Screenshots
 
 <table>
   <tr>
-    <td align="center"><img src="docs/screenshots/settings.jpg" width="230" /><br /><sub><b>Settings & export</b></sub></td>
-    <td align="center"><img src="docs/screenshots/providers.png" width="230" /><br /><sub><b>Translation providers</b></sub></td>
-    <td align="center"><img src="docs/screenshots/target-language.jpg" width="230" /><br /><sub><b>Target language</b></sub></td>
+    <td align="center" width="33%"><img src="docs/screenshots/settings.jpg" width="100%" /><br /><sub><b>Settings & export</b></sub></td>
+    <td align="center" width="33%"><img src="docs/screenshots/providers.png" width="100%" /><br /><sub><b>Translation providers</b></sub></td>
+    <td align="center" width="33%"><img src="docs/screenshots/target-language.jpg" width="100%" /><br /><sub><b>Target language</b></sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/screenshots/multi-language-zip.jpg" width="230" /><br /><sub><b>Multi-language ZIP</b></sub></td>
-    <td align="center"><img src="docs/screenshots/projects.png" width="230" /><br /><sub><b>Projects</b></sub></td>
-    <td align="center"><img src="docs/screenshots/strings-list.jpg" width="230" /><br /><sub><b>Strings list & QA</b></sub></td>
+    <td align="center" width="33%"><img src="docs/screenshots/multi-language-zip.jpg" width="100%" /><br /><sub><b>Multi-language ZIP</b></sub></td>
+    <td align="center" width="33%"><img src="docs/screenshots/projects.png" width="100%" /><br /><sub><b>Projects</b></sub></td>
+    <td align="center" width="33%"><img src="docs/screenshots/strings-list.jpg" width="100%" /><br /><sub><b>Strings list & QA</b></sub></td>
   </tr>
 </table>
+
+## Built for mobile
+- Native **Android app** (Capacitor) and an installable **PWA**.
+- Touch-first UI: drag-to-resize action buttons, collapsing headers, lazy-loaded lists that stay smooth with thousands of strings.
+- Three themes: **Day**, **Night** and **Black Hole**.
 
 ## Getting started
 
