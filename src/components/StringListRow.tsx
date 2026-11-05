@@ -1,6 +1,6 @@
 import { SourceChangeBadge } from './SourceChangeDiff';
-import React, { useLayoutEffect, useRef, useState } from 'react';
-import { AlertCircle, CheckCircle2, CheckSquare, ChevronDown, Circle, RotateCcw, ShieldAlert, Sparkles, Square } from 'lucide-react';
+import React, { useState } from 'react';
+import { AlertCircle, CheckCircle2, CheckSquare, Circle, RotateCcw, ShieldAlert, Sparkles, Square } from 'lucide-react';
 import { ResourceItem } from '../types';
 import { ItemQaResult } from '../utils/placeholderCheck';
 import { engineLabel } from '../utils/translator';
@@ -63,9 +63,6 @@ const StringListRowBase: React.FC<StringListRowProps> = ({
 }) => {
   const { t } = useT();
   const [expanded, setExpanded] = useState(false);
-  const [overflowing, setOverflowing] = useState(false);
-  const srcRef = useRef<HTMLParagraphElement>(null);
-  const tgtRef = useRef<HTMLParagraphElement>(null);
   // Preview snippets (prefer the sub-item matching the search for plurals and arrays)
   let sourceSnippet = '';
   let targetSnippet = '';
@@ -87,18 +84,6 @@ const StringListRowBase: React.FC<StringListRowProps> = ({
     targetSnippet = previewItem?.target || '';
   }
 
-  // Does any of the one-line previews hide part of its text? Then the arrow to expand it is shown.
-  useLayoutEffect(() => {
-    if (expanded) return;
-    const check = () => {
-      const hidden = (el: HTMLElement | null) => !!el && el.scrollHeight > el.clientHeight + 1;
-      setOverflowing(hidden(srcRef.current) || hidden(tgtRef.current));
-    };
-    check();
-    const ro = new ResizeObserver(check);
-    if (srcRef.current) ro.observe(srcRef.current);
-    return () => ro.disconnect();
-  }, [expanded, sourceSnippet, targetSnippet]);
   const padSide = isAr ? 'pr-5.5' : 'pl-5.5';
   const align = isAr ? 'right' : 'left';
 
@@ -147,7 +132,7 @@ const StringListRowBase: React.FC<StringListRowProps> = ({
               )}
               <span
                 dir="ltr"
-                className={`font-mono text-xs truncate ${
+                className={`font-mono text-xs ${expanded ? 'break-all' : 'truncate'} ${
                   isSelected
                     ? 'font-semibold text-[#0B57D0] dark:text-[#A8C7FA]'
                     : 'font-medium text-slate-800 dark:text-slate-200'
@@ -239,23 +224,12 @@ const StringListRowBase: React.FC<StringListRowProps> = ({
           </div>
 
           {/* Source English preview + target preview; the arrow expands / collapses clipped text */}
-          <div className="relative">
-            {(overflowing || expanded) && (
-              <button
-                type="button"
-                aria-label={expanded ? 'Collapse' : 'Expand'}
-                aria-expanded={expanded}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setExpanded((v) => !v);
-                }}
-                className={`pointer-events-auto absolute top-0 z-10 p-0.5 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/70 dark:hover:bg-slate-700/70 transition cursor-pointer ${isAr ? 'right-0' : 'left-0'}`}
-              >
-                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} />
-              </button>
-            )}
+          {/* Tapping the texts (not the key line) expands / collapses them and the key */}
+          <div
+            className="pointer-events-auto relative z-10 cursor-pointer"
+            onClick={() => setExpanded((v) => !v)}
+          >
             <p
-              ref={srcRef}
               dir="auto"
               style={{ textAlign: align }}
               className={`text-xs text-slate-600 dark:text-slate-400 ${expanded ? 'whitespace-pre-wrap break-words' : 'line-clamp-1'} ${padSide}`}
@@ -268,7 +242,6 @@ const StringListRowBase: React.FC<StringListRowProps> = ({
             </p>
 
             <p
-              ref={tgtRef}
               dir="auto"
               style={{ textAlign: align }}
               className={`text-[11px] mt-1 ${expanded ? 'whitespace-pre-wrap break-words' : 'line-clamp-1'} ${padSide}`}

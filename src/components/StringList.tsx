@@ -46,6 +46,9 @@ interface StringListProps {
 }
 
 // Wrapped with React.memo below: re-renders only when its props change
+// Where the list was left when it was last closed (kept while the app runs), so reopening continues from there
+let lastListPosition: { top: number; limit: number } | null = null;
+
 const StringListBase: React.FC<StringListProps> = ({
   items,
   selectedId,
@@ -180,7 +183,11 @@ const StringListBase: React.FC<StringListProps> = ({
   }, [items, filterStatus, searchQuery, sourceFilter, qaFilter, qaSummary, quickFilters]);
 
   // Incremental rendering limit (renders 25 items initially for ultra-fast instant mount, loads more on scroll)
-  const [displayLimit, setDisplayLimit] = useState(25);
+  const [displayLimit, setDisplayLimit] = useState(() => lastListPosition?.limit ?? 25);
+  const displayLimitRef = useRef(displayLimit);
+  useEffect(() => {
+    displayLimitRef.current = displayLimit;
+  }, [displayLimit]);
   // Reset when the filters change (adjusted during render, which avoids an extra render pass)
   const filterKey = `${searchQuery}|${filterStatus}|${sourceFilter}|${qaFilter}|${quickActive.join(',')}`;
   const [lastFilterKey, setLastFilterKey] = useState(filterKey);
@@ -198,8 +205,21 @@ const StringListBase: React.FC<StringListProps> = ({
   }
 
   // Show the string being translated: centre it when the list opens, keep it visible as the selection moves.
-  const firstScrollDone = useRef(false);
+  const firstScrollDone = useRef(lastListPosition !== null);
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    const saved = lastListPosition;
+    if (list && saved) {
+      list.scrollTop = saved.top;
+      lastScrollTopRef.current = saved.top;
+    }
+  }, []);
+  const restoredRef = useRef(lastListPosition !== null);
   useEffect(() => {
+    if (restoredRef.current) {
+      restoredRef.current = false; // reopened where it was left: don't move it to the selection
+      return;
+    }
     if (!selectedId || !listRef.current) return;
     const first = !firstScrollDone.current;
     if (scrollItemIntoView(listRef.current, selectedId, first ? 'center' : 'nearest')) {
@@ -214,6 +234,7 @@ const StringListBase: React.FC<StringListProps> = ({
     }
 
     const top = Math.max(0, target.scrollTop);
+    lastListPosition = { top, limit: displayLimitRef.current };
     const delta = top - lastScrollTopRef.current;
     lastScrollTopRef.current = top;
     if (top <= 1) {
