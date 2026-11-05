@@ -7,6 +7,8 @@
 <a href="https://github.com/my-live-is-a-lie/strings.xml-translator/releases/latest"><img src="https://img.shields.io/github/downloads/my-live-is-a-lie/strings.xml-translator/total?style=flat-square&logo=android&logoColor=white&label=Downloads&color=1eb996" alt="Downloads" width="150" /></a>
 <br />
 <a href="https://github.com/my-live-is-a-lie/strings.xml-translator/releases/latest"><img src="https://img.shields.io/github/v/release/my-live-is-a-lie/strings.xml-translator?style=flat-square&label=Release&color=119eff&include_prereleases" alt="Latest release" width="133" /></a>
+<br />
+<a href="docs/GUIDE.md"><img src="https://img.shields.io/badge/Documentation-Read%20the%20guide-1eb996?style=flat-square&logo=readthedocs&logoColor=white" alt="Documentation" width="178" /></a>
 
 **Translate Android `strings.xml` files faster, safer and in your own language.**
 
