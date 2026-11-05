@@ -4,21 +4,21 @@
 
 # XML Translator
 
-<a href="https://github.com/my-live-is-a-lie/strings.xml-translator/releases/latest"><img src="https://img.shields.io/github/downloads/my-live-is-a-lie/strings.xml-translator/total?style=flat&logo=android&logoColor=white&label=Downloads&color=1eb996" alt="Downloads" width="150" /></a>
+<a href="https://github.com/my-live-is-a-lie/strings.xml-translator/releases/latest"><img src="https://img.shields.io/github/downloads/my-live-is-a-lie/strings.xml-translator/total?style=flat-square&logo=android&logoColor=white&label=Downloads&color=1eb996" alt="Downloads" width="150" /></a>
 <br />
-<a href="https://github.com/my-live-is-a-lie/strings.xml-translator/releases/latest"><img src="https://img.shields.io/github/v/release/my-live-is-a-lie/strings.xml-translator?style=flat&label=Release&color=119eff&include_prereleases" alt="Latest release" width="133" /></a>
+<a href="https://github.com/my-live-is-a-lie/strings.xml-translator/releases/latest"><img src="https://img.shields.io/github/v/release/my-live-is-a-lie/strings.xml-translator?style=flat-square&label=Release&color=119eff&include_prereleases" alt="Latest release" width="133" /></a>
 
 **Translate Android `strings.xml` files faster, safer and in your own language.**
 
 A focused editor for Android localization — with machine translation and built-in quality checks — as a web app and a native Android app.
 
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue?style=flat)](LICENSE)
-![Platform](https://img.shields.io/badge/platform-Web%20%7C%20Android-1eb996?style=flat)
-![React](https://img.shields.io/badge/React-19-20232a?style=flat&logo=react&logoColor=61dafb)
-![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat&logo=typescript&logoColor=white)
-![Vite](https://img.shields.io/badge/Vite-646cff?style=flat&logo=vite&logoColor=white)
-![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-06b6d4?style=flat&logo=tailwindcss&logoColor=white)
-![Capacitor](https://img.shields.io/badge/Capacitor-119eff?style=flat&logo=capacitor&logoColor=white)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue?style=flat-square)](LICENSE)
+![Platform](https://img.shields.io/badge/platform-Web%20%7C%20Android-1eb996?style=flat-square)
+![React](https://img.shields.io/badge/React-19-20232a?style=flat-square&logo=react&logoColor=61dafb)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-646cff?style=flat-square&logo=vite&logoColor=white)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-06b6d4?style=flat-square&logo=tailwindcss&logoColor=white)
+![Capacitor](https://img.shields.io/badge/Capacitor-119eff?style=flat-square&logo=capacitor&logoColor=white)
 
 </div>
 
