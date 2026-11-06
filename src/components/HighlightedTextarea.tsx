@@ -287,8 +287,11 @@ export const HighlightedTextarea = forwardRef<HTMLTextAreaElement, HighlightedTe
               isRearrangeDraggingRef.current = true;
             } else if (!isExpandedRef.current && deltaY > 5) {
               // Not expanded and swiping DOWN: start extending!
-              activeGesture = 'resize';
-              setIsDragging(true);
+              // A box that is already tall because of its text has no use for more height: the swipe scrolls the page.
+              if (natHeight < window.innerHeight * 0.35) {
+                activeGesture = 'resize';
+                setIsDragging(true);
+              }
             } else if (isExpandedRef.current && deltaY < -5) {
               // Already expanded and swiping UP: start collapsing back!
               // A box that is already tall because of its text has nothing worth collapsing: the swipe scrolls the page.
@@ -298,9 +301,11 @@ export const HighlightedTextarea = forwardRef<HTMLTextAreaElement, HighlightedTe
                 setIsDragging(true);
               }
             } else if (isExpandedRef.current && deltaY > 5) {
-              // Already expanded and swiping DOWN further
-              activeGesture = 'resize';
-              setIsDragging(true);
+              // Already expanded and swiping DOWN further (not when the box is already tall: scroll the page)
+              if (natHeight < window.innerHeight * 0.35) {
+                activeGesture = 'resize';
+                setIsDragging(true);
+              }
             }
           }
         }
