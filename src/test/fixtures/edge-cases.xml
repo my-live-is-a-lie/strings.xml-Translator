@@ -1,0 +1,52 @@
+<resources>
+    <string name="app_name" translatable="false">Sample App</string>
+
+    <!-- To translators: you can leave your name here -->
+    <string name="translation_contributors" />
+
+    <!-- Status: placeholders in different orders -->
+    <string name="status_running">%1$s is running</string>
+    <string name="status_not_running">%1$s is not running</string>
+    <string name="status_version">Version %2$s, %1$s</string>
+    <string name="status_version_update"><![CDATA[Version %2$s, %1$s<br>Start again to update to version %3$s]]></string>
+
+    <!-- CDATA with HTML, escaped quotes and a link -->
+    <string name="intro_title"><![CDATA[Start by connecting to a computer]]></string>
+    <string name="intro_description"><![CDATA[For devices without root you need a computer. Please <b><a href=\"%1$s\">read the help</a></b>.]]></string>
+    <string name="intro_command"><![CDATA[<font face="monospace">%1$s</font><br><br>* Please confirm that you have read the help first.]]></string>
+    <string name="intro_pair_hint"><![CDATA[On version 11 or above you can start directly from the device.<p>Please view the step-by-step guide first.]]></string>
+
+    <!-- Escapes: \' \" \n -->
+    <string name="cannot_connect">Can\'t connect to the service.</string>
+    <string name="enable_notice">Please enable \"Debugging\" in \"Developer options\".\n\nNote, do not disable \"Developer options\", or the service will stop.</string>
+    <string name="copied_toast">%s\nhas been copied to clipboard.</string>
+    <string name="copied_toast_html"><![CDATA[<b>%s</b> has been copied to clipboard.]]></string>
+
+    <!-- Quoted value, ellipsis, entities -->
+    <string name="button_deny">"Deny"</string>
+    <string name="notification_starting">Service is starting…</string>
+    <string name="terms_notice">Terms &amp; conditions apply, see &lt;docs&gt;.</string>
+
+    <!-- Multi-line CDATA that starts on a new line -->
+    <string name="help_text"><![CDATA[
+With %1$s, in any terminal app, you can connect to the shell.
+<p>For the detailed usage, tap to view the document.
+    ]]></string>
+
+    <!-- Permission-style strings, references and non-translatable values -->
+    <string name="permission_group" translatable="false">@string/permission_label</string>
+    <string name="permission_label">access the service</string>
+    <string name="permission_warning"><![CDATA[Allow <b>%1$s</b> to %2$s?]]></string>
+    <string name="root_shell" translatable="false">Starting root shell…</string>
+
+    <!-- Plurals whose items use CDATA -->
+    <plurals name="authorized_apps">
+        <item quantity="one"><![CDATA[Authorized %d application]]></item>
+        <item quantity="other"><![CDATA[Authorized %d applications]]></item>
+    </plurals>
+
+    <string-array name="levels">
+        <item>Low</item>
+        <item>High</item>
+    </string-array>
+</resources>

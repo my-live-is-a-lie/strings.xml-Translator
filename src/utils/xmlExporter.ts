@@ -259,6 +259,19 @@ export function generateAndroidXml(
   if (project?.rawSourceXml && options.includeComments && !isPartialSubset && rawIsLineBased) {
     let output = project.rawSourceXml;
 
+    // 0. Self-closing <string name="..." /> (an empty string): a translation expands it into a normal tag
+    output = output.replace(
+      /(^[ \t]*<string\s+[^>]*?\bname\s*=\s*["']([^"']+)["'][^>]*?)\s*\/>([ \t]*\r?\n?)/gm,
+      (fullMatch, openTagStart, name, tail) => {
+        const item = itemMap.get(`string:${name}`) as SingleStringItem | undefined;
+        if (!item) return fullMatch;
+        if (!item.target || !item.target.trim()) {
+          return options.fallbackToSource ? fullMatch : ''; // untranslated: stays as it is (or is left out)
+        }
+        return `${openTagStart}>${encodeAndroidXmlString(item.target, options.autoEscapeApostrophes)}</string>${tail}`;
+      }
+    );
+
     // 1. Replace <string name="...">...</string>
     output = output.replace(
       /(^[ \t]*<string\s+[^>]*?\bname\s*=\s*["']([^"']+)["'][^>]*(?<!\/)>)([\s\S]*?)(<\/string>[ \t]*\r?\n?)/gm,

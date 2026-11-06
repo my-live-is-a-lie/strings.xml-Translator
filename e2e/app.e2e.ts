@@ -161,9 +161,12 @@ test('the strings list and the table open on the string being translated', async
   await openAppWithProvider(page);
   await loadSample(page);
   const counter = page.locator('text=/^\\d+ \\/ \\d+$/').first();
-  for (let i = 0; i < 14; i++) await page.locator('#weblate-skip-btn').click();
-  await expect(counter).toHaveText('15 / 17');
+  // Reopen at phone size: the strings list remembers where it was left, and the desktop list must not set that
   await page.setViewportSize({ width: 390, height: 520 });
+  await page.reload();
+  await expect(counter).toBeVisible();
+  for (let i = 0; i < 20 && (await counter.textContent()) !== '15 / 17'; i++) await page.locator('#weblate-skip-btn').click();
+  await expect(counter).toHaveText('15 / 17');
 
   const inView = async (sel: string) =>
     page.evaluate((s) => {
@@ -225,6 +228,10 @@ test('a string saved under the "untranslated" filter stays reachable', async ({ 
   await expect(page.locator('textarea').first()).toHaveValue('نص تجريبي');
 });
 
+/** The row's key line opens the string (tapping the texts below it expands the row instead). */
+const openFromList = (page: import('@playwright/test').Page, name: string) =>
+  page.locator(`#string-item-${name}`).click({ position: { x: 60, y: 12 } });
+
 test('after a source update the "new" filter turns on, changed strings show a diff, and saving removes the old text', async ({ page }) => {
   await mockProviderApi(page);
   await openAppWithProvider(page);
@@ -244,11 +251,11 @@ test('after a source update the "new" filter turns on, changed strings show a di
   await expect(page.locator('#string-item-brand_new')).toBeVisible();
   await expect(page.locator('#string-item-action_cancel')).toHaveCount(0);
 
-  await page.locator('#string-item-action_save').click();
+  await openFromList(page, 'action_save');
   await expect(page.locator('[data-source-diff]')).toBeVisible();
   await expect(page.locator('[data-source-diff] mark')).toContainText('all');
   await page.getByText('حفظ ومتابعة').click();
-  await page.locator('#string-item-action_save').click();
+  await openFromList(page, 'action_save');
   await expect(page.locator('[data-source-diff]')).toHaveCount(0);
   await expect(page.locator('#string-item-action_save')).toBeVisible(); // still listed under "new"
 });

@@ -130,7 +130,12 @@ const TableViewBase: React.FC<TableViewProps> = ({
   const [headerH, setHeaderH] = useState(0);
 
   useEffect(() => {
-    if (selectedId && tableRootRef.current) scrollItemIntoView(tableRootRef.current, selectedId, 'center');
+    const root = tableRootRef.current;
+    if (!selectedId || !root) return;
+    scrollItemIntoView(root, selectedId, 'center');
+    // Row heights are measured after the first paint and shift what is above the string: centre it again once they settle
+    const timer = window.setTimeout(() => scrollItemIntoView(root, selectedId, 'center'), 120);
+    return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only once, when the table opens
   }, []);
   // Back to the top of the list and closing the editor when the search or filters change (during render)
