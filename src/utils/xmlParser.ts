@@ -23,7 +23,7 @@ export interface ParsedXmlResult {
  */
 function extractRawStringMap(xmlContent: string): Map<string, string> {
   const map = new Map<string, string>();
-  const regex = /<string\s+[^>]*?\bname\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/string>/g;
+  const regex = /<string\s+[^>]*?\bname\s*=\s*["']([^"']+)["'][^>]*(?<!\/)>([\s\S]*?)<\/string>/g;
   let match: RegExpExecArray | null;
   while ((match = regex.exec(xmlContent)) !== null) {
     map.set(match[1], match[2]);

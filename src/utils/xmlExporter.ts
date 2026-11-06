@@ -172,16 +172,24 @@ export function encodeAndroidXmlString(
 
   let result = sourceReference ? syncTargetStructureWithSource(sourceReference, text) : text;
 
-  // Handle ampersands that are not already XML entities
-  result = result.replace(/&(?!(amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)/g, '&amp;');
+  // CDATA sections are literal XML: never entity-encode their content (<![CDATA[ ... ]]> stays intact).
+  const parts = result.split(/(<!\[CDATA\[[\s\S]*?\]\]>)/);
+  const isCdata = (part: string) => part.startsWith('<![CDATA[') && part.endsWith(']]>');
+  const outsideCdata = parts.filter((part) => !isCdata(part)).join('');
+  const hasHtmlTag = /<\/?(b|i|u|a|small|sub|sup|font)\b/i.test(outsideCdata);
 
-  // Escape lone < that is not part of an allowed Android HTML tag
-  result = result.replace(/<(?!\/?(b|i|u|a|small|sub|sup|font|string|resources|item)(\s|>|\/))/gi, '&lt;');
-
-  // If sourceReference used &gt; (or text has > outside HTML tags), encode > as &gt;
-  if (!/<\/?(b|i|u|a|small|sub|sup|font)\b/i.test(result)) {
-    result = result.replace(/>/g, '&gt;');
-  }
+  result = parts
+    .map((part) => {
+      if (isCdata(part)) return part;
+      // Handle ampersands that are not already XML entities
+      let seg = part.replace(/&(?!(amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)/g, '&amp;');
+      // Escape lone < that is not part of an allowed Android HTML tag
+      seg = seg.replace(/<(?!\/?(b|i|u|a|small|sub|sup|font|string|resources|item)(\s|>|\/))/gi, '&lt;');
+      // If sourceReference used &gt; (or text has > outside HTML tags), encode > as &gt;
+      if (!hasHtmlTag) seg = seg.replace(/>/g, '&gt;');
+      return seg;
+    })
+    .join('');
 
   // Only auto-escape apostrophes/quotes if explicitly enabled by user in Export Options
   if (autoEscapeApostrophes) {
@@ -253,7 +261,7 @@ export function generateAndroidXml(
 
     // 1. Replace <string name="...">...</string>
     output = output.replace(
-      /(^[ \t]*<string\s+[^>]*?\bname\s*=\s*["']([^"']+)["'][^>]*>)([\s\S]*?)(<\/string>[ \t]*\r?\n?)/gm,
+      /(^[ \t]*<string\s+[^>]*?\bname\s*=\s*["']([^"']+)["'][^>]*(?<!\/)>)([\s\S]*?)(<\/string>[ \t]*\r?\n?)/gm,
       (fullMatch, openTag, name, rawOriginalInner, closeTag) => {
         const item = itemMap.get(`string:${name}`) as SingleStringItem | undefined;
         if (!item) return fullMatch;
@@ -278,7 +286,7 @@ export function generateAndroidXml(
 
     // 2. Replace <plurals name="...">...</plurals>
     output = output.replace(
-      /(^[ \t]*<plurals\s+[^>]*?\bname\s*=\s*["']([^"']+)["'][^>]*>\r?\n)([\s\S]*?)(^[ \t]*<\/plurals>[ \t]*\r?\n?)/gm,
+      /(^[ \t]*<plurals\s+[^>]*?\bname\s*=\s*["']([^"']+)["'][^>]*(?<!\/)>\r?\n)([\s\S]*?)(^[ \t]*<\/plurals>[ \t]*\r?\n?)/gm,
       (fullMatch, openTag, name, innerBlock, closeTag) => {
         const plural = itemMap.get(`plural:${name}`) as PluralStringItem | undefined;
         if (!plural) return fullMatch;
@@ -313,7 +321,7 @@ export function generateAndroidXml(
 
     // 3. Replace <string-array name="...">...</string-array>
     output = output.replace(
-      /(^[ \t]*<string-array\s+[^>]*?\bname\s*=\s*["']([^"']+)["'][^>]*>\r?\n)([\s\S]*?)(^[ \t]*<\/string-array>[ \t]*\r?\n?)/gm,
+      /(^[ \t]*<string-array\s+[^>]*?\bname\s*=\s*["']([^"']+)["'][^>]*(?<!\/)>\r?\n)([\s\S]*?)(^[ \t]*<\/string-array>[ \t]*\r?\n?)/gm,
       (fullMatch, openTag, name, innerBlock, closeTag) => {
         const arr = itemMap.get(`array:${name}`) as ArrayStringItem | undefined;
         if (!arr) return fullMatch;
