@@ -26,7 +26,7 @@ import { ExportModal } from './components/ExportModal';
 import { FilesModal } from './components/FilesModal';
 import { QuickFilterButton, QuickFilterBar } from './components/QuickFilters';
 import { SplitDivider } from './components/SplitDivider';
-import { useLandscapePhone, useHideStatusBar, useSplitState, useTextFieldFocused } from './hooks/useLandscapeSplit';
+import { useLandscapePhone, useHideStatusBar, useSplitState, useTextFieldFocused, useKeyboardCollapse } from './hooks/useLandscapeSplit';
 import { getPredictiveWordsEnabled, setPredictiveWordsEnabled } from './utils/wordPredictor';
 import { getAutoCorrectEnabled, setAutoCorrectEnabled } from './utils/autoCorrectSetting';
 import { applyQuickSnapshot, resetQuickSnapshot, showOnlyNewStrings, useQuickFilters } from './utils/quickFilters';
@@ -34,6 +34,7 @@ import { TranslationProject, ResourceItem, FilterStatus, SourceFilter, StoredXml
 import { parseAndroidXml, mergeTargetXml, normalizePluralsForLanguage } from './utils/xmlParser';
 import { SAMPLE_ANDROID_STRINGS_XML, SAMPLE_TARGET_ARABIC_XML } from './utils/sampleData';
 import { saveCurrentProject, loadCurrentProject, getStoredItem, setStoredItem } from './utils/storage';
+import { getLastSelectedId, saveLastSelectedId } from './utils/lastPosition';
 import {
   getStoredFiles,
   saveStoredFiles,
@@ -166,7 +167,9 @@ export default function App() {
     }
 
     const watchedItem = initialProject.items.find((i) => i.name === 'quick_action_watched');
-    const initialSelectedId = watchedItem ? watchedItem.id : (initialProject.items[0]?.id || '');
+    const initialSelectedId =
+      getLastSelectedId(initialProject.id, initialProject.items) ??
+      (watchedItem ? watchedItem.id : (initialProject.items[0]?.id || ''));
 
     return {
       project: initialProject,
@@ -218,6 +221,11 @@ export default function App() {
       selectedId: id,
     }));
   }, []);
+
+  // Remember which string the project is on, so reopening the app continues from there
+  useEffect(() => {
+    saveLastSelectedId(project.id, selectedId);
+  }, [project.id, selectedId]);
 
   const [activeView, setActiveView] = useState<'editor' | 'table'>('editor');
   const [searchQuery, setSearchQuery] = useState('');
@@ -722,7 +730,7 @@ export default function App() {
 
     setEditorState({
       project: targetFile.project,
-      selectedId: targetFile.project.items[0]?.id || '',
+      selectedId: getLastSelectedId(targetFile.project.id, targetFile.project.items) ?? (targetFile.project.items[0]?.id || ''),
       past: [],
       future: [],
     });
@@ -814,6 +822,17 @@ export default function App() {
   );
 
   const splitActive = landscape && activeView === 'editor';
+  // portrait: the top area slides away while typing if the keyboard leaves too little room for the text
+  const kbCollapsed = useKeyboardCollapse(!splitActive && activeView === 'editor');
+  const slideAway = (node: React.ReactNode) => (
+    <div
+      className="grid transition-[grid-template-rows] duration-200 ease-out"
+      style={{ gridTemplateRows: kbCollapsed ? '0fr' : '1fr' }}
+      inert={kbCollapsed}
+    >
+      <div className={`min-h-0 ${kbCollapsed ? 'overflow-hidden' : ''}`}>{node}</div>
+    </div>
+  );
   const renderHeader = (part: 'all' | 'bar' | 'stats' | 'legend' | 'track' | 'dock' | 'barTrack' | 'tableLegend') => (
       <Header
         part={part}
@@ -947,7 +966,7 @@ currentItem ? (
         paddingRight: 'var(--safe-area-inset-right, env(safe-area-inset-right, 0px))',
       }}
     >
-      {!splitActive && headerNode}
+      {!splitActive && (activeView === 'editor' ? slideAway(headerNode) : headerNode)}
 
       {splitActive && (
         <div className="flex-1 flex flex-col min-h-0">
@@ -1019,7 +1038,7 @@ currentItem ? (
 
             {/* Center: Translation Editor */}
             <main className="flex-1 h-full min-w-0 flex flex-col overflow-hidden relative">
-              {quickBarNode}
+              {slideAway(quickBarNode)}
 
               {editorNode}
             </main>

@@ -291,7 +291,9 @@ export const HighlightedTextarea = forwardRef<HTMLTextAreaElement, HighlightedTe
               setIsDragging(true);
             } else if (isExpandedRef.current && deltaY < -5) {
               // Already expanded and swiping UP: start collapsing back!
-              if (!textareaRef.current || textareaRef.current.scrollTop <= 5) {
+              // A box that is already tall because of its text has nothing worth collapsing: the swipe scrolls the page.
+              const tallBox = natHeight >= window.innerHeight * 0.35;
+              if (!tallBox && (!textareaRef.current || textareaRef.current.scrollTop <= 5)) {
                 activeGesture = 'resize';
                 setIsDragging(true);
               }

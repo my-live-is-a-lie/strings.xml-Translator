@@ -137,3 +137,62 @@ export function useTextFieldFocused(): boolean {
   }, []);
   return focused;
 }
+
+/**
+ * Portrait phones: while the person types in the translation box and the source text or the box is covered
+ * (small screens only: tablets and desktops have room, so nothing happens there), the top area (progress, filters, list button) slides away so the
+ * source text and the box stay visible. It comes back when the box loses focus. The decision is made once
+ * per focus (no flapping): re-checked after the keyboard settles, and after each edit that grows the text.
+ */
+export function useKeyboardCollapse(enabled: boolean): boolean {
+  const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => {
+    if (!enabled) return;
+    let timer: number | undefined;
+    const evaluate = () => {
+      const el = document.activeElement as HTMLElement | null;
+      const scroller = document.querySelector<HTMLElement>('[data-editor-scroll]');
+      if (!el || !scroller || el.tagName !== 'TEXTAREA' || !scroller.contains(el)) {
+        setCollapsed(false);
+        return;
+      }
+      // only act when the source text or the box being typed in is actually covered (top edge or keyboard)
+      const src = scroller.querySelector<HTMLElement>('.kb-src');
+      const area = scroller.getBoundingClientRect();
+      const top = area.top;
+      const bottom = Math.min(area.bottom, window.visualViewport ? window.visualViewport.offsetTop + window.visualViewport.height : window.innerHeight);
+      const covered = (r: DOMRect) => r.top < top - 2 || r.bottom > bottom + 2;
+      if (!(src && covered(src.getBoundingClientRect())) && !covered(el.getBoundingClientRect())) return;
+      setCollapsed((prev) => {
+        if (!prev) {
+          // once the area has slid away, bring the source and the caret line into view
+          window.setTimeout(() => {
+            scroller.scrollTop = 0;
+            const vh = window.visualViewport?.height ?? window.innerHeight;
+            const r = el.getBoundingClientRect();
+            if (r.bottom > vh) scroller.scrollTop += r.bottom - vh + 8;
+          }, 260);
+        }
+        return true;
+      });
+    };
+    const schedule = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(evaluate, 250);
+    };
+    document.addEventListener('focusin', schedule);
+    document.addEventListener('focusout', schedule);
+    document.addEventListener('input', schedule);
+    window.addEventListener('resize', schedule);
+    window.visualViewport?.addEventListener('resize', schedule);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener('focusin', schedule);
+      document.removeEventListener('focusout', schedule);
+      document.removeEventListener('input', schedule);
+      window.removeEventListener('resize', schedule);
+      window.visualViewport?.removeEventListener('resize', schedule);
+    };
+  }, [enabled]);
+  return enabled && collapsed;
+}

@@ -321,3 +321,25 @@ test('external AI request can also include the strings that need review', async 
   await dialog.locator('#ext-include-review').check();
   expect(await count()).toBeGreaterThan(before);
 });
+
+test('the top area slides away only when the keyboard leaves too little room, and returns afterwards', async ({ page }) => {
+  await page.goto('/');
+  await loadSample(page);
+  await page.setViewportSize({ width: 390, height: 800 });
+  const top = page.locator('#mobile-drawer-btn');
+  const box = page.locator('textarea').first();
+  // plenty of room: typing does not hide anything
+  await box.focus();
+  await page.waitForTimeout(500);
+  await expect(top).toBeVisible();
+  await box.blur();
+  // keyboard-sized viewport: the content no longer fits, so the top area collapses
+  await page.setViewportSize({ width: 390, height: 380 });
+  await box.focus();
+  await expect(top).toBeHidden({ timeout: 3000 });
+  await expect(box).toBeInViewport();
+  // closing the keyboard brings it back
+  await box.blur();
+  await page.setViewportSize({ width: 390, height: 800 });
+  await expect(top).toBeVisible({ timeout: 3000 });
+});
