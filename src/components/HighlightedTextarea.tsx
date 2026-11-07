@@ -268,6 +268,9 @@ export const HighlightedTextarea = forwardRef<HTMLTextAreaElement, HighlightedTe
           return;
         }
 
+        // A box limited to a window (to stay above the keyboard) scrolls its own text: no resize/rearrange gestures
+        if (activeGesture === 'none' && textareaRef.current?.style.maxHeight) return;
+
         if (activeGesture === 'none') {
           // Detect clear vertical swipe
           if (absY > 7 && absY > absX * 1.05) {

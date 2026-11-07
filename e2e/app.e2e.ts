@@ -356,7 +356,7 @@ test('a long source gets a short window that follows the translation; short text
   await page.locator('textarea').last().fill(xml);
   await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
   const src = page.locator('[data-src-text]');
-  const box = page.locator('#weblate-translation-input');
+  const box = page.locator('textarea#weblate-translation-input');
   await expect(src).toBeVisible();
 
   // a big screen: nothing is limited, even while typing
@@ -388,11 +388,38 @@ test('a long source gets a short window that follows the translation; short text
   await box.pressSequentially(typed, { delay: 2 });
   await expect.poll(at, { timeout: 4000 }).toBeGreaterThan(start + 20);
 
-  // scrolling the source by hand is respected until the next keystroke
+  // a swipe on the capped translation box scrolls it: the box never resizes
+  const snap = (el: Element) => { const t = el as HTMLElement; return `${t.offsetHeight}|${t.style.height}|${t.style.minHeight}`; };
+  const h0 = await box.evaluate(snap);
+  const mid = await box.evaluate((el) => {
+    const mk = (y: number) => new Touch({ identifier: 1, target: el, clientX: 150, clientY: y });
+    const fire = (type: string, y: number) =>
+      el.dispatchEvent(new TouchEvent(type, { bubbles: true, cancelable: true, touches: type === 'touchend' ? [] : [mk(y)], changedTouches: [mk(y)] }));
+    fire('touchstart', 300);
+    for (let y = 300; y <= 380; y += 10) fire('touchmove', y);
+    const t = el as HTMLElement;
+    const during = `${t.offsetHeight}|${t.style.height}|${t.style.minHeight}`; // while the finger is still down
+    fire('touchend', 380);
+    return during;
+  });
+  expect(mid).toBe(h0);
+  expect(await box.evaluate(snap)).toBe(h0);
+
+  // the two boxes scroll together, aligned at the start and at the end
+  const range = (loc: typeof src) => loc.evaluate((el) => el.scrollHeight - el.clientHeight);
+  const frac = async (loc: typeof src) => (await loc.evaluate((el) => el.scrollTop)) / (await range(loc));
+  await page.waitForTimeout(900);
+  await box.evaluate((el) => (el.scrollTop = 0));
+  await expect.poll(() => frac(src), { timeout: 3000 }).toBeLessThan(0.05);
+  await page.waitForTimeout(900);
+  await box.evaluate((el) => (el.scrollTop = el.scrollHeight));
+  await expect.poll(() => frac(src), { timeout: 3000 }).toBeGreaterThan(0.95);
+  await page.waitForTimeout(900);
   await src.evaluate((el) => (el.scrollTop = 0));
-  await src.dispatchEvent('touchstart');
-  await page.waitForTimeout(400);
-  expect(await at()).toBeLessThan(5);
+  await expect.poll(() => frac(box), { timeout: 3000 }).toBeLessThan(0.05);
+  await page.waitForTimeout(900);
+  await src.evaluate((el) => (el.scrollTop = (el.scrollHeight - el.clientHeight) / 2));
+  await expect.poll(async () => Math.abs((await frac(box)) - 0.5), { timeout: 3000 }).toBeLessThan(0.08);
 
   // closing the keyboard removes every limit
   await box.blur();

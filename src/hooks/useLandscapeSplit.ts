@@ -211,6 +211,12 @@ export function useSourceWindow(enabled: boolean, topAreaAway: boolean): void {
     let timer: number | undefined;
     let syncTimer: number | undefined;
     let paused = false;
+    // Scroll events caused by the code itself or by typing are not "the person scrolling by hand"
+    let quietUntil = 0;
+    const expected = new WeakMap<HTMLElement, number>();
+    const quiet = (ms: number) => {
+      quietUntil = Math.max(quietUntil, performance.now() + ms);
+    };
 
     const parts = () => {
       const scroller = document.querySelector<HTMLElement>('[data-editor-scroll]');
@@ -240,9 +246,11 @@ export function useSourceWindow(enabled: boolean, topAreaAway: boolean): void {
       if (!span || !ta || span.dataset.win !== '1' || paused) return;
       const ratio = sourceRatio(ta.value, ta.selectionStart ?? ta.value.length, span.dataset.srcRaw ?? span.textContent ?? '');
       const top = Math.max(0, ratio * span.scrollHeight - span.clientHeight / 2);
+      quiet(700);
       span.scrollTo({ top, behavior: 'smooth' });
     };
     const scheduleSync = () => {
+      quiet(500);
       window.clearTimeout(syncTimer);
       syncTimer = window.setTimeout(sync, 80);
     };
@@ -250,6 +258,7 @@ export function useSourceWindow(enabled: boolean, topAreaAway: boolean): void {
     const evaluate = () => {
       const { scroller, span, ta } = parts();
       if (!scroller || !span) return;
+      quiet(700);
       clear(span, ta);
       if (!ta) return;
       const area = scroller.getBoundingClientRect();
@@ -299,19 +308,39 @@ export function useSourceWindow(enabled: boolean, topAreaAway: boolean): void {
 
     const onInput = () => {
       paused = false;
+      quiet(500);
       schedule();
       scheduleSync();
     };
-    const onHandScroll = (e: Event) => {
-      if ((e.target as Element | null)?.closest?.('[data-src-text]')) paused = true;
+    // The two boxes scroll together: moving one by hand moves the other to the same relative place
+    const mirror = (from: HTMLElement, to: HTMLElement) => {
+      const fromMax = from.scrollHeight - from.clientHeight;
+      const toMax = to.scrollHeight - to.clientHeight;
+      if (fromMax <= 1 || toMax <= 1) return;
+      to.scrollTop = (from.scrollTop / fromMax) * toMax;
+      expected.set(to, to.scrollTop);
+    };
+    const onScroll = (e: Event) => {
+      const t = e.target as HTMLElement | null;
+      if (!t || performance.now() < quietUntil) return;
+      const { scroller, span } = parts();
+      if (!scroller || !span || span.dataset.win !== '1') return;
+      if (expected.get(t) !== undefined && Math.abs((expected.get(t) ?? 0) - t.scrollTop) < 1.5) return;
+      if (t === span) {
+        const ta = scroller.querySelector<HTMLTextAreaElement>('textarea[style*="max-height"]');
+        paused = true;
+        if (ta) mirror(span, ta);
+      } else if (t.tagName === 'TEXTAREA' && scroller.contains(t) && t.style.maxHeight) {
+        paused = true;
+        mirror(t, span);
+      }
     };
     document.addEventListener('focusin', schedule);
     document.addEventListener('focusout', schedule);
     document.addEventListener('input', onInput);
     document.addEventListener('keyup', scheduleSync);
     document.addEventListener('selectionchange', scheduleSync);
-    document.addEventListener('touchstart', onHandScroll, { passive: true });
-    document.addEventListener('wheel', onHandScroll, { passive: true });
+    document.addEventListener('scroll', onScroll, true);
     window.addEventListener('resize', schedule);
     window.visualViewport?.addEventListener('resize', schedule);
     schedule();
@@ -323,8 +352,7 @@ export function useSourceWindow(enabled: boolean, topAreaAway: boolean): void {
       document.removeEventListener('input', onInput);
       document.removeEventListener('keyup', scheduleSync);
       document.removeEventListener('selectionchange', scheduleSync);
-      document.removeEventListener('touchstart', onHandScroll);
-      document.removeEventListener('wheel', onHandScroll);
+      document.removeEventListener('scroll', onScroll, true);
       window.removeEventListener('resize', schedule);
       window.visualViewport?.removeEventListener('resize', schedule);
       const { span, ta } = parts();
