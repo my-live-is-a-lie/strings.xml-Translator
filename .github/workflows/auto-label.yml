@@ -28,7 +28,7 @@ jobs:
               { label: 'bug', keywords: ['bug', 'crash', 'error', 'broken', 'fail', 'wrong', 'not working', 'does not work', "doesn't work", 'incorrect', 'خطأ', 'مشكلة', 'لا يعمل', 'يتعطل', 'عطل'] },
               { label: 'enhancement', keywords: ['feature', 'improvement', 'enhance', 'suggestion', 'اقتراح', 'تحسين', 'ميزة'] },
               { label: 'question', keywords: ['question', 'how to', 'how do', 'سؤال', 'كيف', 'استفسار'] },
-              { label: 'ui', keywords: ['ui', 'gui', 'interface', 'design', 'layout', 'button', 'screen', 'theme', 'dark mode', 'واجهة', 'تصميم', 'زر', 'شاشة', 'الوضع الليلي'] },
+              { label: 'ui', keywords: ['ui', 'interface', 'design', 'layout', 'button', 'screen', 'theme', 'dark mode', 'واجهة', 'تصميم', 'زر', 'شاشة', 'الوضع الليلي'] },
               { label: 'documentation', keywords: ['doc', 'readme', 'guide', 'توثيق', 'دليل'] },
             ];
             const labels = rules
