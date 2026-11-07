@@ -1,0 +1,12 @@
+name: Question
+description: Ask a question about the app
+labels: ["question"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Question
+      description: What would you like to know?
+      placeholder: Ask your question...
+    validations:
+      required: true
