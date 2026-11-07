@@ -2,7 +2,7 @@ import { SourceChangeBadge } from './SourceChangeDiff';
 import React, { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react';
 import { scrollItemIntoView } from '../utils/scrollToItem';
 import { ResourceItem, FilterStatus, SourceFilter, SingleStringItem } from '../types';
-import { Search, CheckCircle2, Circle, AlertCircle, Edit3, Check, Sparkles, CheckSquare, Square, Loader2, ChevronDown, ChevronUp, ArrowUpDown, ArrowUp } from 'lucide-react';
+import { Search, CheckCircle2, Circle, AlertCircle, Edit3, Check, Sparkles, CheckSquare, Square, Loader2, ArrowUpDown, ArrowUp } from 'lucide-react';
 import { bulkTranslateItems, withTranslationProvider } from '../utils/translator';
 import { BulkProviderModal, EXTERNAL_AI_PROVIDER_ID } from './BulkProviderModal';
 import { ExternalAiModal } from './ExternalAiModal';
@@ -793,7 +793,8 @@ const TableViewBase: React.FC<TableViewProps> = ({
                       <span className="shrink-0">{renderStatusIcon(item)}</span>
                       <span
                         dir="ltr"
-                        className="flex-1 min-w-0 truncate font-mono text-xs font-medium text-slate-900 dark:text-slate-100 text-start"
+                        onClick={isLong ? () => setExpanded(!expanded) : undefined}
+                        className={`flex-1 min-w-0 truncate font-mono text-xs font-medium text-slate-900 dark:text-slate-100 text-start ${isLong ? 'cursor-pointer' : ''}`}
                       >
                         {item.name}
                         <SourceChangeBadge item={item} isAr={isAr} />
@@ -818,7 +819,10 @@ const TableViewBase: React.FC<TableViewProps> = ({
                           <div key={v.label} className="flex items-start gap-2.5">
                             {renderVariantBadge(v.label)}
                             <div className="min-w-0 flex-1 space-y-0.5 text-xs leading-relaxed">
-                              <p className="text-slate-600 dark:text-slate-400 break-words">
+                              <p
+                                onClick={isLong ? () => setExpanded(!expanded) : undefined}
+                                className={`text-slate-600 dark:text-slate-400 break-words ${isLong ? 'cursor-pointer' : ''}`}
+                              >
                                 <bdi>{highlightText(v.source, q)}</bdi>
                               </p>
                               <p
@@ -835,9 +839,11 @@ const TableViewBase: React.FC<TableViewProps> = ({
                     ) : (
                       <>
                     <p
+                      onClick={isLong ? () => setExpanded(!expanded) : undefined}
+                      data-src-toggle
                       className={`text-xs leading-relaxed text-slate-600 dark:text-slate-400 break-words whitespace-pre-wrap ${
                         expanded ? '' : 'line-clamp-3'
-                      }`}
+                      } ${isLong ? 'cursor-pointer' : ''}`}
                     >
                       <bdi>{highlightText(sourceSnippet, q)}</bdi>
                     </p>
@@ -868,20 +874,6 @@ const TableViewBase: React.FC<TableViewProps> = ({
                       </>
                     )}
 
-                    {isLong && (
-                      <button
-                        type="button"
-                        onClick={() => setExpanded(!expanded)}
-                        className="inline-flex items-center gap-1 text-[11px] font-medium text-[#0B57D0] dark:text-[#A8C7FA] cursor-pointer"
-                      >
-                        {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                        {expanded
-                          ? t('show_less')
-                          : item.type === 'string'
-                            ? t('show_more')
-                            : t('show_more_2', variants.length - 2)}
-                      </button>
-                    )}
                   </div>
                 );
               })}

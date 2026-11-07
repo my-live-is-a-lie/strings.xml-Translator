@@ -1463,7 +1463,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             </div>
 
             {/* Source Display Box with Clone & Copy Icons */}
-            <div className="flex items-center gap-1">
+            <div dir="ltr" className="flex items-center gap-1">
               {/* Clone icon button (Weblate clone to target — matches screenshot) */}
               <button
                 id="weblate-clone-to-target-btn"
@@ -1491,7 +1491,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               </button>
 
               {/* Source content container */}
-              <div className="kb-src flex-1 min-h-[38px] px-3 py-1.5 rounded-lg bg-slate-100/90 dark:bg-[#141822] border border-slate-200/90 dark:border-[#283140] flex items-center justify-between gap-2.5">
+              <div dir="ltr" className="kb-src flex-1 min-h-[38px] px-3 py-1.5 rounded-lg bg-slate-100/90 dark:bg-[#141822] border border-slate-200/90 dark:border-[#283140] flex items-center justify-between gap-2.5">
                 {/* Left: Copy button */}
                 <button
                   id="copy-source-text-btn"
