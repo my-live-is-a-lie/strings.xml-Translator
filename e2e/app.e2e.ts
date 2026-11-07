@@ -378,7 +378,7 @@ test('a long source gets a short window that follows the translation; short text
   expect(await inScreen('#weblate-translation-input')).toBe(true);
   const lines = await src.evaluate((el) => el.clientHeight / parseFloat(getComputedStyle(el).lineHeight));
   expect(lines).toBeGreaterThanOrEqual(2.9);
-  expect(lines).toBeLessThanOrEqual(6.1);
+  expect(lines).toBeLessThanOrEqual(12.1); // the space is shared with the translation box, not a fixed cap
 
   // typing paragraph by paragraph moves the window down the source
   const at = () => src.evaluate((el) => el.scrollTop);
@@ -387,6 +387,17 @@ test('a long source gets a short window that follows the translation; short text
   const typed = [1, 2, 3, 4, 5, 6].map((n) => `الفقرة ${n} تقول شيئًا طويلًا إلى حد ما حتى تلتف عبر عدة أسطر.`).join('\\n\\n');
   await box.pressSequentially(typed, { delay: 2 });
   await expect.poll(at, { timeout: 4000 }).toBeGreaterThan(start + 20);
+
+  // both boxes get the same number of lines (the space is shared), and the box still shows its last lines
+  await page.waitForTimeout(500);
+  const sizes = await page.evaluate(() => {
+    const s = document.querySelector<HTMLElement>('[data-src-text]')!;
+    const t = document.querySelector<HTMLElement>('textarea#weblate-translation-input')!;
+    const cs = getComputedStyle(t);
+    const pad = ['paddingTop', 'paddingBottom', 'borderTopWidth', 'borderBottomWidth'].reduce((a, k) => a + (parseFloat(cs[k as 'paddingTop']) || 0), 0);
+    return { src: s.clientHeight / parseFloat(getComputedStyle(s).lineHeight), box: (t.clientHeight - pad) / parseFloat(cs.lineHeight) };
+  });
+  expect(Math.abs(sizes.src - sizes.box)).toBeLessThanOrEqual(1.2);
 
   // a swipe on the capped translation box scrolls it: the box never resizes
   const snap = (el: Element) => { const t = el as HTMLElement; return `${t.offsetHeight}|${t.style.height}|${t.style.minHeight}`; };
@@ -421,8 +432,20 @@ test('a long source gets a short window that follows the translation; short text
   await src.evaluate((el) => (el.scrollTop = (el.scrollHeight - el.clientHeight) / 2));
   await expect.poll(async () => Math.abs((await frac(box)) - 0.5), { timeout: 3000 }).toBeLessThan(0.08);
 
+  // going back to the very start of the translation puts the source at its very start (not part-way)
+  await page.waitForTimeout(900);
+  await box.evaluate((el) => (el.scrollTop = 0));
+  await expect.poll(() => src.evaluate((el) => el.scrollTop), { timeout: 3000 }).toBeLessThan(2);
+  await page.waitForTimeout(900);
+  await box.evaluate((el) => (el.scrollTop = el.scrollHeight));
+  await expect.poll(() => frac(src), { timeout: 3000 }).toBeGreaterThan(0.95);
+  await page.waitForTimeout(900);
+  await box.evaluate((el) => (el.scrollTop = 0));
+  await expect.poll(() => src.evaluate((el) => el.scrollTop), { timeout: 3000 }).toBeLessThan(2);
+
   // closing the keyboard removes every limit
   await box.blur();
   await page.setViewportSize({ width: 390, height: 800 });
   await expect.poll(() => src.evaluate((el) => el.style.maxHeight), { timeout: 4000 }).toBe('');
+  expect(await box.evaluate((el) => (el as HTMLElement).style.maxHeight)).toBe('');
 });

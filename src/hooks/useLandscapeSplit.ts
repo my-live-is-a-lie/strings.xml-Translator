@@ -205,6 +205,17 @@ export function useKeyboardCollapse(enabled: boolean): boolean {
  * the caret (see sourceRatio); scrolling it by hand pauses that until the next keystroke. When everything fits
  * (tablets, desktops, short texts) nothing is limited. Works on the DOM directly: no re-render per keystroke.
  */
+const tallestViewport = { width: 0, height: 0 };
+/** True when the visual viewport is clearly shorter than the tallest one seen at this width (the keyboard is up). */
+function keyboardOpen(viewH: number): boolean {
+  if (tallestViewport.width !== window.innerWidth) {
+    tallestViewport.width = window.innerWidth;
+    tallestViewport.height = 0;
+  }
+  tallestViewport.height = Math.max(tallestViewport.height, window.innerHeight, viewH);
+  return viewH < tallestViewport.height - 120;
+}
+
 export function useSourceWindow(enabled: boolean, topAreaAway: boolean): void {
   useEffect(() => {
     if (!enabled) return;
@@ -213,7 +224,7 @@ export function useSourceWindow(enabled: boolean, topAreaAway: boolean): void {
     let paused = false;
     // Scroll events caused by the code itself or by typing are not "the person scrolling by hand"
     let quietUntil = 0;
-    const expected = new WeakMap<HTMLElement, number>();
+    const expected = new WeakMap<HTMLElement, { top: number; until: number }>();
     const quiet = (ms: number) => {
       quietUntil = Math.max(quietUntil, performance.now() + ms);
     };
@@ -226,7 +237,9 @@ export function useSourceWindow(enabled: boolean, topAreaAway: boolean): void {
       return { scroller, span, ta };
     };
     const clear = (span: HTMLElement | null, ta: HTMLElement | null) => {
-      for (const n of [span, ta]) {
+      // every translation box, not only the focused one: the box loses focus when the keyboard closes
+      const boxes = Array.from(document.querySelectorAll<HTMLElement>('[data-editor-scroll] textarea'));
+      for (const n of [span, ta, ...boxes]) {
         if (!n) continue;
         n.style.maxHeight = '';
         n.style.overflowY = '';
@@ -261,13 +274,13 @@ export function useSourceWindow(enabled: boolean, topAreaAway: boolean): void {
       quiet(700);
       clear(span, ta);
       if (!ta) return;
-      const area = scroller.getBoundingClientRect();
+      // only while the on-screen keyboard is really up (the viewport shrank): otherwise the page just scrolls
       const vv = window.visualViewport;
+      const viewH = vv ? vv.height : window.innerHeight;
+      if (!keyboardOpen(viewH)) return;
+      const area = scroller.getBoundingClientRect();
       const top = area.top;
-      const bottom = Math.min(area.bottom, vv ? vv.offsetTop + vv.height : window.innerHeight);
-      const covered = (r: DOMRect) => r.top < top - 2 || r.bottom > bottom + 2;
-      const srcBox = scroller.querySelector<HTMLElement>('.kb-src') ?? span;
-      if (!covered(srcBox.getBoundingClientRect()) && !covered(ta.getBoundingClientRect())) return;
+      const bottom = Math.min(area.bottom, vv ? vv.offsetTop + viewH : window.innerHeight);
 
       const srcLH = lineHeight(span, 20);
       const cs = getComputedStyle(ta);
@@ -276,21 +289,29 @@ export function useSourceWindow(enabled: boolean, topAreaAway: boolean): void {
         (sum, k) => sum + (parseFloat(cs[k as 'paddingTop']) || 0),
         0
       );
-      const room = bottom - top - (scroller.scrollHeight - span.offsetHeight - ta.offsetHeight) - 6;
-      const taMin = 4 * taLH + taPad;
-      const srcLines = Math.min(6, Math.max(3, Math.floor((room - taMin) / srcLH)));
+      // Room for the two boxes: what is visible, minus whatever sits above them (the buttons below can be
+      // reached by scrolling, so they take no room). The two boxes share it equally.
+      const above = ta.getBoundingClientRect().top - top + scroller.scrollTop - span.offsetHeight;
+      const room = bottom - top - above - 8;
       const srcNat = span.scrollHeight;
-      let srcUsed = srcNat;
+      const taNat = ta.scrollHeight;
+      if (srcNat + taNat <= room) return; // everything fits: nothing is limited
+
+      const half = room / 2;
+      let srcMax = half;
+      let taMax = half;
+      if (srcNat <= half) taMax = room - srcNat;
+      else if (taNat <= half) srcMax = room - taNat;
+      // whole lines only (never a cut line), at least three each
+      const srcLines = Math.max(3, Math.floor(srcMax / srcLH));
+      const taLines = Math.max(3, Math.floor((taMax - taPad) / taLH));
       if (srcNat > srcLines * srcLH + 2) {
-        srcUsed = srcLines * srcLH;
-        limit(span, srcUsed);
+        limit(span, srcLines * srcLH);
         span.dataset.win = '1';
       }
-      // whole lines only, so the last visible line is never cut in half
-      const taLines = Math.max(3, Math.floor((room - srcUsed - taPad) / taLH));
-      const taMax = taLines * taLH + taPad;
-      if (ta.scrollHeight > taMax + 2) {
-        limit(ta, taMax);
+      const taCap = taLines * taLH + taPad;
+      if (taNat > taCap + 2) {
+        limit(ta, taCap);
         // typing at the end of the text: keep the caret line inside the capped box
         if ((ta.selectionStart ?? 0) >= ta.value.length) ta.scrollTop = ta.scrollHeight;
       }
@@ -302,6 +323,7 @@ export function useSourceWindow(enabled: boolean, topAreaAway: boolean): void {
       sync();
     };
     const schedule = () => {
+      keyboardOpen(window.visualViewport?.height ?? window.innerHeight); // remembers the full height while the keyboard is down
       window.clearTimeout(timer);
       timer = window.setTimeout(evaluate, 260);
     };
@@ -317,15 +339,19 @@ export function useSourceWindow(enabled: boolean, topAreaAway: boolean): void {
       const fromMax = from.scrollHeight - from.clientHeight;
       const toMax = to.scrollHeight - to.clientHeight;
       if (fromMax <= 1 || toMax <= 1) return;
-      to.scrollTop = (from.scrollTop / fromMax) * toMax;
-      expected.set(to, to.scrollTop);
+      // exactly at either end of one box means exactly at the same end of the other
+      const f = from.scrollTop <= 2 ? 0 : from.scrollTop >= fromMax - 2 ? 1 : from.scrollTop / fromMax;
+      to.scrollTop = f * toMax;
+      expected.set(to, { top: to.scrollTop, until: performance.now() + 150 });
     };
     const onScroll = (e: Event) => {
       const t = e.target as HTMLElement | null;
       if (!t || performance.now() < quietUntil) return;
       const { scroller, span } = parts();
       if (!scroller || !span || span.dataset.win !== '1') return;
-      if (expected.get(t) !== undefined && Math.abs((expected.get(t) ?? 0) - t.scrollTop) < 1.5) return;
+      // the scroll event of our own write (a short time window, so returning to the same spot by hand still counts)
+      const own = expected.get(t);
+      if (own && performance.now() < own.until && Math.abs(own.top - t.scrollTop) < 1.5) return;
       if (t === span) {
         const ta = scroller.querySelector<HTMLTextAreaElement>('textarea[style*="max-height"]');
         paused = true;
