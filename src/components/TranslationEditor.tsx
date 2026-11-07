@@ -1463,12 +1463,12 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             </div>
 
             {/* Source Display Box with Clone & Copy Icons */}
-            <div dir="ltr" className="flex items-center gap-1">
+            <div dir="ltr" className="flex items-start gap-1">
               {/* Clone icon button (Weblate clone to target — matches screenshot) */}
               <button
                 id="weblate-clone-to-target-btn"
                 onClick={handleCloneSourceToTarget}
-                className="ps-1.5 pe-1 py-1 rounded-md text-slate-500 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-[#1C2330] transition cursor-pointer shrink-0"
+                className="mt-1.5 ps-1.5 pe-1 py-1 rounded-md text-slate-500 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-[#1C2330] transition cursor-pointer shrink-0"
                 title={t('clone_source_to_translation')}
               >
                 {/* Exact Weblate clone-to-translation icon: back sheet + right arrow into front sheet */}
@@ -1491,23 +1491,22 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               </button>
 
               {/* Source content container */}
-              <div dir="ltr" className="kb-src flex-1 min-h-[38px] px-3 py-1.5 rounded-lg bg-slate-100/90 dark:bg-[#141822] border border-slate-200/90 dark:border-[#283140] flex items-center justify-between gap-2.5">
-                {/* Left: Copy button */}
-                <button
-                  id="copy-source-text-btn"
-                  onClick={handleCopySource}
-                  className="p-1 rounded-md text-slate-500 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-[#202736] transition cursor-pointer shrink-0"
-                  title={t('copy_english_source_text')}
-                >
-                  {copiedSource ? (
-                    <Check className="w-4 h-4 text-emerald-400" />
-                  ) : (
-                    <Copy className="w-4 h-4" />
-                  )}
-                </button>
-
-                {/* English source text with interactive Android syntax highlights */}
-                <span dir="auto" data-src-text data-src-raw={sourceText} className="flex-1 min-w-0 text-xs sm:text-sm font-normal text-slate-800 dark:text-slate-100 select-text break-words whitespace-pre-line leading-relaxed">
+              <div dir="ltr" className="kb-src flex-1 min-h-[38px] px-3 py-1.5 rounded-lg bg-slate-100/90 dark:bg-[#141822] border border-slate-200/90 dark:border-[#283140]">
+                {/* The copy button floats at the top-left of the text: the first line sits beside it and the rest wraps underneath */}
+                <span dir="auto" data-src-text data-src-raw={sourceText} className="block text-xs sm:text-sm font-normal text-slate-800 dark:text-slate-100 select-text break-words whitespace-pre-line leading-relaxed">
+                  <button
+                    id="copy-source-text-btn"
+                    type="button"
+                    onClick={handleCopySource}
+                    className="float-left mr-2 -mt-px p-0.5 rounded-md text-slate-500 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-[#202736] transition cursor-pointer"
+                    title={t('copy_english_source_text')}
+                  >
+                    {copiedSource ? (
+                      <Check className="w-4 h-4 text-emerald-400" />
+                    ) : (
+                      <Copy className="w-4 h-4" />
+                    )}
+                  </button>
                   {renderSourceWithSyntaxHighlights(sourceText)}
                 </span>
               </div>

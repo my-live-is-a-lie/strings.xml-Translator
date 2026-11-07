@@ -1,14 +1,7 @@
 name: Build Web & Android APK
 
+# Manual only: run it from the Actions tab (Run workflow).
 on:
-  push:
-    branches:
-      - main
-      - master
-  pull_request:
-    branches:
-      - main
-      - master
   workflow_dispatch:
 
 permissions:
