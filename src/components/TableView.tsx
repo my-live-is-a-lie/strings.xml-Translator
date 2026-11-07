@@ -2,7 +2,7 @@ import { SourceChangeBadge } from './SourceChangeDiff';
 import React, { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react';
 import { scrollItemIntoView } from '../utils/scrollToItem';
 import { ResourceItem, FilterStatus, SourceFilter, SingleStringItem } from '../types';
-import { Search, CheckCircle2, Circle, AlertCircle, Edit3, Check, Sparkles, CheckSquare, Square, Loader2, ArrowUpDown, ArrowUp } from 'lucide-react';
+import { Search, CheckCircle2, Circle, AlertCircle, Edit3, Check, Sparkles, CheckSquare, Square, Loader2, ChevronDown, ChevronUp, ArrowUpDown, ArrowUp } from 'lucide-react';
 import { bulkTranslateItems, withTranslationProvider } from '../utils/translator';
 import { BulkProviderModal, EXTERNAL_AI_PROVIDER_ID } from './BulkProviderModal';
 import { ExternalAiModal } from './ExternalAiModal';
@@ -874,6 +874,21 @@ const TableViewBase: React.FC<TableViewProps> = ({
                       </>
                     )}
 
+
+                    {isLong && item.type !== 'string' && (
+                      <button
+                        type="button"
+                        onClick={() => setExpanded(!expanded)}
+                        className="inline-flex items-center gap-1 text-[11px] font-medium text-[#0B57D0] dark:text-[#A8C7FA] cursor-pointer"
+                      >
+                        {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                        {expanded
+                          ? t('show_less')
+                          : item.type === 'plural'
+                            ? t('show_more_2', variants.length - 2)
+                            : t('show_more')}
+                      </button>
+                    )}
                   </div>
                 );
               })}

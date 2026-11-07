@@ -19,6 +19,7 @@ import {
   testProviderApiKey,
 } from '../utils/translator';
 import { useT, tg } from '../i18n/i18n';
+import { SecretField } from './SecretField';
 
 export function getProviderDisplayName(prov: TranslationProviderConfig | undefined, isAr: boolean): string {
   if (!prov) return tg('google_translate');
@@ -699,56 +700,32 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                     </div>
 
                     {/* API Key Input */}
-                    <div className="flex flex-col gap-1.5">
-                      <label
-                        htmlFor="provider-api-key-input"
-                        className="text-[11px] font-semibold text-slate-700 dark:text-slate-300"
-                      >
-                        {inferEngineFromName(newProviderName, newProviderEngine) === 'lara'
+                    <SecretField
+                      id="provider-api-key-input"
+                      label={
+                        inferEngineFromName(newProviderName, newProviderEngine) === 'lara'
                           ? t('lara_access_key_id_or')
-                          : t('translator_api_key')}
-                      </label>
-                      <input
-                        id="provider-api-key-input"
-                        type="text"
-                        autoComplete="off"
-                        value={newApiKey}
-                        onChange={(e) => setNewApiKey(e.target.value)}
-                        onKeyDown={(e) => e.stopPropagation()}
-                        onTouchStart={(e) => e.stopPropagation()}
-                        placeholder={
-                          inferEngineFromName(newProviderName, newProviderEngine) === 'lara'
-                            ? t('paste_access_key_id_or')
-                            : t('paste_api_key_here')
-                        }
-                        required
-                        className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
-                      />
-                    </div>
+                          : t('translator_api_key')
+                      }
+                      value={newApiKey}
+                      onChange={setNewApiKey}
+                      placeholder={
+                        inferEngineFromName(newProviderName, newProviderEngine) === 'lara'
+                          ? t('paste_access_key_id_or')
+                          : t('paste_api_key_here')
+                      }
+                      required
+                    />
 
                     {/* Optional Lara Access Key Secret Input when Lara Translate is selected */}
                     {inferEngineFromName(newProviderName, newProviderEngine) === 'lara' && (
-                      <div className="flex flex-col gap-1.5">
-                        <label data-i18n
-                          htmlFor="provider-api-secret-input"
-                          className="text-[11px] font-semibold text-slate-700 dark:text-slate-300"
-                        >
-                          {t('lara_access_key_secret')}
-                        </label>
-                        <input
-                          id="provider-api-secret-input"
-                          type="text"
-                          autoComplete="off"
-                          value={newApiSecret}
-                          onChange={(e) => setNewApiSecret(e.target.value)}
-                          onKeyDown={(e) => e.stopPropagation()}
-                          onTouchStart={(e) => e.stopPropagation()}
-                          placeholder={
-                            t('paste_access_key_secret_optional')
-                          }
-                          className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
-                        />
-                      </div>
+                      <SecretField
+                        id="provider-api-secret-input"
+                        label={t('lara_access_key_secret')}
+                        value={newApiSecret}
+                        onChange={setNewApiSecret}
+                        placeholder={t('paste_access_key_secret_optional')}
+                      />
                     )}
 
                     {/* Where the key is kept; the user should restrict it in the provider's console */}
