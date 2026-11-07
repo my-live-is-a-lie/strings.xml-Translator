@@ -89,9 +89,15 @@ export function syncTargetStructureWithSource(source: string, target: string): s
     res = res.replace(/(?<!\\)\\n/g, '\\\\n');
   }
 
-  // 2. If source uses multiline real-newline + \n (i.e. "\n\\n" in raw XML, such as import_youtube_instructions,
-  //    remove_watched_popup_warning, feed_use_dedicated_fetch_method_help_text_new, no_appropriate_file_manager_message)
-  if (/\r?\n\\n/.test(source)) {
+  // 2a. Every `\n` of the source sits right after a real line break in the raw XML (a formatting habit):
+  //     write the translation the same way, one real line break before each `\n`.
+  const tokensOnlyAfterRealBreak =
+    /(?<!\\)\\n/.test(source.replace(/\r?\n\\n/g, '')) === false && /\r?\n\\n/.test(source);
+  if (tokensOnlyAfterRealBreak) {
+    res = res.replace(/\r?\n(?=\\n)/g, '').replace(/(?<!\\)\\n/g, '\n\\n');
+  } else if (/\r?\n\\n/.test(source)) {
+    // 2b. Mixed style: legacy repair below (remove_watched_popup_warning, no_appropriate_file_manager_message...)
+
     // First normalize any previously doubled \n\n\n\n or \n\n back to the multiline "\n\\n" pattern
     if (!/\r?\n\\n/.test(res)) {
       res = res.replace(/\\n\\n\\n\\n/g, '\n\\n\n\\n');

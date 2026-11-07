@@ -15,7 +15,8 @@ import { fixItemSyntax, FixNote } from '../utils/syntaxFix';
 import { debugIgnored } from '../utils/debug';
 import { autoCloseOnDoubleSpace } from '../utils/autoCloseBracket';
 import { usePredictiveWords, PredictField } from '../hooks/usePredictiveWords';
-import { getItemQaIssues, QaIssue } from '../utils/placeholderCheck';
+import { getItemQaIssues, getLineBreakIssues, QaIssue } from '../utils/placeholderCheck';
+import { toEditorItem, toStoredItem, toStoredText, normalizeTypedBreaks } from '../utils/newlines';
 import { getStoredItem, setStoredItem, copyTextToClipboard, readTextFromClipboard } from '../utils/storage';
 import { useT } from '../i18n/i18n';
 
@@ -124,7 +125,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   const [copiedSource, setCopiedSource] = useState(false);
   const [copiedTarget, setCopiedTarget] = useState(false);
   const [showSavedFeedback, setShowSavedFeedback] = useState(false);
-  const [saveGuard, setSaveGuard] = useState<{ notes: FixNote[]; remaining: QaIssue[]; empty?: boolean } | null>(null);
+  const [saveGuard, setSaveGuard] = useState<{ notes: FixNote[]; remaining: QaIssue[]; empty?: boolean; hard?: boolean; itemId?: string } | null>(null);
   const ackedIssuesRef = useRef('');
 
   // Suggestion loading state
@@ -138,7 +139,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     future: ResourceItem[];
   }>(() => ({
     baseItem: item,
-    draftItem: item,
+    draftItem: toEditorItem(item),
     past: [],
     future: [],
   }));
@@ -148,7 +149,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   if (draftState.baseItem !== item) {
     currentDraftState = {
       baseItem: item,
-      draftItem: item,
+      draftItem: toEditorItem(item),
       past: [],
       future: [],
     };
@@ -160,8 +161,10 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   const draftFuture = currentDraftState.future;
 
   const updateDraftItem = React.useCallback(
-    (updatedItem: ResourceItem, options?: { undoDeletesText?: boolean }) => {
+    (incomingItem: ResourceItem, options?: { undoDeletesText?: boolean }) => {
       const now = Date.now();
+      // the editor works with real line breaks: any `\n` that arrives (suggestion, paste, reset) becomes one
+      const updatedItem = toEditorItem(incomingItem, false);
       setDraftState((curr) => {
         const oldItem = curr.draftItem;
         if (!options?.undoDeletesText && JSON.stringify(oldItem) === JSON.stringify(updatedItem)) {
@@ -269,7 +272,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       lastDraftEditRef.current = { timestamp: 0 };
       setDraftState({
         baseItem: item,
-        draftItem: item,
+        draftItem: toEditorItem(item),
         past: [],
         future: [],
       });
@@ -334,6 +337,16 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
 
   // Typing a second space after an unclosed bracket closes the bracket (keeps the caret after it)
   const applyAutoClose = (el: HTMLTextAreaElement, prev: string, key: string, apply: (val: string) => void) => {
+    // a `\n` typed by hand turns into a real line break right away (the caret stays where it was)
+    const typed = normalizeTypedBreaks(el.value, el.selectionStart ?? el.value.length);
+    if (typed.text !== el.value) {
+      el.value = typed.text;
+      try {
+        el.setSelectionRange(typed.caret, typed.caret);
+      } catch (err) {
+        debugIgnored('TranslationEditor.typedBreak', err);
+      }
+    }
     const next = el.value;
     // Space accepts a word completion, Backspace rejects it
     const predicted = predict.handleChange(key, prev, next);
@@ -699,10 +712,40 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     }
 
     const tokenRegex = /(%(?:\d+\$)?[+# 0,-]*\d*(?:\.\d+)?[bcdefgopsx%]|\\\\[nt]|\\[nt]|\{[a-zA-Z0-9_-]+\}|<\/?[a-zA-Z][^>]*>)/gi;
-    const parts = text.split(tokenRegex);
+    // a real line break right before a `\n` in the raw XML is only formatting
+    const parts = text.replace(/\r?\n(?=\\n)/g, '').split(tokenRegex);
 
     return parts.map((part, idx) => {
       if (!part) return null;
+      if (part === '\\n') {
+        // a line break: shown as the ↵ mark followed by the break itself (like Weblate); tapping it adds one at the caret
+        return (
+          <React.Fragment key={idx}>
+            <span
+              role="button"
+              tabIndex={0}
+              dir="ltr"
+              title={t('tap_to_insert_at_cursor')}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.stopPropagation();
+                insertAtCursor('\n', targetField);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  insertAtCursor('\n', targetField);
+                }
+              }}
+              className="inline-block mx-[1px] px-[3px] rounded-[2px] text-[#9aa4b2] dark:text-slate-300 cursor-pointer select-none leading-tight align-baseline"
+              style={{ outline: '1px dotted #FF1E1E', outlineOffset: '0px', backgroundColor: 'rgba(239, 68, 68, 0.12)' }}
+            >
+              ↵
+            </span>
+            {'\n'}
+          </React.Fragment>
+        );
+      }
       if (tokenRegex.test(part)) {
         tokenRegex.lastIndex = 0;
         return (
@@ -766,7 +809,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       textToCopy = found ? found.target : currentTargetText;
     }
 
-    void copyTextToClipboard(textToCopy);
+    void copyTextToClipboard(toStoredText(textToCopy));
     setCopiedTarget(true);
     setTimeout(() => setCopiedTarget(false), 2000);
   };
@@ -955,7 +998,9 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   // Toggle "Needs editing / Needs review" (تحتاج إلى تعديل)
   // Build final ResourceItem to save when user clicks Save & Continue or Save & Stay
   const buildSavedItemFromDraft = React.useCallback(
-    (currentDraft: ResourceItem): ResourceItem => {
+    (draftToSave: ResourceItem): ResourceItem => {
+      // the stored text writes every line break as `\n`
+      const currentDraft = toStoredItem(draftToSave);
       if (currentDraft.type === 'string') {
         const isNowEmpty = !currentDraft.target.trim();
         return {
@@ -1014,14 +1059,23 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     return true;
   }, [isNothingTyped]);
 
+  // The translation must have exactly as many line breaks as the source: otherwise it cannot be saved at all
+  const blockIfLineBreaksDiffer = React.useCallback((): boolean => {
+    const issues = getLineBreakIssues(toStoredItem(draftItem));
+    if (issues.length === 0) return false;
+    setSaveGuard({ notes: [], remaining: issues, hard: true, itemId: item.id });
+    return true;
+  }, [draftItem, item.id]);
+
   // Before saving: repairs placeholders, HTML tags and final punctuation from the source's context.
   // When anything was changed (or unfixable errors remain) the save is blocked once with a message; saving again confirms.
   const blockIfNeedsFix = React.useCallback((): boolean => {
     if (!autoCorrect) return false; // the user turned auto-correction off: save exactly what was typed
+    const storedDraft = toStoredItem(draftItem);
     const base =
-      draftItem.type === 'plural'
-        ? ({ ...draftItem, items: (normalizePluralsForLanguage([draftItem], targetLang)[0] as PluralStringItem).items } as ResourceItem)
-        : draftItem;
+      storedDraft.type === 'plural'
+        ? ({ ...storedDraft, items: (normalizePluralsForLanguage([storedDraft], targetLang)[0] as PluralStringItem).items } as ResourceItem)
+        : storedDraft;
     const syn = fixItemSyntax(base);
     const pun = fixItemEndings(syn.item);
     const notes: FixNote[] = [...syn.notes];
@@ -1047,29 +1101,38 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     return false;
   }, [autoCorrect, draftItem, targetLang, updateDraftItem]);
 
+  // The line-break message follows the text as it is edited and disappears once the counts match
+  const liveBreakIssues = React.useMemo(
+    () => (saveGuard?.hard && saveGuard.itemId === item.id ? getLineBreakIssues(toStoredItem(draftItem)) : []),
+    [saveGuard, item.id, draftItem]
+  );
+  const liveSaveGuard = saveGuard?.hard ? (liveBreakIssues.length > 0 ? { ...saveGuard, remaining: liveBreakIssues } : null) : saveGuard;
+  // counts match again (or another string is open): the message is done
+  if (saveGuard?.hard && !liveSaveGuard) setSaveGuard(null);
+
   useEffect(() => {
-    if (!saveGuard) return;
+    if (!saveGuard || saveGuard.hard) return;
     const t = setTimeout(() => setSaveGuard(null), 12000);
     return () => clearTimeout(t);
   }, [saveGuard]);
 
   // Save without continuing (حفظ بدون متابعة / Save & Stay)
   const handleSaveWithoutContinuing = React.useCallback(() => {
-    if (blockIfNothingTyped() || blockIfNeedsFix()) return;
+    if (blockIfNothingTyped() || blockIfLineBreaksDiffer() || blockIfNeedsFix()) return;
     // Saving settles the string: the old source text (diff) is no longer shown
     const savedItem = { ...buildSavedItemFromDraft(draftItem), previousSources: undefined };
     const undoDeletesText = savedItem.translationSource === 'ai' && item.status === 'untranslated';
     lastDraftEditRef.current = { timestamp: 0 };
     setDraftState({
       baseItem: savedItem,
-      draftItem: savedItem,
+      draftItem: toEditorItem(savedItem),
       past: [],
       future: [],
     });
     onUpdateTranslation(savedItem, undoDeletesText ? { undoDeletesText: true } : undefined);
     setShowSavedFeedback(true);
     setTimeout(() => setShowSavedFeedback(false), 2000);
-  }, [blockIfNothingTyped, blockIfNeedsFix, buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation]);
+  }, [blockIfNothingTyped, blockIfLineBreaksDiffer, blockIfNeedsFix, buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation]);
 
   // Save and continue (حفظ ومتابعة / Save & Continue)
   const handleSaveAndContinue = React.useCallback(() => {
@@ -1077,20 +1140,20 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       onNavigateNext(); // nothing typed: nothing is saved, just continue
       return;
     }
-    if (blockIfNeedsFix()) return;
+    if (blockIfLineBreaksDiffer() || blockIfNeedsFix()) return;
     // Saving settles the string: the old source text (diff) is no longer shown
     const savedItem = { ...buildSavedItemFromDraft(draftItem), previousSources: undefined };
     const undoDeletesText = savedItem.translationSource === 'ai' && item.status === 'untranslated';
     lastDraftEditRef.current = { timestamp: 0 };
     setDraftState({
       baseItem: savedItem,
-      draftItem: savedItem,
+      draftItem: toEditorItem(savedItem),
       past: [],
       future: [],
     });
     onUpdateTranslation(savedItem, undoDeletesText ? { undoDeletesText: true } : undefined);
     onNavigateNext();
-  }, [isNothingTyped, blockIfNeedsFix, buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation, onNavigateNext]);
+  }, [isNothingTyped, blockIfLineBreaksDiffer, blockIfNeedsFix, buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation, onNavigateNext]);
 
   // Editor keyboard shortcuts for Undo/Redo and Ctrl+Enter (Save & Continue)
   useEffect(() => {
@@ -1444,7 +1507,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                 </button>
 
                 {/* English source text with interactive Android syntax highlights */}
-                <span dir="auto" data-src-text data-src-raw={sourceText} className="flex-1 min-w-0 text-xs sm:text-sm font-normal text-slate-800 dark:text-slate-100 select-text break-words leading-relaxed">
+                <span dir="auto" data-src-text data-src-raw={sourceText} className="flex-1 min-w-0 text-xs sm:text-sm font-normal text-slate-800 dark:text-slate-100 select-text break-words whitespace-pre-line leading-relaxed">
                   {renderSourceWithSyntaxHighlights(sourceText)}
                 </span>
               </div>
@@ -1877,7 +1940,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
           </div>
 
           {slot('r2', 'kb-r2 rounded-2xl overflow-hidden bg-white dark:bg-[#151922] border border-slate-200/80 dark:border-transparent', <>
-          {saveGuard && (autoCorrect || saveGuard.empty) && (
+          {liveSaveGuard && (autoCorrect || liveSaveGuard.empty || liveSaveGuard.hard) && (
             <div
               role="alert"
               className="mx-3 sm:mx-4 mb-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-200 space-y-1"
@@ -1885,23 +1948,25 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               <div className="flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                 <span className="font-semibold">
-                  {saveGuard.empty
+                  {liveSaveGuard.empty
                     ? t('nothing_saved_no_translation_has')
-                    : saveGuard.notes.length > 0
+                    : liveSaveGuard.hard
+                    ? t('not_saved_line_breaks_differ')
+                    : liveSaveGuard.notes.length > 0
                     ? t('not_saved_the_translation_was')
                     : t('not_saved_some_errors_could')}
                 </span>
               </div>
-              {saveGuard.notes.length > 0 && (
+              {liveSaveGuard.notes.length > 0 && (
                 <ul className="list-disc ps-8 space-y-0.5">
-                  {saveGuard.notes.map((n, i) => (
+                  {liveSaveGuard.notes.map((n, i) => (
                     <li key={i} dir="auto">{isAr ? n.ar : n.en}</li>
                   ))}
                 </ul>
               )}
-              {saveGuard.remaining.length > 0 && (
+              {liveSaveGuard.remaining.length > 0 && (
                 <ul className="list-disc ps-8 space-y-0.5 text-rose-700 dark:text-rose-300">
-                  {saveGuard.remaining.map((i) => (
+                  {liveSaveGuard.remaining.map((i) => (
                     <li key={i.id} dir="auto">{isAr ? i.messageAr : i.messageEn}</li>
                   ))}
                 </ul>

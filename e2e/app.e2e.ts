@@ -449,3 +449,44 @@ test('a long source gets a short window that follows the translation; short text
   await expect.poll(() => src.evaluate((el) => el.style.maxHeight), { timeout: 4000 }).toBe('');
   expect(await box.evaluate((el) => (el as HTMLElement).style.maxHeight)).toBe('');
 });
+
+test('line breaks show as ↵, Enter writes them, and a different count cannot be saved', async ({ page }) => {
+  const xml = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="two_breaks">This video is age restricted.\\n\\nTurn on it in the settings.</string>\n</resources>`;
+  await page.goto('/');
+  await page.setViewportSize({ width: 390, height: 800 });
+  await page.click('#header-right-drawer-btn');
+  await page.click('#drawer-import-btn');
+  await page.getByRole('button', { name: /لصق نص XML|Paste XML/ }).click();
+  await page.locator('textarea').last().fill(xml);
+  await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
+  const box = page.locator('textarea#weblate-translation-input');
+  const guard = page.locator('[role=alert]');
+  await expect(box).toBeVisible();
+
+  // the source shows each \n as a ↵ mark followed by a real break (no \n text)
+  const source = page.locator('[data-src-text]');
+  expect(await source.innerText()).toBe('This video is age restricted.↵\n↵\nTurn on it in the settings.');
+
+  // no breaks at all: refused, 2 missing
+  await box.fill('تم تقييد هذا الفيديو. شغّله من الإعدادات.');
+  await page.click('#weblate-save-stay-btn');
+  await expect(guard).toContainText('ينقص سطران جديدان');
+  // one break: 1 missing, and the message follows the text while typing
+  await box.fill('تم تقييد هذا الفيديو.\nشغّله من الإعدادات.');
+  await expect(guard).toContainText('ينقص سطر جديد واحد');
+  // Enter once more and a hand-typed \n: now there are 3, one too many
+  await box.press('Control+End');
+  await box.press('Enter');
+  await box.pressSequentially('\\n');
+  expect(await box.inputValue()).toBe('تم تقييد هذا الفيديو.\nشغّله من الإعدادات.\n\n');
+  await expect(guard).toHaveCount(0); // it went away while the count matched (2)...
+  await page.click('#weblate-save-stay-btn');
+  await expect(guard).toContainText('يزيد سطر جديد واحد'); // ...and saving with 3 is refused again
+
+  // exactly two breaks: the message goes away and saving works
+  await box.fill('تم تقييد هذا الفيديو.\n\nشغّله من الإعدادات.');
+  await expect(guard).toHaveCount(0);
+  await page.click('#weblate-save-stay-btn');
+  await expect(guard).toHaveCount(0);
+  await expect(page.getByText(/100%|\(1\/1\)/).first()).toBeVisible();
+});

@@ -1,4 +1,5 @@
 import { ResourceItem } from '../types';
+import { countLineBreaks } from './newlines';
 
 /**
  * Extracts Android string format specifiers and HTML tags
@@ -312,7 +313,33 @@ function validateSourceTargetPair(
     });
   }
 
-  // 3. Multiple consecutive spaces check (مسافات متعددة متتالية)
+  // 3. Line breaks (\n): the translation must have exactly as many as the source
+  const srcBreaks = countLineBreaks(source);
+  const tgtBreaks = countLineBreaks(target);
+  if (srcBreaks !== tgtBreaks) {
+    const diff = srcBreaks - tgtBreaks;
+    const n = Math.abs(diff);
+    const arBreaks = n === 1 ? 'سطر جديد واحد' : n === 2 ? 'سطران جديدان' : n <= 10 ? `${n} أسطر جديدة` : `${n} سطرًا جديدًا`;
+    issues.push({
+      id: `${itemId}_${subKey || 'main'}_linebreaks`,
+      itemId,
+      itemName,
+      subKey,
+      category: 'formatting',
+      severity: 'error',
+      messageEn:
+        diff > 0
+          ? `${prefix}${n} line break${n > 1 ? 's' : ''} missing (the source has ${srcBreaks}, the translation has ${tgtBreaks})`
+          : `${prefix}${n} extra line break${n > 1 ? 's' : ''} (the source has ${srcBreaks}, the translation has ${tgtBreaks})`,
+      messageAr:
+        diff > 0
+          ? `${prefix}ينقص ${arBreaks} (الأصل فيه ${srcBreaks} والترجمة فيها ${tgtBreaks})`
+          : `${prefix}يزيد ${arBreaks} عن الأصل (الأصل فيه ${srcBreaks} والترجمة فيها ${tgtBreaks})`,
+      tokens: ['\\n'],
+    });
+  }
+
+  // 4. Multiple consecutive spaces check (مسافات متعددة متتالية)
   if (/ {2,}/.test(target)) {
     issues.push({
       id: `${itemId}_${subKey || 'main'}_multiple_spaces`,
@@ -363,6 +390,11 @@ export function getItemQaIssues(item: ResourceItem): QaIssue[] {
     return all;
   }
   return [];
+}
+
+/** Only the line-break errors of an item: a translation with a different number of line breaks cannot be saved. */
+export function getLineBreakIssues(item: ResourceItem): QaIssue[] {
+  return getItemQaIssues(item).filter((i) => i.id.endsWith('_linebreaks'));
 }
 
 const itemQaCache = new Map<string, ItemQaResult | null>();

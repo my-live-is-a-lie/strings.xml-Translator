@@ -9,11 +9,44 @@ import React from 'react';
 export function renderContentWithWhitespaceIndicators(text: string) {
   if (!text) return null;
 
-  // Split text by 2 or more consecutive spaces
-  const parts = text.split(/( {2,})/g);
+  // Split text by 2 or more consecutive spaces and by line breaks
+  const parts = text.split(/( {2,}|\r?\n)/g);
 
   return parts.map((part, idx) => {
     if (!part) return null;
+
+    if (part === '\n' || part === '\r\n') {
+      // Line break: a ↵ mark at the end of the line, like Weblate. It takes no width (so the text underneath never
+      // shifts), then the break itself is kept so the lines wrap exactly as in the textarea.
+      return (
+        <React.Fragment key={idx}>
+          <span
+            aria-hidden="true"
+            className="relative inline-block select-none align-baseline"
+            style={{ width: 0, lineHeight: 'inherit' }}
+            title="Line break (\n)"
+          >
+            {/* a zero-width space gives the wrapper the height of a text line, so the mark sits on that line */}
+            {'\u200b'}
+            <span
+              className="absolute top-0 whitespace-pre text-center"
+              style={{
+                insetInlineStart: 0,
+                padding: '0 3px',
+                lineHeight: 'inherit',
+                color: '#9aa4b2',
+                outline: '1px dotted #FF1E1E',
+                backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                borderRadius: '2px',
+              }}
+            >
+              ↵
+            </span>
+          </span>
+          <span className="opacity-0 select-none whitespace-pre-wrap">{'\n'}</span>
+        </React.Fragment>
+      );
+    }
 
     if (/^ {2,}$/.test(part)) {
       const spaceCount = part.length;
