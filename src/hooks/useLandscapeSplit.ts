@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getStoredItem, setStoredItem } from '../utils/storage';
+import { sourceRatio } from '../utils/sourceSync';
 
 /** A phone held sideways: wider than tall and short. Tablets / desktops (taller viewports) keep the normal layout. */
 const MAX_LANDSCAPE_HEIGHT = 540;
@@ -195,4 +196,139 @@ export function useKeyboardCollapse(enabled: boolean): boolean {
     };
   }, [enabled]);
   return enabled && collapsed;
+}
+
+/**
+ * Portrait phones: when, even with the top area away, the source text or the translation box is still covered,
+ * both get a short scrollable window (the source up to 6 lines, the box what is left, at least 3-4 lines) so
+ * that the source and the line being typed are visible together above the keyboard. The source window follows
+ * the caret (see sourceRatio); scrolling it by hand pauses that until the next keystroke. When everything fits
+ * (tablets, desktops, short texts) nothing is limited. Works on the DOM directly: no re-render per keystroke.
+ */
+export function useSourceWindow(enabled: boolean, topAreaAway: boolean): void {
+  useEffect(() => {
+    if (!enabled) return;
+    let timer: number | undefined;
+    let syncTimer: number | undefined;
+    let paused = false;
+
+    const parts = () => {
+      const scroller = document.querySelector<HTMLElement>('[data-editor-scroll]');
+      const span = scroller?.querySelector<HTMLElement>('[data-src-text]') ?? null;
+      const el = document.activeElement as HTMLElement | null;
+      const ta = el && el.tagName === 'TEXTAREA' && scroller?.contains(el) ? (el as HTMLTextAreaElement) : null;
+      return { scroller, span, ta };
+    };
+    const clear = (span: HTMLElement | null, ta: HTMLElement | null) => {
+      for (const n of [span, ta]) {
+        if (!n) continue;
+        n.style.maxHeight = '';
+        n.style.overflowY = '';
+        n.style.scrollbarWidth = '';
+      }
+      if (span) delete span.dataset.win;
+    };
+    const limit = (n: HTMLElement, max: number) => {
+      n.style.maxHeight = `${Math.round(max)}px`;
+      n.style.overflowY = 'auto';
+      n.style.scrollbarWidth = 'none';
+    };
+    const lineHeight = (n: HTMLElement, fallback: number) => parseFloat(getComputedStyle(n).lineHeight) || fallback;
+
+    const sync = () => {
+      const { span, ta } = parts();
+      if (!span || !ta || span.dataset.win !== '1' || paused) return;
+      const ratio = sourceRatio(ta.value, ta.selectionStart ?? ta.value.length, span.dataset.srcRaw ?? span.textContent ?? '');
+      const top = Math.max(0, ratio * span.scrollHeight - span.clientHeight / 2);
+      span.scrollTo({ top, behavior: 'smooth' });
+    };
+    const scheduleSync = () => {
+      window.clearTimeout(syncTimer);
+      syncTimer = window.setTimeout(sync, 80);
+    };
+
+    const evaluate = () => {
+      const { scroller, span, ta } = parts();
+      if (!scroller || !span) return;
+      clear(span, ta);
+      if (!ta) return;
+      const area = scroller.getBoundingClientRect();
+      const vv = window.visualViewport;
+      const top = area.top;
+      const bottom = Math.min(area.bottom, vv ? vv.offsetTop + vv.height : window.innerHeight);
+      const covered = (r: DOMRect) => r.top < top - 2 || r.bottom > bottom + 2;
+      const srcBox = scroller.querySelector<HTMLElement>('.kb-src') ?? span;
+      if (!covered(srcBox.getBoundingClientRect()) && !covered(ta.getBoundingClientRect())) return;
+
+      const srcLH = lineHeight(span, 20);
+      const cs = getComputedStyle(ta);
+      const taLH = lineHeight(ta, 22);
+      const taPad = ['paddingTop', 'paddingBottom', 'borderTopWidth', 'borderBottomWidth'].reduce(
+        (sum, k) => sum + (parseFloat(cs[k as 'paddingTop']) || 0),
+        0
+      );
+      const room = bottom - top - (scroller.scrollHeight - span.offsetHeight - ta.offsetHeight) - 6;
+      const taMin = 4 * taLH + taPad;
+      const srcLines = Math.min(6, Math.max(3, Math.floor((room - taMin) / srcLH)));
+      const srcNat = span.scrollHeight;
+      let srcUsed = srcNat;
+      if (srcNat > srcLines * srcLH + 2) {
+        srcUsed = srcLines * srcLH;
+        limit(span, srcUsed);
+        span.dataset.win = '1';
+      }
+      // whole lines only, so the last visible line is never cut in half
+      const taLines = Math.max(3, Math.floor((room - srcUsed - taPad) / taLH));
+      const taMax = taLines * taLH + taPad;
+      if (ta.scrollHeight > taMax + 2) {
+        limit(ta, taMax);
+        // typing at the end of the text: keep the caret line inside the capped box
+        if ((ta.selectionStart ?? 0) >= ta.value.length) ta.scrollTop = ta.scrollHeight;
+      }
+
+      // keep the line being typed above the keyboard, then point the source at it
+      scroller.scrollTop = 0;
+      const r = ta.getBoundingClientRect();
+      if (r.bottom > bottom) scroller.scrollTop += r.bottom - bottom + 6;
+      sync();
+    };
+    const schedule = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(evaluate, 260);
+    };
+
+    const onInput = () => {
+      paused = false;
+      schedule();
+      scheduleSync();
+    };
+    const onHandScroll = (e: Event) => {
+      if ((e.target as Element | null)?.closest?.('[data-src-text]')) paused = true;
+    };
+    document.addEventListener('focusin', schedule);
+    document.addEventListener('focusout', schedule);
+    document.addEventListener('input', onInput);
+    document.addEventListener('keyup', scheduleSync);
+    document.addEventListener('selectionchange', scheduleSync);
+    document.addEventListener('touchstart', onHandScroll, { passive: true });
+    document.addEventListener('wheel', onHandScroll, { passive: true });
+    window.addEventListener('resize', schedule);
+    window.visualViewport?.addEventListener('resize', schedule);
+    schedule();
+    return () => {
+      window.clearTimeout(timer);
+      window.clearTimeout(syncTimer);
+      document.removeEventListener('focusin', schedule);
+      document.removeEventListener('focusout', schedule);
+      document.removeEventListener('input', onInput);
+      document.removeEventListener('keyup', scheduleSync);
+      document.removeEventListener('selectionchange', scheduleSync);
+      document.removeEventListener('touchstart', onHandScroll);
+      document.removeEventListener('wheel', onHandScroll);
+      window.removeEventListener('resize', schedule);
+      window.visualViewport?.removeEventListener('resize', schedule);
+      const { span, ta } = parts();
+      clear(span, ta);
+    };
+  }, [enabled, topAreaAway]);
 }

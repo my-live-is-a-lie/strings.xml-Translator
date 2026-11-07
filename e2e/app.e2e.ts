@@ -343,3 +343,59 @@ test('the top area slides away only when the keyboard leaves too little room, an
   await page.setViewportSize({ width: 390, height: 800 });
   await expect(top).toBeVisible({ timeout: 3000 });
 });
+
+test('a long source gets a short window that follows the translation; short texts and big screens are untouched', async ({ page }) => {
+  const para = (n: number) => `Paragraph ${n} says something fairly long so that it wraps across a few lines on a phone screen.`;
+  const source = [1, 2, 3, 4, 5, 6].map(para).join('\\n\\n');
+  const xml = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="long_one">${source}</string>\n</resources>`;
+  await page.goto('/');
+  await page.setViewportSize({ width: 390, height: 800 });
+  await page.click('#header-right-drawer-btn');
+  await page.click('#drawer-import-btn');
+  await page.getByRole('button', { name: /لصق نص XML|Paste XML/ }).click();
+  await page.locator('textarea').last().fill(xml);
+  await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
+  const src = page.locator('[data-src-text]');
+  const box = page.locator('#weblate-translation-input');
+  await expect(src).toBeVisible();
+
+  // a big screen: nothing is limited, even while typing
+  await box.focus();
+  await page.waitForTimeout(600);
+  expect(await src.evaluate((el) => el.style.maxHeight)).toBe('');
+  await box.blur();
+
+  // keyboard-sized viewport: the source is limited to a window and stays fully inside the screen
+  await page.setViewportSize({ width: 390, height: 430 });
+  await box.focus();
+  await expect.poll(() => src.evaluate((el) => el.style.maxHeight), { timeout: 4000 }).not.toBe('');
+  const inScreen = async (sel: string) =>
+    page.evaluate((s) => {
+      const r = document.querySelector(s)!.getBoundingClientRect();
+      return r.top >= 0 && r.bottom <= window.innerHeight + 1;
+    }, sel);
+  expect(await inScreen('[data-src-text]')).toBe(true);
+  expect(await inScreen('#weblate-translation-input')).toBe(true);
+  const lines = await src.evaluate((el) => el.clientHeight / parseFloat(getComputedStyle(el).lineHeight));
+  expect(lines).toBeGreaterThanOrEqual(2.9);
+  expect(lines).toBeLessThanOrEqual(6.1);
+
+  // typing paragraph by paragraph moves the window down the source
+  const at = () => src.evaluate((el) => el.scrollTop);
+  await page.waitForTimeout(500);
+  const start = await at();
+  const typed = [1, 2, 3, 4, 5, 6].map((n) => `الفقرة ${n} تقول شيئًا طويلًا إلى حد ما حتى تلتف عبر عدة أسطر.`).join('\\n\\n');
+  await box.pressSequentially(typed, { delay: 2 });
+  await expect.poll(at, { timeout: 4000 }).toBeGreaterThan(start + 20);
+
+  // scrolling the source by hand is respected until the next keystroke
+  await src.evaluate((el) => (el.scrollTop = 0));
+  await src.dispatchEvent('touchstart');
+  await page.waitForTimeout(400);
+  expect(await at()).toBeLessThan(5);
+
+  // closing the keyboard removes every limit
+  await box.blur();
+  await page.setViewportSize({ width: 390, height: 800 });
+  await expect.poll(() => src.evaluate((el) => el.style.maxHeight), { timeout: 4000 }).toBe('');
+});

@@ -1444,7 +1444,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                 </button>
 
                 {/* English source text with interactive Android syntax highlights */}
-                <span dir="auto" className="flex-1 text-xs sm:text-sm font-normal text-slate-800 dark:text-slate-100 select-text break-words leading-relaxed">
+                <span dir="auto" data-src-text data-src-raw={sourceText} className="flex-1 min-w-0 text-xs sm:text-sm font-normal text-slate-800 dark:text-slate-100 select-text break-words leading-relaxed">
                   {renderSourceWithSyntaxHighlights(sourceText)}
                 </span>
               </div>

@@ -26,7 +26,7 @@ import { ExportModal } from './components/ExportModal';
 import { FilesModal } from './components/FilesModal';
 import { QuickFilterButton, QuickFilterBar } from './components/QuickFilters';
 import { SplitDivider } from './components/SplitDivider';
-import { useLandscapePhone, useHideStatusBar, useSplitState, useTextFieldFocused, useKeyboardCollapse } from './hooks/useLandscapeSplit';
+import { useLandscapePhone, useHideStatusBar, useSplitState, useTextFieldFocused, useKeyboardCollapse, useSourceWindow } from './hooks/useLandscapeSplit';
 import { getPredictiveWordsEnabled, setPredictiveWordsEnabled } from './utils/wordPredictor';
 import { getAutoCorrectEnabled, setAutoCorrectEnabled } from './utils/autoCorrectSetting';
 import { applyQuickSnapshot, resetQuickSnapshot, showOnlyNewStrings, useQuickFilters } from './utils/quickFilters';
@@ -824,6 +824,7 @@ export default function App() {
   const splitActive = landscape && activeView === 'editor';
   // portrait: the top area slides away while typing if the keyboard leaves too little room for the text
   const kbCollapsed = useKeyboardCollapse(!splitActive && activeView === 'editor');
+  useSourceWindow(!splitActive && activeView === 'editor', kbCollapsed);
   const slideAway = (node: React.ReactNode) => (
     <div
       className="grid transition-[grid-template-rows] duration-200 ease-out"
