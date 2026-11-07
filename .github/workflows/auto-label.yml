@@ -1,0 +1,43 @@
+name: Auto-label issues
+
+# Labels every new issue by what it is about, from keywords in its title/body
+# (English + Arabic). Template labels still apply first; this only adds more.
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const text = `${context.payload.issue.title}\n${context.payload.issue.body || ''}`;
+            const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            // Single-word ASCII keywords match at a word start (so "build" never trips "ui");
+            // phrases and Arabic keywords match as substrings.
+            const hit = (k) =>
+              /^[a-z0-9]+$/.test(k)
+                ? new RegExp(`\\b${escape(k)}`, 'i').test(text)
+                : text.toLowerCase().includes(k.toLowerCase());
+            const rules = [
+              { label: 'bug', keywords: ['bug', 'crash', 'error', 'broken', 'fail', 'wrong', 'not working', 'does not work', "doesn't work", 'incorrect', 'خطأ', 'مشكلة', 'لا يعمل', 'يتعطل', 'عطل'] },
+              { label: 'enhancement', keywords: ['feature', 'improvement', 'enhance', 'suggestion', 'اقتراح', 'تحسين', 'ميزة'] },
+              { label: 'question', keywords: ['question', 'how to', 'how do', 'سؤال', 'كيف', 'استفسار'] },
+              { label: 'ui', keywords: ['ui', 'gui', 'interface', 'design', 'layout', 'button', 'screen', 'theme', 'dark mode', 'واجهة', 'تصميم', 'زر', 'شاشة', 'الوضع الليلي'] },
+              { label: 'documentation', keywords: ['doc', 'readme', 'guide', 'توثيق', 'دليل'] },
+            ];
+            const labels = rules
+              .filter(({ keywords }) => keywords.some(hit))
+              .map(({ label }) => label);
+            if (labels.length) {
+              await github.rest.issues.addLabels({
+                ...context.repo,
+                issue_number: context.payload.issue.number,
+                labels,
+              });
+            }
