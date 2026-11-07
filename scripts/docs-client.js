@@ -68,7 +68,7 @@
   } else rev.forEach(function (r) { r.classList.add('in'); });
 
   // ---------- lightbox ----------
-  var zoomables = $$('img[data-zoom]'), lb = $('#lb'), lbImg = $('#lb img'), lbCap = $('#lb .cap'), lbCnt = $('#lb .cnt'), idx = 0;
+  var zoomables = $$('img[data-zoom]'), lb = $('#lb'), lbImg = $('#lb img'), lbCap = $('#lb .cap'), lbCnt = $('#lb .cnt'), idx = 0, closeTimer;
   function show(i) {
     idx = (i + zoomables.length) % zoomables.length;
     var im = zoomables[idx], fig = im.closest('figure');
@@ -77,18 +77,100 @@
     lbCap.textContent = c ? c.textContent : im.alt;
     lbCnt.textContent = (idx + 1) + ' / ' + zoomables.length;
   }
-  function openLb(i) { show(i); lb.classList.add('open'); body.classList.add('lb-open'); $('#lb .x').focus(); }
-  function closeLb() { lb.classList.remove('open'); body.classList.remove('lb-open'); }
+  function resetDrag() { lb.classList.remove('drag'); lbImg.style.transform = ''; lb.style.removeProperty('--bd'); lb.style.removeProperty('--ui'); }
+  function openLb(i) {
+    clearTimeout(closeTimer); resetDrag(); show(i);
+    lb.classList.add('open'); body.classList.add('lb-open'); lb.focus();
+    void lb.offsetWidth; lb.classList.add('show');
+  }
+  function closeLb() {
+    lb.classList.remove('show'); body.classList.remove('lb-open');
+    clearTimeout(closeTimer);
+    closeTimer = setTimeout(function () { lb.classList.remove('open'); resetDrag(); }, 260);
+  }
   zoomables.forEach(function (im, i) { im.addEventListener('click', function () { openLb(i); }); });
   $('#lb .x').onclick = closeLb; $('#lb .p').onclick = function (e) { e.stopPropagation(); show(idx - 1); }; $('#lb .n').onclick = function (e) { e.stopPropagation(); show(idx + 1); };
   lb.addEventListener('click', function (e) { if (e.target === lb) closeLb(); });
+
+  // swipe up (or drag up with a mouse) to dismiss: the image follows the finger, the backdrop fades, then it flies off
+  var drag = null;
+  lb.addEventListener('pointerdown', function (e) {
+    if (e.target.closest('button') || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    drag = { id: e.pointerId, x: e.clientX, y: e.clientY, t: Date.now(), dy: 0, mode: '' };
+  });
+  lb.addEventListener('pointermove', function (e) {
+    if (!drag || e.pointerId !== drag.id) return;
+    var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (!drag.mode) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      drag.mode = dy < 0 && Math.abs(dy) > Math.abs(dx) ? 'up' : 'none';
+      if (drag.mode === 'up') { lb.classList.add('drag'); try { lb.setPointerCapture(e.pointerId); } catch (x) {} }
+    }
+    if (drag.mode !== 'up') return;
+    drag.dy = Math.min(0, dy);
+    var p = Math.min(1, -drag.dy / (innerHeight * 0.45));
+    lbImg.style.transform = 'translateY(' + drag.dy + 'px) scale(' + (1 - p * 0.1) + ')';
+    lb.style.setProperty('--bd', (0.88 * (1 - p)).toFixed(3));
+    lb.style.setProperty('--ui', Math.max(0, 1 - p * 1.6).toFixed(3));
+  });
+  function endDrag(e) {
+    if (!drag || e.pointerId !== drag.id) return;
+    var d = drag; drag = null;
+    if (d.mode !== 'up') return;
+    lb.classList.remove('drag');
+    var fast = -d.dy / Math.max(1, Date.now() - d.t) > 0.5;
+    if (e.type !== 'pointercancel' && (-d.dy > 90 || fast)) {
+      lbImg.style.transition = 'transform .28s cubic-bezier(.4,0,.8,.4)';
+      lbImg.style.transform = 'translateY(-' + Math.round(innerHeight * 0.9) + 'px) scale(.9)';
+      lb.style.setProperty('--bd', '0'); lb.style.setProperty('--ui', '0');
+      closeLb();
+      setTimeout(function () { lbImg.style.transition = ''; }, 320);
+    } else { lbImg.style.transform = ''; lb.style.removeProperty('--bd'); lb.style.removeProperty('--ui'); }
+  }
+  lb.addEventListener('pointerup', endDrag); lb.addEventListener('pointercancel', endDrag);
+
+  // ---------- hero strip: endless, slow, pauses 8 s after the reader touches it ----------
+  var strip = $('.shots');
+  if (strip) {
+    var originals = $$('img', strip), SPEED = 28, PAUSE = 8000;
+    // two extra copies so the strip can wrap in either direction without a visible jump
+    for (var c = 0; c < 2; c++) originals.forEach(function (im, i) {
+      var k = im.cloneNode(true); k.removeAttribute('data-zoom'); k.setAttribute('aria-hidden', 'true'); k.alt = '';
+      k.addEventListener('click', function () { openLb(zoomables.indexOf(im)); });
+      strip.appendChild(k);
+    });
+    var period = 0, pos = 0, last = 0, pausedUntil = 0, visible = true, reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var measure = function () { var k = strip.children[originals.length]; period = k ? k.offsetLeft - originals[0].offsetLeft : 0; };
+    var touchedNow = function () { pausedUntil = performance.now() + PAUSE; };
+    ['pointerdown', 'pointerup', 'touchstart', 'touchend', 'wheel', 'keydown'].forEach(function (n) { strip.addEventListener(n, touchedNow, { passive: true }); });
+    strip.addEventListener('scroll', function () {
+      if (!period) return;
+      // keep the reader inside the middle copy: wrapping by one period is invisible
+      if (strip.scrollLeft >= period * 2) strip.scrollLeft -= period;
+      else if (strip.scrollLeft < 1) strip.scrollLeft += period;
+      pos = strip.scrollLeft;
+    }, { passive: true });
+    if ('IntersectionObserver' in window) new IntersectionObserver(function (es) { visible = es[0].isIntersecting; }).observe(strip);
+    var tick = function (now) {
+      requestAnimationFrame(tick);
+      var dt = Math.min(64, now - (last || now)); last = now;
+      if (!period) { measure(); if (period) { pos = period; strip.scrollLeft = pos; } return; }
+      if (reduce || !visible || document.hidden || lb.classList.contains('open') || now < pausedUntil) { pos = strip.scrollLeft; return; }
+      pos += (SPEED * dt) / 1000;
+      if (pos >= period * 2) pos -= period;
+      strip.scrollLeft = pos;
+    };
+    addEventListener('resize', function () { var f = period ? strip.scrollLeft / period : 1; measure(); strip.scrollLeft = f * period; pos = strip.scrollLeft; });
+    addEventListener('load', function () { var f = period ? strip.scrollLeft / period : 1; measure(); strip.scrollLeft = f * period; pos = strip.scrollLeft; });
+    requestAnimationFrame(tick);
+  }
 
   // ---------- search with snippets ----------
   var q = $('#q'), results = $('#results');
   var index = [];
   var cur = { id: '', title: '' };
   $$('article h2, article h3, article p, article li, article td, .foot').forEach(function (el) {
-    if (el.closest('.demo,.pager,figcaption')) return;
+    if (el.closest('.demo,figcaption')) return;
     if (el.tagName === 'H2' || el.tagName === 'H3') { cur = { id: el.id, title: el.firstChild.textContent.replace(/^\d+\.\s*/, '') }; }
     var t = el.textContent.replace(/#$/, '').replace(/\s+/g, ' ').trim();
     if (t) index.push({ el: el, id: cur.id, title: cur.title, text: t, low: t.toLowerCase(), head: /^H/.test(el.tagName) });

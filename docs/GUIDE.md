@@ -35,7 +35,7 @@ Everything the app does, how to use it, and the details that are easy to miss.
 
 XML Translator is an editor for Android localization files. You load the app's `strings.xml` (the English or base file), pick a target language, and translate string by string. The app keeps the structure of the original file, protects placeholders and markup while you work, and exports a clean `strings.xml` (or a ZIP with one `values-xx` folder per language) that you drop straight into your Android project.
 
-It runs as a web app, as an installable PWA and as a native Android app. All of your work is stored on your own device.
+It is a native Android app, and all of your work is stored on your own device.
 
 ## 2. Quick start
 
@@ -190,7 +190,7 @@ Open **Translate Providers** in the settings drawer. Supported: **Gemini, OpenAI
 - Keys are **encrypted on your device** and sent only to the provider you chose. Restrict the key in the provider's console.
 - **LibreTranslate:** enter your server address (must start with `https`); the key is optional.
 - **Yandex:** a service-account API key works directly; with a personal-account IAM token (starts with `t1.`, valid for at most 12 hours) a folder ID is required.
-- In the Android app, key providers are called **directly from the device**; on the web they go through the app's server.
+- Key providers are called **directly from the device**.
 - The active provider is shown on the card. Edit or remove providers with the pencil and trash buttons.
 
 ![Translate Providers](img/providers.png "Translate Providers: add a key, verify it, pick the active engine. Scroll the screenshot or tap it to zoom.")
@@ -298,7 +298,6 @@ Open **Files** to see your projects with their progress and last-modified time.
 - Your files, translations, history and settings are **stored locally** on your device.
 - The app works **offline**: the glossary, editing, QA checks, import and export need no connection. Only machine translation and provider tests use the network.
 - Strings are sent only to the provider or AI service **you** choose. API keys are encrypted on the device and never included in the text you copy for an AI app.
-- Install the app from your browser as a **PWA** (on iPhone/iPad: *Share → Add to Home Screen*) to use it offline.
 
 ## 15. Keyboard shortcuts
 

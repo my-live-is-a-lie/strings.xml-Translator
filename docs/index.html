@@ -65,12 +65,10 @@ main{padding:36px clamp(20px,4vw,56px) 80px;min-width:0}
 .hero{display:grid;gap:18px;padding:34px;border:1px solid var(--line);border-radius:22px;background:radial-gradient(1200px 300px at 85% -10%,color-mix(in srgb,var(--brand) 22%,transparent),transparent),linear-gradient(135deg,color-mix(in srgb,var(--brand) 10%,var(--panel)),var(--panel));box-shadow:var(--shadow);margin-bottom:28px}
 .hero h1{margin:0;font-size:clamp(30px,4.4vw,44px);line-height:1.1;letter-spacing:-.025em}
 .hero h1 span{background:linear-gradient(90deg,var(--brand-ink),#22d3ee);-webkit-background-clip:text;background-clip:text;color:transparent}
-.hero p{margin:0;color:var(--muted);font-size:18px;max-width:60ch}
 .hero .row{display:flex;gap:10px;flex-wrap:wrap}
-.pills{display:flex;gap:8px;flex-wrap:wrap}
-.pills span{font-size:13px;font-weight:600;padding:5px 11px;border-radius:999px;border:1px solid var(--line);background:color-mix(in srgb,var(--panel) 80%,transparent);color:var(--muted)}
-.shots{display:flex;gap:14px;overflow:auto;padding:4px 2px 12px;scroll-snap-type:x mandatory;scrollbar-width:thin}
-.shots img{height:340px;width:auto;border-radius:16px;border:1px solid var(--line);box-shadow:var(--shadow);scroll-snap-align:start;flex:none;cursor:zoom-in;transition:transform .2s}
+.shots{display:flex;gap:14px;overflow-x:auto;overflow-y:hidden;padding:4px 2px 12px;scrollbar-width:none;-ms-overflow-style:none}
+.shots::-webkit-scrollbar{display:none}
+.shots img{height:340px;width:auto;border-radius:16px;border:1px solid var(--line);box-shadow:var(--shadow);flex:none;cursor:zoom-in;transition:transform .2s;-webkit-user-drag:none;user-select:none}
 .shots img:hover{transform:translateY(-3px)}
 
 /* feature gallery */
@@ -146,24 +144,25 @@ html.js .reveal:not(.in){opacity:0;transform:translateY(14px)}
 .demo-foot label{display:flex;gap:8px;align-items:center;cursor:pointer}
 .demo .status{min-height:1.4em;font-weight:600;color:var(--brand-ink)}
 
-/* pager */
-.pager{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:40px 0 0}
-.pager a{display:block;padding:14px 16px;border:1px solid var(--line);border-radius:14px;color:var(--text);font-weight:600;transition:border-color .15s,transform .15s}
-.pager a:hover{border-color:var(--brand);text-decoration:none;transform:translateY(-2px)}
-.pager small{display:block;color:var(--muted);font-weight:500;font-size:12.5px}
-.pager .next{text-align:end;grid-column:2}
-.pager .prev{grid-column:1}
 .foot{margin-top:64px;padding-top:20px;border-top:1px solid var(--line);color:var(--muted);font-size:14px}
 
 /* lightbox, toast, back to top */
-#lb{position:fixed;inset:0;z-index:80;display:none;flex-direction:column;align-items:center;justify-content:center;background:rgba(6,9,13,.88);backdrop-filter:blur(6px);padding:24px}
+#lb{position:fixed;inset:0;z-index:80;display:none;flex-direction:column;align-items:center;justify-content:center;background:rgba(6,9,13,var(--bd,.88));backdrop-filter:blur(6px);padding:24px;opacity:0;transition:opacity .22s ease;touch-action:none}
 #lb.open{display:flex}
-#lb img{max-width:min(94vw,1100px);max-height:80dvh;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.6);background:#0f1620;touch-action:pinch-zoom}
+#lb.show{opacity:1}
+#lb img{max-width:min(calc(100vw - 150px),1100px);max-height:80dvh;min-width:0;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.6);background:#0f1620;touch-action:pinch-zoom;transform:scale(.96);transition:transform .26s cubic-bezier(.2,.8,.2,1);-webkit-user-drag:none;user-select:none}
+#lb.show img{transform:none}
+#lb.drag,#lb.drag img{transition:none}
+#lb .cap,#lb .cnt,#lb button{opacity:var(--ui,1);transition:opacity .2s}
+#lb.drag .cap,#lb.drag .cnt,#lb.drag button{transition:none}
 #lb .cap{color:#dbe6ee;margin-top:14px;max-width:70ch;text-align:center;font-size:14.5px}
 #lb .cnt{color:#8fa1ae;font-size:12.5px;margin-top:4px}
-#lb button{position:absolute;border:0;background:rgba(255,255,255,.12);color:#fff;width:44px;height:44px;border-radius:50%;font-size:22px;cursor:pointer}
-#lb button:hover{background:rgba(255,255,255,.22)}
-#lb .x{top:16px;inset-inline-end:16px}#lb .p{inset-inline-start:16px;top:50%}#lb .n{inset-inline-end:16px;top:50%}
+#lb button{position:absolute;border:0;background:rgba(255,255,255,.14);color:#fff;width:44px;height:44px;border-radius:50%;font-size:22px;line-height:1;cursor:pointer;z-index:2}
+#lb button:hover{background:rgba(255,255,255,.26)}
+#lb .x{position:absolute;top:16px;right:16px}
+#lb:focus{outline:none}
+#lb .stage{display:flex;align-items:center;justify-content:center;gap:14px;max-width:100%}
+#lb .stage button{position:static;flex:none}
 #toast{position:fixed;left:50%;bottom:28px;transform:translate(-50%,20px);background:#0b0f14;color:#fff;padding:9px 16px;border-radius:999px;font-size:14px;opacity:0;pointer-events:none;transition:.25s;z-index:90}
 #toast.show{opacity:1;transform:translate(-50%,0)}
 #totop{position:fixed;inset-inline-end:20px;bottom:20px;width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--panel);color:var(--text);box-shadow:var(--shadow);cursor:pointer;opacity:0;pointer-events:none;transition:.2s;z-index:40}
@@ -172,7 +171,8 @@ html.js .reveal:not(.in){opacity:0;transform:translateY(14px)}
 @media (max-width:900px){.layout{grid-template-columns:1fr}.menu{display:inline-flex}
 .side{position:fixed;inset:64px auto auto 0;width:100%;height:calc(100dvh - 64px);z-index:25;background:var(--bg);transform:translateX(-102%);transition:transform .2s;border:0;max-width:340px;border-inline-end:1px solid var(--line)}
 body.nav-open .side{transform:none}.shots img{height:260px}.hero{padding:22px}.top .label,.brand span{display:none}
-.pager{grid-template-columns:1fr}.pager .next,.pager .prev{grid-column:1}.gal-h{flex-direction:column;gap:2px}.gal-h span{font-size:13px}.gallery{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.card .thumb{height:120px}.card .t{padding:10px 12px 12px}.card b{font-size:14.5px}.card .t span{font-size:12.5px}.card .t i{display:none}#lb .p,#lb .n{top:auto;bottom:16px}}
+.gal-h{flex-direction:column;gap:2px}.gal-h span{font-size:13px}.gallery{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.card .thumb{height:120px}.card .t{padding:10px 12px 12px}.card b{font-size:14.5px}.card .t span{font-size:12.5px}.card .t i{display:none}}
+@media (max-width:600px){#lb{padding:16px 6px}#lb .stage{gap:6px}#lb .stage button{width:34px;height:34px;font-size:19px}#lb img{max-width:calc(100vw - 96px)}}
 </style>
 </head>
 <body>
@@ -213,19 +213,17 @@ body.nav-open .side{transform:none}.shots img{height:260px}.hero{padding:22px}.t
   <main>
     <section class="hero">
       <h1>Translate <span>strings.xml</span><br />faster and safer</h1>
-      <p>Machine translation, built-in quality checks and smart typing helpers for Android localization — on the web, as a PWA and as a native Android app.</p>
-      <div class="pills"><span>Works offline</span><span>Your data stays on your device</span><span>30+ locales</span><span>Open source · GPLv3</span></div>
       <div class="row">
         <a class="btn primary" href="https://github.com/my-live-is-a-lie/strings.xml-translator/releases/latest" target="_blank" rel="noopener">Download the app</a>
         <a class="btn" href="#2-quick-start">Quick start</a>
         <a class="btn" href="https://github.com/my-live-is-a-lie/strings.xml-translator" target="_blank" rel="noopener">Source code</a>
       </div>
       <div class="shots">
-        <img src="screenshots/editor.jpg" alt="Translation editor" loading="lazy" data-zoom />
-        <img src="screenshots/strings-list.jpg" alt="Strings list with QA checks" loading="lazy" data-zoom />
-        <img src="screenshots/table.jpg" alt="Table view" loading="lazy" data-zoom />
-        <img src="screenshots/providers.png" alt="Translation providers" loading="lazy" data-zoom />
-        <img src="screenshots/multi-language-zip.jpg" alt="Multi-language ZIP" loading="lazy" data-zoom />
+        <img src="screenshots/editor.jpg" alt="Translation editor" data-zoom />
+        <img src="screenshots/strings-list.jpg" alt="Strings list with QA checks" data-zoom />
+        <img src="screenshots/table.jpg" alt="Table view" data-zoom />
+        <img src="screenshots/providers.png" alt="Translation providers" data-zoom />
+        <img src="screenshots/multi-language-zip.jpg" alt="Multi-language ZIP" data-zoom />
       </div>
     </section>
     <div class="gal-h"><h2>Features at a glance</h2><span>Tap a card to jump to its section</span></div>
@@ -246,8 +244,8 @@ body.nav-open .side{transform:none}.shots img{height:260px}.hero{padding:22px}.t
     <article id="content">
 <section class="sec"><h2 id="1-what-it-is" data-section>1. What it is<a class="anchor" href="#1-what-it-is" aria-label="Link to this section">#</a></h2>
 <p>XML Translator is an editor for Android localization files. You load the app&#39;s <code>strings.xml</code> (the English or base file), pick a target language, and translate string by string. The app keeps the structure of the original file, protects placeholders and markup while you work, and exports a clean <code>strings.xml</code> (or a ZIP with one <code>values-xx</code> folder per language) that you drop straight into your Android project.</p>
-<p>It runs as a web app, as an installable PWA and as a native Android app. All of your work is stored on your own device.</p>
-<nav class="pager" aria-label="Section navigation"><a class="next" href="#2-quick-start"><small>Next →</small>2. Quick start</a></nav></section>
+<p>It is a native Android app, and all of your work is stored on your own device.</p>
+</section>
 <section class="sec"><h2 id="2-quick-start" data-section>2. Quick start<a class="anchor" href="#2-quick-start" aria-label="Link to this section">#</a></h2>
 <ol>
 <li><strong>Import</strong> – open the import screen and choose your source <code>strings.xml</code> (usually <code>res/values/strings.xml</code>). Optionally add an <strong>existing translation</strong> for the target language, so you only translate what is missing.</li>
@@ -257,7 +255,7 @@ body.nav-open .side{transform:none}.shots img{height:260px}.hero{padding:22px}.t
 </ol>
 <p>Imported files are saved automatically as soon as you edit them, so you can close the app and continue later.</p>
 <div class="figs"><figure class="shot phone reveal"><div class="frame"><div class="scroller"><img src="screenshots/target-language.jpg" alt="Choosing the target language" width="1080" height="2195" loading="lazy" data-zoom /></div><span class="hint">Scroll ↕ · tap to zoom</span></div><figcaption>Step 2 — pick one of 30+ Android locales or type a custom code.</figcaption></figure></div>
-<nav class="pager" aria-label="Section navigation"><a class="prev" href="#1-what-it-is"><small>← Previous</small>1. What it is</a><a class="next" href="#3-finding-your-way-around"><small>Next →</small>3. Finding your way around</a></nav></section>
+</section>
 <section class="sec"><h2 id="3-finding-your-way-around" data-section>3. Finding your way around<a class="anchor" href="#3-finding-your-way-around" aria-label="Link to this section">#</a></h2>
 <div class="table-wrap"><table><thead><tr>
 <th>Area</th>
@@ -290,7 +288,7 @@ body.nav-open .side{transform:none}.shots img{height:260px}.hero{padding:22px}.t
 </tbody></table></div>
 <p>The strings list <strong>remembers where you left it</strong>: closing and reopening it returns to the same position.</p>
 <div class="figs"><figure class="shot phone reveal"><div class="frame"><div class="scroller"><img src="img/settings.png" alt="The settings drawer" width="570" height="1300" loading="lazy" data-zoom /></div><span class="hint">Scroll ↕ · tap to zoom</span></div><figcaption>The settings drawer: auto-correct, word prediction, auto translate, providers, themes and more.</figcaption></figure></div>
-<nav class="pager" aria-label="Section navigation"><a class="prev" href="#2-quick-start"><small>← Previous</small>2. Quick start</a><a class="next" href="#4-the-translation-editor"><small>Next →</small>4. The translation editor</a></nav></section>
+</section>
 <section class="sec"><h2 id="4-the-translation-editor" data-section>4. The translation editor<a class="anchor" href="#4-the-translation-editor" aria-label="Link to this section">#</a></h2>
 <p>The editor shows the string&#39;s <strong>key</strong> and a <em>New</em> badge when the string is new after a source update, then the <strong>source text</strong> and the <strong>translation box</strong>.</p>
 <div class="figs"><figure class="shot card-fig reveal"><img src="img/editor.png" alt="The translation editor" width="780" height="835" loading="lazy" data-zoom /><figcaption>The editor: key, source text, quick-insert bars, translation box and action buttons.</figcaption></figure></div>
@@ -344,7 +342,7 @@ body.nav-open .side{transform:none}.shots img{height:260px}.hero{padding:22px}.t
 <p><strong>Reset a string:</strong> the circular-arrow button on a string resets its translation and its history.</p>
 <h3 id="translation-source-tracking">Translation source tracking<a class="anchor" href="#translation-source-tracking" aria-label="Link to this section">#</a></h3>
 <p>Every saved translation is marked as <strong>AI</strong> (it came from a provider or an AI app) or <strong>manual</strong> (you typed it). The strings list shows a small AI badge on AI translations; no badge means manual. You can filter by origin.</p>
-<nav class="pager" aria-label="Section navigation"><a class="prev" href="#3-finding-your-way-around"><small>← Previous</small>3. Finding your way around</a><a class="next" href="#5-typing-helpers-the-hidden-details"><small>Next →</small>5. Typing helpers (the hidden details)</a></nav></section>
+</section>
 <section class="sec"><h2 id="5-typing-helpers-the-hidden-details" data-section>5. Typing helpers (the hidden details)<a class="anchor" href="#5-typing-helpers-the-hidden-details" aria-label="Link to this section">#</a></h2>
 <h3 id="auto-correct">Auto-correct<a class="anchor" href="#auto-correct" aria-label="Link to this section">#</a></h3>
 <p>Auto-correct is <strong>on by default</strong> and can be switched off in the settings drawer (<em>Auto-correct — turn off to type freely, without warnings</em>).</p>
@@ -420,7 +418,7 @@ body.nav-open .side{transform:none}.shots img{height:260px}.hero{padding:22px}.t
 </ul>
 <p>The bars <strong>learn from you</strong>: every button you use moves toward the start of its row, following the page direction, so your most-used symbols are always closest. The usage counts are kept on your device.</p>
 <div class="figs"><figure class="shot strip reveal"><img src="img/quick-insert.png" alt="Quick-insert bars" width="748" height="160" loading="lazy" data-zoom /><figcaption>Punctuation row on top, Unicode direction marks below.</figcaption></figure></div>
-<nav class="pager" aria-label="Section navigation"><a class="prev" href="#4-the-translation-editor"><small>← Previous</small>4. The translation editor</a><a class="next" href="#6-quality-checks"><small>Next →</small>6. Quality checks</a></nav></section>
+</section>
 <section class="sec"><h2 id="6-quality-checks" data-section>6. Quality checks<a class="anchor" href="#6-quality-checks" aria-label="Link to this section">#</a></h2>
 <p>The <strong>QA Checks</strong> card in the strings list counts problems across the file and lists them under <em>View Detected Issues</em>:</p>
 <ul>
@@ -429,7 +427,7 @@ body.nav-open .side{transform:none}.shots img{height:260px}.hero{padding:22px}.t
 </ul>
 <p>Tap a counter to filter the list to just those strings. When the card is collapsed, the number of issues is shown next to its arrow. A banner also warns before export if the file contains errors that may break the app.</p>
 <div class="figs"><figure class="shot card-fig reveal"><img src="img/qa-checks.png" alt="QA Checks card" width="575" height="500" loading="lazy" data-zoom /><figcaption>QA Checks: counters per problem type and a list of detected issues.</figcaption></figure></div>
-<nav class="pager" aria-label="Section navigation"><a class="prev" href="#5-typing-helpers-the-hidden-details"><small>← Previous</small>5. Typing helpers (the hidden details)</a><a class="next" href="#7-getting-translations"><small>Next →</small>7. Getting translations</a></nav></section>
+</section>
 <section class="sec"><h2 id="7-getting-translations" data-section>7. Getting translations<a class="anchor" href="#7-getting-translations" aria-label="Link to this section">#</a></h2>
 <h3 id="suggestions">Suggestions<a class="anchor" href="#suggestions" aria-label="Link to this section">#</a></h3>
 <p><strong>Suggest</strong> translates the current string. The pipeline is:</p>
@@ -450,7 +448,7 @@ body.nav-open .side{transform:none}.shots img{height:260px}.hero{padding:22px}.t
 <li>Keys are <strong>encrypted on your device</strong> and sent only to the provider you chose. Restrict the key in the provider&#39;s console.</li>
 <li><strong>LibreTranslate:</strong> enter your server address (must start with <code>https</code>); the key is optional.</li>
 <li><strong>Yandex:</strong> a service-account API key works directly; with a personal-account IAM token (starts with <code>t1.</code>, valid for at most 12 hours) a folder ID is required.</li>
-<li>In the Android app, key providers are called <strong>directly from the device</strong>; on the web they go through the app&#39;s server.</li>
+<li>Key providers are called <strong>directly from the device</strong>.</li>
 <li>The active provider is shown on the card. Edit or remove providers with the pencil and trash buttons.</li>
 </ul>
 <div class="figs"><figure class="shot phone reveal"><div class="frame"><div class="scroller"><img src="img/providers.png" alt="Translate Providers" width="570" height="1688" loading="lazy" data-zoom /></div><span class="hint">Scroll ↕ · tap to zoom</span></div><figcaption>Translate Providers: add a key, verify it, pick the active engine. Scroll the screenshot or tap it to zoom.</figcaption></figure></div>
@@ -467,7 +465,7 @@ body.nav-open .side{transform:none}.shots img{height:260px}.hero{padding:22px}.t
 <h3 id="multi-language-zip">Multi-language ZIP<a class="anchor" href="#multi-language-zip" aria-label="Link to this section">#</a></h3>
 <p><strong>Multi-language ZIP</strong> translates the untranslated strings into several languages in one go and builds a ZIP with one <code>values-xx</code> folder each. Choose the languages, pick the provider, then <strong>Start translating</strong>, and either <strong>Save to project</strong> or <strong>Download ZIP</strong>.</p>
 <div class="figs"><figure class="shot phone reveal"><div class="frame"><div class="scroller"><img src="screenshots/multi-language-zip.jpg" alt="Multi-language ZIP" width="1080" height="2188" loading="lazy" data-zoom /></div><span class="hint">Scroll ↕ · tap to zoom</span></div><figcaption>Translate several languages in one run and download a ready-to-use ZIP.</figcaption></figure></div>
-<nav class="pager" aria-label="Section navigation"><a class="prev" href="#6-quality-checks"><small>← Previous</small>6. Quality checks</a><a class="next" href="#8-organising-your-work"><small>Next →</small>8. Organising your work</a></nav></section>
+</section>
 <section class="sec"><h2 id="8-organising-your-work" data-section>8. Organising your work<a class="anchor" href="#8-organising-your-work" aria-label="Link to this section">#</a></h2>
 <h3 id="statuses">Statuses<a class="anchor" href="#statuses" aria-label="Link to this section">#</a></h3>
 <p>Each string is <strong>Translated</strong>, <strong>Untranslated</strong> or <strong>Review</strong> (needs review). After a source update, changed and new strings carry a <strong>New</strong> / review flag.</p>
@@ -497,10 +495,10 @@ body.nav-open .side{transform:none}.shots img{height:260px}.hero{padding:22px}.t
 <h3 id="table-view">Table view<a class="anchor" href="#table-view" aria-label="Link to this section">#</a></h3>
 <p>Shows all strings as rows for quick scanning and editing. It loads strings in chunks as you scroll and unloads the ones far behind you, so very large files stay smooth.</p>
 <div class="figs"><figure class="shot phone reveal"><div class="frame"><div class="scroller"><img src="img/table-view.png" alt="Table view" width="780" height="1500" loading="lazy" data-zoom /></div><span class="hint">Scroll ↕ · tap to zoom</span></div><figcaption>Table view: every string as an editable row.</figcaption></figure></div>
-<nav class="pager" aria-label="Section navigation"><a class="prev" href="#7-getting-translations"><small>← Previous</small>7. Getting translations</a><a class="next" href="#9-updating-the-source-file"><small>Next →</small>9. Updating the source file</a></nav></section>
+</section>
 <section class="sec"><h2 id="9-updating-the-source-file" data-section>9. Updating the source file<a class="anchor" href="#9-updating-the-source-file" aria-label="Link to this section">#</a></h2>
 <p>When your English file changes, use <strong>Update source file</strong> (settings drawer) and load the newer version. Your translations are kept. The app shows a summary — <em>new · changed · removed · unchanged</em> — and a diff, and <strong>flags changed strings for review</strong> and new ones as <em>New</em>. Use the <strong>New</strong> filter to work through them.</p>
-<nav class="pager" aria-label="Section navigation"><a class="prev" href="#8-organising-your-work"><small>← Previous</small>8. Organising your work</a><a class="next" href="#10-projects-and-saved-work"><small>Next →</small>10. Projects and saved work</a></nav></section>
+</section>
 <section class="sec"><h2 id="10-projects-and-saved-work" data-section>10. Projects and saved work<a class="anchor" href="#10-projects-and-saved-work" aria-label="Link to this section">#</a></h2>
 <p>Open <strong>Files</strong> to see your projects with their progress and last-modified time.</p>
 <ul>
@@ -509,7 +507,7 @@ body.nav-open .side{transform:none}.shots img{height:260px}.hero{padding:22px}.t
 <li>Everything is saved automatically on your device.</li>
 </ul>
 <div class="figs"><figure class="shot card-fig reveal"><img src="screenshots/projects.png" alt="Projects" width="1064" height="898" loading="lazy" data-zoom /><figcaption>Your projects with progress and last-modified time.</figcaption></figure></div>
-<nav class="pager" aria-label="Section navigation"><a class="prev" href="#9-updating-the-source-file"><small>← Previous</small>9. Updating the source file</a><a class="next" href="#11-exporting"><small>Next →</small>11. Exporting</a></nav></section>
+</section>
 <section class="sec"><h2 id="11-exporting" data-section>11. Exporting<a class="anchor" href="#11-exporting" aria-label="Link to this section">#</a></h2>
 <ul>
 <li><strong>Export XML</strong> produces the <code>strings.xml</code> for the current target language, keeping the structure and indentation of your source file. A line shows how many strings are translated, for example <em>production-ready file (988 of 1135 translated)</em>.</li>
@@ -518,10 +516,10 @@ body.nav-open .side{transform:none}.shots img{height:260px}.hero{padding:22px}.t
 <li><strong>Multi-language ZIP</strong> exports several languages together.</li>
 </ul>
 <div class="figs"><figure class="shot phone reveal"><div class="frame"><div class="scroller"><img src="img/export.png" alt="Export dialog" width="740" height="1560" loading="lazy" data-zoom /></div><span class="hint">Scroll ↕ · tap to zoom</span></div><figcaption>The export dialog shows how many strings are translated.</figcaption></figure></div>
-<nav class="pager" aria-label="Section navigation"><a class="prev" href="#10-projects-and-saved-work"><small>← Previous</small>10. Projects and saved work</a><a class="next" href="#12-plurals-and-arrays"><small>Next →</small>12. Plurals and arrays</a></nav></section>
+</section>
 <section class="sec"><h2 id="12-plurals-and-arrays" data-section>12. Plurals and arrays<a class="anchor" href="#12-plurals-and-arrays" aria-label="Link to this section">#</a></h2>
 <p><code>&lt;plurals&gt;</code> and <code>&lt;string-array&gt;</code> are fully supported. Plural items are shown per quantity (<code>zero</code>, <code>one</code>, <code>two</code>, <code>few</code>, <code>many</code>, <code>other</code>), and the forms are adjusted to the target language. For Arabic there is an offline glossary for plural forms.</p>
-<nav class="pager" aria-label="Section navigation"><a class="prev" href="#11-exporting"><small>← Previous</small>11. Exporting</a><a class="next" href="#13-interface-languages-and-themes"><small>Next →</small>13. Interface, languages and themes</a></nav></section>
+</section>
 <section class="sec"><h2 id="13-interface-languages-and-themes" data-section>13. Interface, languages and themes<a class="anchor" href="#13-interface-languages-and-themes" aria-label="Link to this section">#</a></h2>
 <ul>
 <li><strong>Interface language</strong> – switch between Arabic and English from the settings drawer.</li>
@@ -536,15 +534,14 @@ body.nav-open .side{transform:none}.shots img{height:260px}.hero{padding:22px}.t
 <li><strong>Themes</strong> – <em>Day</em>, <em>Night</em> and <em>Black Hole</em>, from the theme button in the settings drawer.</li>
 </ul>
 <div class="figs"><figure class="shot strip reveal"><img src="img/language-tabs.png" alt="Language tabs and the add button" width="576" height="240" loading="lazy" data-zoom /><figcaption>The + button at the end of the language tabs adds your own interface language.</figcaption></figure> <figure class="shot card-fig reveal"><img src="img/add-language.png" alt="Add a language" width="720" height="990" loading="lazy" data-zoom /><figcaption>Download the text file, translate it, upload it, name the language.</figcaption></figure></div>
-<nav class="pager" aria-label="Section navigation"><a class="prev" href="#12-plurals-and-arrays"><small>← Previous</small>12. Plurals and arrays</a><a class="next" href="#14-privacy-and-offline-use"><small>Next →</small>14. Privacy and offline use</a></nav></section>
+</section>
 <section class="sec"><h2 id="14-privacy-and-offline-use" data-section>14. Privacy and offline use<a class="anchor" href="#14-privacy-and-offline-use" aria-label="Link to this section">#</a></h2>
 <ul>
 <li>Your files, translations, history and settings are <strong>stored locally</strong> on your device.</li>
 <li>The app works <strong>offline</strong>: the glossary, editing, QA checks, import and export need no connection. Only machine translation and provider tests use the network.</li>
 <li>Strings are sent only to the provider or AI service <strong>you</strong> choose. API keys are encrypted on the device and never included in the text you copy for an AI app.</li>
-<li>Install the app from your browser as a <strong>PWA</strong> (on iPhone/iPad: <em>Share → Add to Home Screen</em>) to use it offline.</li>
 </ul>
-<nav class="pager" aria-label="Section navigation"><a class="prev" href="#13-interface-languages-and-themes"><small>← Previous</small>13. Interface, languages and themes</a><a class="next" href="#15-keyboard-shortcuts"><small>Next →</small>15. Keyboard shortcuts</a></nav></section>
+</section>
 <section class="sec"><h2 id="15-keyboard-shortcuts" data-section>15. Keyboard shortcuts<a class="anchor" href="#15-keyboard-shortcuts" aria-label="Link to this section">#</a></h2>
 <div class="table-wrap"><table><thead><tr>
 <th>Keys</th>
@@ -579,7 +576,7 @@ body.nav-open .side{transform:none}.shots img{height:260px}.hero{padding:22px}.t
 <td>Close the open dialog</td>
 </tr>
 </tbody></table></div>
-<nav class="pager" aria-label="Section navigation"><a class="prev" href="#14-privacy-and-offline-use"><small>← Previous</small>14. Privacy and offline use</a><a class="next" href="#16-tips"><small>Next →</small>16. Tips</a></nav></section>
+</section>
 <section class="sec"><h2 id="16-tips" data-section>16. Tips<a class="anchor" href="#16-tips" aria-label="Link to this section">#</a></h2>
 <ul>
 <li>Press <strong>Space twice</strong> to close an opened quote or bracket instead of reaching for the symbol.</li>
@@ -589,12 +586,12 @@ body.nav-open .side{transform:none}.shots img{height:260px}.hero{padding:22px}.t
 <li>After a source update, open the <strong>New</strong> filter first.</li>
 <li>Keep <strong>Auto-correct</strong> on while you work: it catches broken placeholders before they reach your app.</li>
 </ul>
-<nav class="pager" aria-label="Section navigation"><a class="prev" href="#15-keyboard-shortcuts"><small>← Previous</small>15. Keyboard shortcuts</a></nav></section>
+</section>
       <div class="foot">Released under the <a href="https://github.com/my-live-is-a-lie/strings.xml-translator/blob/main/LICENSE">GNU GPL v3</a>. Found a mistake? <a href="https://github.com/my-live-is-a-lie/strings.xml-translator/edit/main/docs/GUIDE.md">Edit this page</a>.</div>
     </article>
   </main>
 </div>
-<div id="lb" role="dialog" aria-modal="true" aria-label="Image viewer"><button class="x" aria-label="Close">×</button><button class="p" aria-label="Previous image">‹</button><img alt="" /><div class="cap"></div><div class="cnt"></div><button class="n" aria-label="Next image">›</button></div>
+<div id="lb" role="dialog" aria-modal="true" aria-label="Image viewer" tabindex="-1"><button class="x" aria-label="Close">×</button><div class="stage"><button class="p" aria-label="Previous image">‹</button><img alt="" /><button class="n" aria-label="Next image">›</button></div><div class="cap"></div><div class="cnt"></div></div>
 <div id="toast" role="status"></div>
 <button id="totop" aria-label="Back to top"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
 <script>
@@ -668,7 +665,7 @@ body.nav-open .side{transform:none}.shots img{height:260px}.hero{padding:22px}.t
   } else rev.forEach(function (r) { r.classList.add('in'); });
 
   // ---------- lightbox ----------
-  var zoomables = $$('img[data-zoom]'), lb = $('#lb'), lbImg = $('#lb img'), lbCap = $('#lb .cap'), lbCnt = $('#lb .cnt'), idx = 0;
+  var zoomables = $$('img[data-zoom]'), lb = $('#lb'), lbImg = $('#lb img'), lbCap = $('#lb .cap'), lbCnt = $('#lb .cnt'), idx = 0, closeTimer;
   function show(i) {
     idx = (i + zoomables.length) % zoomables.length;
     var im = zoomables[idx], fig = im.closest('figure');
@@ -677,18 +674,100 @@ body.nav-open .side{transform:none}.shots img{height:260px}.hero{padding:22px}.t
     lbCap.textContent = c ? c.textContent : im.alt;
     lbCnt.textContent = (idx + 1) + ' / ' + zoomables.length;
   }
-  function openLb(i) { show(i); lb.classList.add('open'); body.classList.add('lb-open'); $('#lb .x').focus(); }
-  function closeLb() { lb.classList.remove('open'); body.classList.remove('lb-open'); }
+  function resetDrag() { lb.classList.remove('drag'); lbImg.style.transform = ''; lb.style.removeProperty('--bd'); lb.style.removeProperty('--ui'); }
+  function openLb(i) {
+    clearTimeout(closeTimer); resetDrag(); show(i);
+    lb.classList.add('open'); body.classList.add('lb-open'); lb.focus();
+    void lb.offsetWidth; lb.classList.add('show');
+  }
+  function closeLb() {
+    lb.classList.remove('show'); body.classList.remove('lb-open');
+    clearTimeout(closeTimer);
+    closeTimer = setTimeout(function () { lb.classList.remove('open'); resetDrag(); }, 260);
+  }
   zoomables.forEach(function (im, i) { im.addEventListener('click', function () { openLb(i); }); });
   $('#lb .x').onclick = closeLb; $('#lb .p').onclick = function (e) { e.stopPropagation(); show(idx - 1); }; $('#lb .n').onclick = function (e) { e.stopPropagation(); show(idx + 1); };
   lb.addEventListener('click', function (e) { if (e.target === lb) closeLb(); });
+
+  // swipe up (or drag up with a mouse) to dismiss: the image follows the finger, the backdrop fades, then it flies off
+  var drag = null;
+  lb.addEventListener('pointerdown', function (e) {
+    if (e.target.closest('button') || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    drag = { id: e.pointerId, x: e.clientX, y: e.clientY, t: Date.now(), dy: 0, mode: '' };
+  });
+  lb.addEventListener('pointermove', function (e) {
+    if (!drag || e.pointerId !== drag.id) return;
+    var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (!drag.mode) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      drag.mode = dy < 0 && Math.abs(dy) > Math.abs(dx) ? 'up' : 'none';
+      if (drag.mode === 'up') { lb.classList.add('drag'); try { lb.setPointerCapture(e.pointerId); } catch (x) {} }
+    }
+    if (drag.mode !== 'up') return;
+    drag.dy = Math.min(0, dy);
+    var p = Math.min(1, -drag.dy / (innerHeight * 0.45));
+    lbImg.style.transform = 'translateY(' + drag.dy + 'px) scale(' + (1 - p * 0.1) + ')';
+    lb.style.setProperty('--bd', (0.88 * (1 - p)).toFixed(3));
+    lb.style.setProperty('--ui', Math.max(0, 1 - p * 1.6).toFixed(3));
+  });
+  function endDrag(e) {
+    if (!drag || e.pointerId !== drag.id) return;
+    var d = drag; drag = null;
+    if (d.mode !== 'up') return;
+    lb.classList.remove('drag');
+    var fast = -d.dy / Math.max(1, Date.now() - d.t) > 0.5;
+    if (e.type !== 'pointercancel' && (-d.dy > 90 || fast)) {
+      lbImg.style.transition = 'transform .28s cubic-bezier(.4,0,.8,.4)';
+      lbImg.style.transform = 'translateY(-' + Math.round(innerHeight * 0.9) + 'px) scale(.9)';
+      lb.style.setProperty('--bd', '0'); lb.style.setProperty('--ui', '0');
+      closeLb();
+      setTimeout(function () { lbImg.style.transition = ''; }, 320);
+    } else { lbImg.style.transform = ''; lb.style.removeProperty('--bd'); lb.style.removeProperty('--ui'); }
+  }
+  lb.addEventListener('pointerup', endDrag); lb.addEventListener('pointercancel', endDrag);
+
+  // ---------- hero strip: endless, slow, pauses 8 s after the reader touches it ----------
+  var strip = $('.shots');
+  if (strip) {
+    var originals = $$('img', strip), SPEED = 28, PAUSE = 8000;
+    // two extra copies so the strip can wrap in either direction without a visible jump
+    for (var c = 0; c < 2; c++) originals.forEach(function (im, i) {
+      var k = im.cloneNode(true); k.removeAttribute('data-zoom'); k.setAttribute('aria-hidden', 'true'); k.alt = '';
+      k.addEventListener('click', function () { openLb(zoomables.indexOf(im)); });
+      strip.appendChild(k);
+    });
+    var period = 0, pos = 0, last = 0, pausedUntil = 0, visible = true, reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var measure = function () { var k = strip.children[originals.length]; period = k ? k.offsetLeft - originals[0].offsetLeft : 0; };
+    var touchedNow = function () { pausedUntil = performance.now() + PAUSE; };
+    ['pointerdown', 'pointerup', 'touchstart', 'touchend', 'wheel', 'keydown'].forEach(function (n) { strip.addEventListener(n, touchedNow, { passive: true }); });
+    strip.addEventListener('scroll', function () {
+      if (!period) return;
+      // keep the reader inside the middle copy: wrapping by one period is invisible
+      if (strip.scrollLeft >= period * 2) strip.scrollLeft -= period;
+      else if (strip.scrollLeft < 1) strip.scrollLeft += period;
+      pos = strip.scrollLeft;
+    }, { passive: true });
+    if ('IntersectionObserver' in window) new IntersectionObserver(function (es) { visible = es[0].isIntersecting; }).observe(strip);
+    var tick = function (now) {
+      requestAnimationFrame(tick);
+      var dt = Math.min(64, now - (last || now)); last = now;
+      if (!period) { measure(); if (period) { pos = period; strip.scrollLeft = pos; } return; }
+      if (reduce || !visible || document.hidden || lb.classList.contains('open') || now < pausedUntil) { pos = strip.scrollLeft; return; }
+      pos += (SPEED * dt) / 1000;
+      if (pos >= period * 2) pos -= period;
+      strip.scrollLeft = pos;
+    };
+    addEventListener('resize', function () { var f = period ? strip.scrollLeft / period : 1; measure(); strip.scrollLeft = f * period; pos = strip.scrollLeft; });
+    addEventListener('load', function () { var f = period ? strip.scrollLeft / period : 1; measure(); strip.scrollLeft = f * period; pos = strip.scrollLeft; });
+    requestAnimationFrame(tick);
+  }
 
   // ---------- search with snippets ----------
   var q = $('#q'), results = $('#results');
   var index = [];
   var cur = { id: '', title: '' };
   $$('article h2, article h3, article p, article li, article td, .foot').forEach(function (el) {
-    if (el.closest('.demo,.pager,figcaption')) return;
+    if (el.closest('.demo,figcaption')) return;
     if (el.tagName === 'H2' || el.tagName === 'H3') { cur = { id: el.id, title: el.firstChild.textContent.replace(/^\d+\.\s*/, '') }; }
     var t = el.textContent.replace(/#$/, '').replace(/\s+/g, ' ').trim();
     if (t) index.push({ el: el, id: cur.id, title: cur.title, text: t, low: t.toLowerCase(), head: /^H/.test(el.tagName) });

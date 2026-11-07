@@ -84,13 +84,7 @@ html = html.replace(/<h2 id="(\d+)-([^"]+)">/g, '<h2 id="$1-$2" data-section>');
 const chunks = html.split(/(?=<h2 id=)/).filter((c) => c.trim());
 if (chunks.length !== sections.length) throw new Error(`sections mismatch ${chunks.length} vs ${sections.length}`);
 html = chunks
-  .map((c, i) => {
-    const p = sections[i - 1], n = sections[i + 1];
-    const pager = `<nav class="pager" aria-label="Section navigation">${
-      p ? `<a class="prev" href="#${p.id}"><small>← Previous</small>${p.n}. ${p.title}</a>` : ''
-    }${n ? `<a class="next" href="#${n.id}"><small>Next →</small>${n.n}. ${n.title}</a>` : ''}</nav>`;
-    return `<section class="sec">${c}${pager}</section>`;
-  })
+  .map((c) => `<section class="sec">${c}</section>`)
   .join('\n');
 
 const nav = sections
@@ -166,19 +160,17 @@ ${nav}
   <main>
     <section class="hero">
       <h1>Translate <span>strings.xml</span><br />faster and safer</h1>
-      <p>Machine translation, built-in quality checks and smart typing helpers for Android localization — on the web, as a PWA and as a native Android app.</p>
-      <div class="pills"><span>Works offline</span><span>Your data stays on your device</span><span>30+ locales</span><span>Open source · GPLv3</span></div>
       <div class="row">
         <a class="btn primary" href="${REPO}/releases/latest" target="_blank" rel="noopener">Download the app</a>
         <a class="btn" href="#2-quick-start">Quick start</a>
         <a class="btn" href="${REPO}" target="_blank" rel="noopener">Source code</a>
       </div>
       <div class="shots">
-        <img src="screenshots/editor.jpg" alt="Translation editor" loading="lazy" data-zoom />
-        <img src="screenshots/strings-list.jpg" alt="Strings list with QA checks" loading="lazy" data-zoom />
-        <img src="screenshots/table.jpg" alt="Table view" loading="lazy" data-zoom />
-        <img src="screenshots/providers.png" alt="Translation providers" loading="lazy" data-zoom />
-        <img src="screenshots/multi-language-zip.jpg" alt="Multi-language ZIP" loading="lazy" data-zoom />
+        <img src="screenshots/editor.jpg" alt="Translation editor" data-zoom />
+        <img src="screenshots/strings-list.jpg" alt="Strings list with QA checks" data-zoom />
+        <img src="screenshots/table.jpg" alt="Table view" data-zoom />
+        <img src="screenshots/providers.png" alt="Translation providers" data-zoom />
+        <img src="screenshots/multi-language-zip.jpg" alt="Multi-language ZIP" data-zoom />
       </div>
     </section>
     <div class="gal-h"><h2>Features at a glance</h2><span>Tap a card to jump to its section</span></div>
@@ -191,7 +183,7 @@ ${html}
     </article>
   </main>
 </div>
-<div id="lb" role="dialog" aria-modal="true" aria-label="Image viewer"><button class="x" aria-label="Close">×</button><button class="p" aria-label="Previous image">‹</button><img alt="" /><div class="cap"></div><div class="cnt"></div><button class="n" aria-label="Next image">›</button></div>
+<div id="lb" role="dialog" aria-modal="true" aria-label="Image viewer" tabindex="-1"><button class="x" aria-label="Close">×</button><div class="stage"><button class="p" aria-label="Previous image">‹</button><img alt="" /><button class="n" aria-label="Next image">›</button></div><div class="cap"></div><div class="cnt"></div></div>
 <div id="toast" role="status"></div>
 <button id="totop" aria-label="Back to top"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
 <script>
