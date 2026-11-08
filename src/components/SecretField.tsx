@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Eye, EyeClosed, ClipboardPaste, X } from 'lucide-react';
+import { Eye, EyeClosed, Clipboard, X } from 'lucide-react';
 import { useT } from '../i18n/i18n';
 
 const PEEK_MS = 1800;
@@ -120,7 +120,7 @@ export function SecretField({
             title={hasText ? t('clear_key_field') : t('paste_from_clipboard')}
             aria-label={hasText ? t('clear_key_field') : t('paste_from_clipboard')}
           >
-            <IconSwap showSecond={hasText} first={<ClipboardPaste className="w-4 h-4" />} second={<X className="w-4 h-4" />} />
+            <IconSwap showSecond={hasText} first={<Clipboard className="w-4 h-4" />} second={<X className="w-4 h-4" />} />
           </button>
         </div>
       </div>

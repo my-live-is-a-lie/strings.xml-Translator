@@ -62,6 +62,8 @@ const TableViewBase: React.FC<TableViewProps> = ({
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [isBulkTranslating, setIsBulkTranslating] = useState(false);
   const [expandChoice, setExpandChoice] = useState<Record<string, boolean>>({});
+  // Rows whose key name is shown in full instead of cut with an ellipsis
+  const [openKeys, setOpenKeys] = useState<Record<string, boolean>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [bulkProgress, setBulkProgress] = useState<{ completed: number; total: number } | null>(null);
 
@@ -543,14 +545,18 @@ const TableViewBase: React.FC<TableViewProps> = ({
     );
   };
 
-  const renderStatusIcon = (item: ResourceItem) =>
-    item.status === 'translated' ? (
-      <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 mx-auto" />
+  // The row open in the editor gets its status icon in the accent colour so it reads as "the selected one".
+  const renderStatusIcon = (item: ResourceItem) => {
+    const current = item.id === selectedId;
+    const accent = 'text-[#0B57D0] dark:text-[#A8C7FA]';
+    return item.status === 'translated' ? (
+      <CheckCircle2 data-current={current || undefined} className={`w-4 h-4 mx-auto ${current ? accent : 'text-emerald-600 dark:text-emerald-400'}`} />
     ) : item.status === 'needs_review' ? (
-      <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 mx-auto" />
+      <AlertCircle data-current={current || undefined} className={`w-4 h-4 mx-auto ${current ? accent : 'text-amber-600 dark:text-amber-400'}`} />
     ) : (
-      <Circle className="w-4 h-4 text-slate-300 dark:text-slate-600 mx-auto" />
+      <Circle data-current={current || undefined} className={`w-4 h-4 mx-auto ${current ? accent : 'text-slate-300 dark:text-slate-600'}`} />
     );
+  };
 
   const sortButton = (
     <button
@@ -558,7 +564,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
                 type="button"
                 onClick={cycleSort}
                 aria-pressed={sortMode !== 'none'}
-                className={`${isAr ? 'ms-auto ' : ''}inline-grid place-items-center w-8 h-8 rounded-full border transition-colors duration-200 cursor-pointer ${
+                className={`${isAr ? 'ms-auto ' : 'me-auto '}inline-grid place-items-center w-8 h-8 rounded-full border transition-colors duration-200 cursor-pointer ${
                   sortMode === 'none'
                     ? 'border-transparent bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 hover:bg-slate-200/80 dark:hover:bg-slate-700'
                     : 'bg-transparent border-current text-[#0B57D0] dark:text-[#D3E3FD]'
@@ -793,8 +799,14 @@ const TableViewBase: React.FC<TableViewProps> = ({
                       <span className="shrink-0">{renderStatusIcon(item)}</span>
                       <span
                         dir="ltr"
-                        onClick={isLong ? () => setExpanded(!expanded) : undefined}
-                        className={`flex-1 min-w-0 truncate font-mono text-xs font-medium text-slate-900 dark:text-slate-100 text-start ${isLong ? 'cursor-pointer' : ''}`}
+                        data-key-name
+                        onClick={() => {
+                          setOpenKeys((prev) => ({ ...prev, [item.id]: !prev[item.id] }));
+                          if (isLong) setExpanded(!expanded);
+                        }}
+                        className={`flex-1 min-w-0 font-mono text-xs font-medium text-slate-900 dark:text-slate-100 text-start cursor-pointer ${
+                          openKeys[item.id] ? 'break-all' : 'truncate'
+                        }`}
                       >
                         {item.name}
                         <SourceChangeBadge item={item} isAr={isAr} />
@@ -848,7 +860,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
                       <bdi>{highlightText(sourceSnippet, q)}</bdi>
                     </p>
 
-                    <div className={`text-xs ${item.type !== 'string' && !expanded ? 'line-clamp-3' : ''}`}>
+                    <div className={`text-xs ${item.type !== 'string' && !expanded ? 'line-clamp-3' : ''} ${item.type === 'string' && !(item as SingleStringItem).target && !stickyIds.has(item.id) ? 'hidden' : ''}`}>
                       {item.type === 'string' && q && targetSnippet.toLowerCase().includes(q) && editingId !== item.id ? (
                         // Search hit inside the translation: show it highlighted; tap to edit.
                         <div
@@ -859,7 +871,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
                         >
                           <bdi>{highlightText(targetSnippet, q)}</bdi>
                         </div>
-                      ) : (
+                      ) : !(item as SingleStringItem).target && !stickyIds.has(item.id) ? null : (
                         renderTarget(
                           item,
                           targetSnippet,

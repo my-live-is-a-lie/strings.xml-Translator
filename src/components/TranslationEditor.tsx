@@ -1,7 +1,7 @@
 import { SourceChangeBadge, SourceChangeDiff } from './SourceChangeDiff';
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Copy, Check, Sparkles, RotateCcw, Undo2, Redo2, ClipboardPaste, AlertCircle } from 'lucide-react';
+import { Copy, Check, Sparkles, RotateCcw, Undo2, Redo2, Clipboard, AlertCircle } from 'lucide-react';
 import { ResourceItem, SingleStringItem, PluralStringItem, ArrayStringItem } from '../types';
 import { EditorActionButtons } from './EditorActionButtons';
 import { EditorNavFooter } from './EditorNavFooter';
@@ -123,6 +123,19 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
 
   // UI feedback states
   const [copiedSource, setCopiedSource] = useState(false);
+  const [openKeyId, setOpenKeyId] = useState<string | null>(null);
+  const keyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (keyTimer.current) clearTimeout(keyTimer.current); }, []);
+  // Tapping the key name shows it in full; it folds back by itself after a few seconds.
+  const toggleKeyName = (id: string) => {
+    if (keyTimer.current) clearTimeout(keyTimer.current);
+    if (openKeyId === id) {
+      setOpenKeyId(null);
+      return;
+    }
+    setOpenKeyId(id);
+    keyTimer.current = setTimeout(() => setOpenKeyId(null), 5000);
+  };
   const [copiedTarget, setCopiedTarget] = useState(false);
   const [showSavedFeedback, setShowSavedFeedback] = useState(false);
   const [saveGuard, setSaveGuard] = useState<{ notes: FixNote[]; remaining: QaIssue[]; empty?: boolean; hard?: boolean; itemId?: string } | null>(null);
@@ -1446,9 +1459,24 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
         <div className="bg-white dark:bg-[#151922] rounded-2xl border border-slate-200/80 dark:border-transparent shadow-sm dark:shadow-lg overflow-hidden">
           <div className="kb-card p-3 sm:p-3.5 space-y-2.5">
             {/* Top row: Key name + "مفاتيح" on Left, "الإنجليزية" on Right */}
-            <div className="kb-hide flex items-center justify-between gap-2 text-xs sm:text-sm">
+            <div dir="ltr" className="kb-hide flex items-center justify-between gap-2 text-xs sm:text-sm">
               <div className="flex items-center gap-1.5 min-w-0">
-                <span className="font-mono text-xs sm:text-sm font-semibold text-slate-900 dark:text-slate-100 truncate select-all">
+                <span
+                  role="button"
+                  tabIndex={0}
+                  data-key-name
+                  aria-expanded={openKeyId === item.id}
+                  onClick={() => toggleKeyName(item.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      toggleKeyName(item.id);
+                    }
+                  }}
+                  className={`font-mono text-xs sm:text-sm font-semibold text-slate-900 dark:text-slate-100 cursor-pointer min-w-0 ${
+                    openKeyId === item.id ? 'break-all' : 'truncate'
+                  }`}
+                >
                   {item.name}
                 </span>
                 <span data-i18n className="text-slate-600 dark:text-slate-400 text-[11px] sm:text-xs font-medium">
@@ -1515,7 +1543,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             <SourceChangeDiff item={item} isAr={isAr} />
 
             {/* Target Language Name on Right + Translation Source, Alert & Reset on Left */}
-            {slot('r0', 'kb-hide flex items-center justify-between gap-2 px-1', <>
+            {slot('r0', 'kb-hide flex items-center justify-between gap-2 px-1', <div dir="ltr" className="flex w-full items-center justify-between gap-2">
               <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                 {item.status !== 'untranslated' && (
                   <>
@@ -1553,7 +1581,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                   ? getArabicLanguageName(targetLang, targetLocaleName)
                   : getLanguageOption(targetLang).name || targetLocaleName}
               </span>
-            </>, 'flex items-center justify-between gap-2')}
+            </div>, 'flex items-center justify-between gap-2')}
 
             {/* Two Connected Typographic / Formatting Toolbars */}
             <div className="kb-tools space-y-1 select-none">
@@ -1808,7 +1836,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             )}
 
             {/* Below-Textarea Status Bar */}
-            <div className="flex items-center justify-between gap-2 pt-0.5 text-xs flex-wrap">
+            <div dir="ltr" className="flex items-center justify-between gap-2 pt-0.5 text-xs flex-wrap">
               {/* Left: LTR / RTL Pill Switcher & Copy/Paste Buttons */}
               <div className="flex items-center gap-1.5">
                 <div className="flex items-center bg-slate-100 dark:bg-[#171D27] border border-slate-200/80 dark:border-transparent rounded-lg p-0.5 select-none">
@@ -1894,7 +1922,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                   aria-label={t('paste_from_clipboard')}
                   className="p-1.5 rounded-lg hover:bg-slate-200/90 dark:hover:bg-[#202A3A] active:bg-slate-300 dark:active:bg-[#263246] text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white transition cursor-pointer flex items-center justify-center focus:outline-none"
                 >
-                  <ClipboardPaste className="w-3.5 h-3.5" />
+                  <Clipboard className="w-3.5 h-3.5" />
                 </button>
               </div>
 
