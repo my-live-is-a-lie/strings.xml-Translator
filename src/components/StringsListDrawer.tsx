@@ -11,6 +11,8 @@ interface StringsListDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   items: ResourceItem[];
+  /** Number shown in the title (strings left by the active filters); defaults to all strings */
+  count?: number;
   selectedId: string;
   onSelect: (id: string) => void;
   searchQuery: string;
@@ -32,6 +34,7 @@ const StringsListDrawerBase: React.FC<StringsListDrawerProps> = ({
   isOpen,
   onClose,
   items,
+  count,
   selectedId,
   onSelect,
   searchQuery,
@@ -224,7 +227,7 @@ const StringsListDrawerBase: React.FC<StringsListDrawerProps> = ({
             className="text-xs font-bold text-slate-800 dark:text-slate-100 transition-opacity duration-200"
             style={{ opacity: searchOpen ? 0 : 1 }}
           >
-            {t('strings_list', items.length)}
+            {t('strings_list', count ?? items.length)}
           </span>
           <div className="flex items-center gap-1">
             <button

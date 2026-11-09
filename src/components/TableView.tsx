@@ -2,12 +2,13 @@ import { SourceChangeBadge } from './SourceChangeDiff';
 import React, { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react';
 import { scrollItemIntoView } from '../utils/scrollToItem';
 import { ResourceItem, FilterStatus, SourceFilter, SingleStringItem } from '../types';
+import { breakAfterUnderscores } from './keyBreaks';
 import { Search, CheckCircle2, Circle, AlertCircle, Check, Sparkles, CheckSquare, Square, Loader2, ChevronDown, ChevronUp, ArrowUpDown, ArrowUp } from 'lucide-react';
 import { bulkTranslateItems, withTranslationProvider } from '../utils/translator';
 import { BulkProviderModal, EXTERNAL_AI_PROVIDER_ID } from './BulkProviderModal';
 import { ExternalAiModal } from './ExternalAiModal';
 import { filterProjectItems } from '../utils/xmlExporter';
-import { applyQuickSnapshot, clearQuickStatuses, toggleQuickFilter, useQuickFilters, QuickFilterId } from '../utils/quickFilters';
+import { applyQuickSnapshot, clearAllQuickFilters, toggleQuickFilter, useQuickFilters, QuickFilterId } from '../utils/quickFilters';
 import { getLanguageOption } from '../utils/languages';
 import { useT } from '../i18n/i18n';
 
@@ -711,17 +712,16 @@ const TableViewBase: React.FC<TableViewProps> = ({
                 { id: 'review', label: t('review') },
                 // Shown only while it is switched on from the editor
                 ...(quickActive.includes('new') ? [{ id: 'new', label: isAr ? 'جديد' : 'New' }] : []),
+                ...(quickActive.includes('ai') ? [{ id: 'ai', label: isAr ? 'ذكاء اصطناعي' : 'AI' }] : []),
+                ...(quickActive.includes('manual') ? [{ id: 'manual', label: isAr ? 'يدوي' : 'Manual' }] : []),
               ] as const
             ).map((st) => {
-              const isSelected =
-                st.id === 'all'
-                  ? !quickActive.some((q) => q === 'untranslated' || q === 'translated' || q === 'review')
-                  : quickActive.includes(st.id as QuickFilterId);
+              const isSelected = st.id === 'all' ? quickActive.length === 0 : quickActive.includes(st.id as QuickFilterId);
               return (
                 <button
                   key={st.id}
-                  onClick={() => (st.id === 'all' ? clearQuickStatuses(items) : toggleQuickFilter(st.id as QuickFilterId, items))}
-                  className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium capitalize transition cursor-pointer m3-state-layer ${
+                  onClick={() => (st.id === 'all' ? clearAllQuickFilters(items) : toggleQuickFilter(st.id as QuickFilterId, items))}
+                  className={`inline-flex shrink-0 whitespace-nowrap items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium capitalize transition cursor-pointer m3-state-layer ${
                     isSelected
                       ? 'bg-[#D3E3FD] text-[#041E49] dark:bg-[#0842A0] dark:text-[#D3E3FD]'
                       : 'bg-transparent text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -797,10 +797,10 @@ const TableViewBase: React.FC<TableViewProps> = ({
                         data-key-name
                         onClick={() => onSelectString(item.id)}
                         title={t('open_in_translation_editor')}
-                        className="flex-1 min-w-0 font-mono text-xs font-medium text-slate-900 dark:text-slate-100 text-start cursor-pointer break-all"
+                        className="flex-1 min-w-0 font-mono text-xs font-medium text-slate-900 dark:text-slate-100 text-start cursor-pointer break-words"
 
                       >
-                        {item.name}
+                        {breakAfterUnderscores(item.name)}
                         <SourceChangeBadge item={item} isAr={isAr} />
                         {item.type !== 'string' && (
                           <span className="ms-1 text-[10px] text-slate-600 dark:text-slate-400 font-sans">
@@ -968,7 +968,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
                       </td>
                       <td className="py-3 px-4 font-mono font-medium text-slate-900 dark:text-slate-100">
                         <div className="flex items-center gap-1.5">
-                          <span dir="ltr" onClick={() => onSelectString(item.id)} title={t('open_in_translation_editor')} className="break-all cursor-pointer hover:underline">{item.name}</span>
+                          <span dir="ltr" onClick={() => onSelectString(item.id)} title={t('open_in_translation_editor')} className="break-words cursor-pointer hover:underline">{breakAfterUnderscores(item.name)}</span>
                           <SourceChangeBadge item={item} isAr={isAr} />
                           {item.type !== 'string' && (
                             <span className="text-[10px] text-slate-600 dark:text-slate-400 font-sans">

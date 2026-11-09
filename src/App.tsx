@@ -623,6 +623,9 @@ export default function App() {
     });
   }, []);
 
+  const quickFilters = useQuickFilters();
+  const quickActive = quickFilters.active;
+
   // Everything (editor navigation, table, strings list) follows one order: translated, untranslated, needs review.
   // Each string's group is fixed for the session (re-taken when another file/language opens), so strings don't
   // jump around while they are being translated.
@@ -634,11 +637,14 @@ export default function App() {
     setOrderGroups({ scope: orderScope, map: groupMap });
   }
   const orderedItems = useMemo(() => orderItems(project.items, groupMap), [project.items, groupMap]);
+  // How many strings the active filters leave (shown on the strings-list buttons)
+  const visibleCount = useMemo(
+    () => (quickFilters.active.length === 0 ? orderedItems.length : applyQuickSnapshot(orderedItems, quickFilters).length),
+    [orderedItems, quickFilters]
+  );
 
   // Navigation follows the quick filters: only the strings that pass them are visited.
   // If nothing passes (e.g. a remembered filter that matches nothing in this file) the whole file is used.
-  const quickFilters = useQuickFilters();
-  const quickActive = quickFilters.active;
   const navItems = useMemo(() => {
     const filtered = applyQuickSnapshot(orderedItems, quickFilters);
     return filtered.length > 0 ? filtered : orderedItems;
@@ -853,7 +859,7 @@ export default function App() {
       <Header
         part={part}
         onOpenStringsList={openMobileDrawer}
-        stringsCount={project.items.length}
+        stringsCount={visibleCount}
         project={project}
         activeView={activeView}
         onViewChange={setActiveView}
@@ -895,6 +901,7 @@ export default function App() {
       isOpen={mobileDrawerOpen}
       onClose={closeMobileDrawer}
       items={orderedItems}
+      count={visibleCount}
       selectedId={selectedId}
       onSelect={selectItemInEditor}
       searchQuery={searchQuery}
@@ -922,7 +929,7 @@ export default function App() {
                 >
                   <Menu className="w-4 h-4 text-[#0B57D0] dark:text-[#A8C7FA]" />
                   <span data-i18n>
-                    {t('strings_list', project.items.length)}
+                    {t('strings_list', visibleCount)}
                   </span>
                 </button>
                 <QuickFilterButton appLang={appLang} />
@@ -1064,6 +1071,7 @@ currentItem ? (
               isOpen={mobileDrawerOpen}
               onClose={closeMobileDrawer}
               items={orderedItems}
+              count={visibleCount}
               selectedId={selectedId}
               onSelect={selectItemInEditor}
               searchQuery={searchQuery}

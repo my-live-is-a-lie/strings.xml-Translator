@@ -55,6 +55,12 @@ export function toggleQuickFilter(id: QuickFilterId, items: ResourceItem[]): voi
   commit({ ...state, active, snapshot: takeSnapshot(items, active) });
 }
 
+/** Switches off every filter. */
+export function clearAllQuickFilters(items: ResourceItem[]): void {
+  if (state.active.length === 0) return;
+  commit({ ...state, active: [], snapshot: takeSnapshot(items, []) });
+}
+
 /** Switches off the three status filters (untranslated / translated / review), keeping the others. */
 export function clearQuickStatuses(items: ResourceItem[]): void {
   const active = state.active.filter((id) => id !== 'untranslated' && id !== 'translated' && id !== 'review');

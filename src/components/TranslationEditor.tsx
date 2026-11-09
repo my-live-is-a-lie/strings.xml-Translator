@@ -1,3 +1,4 @@
+import { breakAfterUnderscores } from './keyBreaks';
 import { SourceChangeBadge, SourceChangeDiff } from './SourceChangeDiff';
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
@@ -1474,10 +1475,10 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                     }
                   }}
                   className={`font-mono text-xs sm:text-sm font-semibold text-slate-900 dark:text-slate-100 cursor-pointer min-w-0 ${
-                    openKeyId === item.id ? 'break-all' : 'truncate'
+                    openKeyId === item.id ? 'break-words' : 'truncate'
                   }`}
                 >
-                  {item.name}
+                  {openKeyId === item.id ? breakAfterUnderscores(item.name) : item.name}
                 </span>
                 <span data-i18n className="text-slate-600 dark:text-slate-400 text-[11px] sm:text-xs font-medium">
                   {t('keys')}

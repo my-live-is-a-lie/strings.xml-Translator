@@ -5,6 +5,7 @@ import { ResourceItem } from '../types';
 import { ItemQaResult } from '../utils/placeholderCheck';
 import { engineLabel } from '../utils/translator';
 import { useT } from '../i18n/i18n';
+import { breakAfterUnderscores } from './keyBreaks';
 
 export function highlightText(text: string, query: string): React.ReactNode {
   const trimmed = query.trim();
@@ -132,13 +133,13 @@ const StringListRowBase: React.FC<StringListRowProps> = ({
               )}
               <span
                 dir="ltr"
-                className={`font-mono text-xs break-all ${
+                className={`font-mono text-xs break-words ${
                   isSelected
                     ? 'font-semibold text-[#0B57D0] dark:text-[#A8C7FA]'
                     : 'font-medium text-slate-800 dark:text-slate-200'
                 }`}
               >
-                <bdi>{highlightText(item.name, searchQuery)}</bdi>
+                <bdi>{breakAfterUnderscores(highlightText(item.name, searchQuery))}</bdi>
               </span>
               <SourceChangeBadge item={item} isAr={isAr} />
             </div>

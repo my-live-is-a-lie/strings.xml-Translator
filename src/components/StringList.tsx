@@ -23,7 +23,7 @@ import { analyzeProjectQa } from '../utils/placeholderCheck';
 import { scrollItemIntoView } from '../utils/scrollToItem';
 import { StringListRow } from './StringListRow';
 import { QuickFilterButton, QuickFilterBar } from './QuickFilters';
-import { applyQuickSnapshot, clearQuickStatuses, toggleQuickFilter, useQuickFilters, QuickFilterId } from '../utils/quickFilters';
+import { applyQuickSnapshot, clearAllQuickFilters, toggleQuickFilter, useQuickFilters, QuickFilterId } from '../utils/quickFilters';
 import { useT } from '../i18n/i18n';
 
 interface StringListProps {
@@ -396,16 +396,19 @@ const StringListBase: React.FC<StringListProps> = ({
               ...(quickActive.includes('new')
                 ? [{ id: 'new', label: isAr ? 'جديد' : 'New', count: items.filter((i) => i.sourceChange).length }]
                 : []),
+              ...(quickActive.includes('ai')
+                ? [{ id: 'ai', label: isAr ? 'ذكاء اصطناعي' : 'AI', count: counts.ai }]
+                : []),
+              ...(quickActive.includes('manual')
+                ? [{ id: 'manual', label: isAr ? 'يدوي' : 'Manual', count: counts.manual }]
+                : []),
             ] as const
           ).map((chip) => {
-            const isSelected =
-              chip.id === 'all'
-                ? !quickActive.some((q) => q === 'untranslated' || q === 'translated' || q === 'review')
-                : quickActive.includes(chip.id as QuickFilterId);
+            const isSelected = chip.id === 'all' ? quickActive.length === 0 : quickActive.includes(chip.id as QuickFilterId);
             return (
               <button
                 key={chip.id}
-                onClick={() => (chip.id === 'all' ? clearQuickStatuses(items) : toggleQuickFilter(chip.id as QuickFilterId, items))}
+                onClick={() => (chip.id === 'all' ? clearAllQuickFilters(items) : toggleQuickFilter(chip.id as QuickFilterId, items))}
                 className={`inline-flex shrink-0 items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition cursor-pointer m3-state-layer ${
                   isSelected
                     ? 'bg-[#D3E3FD] text-[#041E49] dark:bg-[#0842A0] dark:text-[#D3E3FD]'
