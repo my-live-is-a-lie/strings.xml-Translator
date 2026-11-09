@@ -2,7 +2,7 @@ import { SourceChangeBadge } from './SourceChangeDiff';
 import React, { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react';
 import { scrollItemIntoView } from '../utils/scrollToItem';
 import { ResourceItem, FilterStatus, SourceFilter, SingleStringItem } from '../types';
-import { Search, CheckCircle2, Circle, AlertCircle, Edit3, Check, Sparkles, CheckSquare, Square, Loader2, ChevronDown, ChevronUp, ArrowUpDown, ArrowUp } from 'lucide-react';
+import { Search, CheckCircle2, Circle, AlertCircle, Check, Sparkles, CheckSquare, Square, Loader2, ChevronDown, ChevronUp, ArrowUpDown, ArrowUp } from 'lucide-react';
 import { bulkTranslateItems, withTranslationProvider } from '../utils/translator';
 import { BulkProviderModal, EXTERNAL_AI_PROVIDER_ID } from './BulkProviderModal';
 import { ExternalAiModal } from './ExternalAiModal';
@@ -63,7 +63,6 @@ const TableViewBase: React.FC<TableViewProps> = ({
   const [isBulkTranslating, setIsBulkTranslating] = useState(false);
   const [expandChoice, setExpandChoice] = useState<Record<string, boolean>>({});
   // Rows whose key name is shown in full instead of cut with an ellipsis
-  const [openKeys, setOpenKeys] = useState<Record<string, boolean>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [bulkProgress, setBulkProgress] = useState<{ completed: number; total: number } | null>(null);
 
@@ -553,7 +552,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
       <CheckCircle2 data-current={current || undefined} className={`w-4 h-4 mx-auto ${current ? accent : 'text-emerald-600 dark:text-emerald-400'}`} />
     ) : item.status === 'needs_review' ? (
       <AlertCircle data-current={current || undefined} className={`w-4 h-4 mx-auto ${current ? accent : 'text-amber-600 dark:text-amber-400'}`} />
-    ) : (
+    ) : !current ? null : (
       <Circle data-current={current || undefined} className={`w-4 h-4 mx-auto ${current ? accent : 'text-slate-300 dark:text-slate-600'}`} />
     );
   };
@@ -800,13 +799,10 @@ const TableViewBase: React.FC<TableViewProps> = ({
                       <span
                         dir="ltr"
                         data-key-name
-                        onClick={() => {
-                          setOpenKeys((prev) => ({ ...prev, [item.id]: !prev[item.id] }));
-                          if (isLong) setExpanded(!expanded);
-                        }}
-                        className={`flex-1 min-w-0 font-mono text-xs font-medium text-slate-900 dark:text-slate-100 text-start cursor-pointer ${
-                          openKeys[item.id] ? 'break-all' : 'truncate'
-                        }`}
+                        onClick={() => onSelectString(item.id)}
+                        title={t('open_in_translation_editor')}
+                        className="flex-1 min-w-0 font-mono text-xs font-medium text-slate-900 dark:text-slate-100 text-start cursor-pointer break-all"
+
                       >
                         {item.name}
                         <SourceChangeBadge item={item} isAr={isAr} />
@@ -816,13 +812,6 @@ const TableViewBase: React.FC<TableViewProps> = ({
                           </span>
                         )}
                       </span>
-                      <button
-                        onClick={() => onSelectString(item.id)}
-                        className="shrink-0 p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-[#0B57D0] dark:text-[#A8C7FA] transition cursor-pointer m3-state-layer"
-                        title={t('open_in_translation_editor')}
-                      >
-                        <Edit3 className="w-4 h-4" />
-                      </button>
                     </div>
 
                     {item.type !== 'string' ? (
@@ -933,19 +922,18 @@ const TableViewBase: React.FC<TableViewProps> = ({
                 <th data-i18n className="py-3 px-4 w-52">{t('key_name')}</th>
                 <th data-i18n className="py-3 px-4">{t('english_source')}</th>
                 <th data-i18n className="py-3 px-4">{t('target_translation')}</th>
-                <th data-i18n className="py-3 px-3 w-16 text-center">{t('open')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
               {filtered.length === 0 ? (
                 <tr>
-                  <td data-i18n colSpan={onBulkUpdateTranslations ? 6 : 5} className="py-16 text-center text-slate-400 text-xs">
+                  <td data-i18n colSpan={onBulkUpdateTranslations ? 5 : 4} className="py-16 text-center text-slate-400 text-xs">
                     {t('no_strings_match_the_filter')}
                   </td>
                 </tr>
               ) : (
                 <>
-                <tr aria-hidden="true" data-spacer="top" style={{ borderTopWidth: 0 }}><td colSpan={6} className="p-0" /></tr>
+                <tr aria-hidden="true" data-spacer="top" style={{ borderTopWidth: 0 }}><td colSpan={5} className="p-0" /></tr>
                 {pagedItems.map((item) => {
                   const isChecked = checkedIds.has(item.id);
                   const { sourceSnippet, targetSnippet } = getSnippets(item);
@@ -982,7 +970,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
                       </td>
                       <td className="py-3 px-4 font-mono font-medium text-slate-900 dark:text-slate-100">
                         <div className="flex items-center gap-1.5">
-                          <span dir="ltr" className="truncate max-w-[200px]">{item.name}</span>
+                          <span dir="ltr" onClick={() => onSelectString(item.id)} title={t('open_in_translation_editor')} className="break-all cursor-pointer hover:underline">{item.name}</span>
                           <SourceChangeBadge item={item} isAr={isAr} />
                           {item.type !== 'string' && (
                             <span className="text-[10px] text-slate-600 dark:text-slate-400 font-sans">
@@ -1003,19 +991,10 @@ const TableViewBase: React.FC<TableViewProps> = ({
                           'w-full px-3 py-1.5 text-xs rounded-lg bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 focus:bg-white dark:focus:bg-slate-800 border border-transparent focus:border-[#0B57D0] dark:focus:border-[#A8C7FA] focus:outline-none transition'
                         )}
                       </td>
-                      <td className="py-3 px-3 text-center">
-                        <button
-                          onClick={() => onSelectString(item.id)}
-                          className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-[#0B57D0] dark:text-[#A8C7FA] transition cursor-pointer m3-state-layer"
-                          title={t('open_in_translation_editor')}
-                        >
-                          <Edit3 className="w-4 h-4" />
-                        </button>
-                      </td>
                     </tr>
                   );
                 })}
-                <tr aria-hidden="true" data-spacer="bottom" style={{ borderTopWidth: 0 }}><td colSpan={6} className="p-0" /></tr>
+                <tr aria-hidden="true" data-spacer="bottom" style={{ borderTopWidth: 0 }}><td colSpan={5} className="p-0" /></tr>
                 </>
               )}
             </tbody>
