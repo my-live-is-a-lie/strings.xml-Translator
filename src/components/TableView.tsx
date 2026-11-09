@@ -7,7 +7,7 @@ import { bulkTranslateItems, withTranslationProvider } from '../utils/translator
 import { BulkProviderModal, EXTERNAL_AI_PROVIDER_ID } from './BulkProviderModal';
 import { ExternalAiModal } from './ExternalAiModal';
 import { filterProjectItems } from '../utils/xmlExporter';
-import { applyQuickSnapshot, useQuickFilters } from '../utils/quickFilters';
+import { applyQuickSnapshot, clearQuickStatuses, toggleQuickFilter, useQuickFilters, QuickFilterId } from '../utils/quickFilters';
 import { getLanguageOption } from '../utils/languages';
 import { useT } from '../i18n/i18n';
 
@@ -48,17 +48,13 @@ const TableViewBase: React.FC<TableViewProps> = ({
   onBulkUpdateTranslations,
   onResetItemHistory: _onResetItemHistory,
   selectedId,
-  filterStatus: controlledFilter,
-  onFilterChange,
   searchQuery: controlledSearch,
   onSearchChange,
-  sourceFilter = 'all',
   statsNode,
 }) => {
   const { t } = useT();
   const isAr = appLang === 'ar';
   const [localSearch, setLocalSearch] = useState('');
-  const [localFilter, setLocalFilter] = useState<FilterStatus>('all');
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [isBulkTranslating, setIsBulkTranslating] = useState(false);
   const [expandChoice, setExpandChoice] = useState<Record<string, boolean>>({});
@@ -73,11 +69,6 @@ const TableViewBase: React.FC<TableViewProps> = ({
   };
 
 
-  const filter = controlledFilter !== undefined ? controlledFilter : localFilter;
-  const setFilter = (st: FilterStatus) => {
-    if (onFilterChange) onFilterChange(st);
-    else setLocalFilter(st);
-  };
 
   const quickFilters = useQuickFilters();
   const quickActive = quickFilters.active;
@@ -93,7 +84,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
   // filter (typing one letter in an untranslated string makes it "translated", and it must not vanish mid-typing).
   const [stickyIds, setStickyIds] = useState<Set<string>>(new Set());
   const filtered = useMemo(() => {
-    const matched = applyQuickSnapshot(filterProjectItems(items, filter, search, sourceFilter as SourceFilter), quickFilters);
+    const matched = applyQuickSnapshot(filterProjectItems(items, 'all', search, 'all'), quickFilters);
     let base = matched;
     if (stickyIds.size > 0) {
       const have = new Set(matched.map((i) => i.id));
@@ -113,7 +104,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
       .map((it, idx) => ({ it, idx, size: size(it), count: count(it) }))
       .sort((a, b) => dir * (a.size - b.size || a.count - b.count) || a.idx - b.idx)
       .map((x) => x.it);
-  }, [items, filter, search, sourceFilter, quickFilters, sortMode, stickyIds]);
+  }, [items, search, quickFilters, sortMode, stickyIds]);
 
   const total = filtered.length;
   const [win, setWin] = useState(() => {
@@ -140,14 +131,14 @@ const TableViewBase: React.FC<TableViewProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only once, when the table opens
   }, []);
   // Back to the top of the list and closing the editor when the search or filters change (during render)
-  const viewKey = `${search}|${filter}|${sourceFilter}|${quickActive.join(',')}|${sortMode}`;
+  const viewKey = `${search}|${quickActive.join(',')}|${sortMode}`;
   const [lastViewKey, setLastViewKey] = useState(viewKey);
   if (lastViewKey !== viewKey) {
     setLastViewKey(viewKey);
     setWin({ start: 0, end: CHUNK });
     setEditingId(null);
   }
-  const filterKey = `${search}|${filter}|${sourceFilter}|${quickActive.join(',')}`;
+  const filterKey = `${search}|${quickActive.join(',')}`;
   const [lastFilterKey, setLastFilterKey] = useState(filterKey);
   if (lastFilterKey !== filterKey) {
     setLastFilterKey(filterKey);
@@ -717,14 +708,19 @@ const TableViewBase: React.FC<TableViewProps> = ({
                 { id: 'all', label: t('all') },
                 { id: 'untranslated', label: t('untranslated') },
                 { id: 'translated', label: t('done_2') },
-                { id: 'needs_review', label: t('review') },
+                { id: 'review', label: t('review') },
+                // Shown only while it is switched on from the editor
+                ...(quickActive.includes('new') ? [{ id: 'new', label: isAr ? 'جديد' : 'New' }] : []),
               ] as const
             ).map((st) => {
-              const isSelected = filter === st.id;
+              const isSelected =
+                st.id === 'all'
+                  ? !quickActive.some((q) => q === 'untranslated' || q === 'translated' || q === 'review')
+                  : quickActive.includes(st.id as QuickFilterId);
               return (
                 <button
                   key={st.id}
-                  onClick={() => setFilter(st.id)}
+                  onClick={() => (st.id === 'all' ? clearQuickStatuses(items) : toggleQuickFilter(st.id as QuickFilterId, items))}
                   className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium capitalize transition cursor-pointer m3-state-layer ${
                     isSelected
                       ? 'bg-[#D3E3FD] text-[#041E49] dark:bg-[#0842A0] dark:text-[#D3E3FD]'

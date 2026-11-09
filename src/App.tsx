@@ -228,23 +228,11 @@ export default function App() {
 
   const [activeView, setActiveView] = useState<'editor' | 'table'>('editor');
   const [searchQuery, setSearchQuery] = useState('');
-  // The list filters are remembered across restarts
-  const [filterStatus, setFilterStatusState] = useState<FilterStatus>(() => {
-    const v = getStoredItem('app_filter_status');
-    return v === 'untranslated' || v === 'translated' || v === 'needs_review' ? v : 'all';
-  });
-  const [sourceFilter, setSourceFilterState] = useState<SourceFilter>(() => {
-    const v = getStoredItem('app_source_filter');
-    return v === 'ai' || v === 'manual' ? v : 'all';
-  });
-  const setFilterStatus = useCallback((v: FilterStatus) => {
-    setFilterStatusState(v);
-    setStoredItem('app_filter_status', v);
-  }, []);
-  const setSourceFilter = useCallback((v: SourceFilter) => {
-    setSourceFilterState(v);
-    setStoredItem('app_source_filter', v);
-  }, []);
+  // Status / source filters live in the shared quick-filter state (remembered across restarts there)
+  const filterStatus: FilterStatus = 'all';
+  const sourceFilter: SourceFilter = 'all';
+  const setFilterStatus = useCallback((_v: FilterStatus) => {}, []);
+  const setSourceFilter = useCallback((_v: SourceFilter) => {}, []);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [isMultiLangOpen, setIsMultiLangOpen] = useState(false);

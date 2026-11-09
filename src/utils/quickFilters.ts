@@ -55,6 +55,13 @@ export function toggleQuickFilter(id: QuickFilterId, items: ResourceItem[]): voi
   commit({ ...state, active, snapshot: takeSnapshot(items, active) });
 }
 
+/** Switches off the three status filters (untranslated / translated / review), keeping the others. */
+export function clearQuickStatuses(items: ResourceItem[]): void {
+  const active = state.active.filter((id) => id !== 'untranslated' && id !== 'translated' && id !== 'review');
+  if (active.length === state.active.length) return;
+  commit({ ...state, active, snapshot: takeSnapshot(items, active) });
+}
+
 /** Re-takes the snapshot (a different file/language was opened, or the strings changed). */
 export function resetQuickSnapshot(items: ResourceItem[]): void {
   // "New" only exists while some string carries a source-update flag

@@ -23,7 +23,7 @@ import { analyzeProjectQa } from '../utils/placeholderCheck';
 import { scrollItemIntoView } from '../utils/scrollToItem';
 import { StringListRow } from './StringListRow';
 import { QuickFilterButton, QuickFilterBar } from './QuickFilters';
-import { applyQuickSnapshot, useQuickFilters } from '../utils/quickFilters';
+import { applyQuickSnapshot, clearQuickStatuses, toggleQuickFilter, useQuickFilters, QuickFilterId } from '../utils/quickFilters';
 import { useT } from '../i18n/i18n';
 
 interface StringListProps {
@@ -56,9 +56,6 @@ const StringListBase: React.FC<StringListProps> = ({
   searchQuery,
   onSearchChange,
   filterStatus,
-  onFilterChange,
-  sourceFilter: controlledSourceFilter,
-  onSourceFilterChange,
   targetLang = 'ar',
   targetLocaleName,
   appLang = 'ar',
@@ -71,7 +68,6 @@ const StringListBase: React.FC<StringListProps> = ({
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [isBulkTranslating, setIsBulkTranslating] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<{ completed: number; total: number } | null>(null);
-  const [localSourceFilter, setLocalSourceFilter] = useState<SourceFilter>('all');
   const [qaFilter, setQaFilter] = useState<'all' | 'any_issue' | 'placeholder' | 'html'>('all');
   const [qaListExpanded, setQaListExpanded] = useState(false);
   // Merged summary card: collapsible to a short bar (remembered between openings)
@@ -130,12 +126,18 @@ const StringListBase: React.FC<StringListProps> = ({
 
   const qaSummary = useMemo(() => analyzeProjectQa(items), [items]);
 
-  const sourceFilter = controlledSourceFilter !== undefined ? controlledSourceFilter : localSourceFilter;
+  // The status / source filters are the editor's quick filters (one shared state), so the three screens stay in sync
+  const quickFilters = useQuickFilters();
+  const quickActive = quickFilters.active;
+  const aiOn = quickActive.includes('ai');
+  const manualOn = quickActive.includes('manual');
+  const sourceFilter: SourceFilter = aiOn ? 'ai' : manualOn ? 'manual' : 'all';
   const handleSetSourceFilter = (next: SourceFilter) => {
-    if (onSourceFilterChange) {
-      onSourceFilterChange(next);
+    if (next === 'all') {
+      if (aiOn) toggleQuickFilter('ai', items);
+      if (manualOn) toggleQuickFilter('manual', items);
     } else {
-      setLocalSourceFilter(next);
+      toggleQuickFilter(next, items);
     }
   };
 
@@ -165,11 +167,9 @@ const StringListBase: React.FC<StringListProps> = ({
   const manualPercent = totalTranslatedCount > 0 ? 100 - aiPercent : 0;
 
   // Filter items (memoized to prevent redundant array operations)
-  const quickFilters = useQuickFilters();
-  const quickActive = quickFilters.active;
   const filteredItems = useMemo(() => {
     const base = applyQuickSnapshot(
-      filterProjectItems(items, filterStatus, searchQuery, sourceFilter),
+      filterProjectItems(items, 'all', searchQuery, 'all'),
       quickFilters
     );
     if (qaFilter === 'all') return base;
@@ -180,7 +180,7 @@ const StringListBase: React.FC<StringListProps> = ({
       if (qaFilter === 'html') return itemQa.hasHtmlIssue;
       return true;
     });
-  }, [items, filterStatus, searchQuery, sourceFilter, qaFilter, qaSummary, quickFilters]);
+  }, [items, searchQuery, qaFilter, qaSummary, quickFilters]);
 
   // Incremental rendering limit (renders 25 items initially for ultra-fast instant mount, loads more on scroll)
   const [displayLimit, setDisplayLimit] = useState(() => lastListPosition?.limit ?? 25);
@@ -389,16 +389,23 @@ const StringListBase: React.FC<StringListProps> = ({
               { id: 'all', label: t('all'), count: counts.all },
               { id: 'untranslated', label: t('untranslated'), count: counts.untranslated },
               { id: 'translated', label: t('done_2'), count: counts.translated },
-              ...(counts.needs_review > 0
-                ? [{ id: 'needs_review', label: t('review'), count: counts.needs_review }]
+              ...(counts.needs_review > 0 || quickActive.includes('review')
+                ? [{ id: 'review', label: t('review'), count: counts.needs_review }]
+                : []),
+              // Not part of this list's own chips: shown only while it is switched on from the editor
+              ...(quickActive.includes('new')
+                ? [{ id: 'new', label: isAr ? 'جديد' : 'New', count: items.filter((i) => i.sourceChange).length }]
                 : []),
             ] as const
           ).map((chip) => {
-            const isSelected = filterStatus === chip.id;
+            const isSelected =
+              chip.id === 'all'
+                ? !quickActive.some((q) => q === 'untranslated' || q === 'translated' || q === 'review')
+                : quickActive.includes(chip.id as QuickFilterId);
             return (
               <button
                 key={chip.id}
-                onClick={() => onFilterChange(chip.id as FilterStatus)}
+                onClick={() => (chip.id === 'all' ? clearQuickStatuses(items) : toggleQuickFilter(chip.id as QuickFilterId, items))}
                 className={`inline-flex shrink-0 items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition cursor-pointer m3-state-layer ${
                   isSelected
                     ? 'bg-[#D3E3FD] text-[#041E49] dark:bg-[#0842A0] dark:text-[#D3E3FD]'
@@ -476,12 +483,12 @@ const StringListBase: React.FC<StringListProps> = ({
             {/* AI Translated Stat Pill */}
             <button
               type="button"
-              onClick={() => handleSetSourceFilter(sourceFilter === 'ai' ? 'all' : 'ai')}
+              onClick={() => handleSetSourceFilter('ai')}
               title={
                 t('click_to_filter_strings_translated')
               }
               className={`flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg border text-start transition cursor-pointer ${
-                sourceFilter === 'ai'
+                aiOn
                   ? 'bg-amber-500/15 border-amber-500/50 text-amber-800 dark:text-amber-200 ring-1 ring-amber-500/30'
                   : 'bg-white dark:bg-[#13161C] border-slate-200/70 dark:border-slate-800 hover:border-amber-500/40 text-slate-700 dark:text-slate-200'
               }`}
@@ -498,12 +505,12 @@ const StringListBase: React.FC<StringListProps> = ({
             {/* Manual Input Stat Pill */}
             <button
               type="button"
-              onClick={() => handleSetSourceFilter(sourceFilter === 'manual' ? 'all' : 'manual')}
+              onClick={() => handleSetSourceFilter('manual')}
               title={
                 t('click_to_filter_strings_translated_2')
               }
               className={`flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg border text-start transition cursor-pointer ${
-                sourceFilter === 'manual'
+                manualOn
                   ? 'bg-[#1EB996]/15 border-[#1EB996]/50 text-emerald-900 dark:text-emerald-200 ring-1 ring-[#1EB996]/30'
                   : 'bg-white dark:bg-[#13161C] border-slate-200/70 dark:border-slate-800 hover:border-[#1EB996]/40 text-slate-700 dark:text-slate-200'
               }`}
