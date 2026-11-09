@@ -458,10 +458,10 @@ const TableViewBase: React.FC<TableViewProps> = ({
           <div key={v.label} className="flex items-start gap-2">
             {renderVariantBadge(v.label)}
             <span
-              dir="auto"
+              dir={side === 'source' ? 'ltr' : 'auto'}
               className={
                 side === 'source'
-                  ? ''
+                  ? 'text-left'
                   : text
                     ? 'text-emerald-700 dark:text-emerald-300 font-medium'
                     : 'text-slate-400 italic'
@@ -822,7 +822,8 @@ const TableViewBase: React.FC<TableViewProps> = ({
                             <div className="min-w-0 flex-1 space-y-0.5 text-xs leading-relaxed">
                               <p
                                 onClick={isLong ? () => setExpanded(!expanded) : undefined}
-                                className={`text-slate-600 dark:text-slate-400 break-words ${isLong ? 'cursor-pointer' : ''}`}
+                                dir="ltr"
+                                className={`text-left text-slate-600 dark:text-slate-400 break-words ${isLong ? 'cursor-pointer' : ''}`}
                               >
                                 <bdi>{highlightText(v.source, q)}</bdi>
                               </p>
@@ -842,7 +843,8 @@ const TableViewBase: React.FC<TableViewProps> = ({
                     <p
                       onClick={isLong ? () => setExpanded(!expanded) : undefined}
                       data-src-toggle
-                      className={`text-xs leading-relaxed text-slate-600 dark:text-slate-400 break-words whitespace-pre-wrap ${
+                      dir="ltr"
+                      className={`text-left text-xs leading-relaxed text-slate-600 dark:text-slate-400 break-words whitespace-pre-wrap ${
                         expanded ? '' : 'line-clamp-3'
                       } ${isLong ? 'cursor-pointer' : ''}`}
                     >
@@ -979,7 +981,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
                           )}
                         </div>
                       </td>
-                      <td className="py-3 px-4 text-slate-700 dark:text-slate-300 max-w-xs sm:max-w-md break-words">
+                      <td dir="ltr" className="py-3 px-4 text-left text-slate-700 dark:text-slate-300 max-w-xs sm:max-w-md break-words">
                         {item.type === 'string' ? <bdi>{sourceSnippet}</bdi> : renderVariantLines(item, 'source')}
                       </td>
                       <td className="py-3 px-4 max-w-xs sm:max-w-md break-words">
