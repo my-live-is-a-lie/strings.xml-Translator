@@ -35,6 +35,7 @@ import { parseAndroidXml, mergeTargetXml, normalizePluralsForLanguage } from './
 import { SAMPLE_ANDROID_STRINGS_XML, SAMPLE_TARGET_ARABIC_XML } from './utils/sampleData';
 import { saveCurrentProject, loadCurrentProject, getStoredItem, setStoredItem } from './utils/storage';
 import { getLastSelectedId, saveLastSelectedId } from './utils/lastPosition';
+import { computeGroups, orderItems, startingId } from './utils/stringOrder';
 import {
   getStoredFiles,
   saveStoredFiles,
@@ -166,10 +167,8 @@ export default function App() {
       }
     }
 
-    const watchedItem = initialProject.items.find((i) => i.name === 'quick_action_watched');
-    const initialSelectedId =
-      getLastSelectedId(initialProject.id, initialProject.items) ??
-      (watchedItem ? watchedItem.id : (initialProject.items[0]?.id || ''));
+    // A fresh start opens on the first string that still needs work (untranslated, then needs review), else the first one
+    const initialSelectedId = startingId(initialProject.items);
 
     return {
       project: initialProject,
@@ -229,8 +228,23 @@ export default function App() {
 
   const [activeView, setActiveView] = useState<'editor' | 'table'>('editor');
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
-  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
+  // The list filters are remembered across restarts
+  const [filterStatus, setFilterStatusState] = useState<FilterStatus>(() => {
+    const v = getStoredItem('app_filter_status');
+    return v === 'untranslated' || v === 'translated' || v === 'needs_review' ? v : 'all';
+  });
+  const [sourceFilter, setSourceFilterState] = useState<SourceFilter>(() => {
+    const v = getStoredItem('app_source_filter');
+    return v === 'ai' || v === 'manual' ? v : 'all';
+  });
+  const setFilterStatus = useCallback((v: FilterStatus) => {
+    setFilterStatusState(v);
+    setStoredItem('app_filter_status', v);
+  }, []);
+  const setSourceFilter = useCallback((v: SourceFilter) => {
+    setSourceFilterState(v);
+    setStoredItem('app_source_filter', v);
+  }, []);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [isMultiLangOpen, setIsMultiLangOpen] = useState(false);
@@ -621,14 +635,26 @@ export default function App() {
     });
   }, []);
 
+  // Everything (editor navigation, table, strings list) follows one order: translated, untranslated, needs review.
+  // Each string's group is fixed for the session (re-taken when another file/language opens), so strings don't
+  // jump around while they are being translated.
+  const orderScope = `${project.id}|${project.targetLang}|${project.items.length}`;
+  const [orderGroups, setOrderGroups] = useState(() => ({ scope: orderScope, map: computeGroups(project.items) }));
+  let groupMap = orderGroups.map;
+  if (orderGroups.scope !== orderScope) {
+    groupMap = computeGroups(project.items);
+    setOrderGroups({ scope: orderScope, map: groupMap });
+  }
+  const orderedItems = useMemo(() => orderItems(project.items, groupMap), [project.items, groupMap]);
+
   // Navigation follows the quick filters: only the strings that pass them are visited.
   // If nothing passes (e.g. a remembered filter that matches nothing in this file) the whole file is used.
   const quickFilters = useQuickFilters();
   const quickActive = quickFilters.active;
   const navItems = useMemo(() => {
-    const filtered = applyQuickSnapshot(project.items, quickFilters);
-    return filtered.length > 0 ? filtered : project.items;
-  }, [project.items, quickFilters]);
+    const filtered = applyQuickSnapshot(orderedItems, quickFilters);
+    return filtered.length > 0 ? filtered : orderedItems;
+  }, [orderedItems, quickFilters]);
 
   // Take a fresh snapshot of what the filters select whenever another file/language opens (not on every edit).
   const itemsForSnapshotRef = useRef(project.items);
@@ -646,9 +672,10 @@ export default function App() {
     resetQuickSnapshot(itemsForSnapshotRef.current);
   }, [snapshotScope]);
   const navIndexOf = useCallback(
-    (id: string) => project.items.findIndex((i) => i.id === id),
-    [project.items]
+    (id: string) => orderedItems.findIndex((i) => i.id === id),
+    [orderedItems]
   );
+  const orderPos = useMemo(() => orderedItems.findIndex((i) => i.id === selectedId), [orderedItems, selectedId]);
 
   // Switching filters moves the editor to the first matching string when the current one no longer matches.
   const quickKey = quickActive.join(',');
@@ -666,24 +693,24 @@ export default function App() {
 
   const handleNavigatePrevious = useCallback(() => {
     for (let i = navItems.length - 1; i >= 0; i--) {
-      if (navIndexOf(navItems[i].id) < currentIndex) {
+      if (navIndexOf(navItems[i].id) < orderPos) {
         setSelectedId(navItems[i].id);
         return;
       }
     }
-  }, [navItems, navIndexOf, currentIndex, setSelectedId]);
+  }, [navItems, navIndexOf, orderPos, setSelectedId]);
 
   const handleNavigateNext = useCallback(() => {
-    const next = navItems.find((i) => navIndexOf(i.id) > currentIndex);
+    const next = navItems.find((i) => navIndexOf(i.id) > orderPos);
     if (next) setSelectedId(next.id);
-  }, [navItems, navIndexOf, currentIndex, setSelectedId]);
+  }, [navItems, navIndexOf, orderPos, setSelectedId]);
 
   const handleNavigateNextUntranslated = useCallback(() => {
     const untranslated = navItems.filter((i) => i.status === 'untranslated');
     if (untranslated.length === 0) return;
-    const next = untranslated.find((i) => navIndexOf(i.id) > currentIndex) ?? untranslated[0];
+    const next = untranslated.find((i) => navIndexOf(i.id) > orderPos) ?? untranslated[0];
     setSelectedId(next.id);
-  }, [navItems, navIndexOf, currentIndex, setSelectedId]);
+  }, [navItems, navIndexOf, orderPos, setSelectedId]);
 
   useGlobalShortcuts({
     onUndo: handleUndo,
@@ -713,7 +740,7 @@ export default function App() {
     setFilterStatus('all');
     setSourceFilter('all');
     setSearchQuery('');
-  }, []);
+  }, [setFilterStatus, setSourceFilter]);
 
   // File management actions: Switch, Rename, Reset, Delete
   const handleSelectFile = useCallback((fileId: string) => {
@@ -737,7 +764,7 @@ export default function App() {
     setFilterStatus('all');
     setSourceFilter('all');
     setSearchQuery('');
-  }, [storedFiles]);
+  }, [storedFiles, setFilterStatus, setSourceFilter]);
 
   const handleRenameFile = useCallback((fileId: string, newName: string) => {
     const updated = renameStoredFile(fileId, newName);
@@ -879,7 +906,7 @@ export default function App() {
       always
       isOpen={mobileDrawerOpen}
       onClose={closeMobileDrawer}
-      items={project.items}
+      items={orderedItems}
       selectedId={selectedId}
       onSelect={selectItemInEditor}
       searchQuery={searchQuery}
@@ -1020,7 +1047,7 @@ currentItem ? (
             {/* Left Sidebar (Desktop / Tablet): Strings List */}
             <div className="hidden md:block w-76 lg:w-84 xl:w-92 shrink-0 h-full">
               <StringList
-                items={project.items}
+                items={orderedItems}
                 selectedId={selectedId}
                 onSelect={selectItem}
                 searchQuery={searchQuery}
@@ -1048,7 +1075,7 @@ currentItem ? (
             <StringsListDrawer
               isOpen={mobileDrawerOpen}
               onClose={closeMobileDrawer}
-              items={project.items}
+              items={orderedItems}
               selectedId={selectedId}
               onSelect={selectItemInEditor}
               searchQuery={searchQuery}
@@ -1069,7 +1096,7 @@ currentItem ? (
           <main className="flex-1 h-full overflow-hidden">
             <TableView
               statsNode={renderHeader('tableLegend')}
-              items={project.items}
+              items={orderedItems}
               selectedId={selectedId}
               onSelectString={selectItemInEditor}
               onUpdateTranslation={handleUpdateTranslation}
