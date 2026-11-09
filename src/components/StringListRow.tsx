@@ -1,6 +1,6 @@
 import { SourceChangeBadge } from './SourceChangeDiff';
 import React, { useState } from 'react';
-import { AlertCircle, CheckCircle2, CheckSquare, Circle, RotateCcw, ShieldAlert, Sparkles, Square } from 'lucide-react';
+import { AlertCircle, CheckCircle2, CheckSquare, RotateCcw, ShieldAlert, Sparkles, Square } from 'lucide-react';
 import { ResourceItem } from '../types';
 import { ItemQaResult } from '../utils/placeholderCheck';
 import { engineLabel } from '../utils/translator';
@@ -132,7 +132,7 @@ const StringListRowBase: React.FC<StringListRowProps> = ({
               )}
               <span
                 dir="ltr"
-                className={`font-mono text-xs ${expanded ? 'break-all' : 'truncate'} ${
+                className={`font-mono text-xs break-all ${
                   isSelected
                     ? 'font-semibold text-[#0B57D0] dark:text-[#A8C7FA]'
                     : 'font-medium text-slate-800 dark:text-slate-200'
@@ -171,9 +171,7 @@ const StringListRowBase: React.FC<StringListRowProps> = ({
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
               ) : item.status === 'needs_review' ? (
                 <AlertCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-              ) : (
-                <Circle className="w-3.5 h-3.5 text-slate-600 dark:text-slate-400 shrink-0" />
-              )}
+              ) : null}
               {item.status !== 'untranslated' && (
                 <>
                   {item.translationSource === 'ai' && (
