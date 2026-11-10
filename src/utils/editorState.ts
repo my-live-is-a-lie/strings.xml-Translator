@@ -77,9 +77,11 @@ export function changeLanguage(curr: EditorState, newLocale: string): EditorStat
 }
 
 /** Replaces the items whose ids appear in `updatedItems` (used by bulk translate). */
-/** Once a changed string is saved, its old source text is no longer shown (the "new" flag stays for the filter). */
+/** Once a new/changed string is translated and saved, its "new"/"updated" flag and the old source text go away. */
 export function dropPreviousSourceWhenSaved<T extends ResourceItem>(item: T): T {
-  if (item.status === 'translated' && item.previousSources) return { ...item, previousSources: undefined };
+  if (item.status === 'translated' && (item.previousSources || item.sourceChange)) {
+    return { ...item, previousSources: undefined, sourceChange: undefined };
+  }
   return item;
 }
 

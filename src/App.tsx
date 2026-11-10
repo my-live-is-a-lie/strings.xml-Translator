@@ -35,6 +35,7 @@ import { parseAndroidXml, mergeTargetXml, normalizePluralsForLanguage } from './
 import { SAMPLE_ANDROID_STRINGS_XML, SAMPLE_TARGET_ARABIC_XML } from './utils/sampleData';
 import { saveCurrentProject, loadCurrentProject, getStoredItem, setStoredItem } from './utils/storage';
 import { getLastSelectedId, saveLastSelectedId } from './utils/lastPosition';
+import { useMediaQuery } from './hooks/useMediaQuery';
 import { computeGroups, orderItems, startingId } from './utils/stringOrder';
 import {
   getStoredFiles,
@@ -625,6 +626,7 @@ export default function App() {
 
   const quickFilters = useQuickFilters();
   const quickActive = quickFilters.active;
+  const isMdScreen = useMediaQuery('(min-width: 768px)');
 
   // Everything (editor navigation, table, strings list) follows one order: translated, untranslated, needs review.
   // Each string's group is fixed for the session (re-taken when another file/language opens), so strings don't
@@ -1040,6 +1042,7 @@ currentItem ? (
         {activeView === 'editor' ? (
           <>
             {/* Left Sidebar (Desktop / Tablet): Strings List */}
+            {isMdScreen && (
             <div className="hidden md:block w-76 lg:w-84 xl:w-92 shrink-0 h-full">
               <StringList
                 items={orderedItems}
@@ -1058,6 +1061,7 @@ currentItem ? (
                 onResetItemHistory={handleResetItemHistory}
               />
             </div>
+            )}
 
             {/* Center: Translation Editor */}
             <main className="flex-1 h-full min-w-0 flex flex-col overflow-hidden relative">

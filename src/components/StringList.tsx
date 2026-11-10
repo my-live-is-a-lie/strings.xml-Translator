@@ -47,7 +47,9 @@ interface StringListProps {
 
 // Wrapped with React.memo below: re-renders only when its props change
 // Where the list was left when it was last closed (kept while the app runs), so reopening continues from there
-let lastListPosition: { top: number; limit: number } | null = null;
+let lastListPosition: { top: number; limit: number; start: number } | null = null;
+// Rows are rendered in a window around where the reader is (the rest is a spacer of about this height per row)
+const ROW_ESTIMATE_PX = 104;
 
 const StringListBase: React.FC<StringListProps> = ({
   items,
@@ -184,23 +186,29 @@ const StringListBase: React.FC<StringListProps> = ({
 
   // Incremental rendering limit (renders 25 items initially for ultra-fast instant mount, loads more on scroll)
   const [displayLimit, setDisplayLimit] = useState(() => lastListPosition?.limit ?? 25);
+  const [windowStart, setWindowStart] = useState(() => lastListPosition?.start ?? 0);
   const displayLimitRef = useRef(displayLimit);
+  const windowStartRef = useRef(windowStart);
   useEffect(() => {
     displayLimitRef.current = displayLimit;
-  }, [displayLimit]);
+    windowStartRef.current = windowStart;
+  }, [displayLimit, windowStart]);
   // Reset when the filters change (adjusted during render, which avoids an extra render pass)
   const filterKey = `${searchQuery}|${filterStatus}|${sourceFilter}|${qaFilter}|${quickActive.join(',')}`;
   const [lastFilterKey, setLastFilterKey] = useState(filterKey);
   if (lastFilterKey !== filterKey) {
     setLastFilterKey(filterKey);
     setDisplayLimit(25);
+    setWindowStart(0);
   }
 
   // Grow the window so the selected item is rendered
   if (selectedId) {
     const idx = filteredItems.findIndex((i) => i.id === selectedId);
-    if (idx >= 0 && idx >= displayLimit) {
-      setDisplayLimit(Math.max(displayLimit, idx + 20));
+    if (idx >= 0 && (idx >= displayLimit || idx < windowStart)) {
+      // Far from what is rendered: render a window around it instead of every row in between
+      setWindowStart(Math.max(0, idx - 15));
+      setDisplayLimit(idx + 20);
     }
   }
 
@@ -229,12 +237,15 @@ const StringListBase: React.FC<StringListProps> = ({
 
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const target = e.currentTarget;
+    if (target.scrollTop < 300 && windowStartRef.current > 0) {
+      setWindowStart((prev) => Math.max(0, prev - 30));
+    }
     if (target.scrollTop + target.clientHeight >= target.scrollHeight - 250) {
       setDisplayLimit((prev) => (prev < filteredItems.length ? Math.min(filteredItems.length, prev + 30) : prev));
     }
 
     const top = Math.max(0, target.scrollTop);
-    lastListPosition = { top, limit: displayLimitRef.current };
+    lastListPosition = { top, limit: displayLimitRef.current, start: windowStartRef.current };
     const delta = top - lastScrollTopRef.current;
     lastScrollTopRef.current = top;
     if (top <= 1) {
@@ -788,7 +799,8 @@ const StringListBase: React.FC<StringListProps> = ({
           </div>
         ) : (
           <>
-            {filteredItems.slice(0, displayLimit).map((item) => (
+            {windowStart > 0 && <div aria-hidden style={{ height: windowStart * ROW_ESTIMATE_PX }} />}
+            {filteredItems.slice(windowStart, displayLimit).map((item) => (
               <StringListRow
                 key={item.id}
                 item={item}

@@ -1,6 +1,6 @@
 import { SourceChangeBadge } from './SourceChangeDiff';
 import React, { useState } from 'react';
-import { AlertCircle, CheckCircle2, CheckSquare, RotateCcw, ShieldAlert, Sparkles, Square } from 'lucide-react';
+import { AlertCircle, CheckSquare, RotateCcw, ShieldAlert, Sparkles, Square } from 'lucide-react';
 import { ResourceItem } from '../types';
 import { ItemQaResult } from '../utils/placeholderCheck';
 import { engineLabel } from '../utils/translator';
@@ -168,9 +168,7 @@ const StringListRowBase: React.FC<StringListRowProps> = ({
                   </span>
                 );
               })()}
-              {item.status === 'translated' ? (
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-              ) : item.status === 'needs_review' ? (
+              {item.status === 'needs_review' ? (
                 <AlertCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
               ) : null}
               {item.status !== 'untranslated' && (
