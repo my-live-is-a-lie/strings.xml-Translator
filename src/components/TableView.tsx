@@ -3,7 +3,7 @@ import React, { useState, useMemo, useRef, useEffect, useLayoutEffect } from 're
 import { scrollItemIntoView } from '../utils/scrollToItem';
 import { ResourceItem, FilterStatus, SourceFilter, SingleStringItem } from '../types';
 import { breakAfterUnderscores } from './keyBreaks';
-import { Search, CheckCircle2, Circle, AlertCircle, Check, Sparkles, CheckSquare, Square, Loader2, ChevronDown, ChevronUp, ArrowUpDown, ArrowUp } from 'lucide-react';
+import { Search, CheckCircle2, AlertCircle, Check, Sparkles, CheckSquare, Square, Loader2, ChevronDown, ChevronUp, ArrowUpDown, ArrowUp } from 'lucide-react';
 import { bulkTranslateItems, withTranslationProvider } from '../utils/translator';
 import { BulkProviderModal, EXTERNAL_AI_PROVIDER_ID } from './BulkProviderModal';
 import { ExternalAiModal } from './ExternalAiModal';
@@ -536,18 +536,12 @@ const TableViewBase: React.FC<TableViewProps> = ({
     );
   };
 
-  // The row open in the editor gets its status icon in the accent colour so it reads as "the selected one".
-  const renderStatusIcon = (item: ResourceItem) => {
-    const current = item.id === selectedId;
-    const accent = 'text-[#0B57D0] dark:text-[#A8C7FA]';
-    return item.status === 'translated' ? (
-      <CheckCircle2 data-current={current || undefined} className={`w-4 h-4 mx-auto ${current ? accent : 'text-emerald-600 dark:text-emerald-400'}`} />
+  const renderStatusIcon = (item: ResourceItem) =>
+    item.status === 'translated' ? (
+      <CheckCircle2 className="w-4 h-4 mx-auto text-emerald-600 dark:text-emerald-400" />
     ) : item.status === 'needs_review' ? (
-      <AlertCircle data-current={current || undefined} className={`w-4 h-4 mx-auto ${current ? accent : 'text-amber-600 dark:text-amber-400'}`} />
-    ) : !current ? null : (
-      <Circle data-current={current || undefined} className={`w-4 h-4 mx-auto ${current ? accent : 'text-slate-300 dark:text-slate-600'}`} />
-    );
-  };
+      <AlertCircle className="w-4 h-4 mx-auto text-amber-600 dark:text-amber-400" />
+    ) : null;
 
   const sortButton = (
     <button
@@ -773,7 +767,14 @@ const TableViewBase: React.FC<TableViewProps> = ({
                   <div
                     key={item.id}
                     data-item-id={item.id}
-                    className={`p-3.5 space-y-2.5 ${isChecked ? 'bg-emerald-50/60 dark:bg-emerald-950/20' : ''}`}
+                    aria-current={item.id === selectedId ? 'true' : undefined}
+                    className={`p-3.5 space-y-2.5 ${
+                      item.id === selectedId
+                        ? 'bg-[#E8F0FE] dark:bg-[#1E293B] ring-1 ring-inset ring-[#0B57D0]/30 dark:ring-[#A8C7FA]/30'
+                        : isChecked
+                          ? 'bg-emerald-50/60 dark:bg-emerald-950/20'
+                          : ''
+                    }`}
                   >
                     <div className="flex items-center gap-2.5">
                       {onBulkUpdateTranslations && (
@@ -798,7 +799,11 @@ const TableViewBase: React.FC<TableViewProps> = ({
                         data-key-name
                         onClick={() => onSelectString(item.id)}
                         title={t('open_in_translation_editor')}
-                        className="flex-1 min-w-0 font-mono text-xs font-medium text-slate-900 dark:text-slate-100 text-start cursor-pointer break-words"
+                        className={`flex-1 min-w-0 font-mono text-xs text-start cursor-pointer break-words ${
+                          item.id === selectedId
+                            ? 'font-semibold text-[#0B57D0] dark:text-[#A8C7FA]'
+                            : 'font-medium text-slate-900 dark:text-slate-100'
+                        }`}
 
                       >
                         {breakAfterUnderscores(item.name)}
@@ -940,8 +945,11 @@ const TableViewBase: React.FC<TableViewProps> = ({
                     <tr
                       key={item.id}
                       data-item-id={item.id}
+                      aria-current={item.id === selectedId ? 'true' : undefined}
                       className={`transition-colors group ${
-                        isChecked
+                        item.id === selectedId
+                          ? 'bg-[#E8F0FE] dark:bg-[#1E293B]'
+                          : isChecked
                           ? 'bg-emerald-50/60 dark:bg-emerald-950/20'
                           : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
                       }`}
