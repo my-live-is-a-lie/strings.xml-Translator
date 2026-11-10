@@ -594,7 +594,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
   );
 
   return (
-    <div ref={tableRootRef} className="flex flex-col h-full bg-[#F8F9FA] dark:bg-[#111318] overflow-hidden">
+    <div ref={tableRootRef} className="tv-bg flex flex-col h-full bg-[#F8F9FA] dark:bg-[#121318] overflow-hidden">
       {externalAiOpen && (
         <ExternalAiModal
           items={items.filter((i) => checkedIds.has(i.id))}
@@ -621,12 +621,12 @@ const TableViewBase: React.FC<TableViewProps> = ({
       {/* Top block (counts, search, filters): slides away on scroll down, returns on scroll up */}
       <div
         ref={headerRef}
-        className="absolute top-0 inset-x-0 z-20 bg-white dark:bg-[#131314] transition-transform duration-200 ease-out will-change-transform"
+        className="tv-bg absolute top-0 inset-x-0 z-20 bg-white dark:bg-[#121318] transition-transform duration-200 ease-out will-change-transform"
         style={{ transform: headerHidden ? 'translateY(-100%)' : 'translateY(0)' }}
       >
       {statsNode}
       {/* Search, Filter & Bulk Actions Header */}
-      <div className="p-4 sm:p-5 border-b border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-[#131314] flex flex-wrap items-center justify-between gap-3">
+      <div className="tv-bg p-4 sm:p-5 border-b border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-[#121318] flex flex-wrap items-center justify-between gap-3">
         {/* M3 Search Bar */}
         <div className="relative flex-1 min-w-[240px] max-w-md flex items-center bg-slate-100 dark:bg-slate-800/80 rounded-full px-4 py-2 ring-1 ring-slate-200/60 dark:ring-slate-700/60 focus-within:ring-2 focus-within:ring-[#0B57D0] dark:focus-within:ring-[#A8C7FA] focus-within:bg-white dark:focus-within:bg-[#1E1F20] transition-all">
           <Search className="w-4 h-4 text-slate-600 dark:text-slate-400 me-2.5 shrink-0" />
@@ -739,7 +739,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
         className="h-full overflow-auto px-4 pb-4 sm:px-6 sm:pb-6"
         style={{ paddingTop: headerH + 12, overflowAnchor: 'none' }}
       >
-        <div className="bg-white dark:bg-[#1E1F20] rounded-2xl border border-slate-200/80 dark:border-slate-800/80 m3-elevation-1 overflow-hidden">
+        <div className="tv-bg bg-white dark:bg-[#121318] rounded-2xl border border-slate-200/80 dark:border-transparent m3-elevation-1 dark:shadow-none overflow-hidden">
           {/* Mobile: one stacked card per string (the 6-column table is too wide for phones) */}
           <div className="md:hidden divide-y divide-slate-100 dark:divide-slate-800/60">
             {filtered.length === 0 ? (
@@ -902,7 +902,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
           </div>
 
           <table className="hidden md:table w-full text-start border-collapse text-xs">
-            <thead className="bg-slate-50 dark:bg-[#1A1C20] text-slate-600 dark:text-slate-400 font-semibold border-b border-slate-200/80 dark:border-slate-800/80 uppercase tracking-wider text-[11px]">
+            <thead className="tv-bg bg-slate-50 dark:bg-[#121318] text-slate-600 dark:text-slate-400 font-semibold border-b border-slate-200/80 dark:border-slate-800/80 uppercase tracking-wider text-[11px]">
               <tr>
                 {onBulkUpdateTranslations && (
                   <th className="py-3 px-3 w-10 text-center">
@@ -1008,7 +1008,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
 
           {/* Loaded-range footer */}
           {filtered.length > 0 && (
-            <div data-i18n className="px-4 py-3 bg-white dark:bg-[#1A1C20] border-t border-slate-200/80 dark:border-slate-800/80 text-xs text-slate-600 dark:text-slate-400 tabular-nums text-center">
+            <div data-i18n className="tv-bg px-4 py-3 bg-white dark:bg-[#121318] border-t border-slate-200/80 dark:border-slate-800/80 text-xs text-slate-600 dark:text-slate-400 tabular-nums text-center">
               {t('loaded_of_strings', start + 1, end, total)}
             </div>
           )}
