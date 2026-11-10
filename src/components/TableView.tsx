@@ -792,6 +792,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
                         </button>
                       )}
                       <span className="shrink-0">{renderStatusIcon(item)}</span>
+                      <SourceChangeBadge item={item} isAr={isAr} />
                       <span
                         dir="ltr"
                         data-key-name
@@ -801,7 +802,6 @@ const TableViewBase: React.FC<TableViewProps> = ({
 
                       >
                         {breakAfterUnderscores(item.name)}
-                        <SourceChangeBadge item={item} isAr={isAr} />
                         {item.type !== 'string' && (
                           <span className="ms-1 text-[10px] text-slate-600 dark:text-slate-400 font-sans">
                             ({isAr ? (item.type === 'plural' ? 'جمع' : 'مصفوفة') : item.type})
@@ -818,8 +818,8 @@ const TableViewBase: React.FC<TableViewProps> = ({
                             <div className="min-w-0 flex-1 space-y-0.5 text-xs leading-relaxed">
                               <p
                                 onClick={isLong ? () => setExpanded(!expanded) : undefined}
-                                dir="ltr"
-                                className={`text-left text-slate-600 dark:text-slate-400 break-words ${isLong ? 'cursor-pointer' : ''}`}
+                                dir={item.status === 'untranslated' ? 'ltr' : 'rtl'}
+                                className={`${item.status === 'untranslated' ? 'text-left' : 'text-right'} text-slate-600 dark:text-slate-400 break-words ${isLong ? 'cursor-pointer' : ''}`}
                               >
                                 <bdi>{highlightText(v.source, q)}</bdi>
                               </p>
@@ -839,8 +839,8 @@ const TableViewBase: React.FC<TableViewProps> = ({
                     <p
                       onClick={isLong ? () => setExpanded(!expanded) : undefined}
                       data-src-toggle
-                      dir="ltr"
-                      className={`text-left text-xs leading-relaxed text-slate-600 dark:text-slate-400 break-words whitespace-pre-wrap ${
+                      dir={item.status === 'untranslated' ? 'ltr' : 'rtl'}
+                      className={`${item.status === 'untranslated' ? 'text-left' : 'text-right'} text-xs leading-relaxed text-slate-600 dark:text-slate-400 break-words whitespace-pre-wrap ${
                         expanded ? '' : 'line-clamp-3'
                       } ${isLong ? 'cursor-pointer' : ''}`}
                     >
