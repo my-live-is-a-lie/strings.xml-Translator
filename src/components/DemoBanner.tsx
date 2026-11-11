@@ -5,7 +5,7 @@ import { getStoredItem, setStoredItem } from '../utils/storage';
 /** True only in the web demo build (`npm run build:demo`), never in the Android app. */
 export const IS_DEMO = import.meta.env.VITE_DEMO === '1';
 
-const SITE_URL = 'https://my-live-is-a-lie.github.io/strings.xml-Translator/';
+const DOWNLOAD_URL = 'https://github.com/my-live-is-a-lie/strings.xml-Translator/releases/latest';
 
 interface DemoBannerProps {
   isAr: boolean;
@@ -30,7 +30,9 @@ export const DemoBanner: React.FC<DemoBannerProps> = ({ isAr, placement, classNa
           : 'This is a web demo. The full app is for Android (APK).'}
       </span>
       <a
-        href={SITE_URL}
+        href={DOWNLOAD_URL}
+        target="_blank"
+        rel="noopener noreferrer"
         className={`${placement === 'settings' ? 'flex-1 justify-center' : ''} inline-flex items-center gap-1.5 shrink-0 rounded-full bg-[#1EB996] px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-[#19a384] transition`}
       >
         <Download className="w-3.5 h-3.5" aria-hidden="true" />
