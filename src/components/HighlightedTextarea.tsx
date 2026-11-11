@@ -670,6 +670,7 @@ export const HighlightedTextarea = forwardRef<HTMLTextAreaElement, HighlightedTe
 
         {/* Swipe-to-extend / Swipe-up-to-collapse Bottom Indicator Bar */}
         {enableSwipeResize && (
+          <div className="absolute bottom-0 inset-x-0 h-3.5 z-30 flex justify-center pointer-events-none">
           <div
             onPointerDown={handleHandlePointerDown}
             onClick={(e) => {
@@ -685,9 +686,7 @@ export const HighlightedTextarea = forwardRef<HTMLTextAreaElement, HighlightedTe
                 ? 'اسحب للأعلى أو انقر للاستعادة للحجم الطبيعي / Swipe up or tap to restore normal size'
                 : 'اسحب للأسفل لتوسيع مربع الإدخال / Swipe down to extend input box'
             }
-            className={`absolute bottom-0 inset-x-0 h-3.5 z-30 flex items-center justify-center cursor-ns-resize select-none touch-none transition-colors ${
-              isDragging ? 'bg-slate-800/40' : 'hover:bg-slate-800/20'
-            }`}
+            className="pointer-events-auto w-24 h-3.5 flex items-center justify-center cursor-ns-resize select-none touch-none"
           >
             <div
               className={`h-[2.5px] rounded-full transition-all duration-200 ${
@@ -698,6 +697,7 @@ export const HighlightedTextarea = forwardRef<HTMLTextAreaElement, HighlightedTe
                     : 'w-8 bg-slate-300 dark:bg-[#1E2633] group-hover/inputbox:bg-slate-400 dark:group-hover/inputbox:bg-[#252E3E] group-hover/inputbox:w-10'
               }`}
             />
+          </div>
           </div>
         )}
       </div>
