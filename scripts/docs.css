@@ -158,3 +158,4 @@ html.js .reveal:not(.in){opacity:0;transform:translateY(14px)}
 body.nav-open .side{transform:none}.shots img{height:260px}.hero{padding:22px}.top .label,.brand span{display:none}
 .gal-h{flex-direction:column;gap:2px}.gal-h span{font-size:13px}.gallery{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.card .thumb{height:120px}.card .t{padding:10px 12px 12px}.card b{font-size:14.5px}.card .t span{font-size:12.5px}.card .t i{display:none}}
 @media (max-width:600px){#lb{padding:16px 6px}#lb .stage{gap:6px}#lb .stage button{width:34px;height:34px;font-size:19px}#lb img{max-width:calc(100vw - 96px)}}
+.hero .lead{max-width:62ch;margin:14px auto 0;color:var(--muted);font-size:17px;line-height:1.6;text-align:center}

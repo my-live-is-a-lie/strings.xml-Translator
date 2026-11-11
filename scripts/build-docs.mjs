@@ -125,13 +125,37 @@ const page = `<!doctype html>
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>XML Translator — Documentation</title>
-<meta name="description" content="Guide to XML Translator: translate Android strings.xml files with machine translation, quality checks and smart typing helpers." />
+<title>XML Translator – Android strings.xml Translator App &amp; Guide</title>
+<meta name="description" content="XML Translator is an Android app for translating strings.xml localization files on your phone. Keeps placeholders and plurals intact, adds quality checks, and exports values-xx folders. Guide and download." />
+<meta name="keywords" content="strings.xml translator, Android strings.xml translation, translate strings.xml, Android localization app, values-xx folder, strings.xml editor, translate Android app" />
+<meta name="robots" content="index, follow, max-image-preview:large" />
+<link rel="canonical" href="${SITE}" />
 <meta name="theme-color" content="#1eb996" />
-<meta property="og:title" content="XML Translator — Documentation" />
-<meta property="og:description" content="Translate Android strings.xml files faster, safer and in your own language." />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="XML Translator" />
+<meta property="og:title" content="XML Translator – Android strings.xml Translator App" />
+<meta property="og:description" content="Translate Android strings.xml localization files on your phone, with placeholder protection and quality checks." />
 <meta property="og:image" content="${SITE}screenshots/editor.jpg" />
+<meta property="og:image:alt" content="XML Translator editing an Android strings.xml file" />
 <meta property="og:url" content="${SITE}" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="XML Translator – Android strings.xml Translator App" />
+<meta name="twitter:description" content="Translate Android strings.xml localization files on your phone, with placeholder protection and quality checks." />
+<meta name="twitter:image" content="${SITE}screenshots/editor.jpg" />
+<script type="application/ld+json">${JSON.stringify({
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'XML Translator',
+  alternateName: 'strings.xml Translator',
+  description: 'An Android app for translating strings.xml localization files, with placeholder protection, quality checks and export to values-xx folders.',
+  applicationCategory: 'DeveloperApplication',
+  operatingSystem: 'Android',
+  url: SITE,
+  downloadUrl: REPO + '/releases/latest',
+  image: SITE + 'screenshots/editor.jpg',
+  license: 'https://www.gnu.org/licenses/gpl-3.0.html',
+  offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+})}</script>
 <link rel="icon" href="icon.svg" type="image/svg+xml" />
 <script>try{var t=localStorage.getItem('docs-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
 <style>
@@ -160,6 +184,7 @@ ${nav}
   <main>
     <section class="hero">
       <h1>Translate <span>strings.xml</span><br />faster and safer</h1>
+      <p class="lead">XML Translator is an Android app for translating the <code>strings.xml</code> localization files of Android apps. Load your base file, translate on your phone, and export a clean <code>strings.xml</code> or one <code>values-xx</code> folder per language.</p>
       <div class="row">
         <a class="btn primary" href="${REPO}/releases/latest" target="_blank" rel="noopener">Download the app</a>
         <a class="btn" href="#2-quick-start">Quick start</a>
@@ -193,4 +218,9 @@ ${client}</script>
 `;
 writeFileSync('docs/index.html', page);
 writeFileSync('docs/.nojekyll', '');
+writeFileSync('docs/robots.txt', `User-agent: *\nAllow: /\n\nSitemap: ${SITE}sitemap.xml\n`);
+writeFileSync(
+  'docs/sitemap.xml',
+  `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url><loc>${SITE}</loc><changefreq>monthly</changefreq></url>\n</urlset>\n`,
+);
 console.log('docs/index.html', page.length, 'bytes,', sections.length, 'sections,', gallery.length, 'cards');

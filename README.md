@@ -8,7 +8,7 @@
 <br />
 <a href="https://github.com/my-live-is-a-lie/strings.xml-translator/releases/latest"><img src="https://img.shields.io/github/v/release/my-live-is-a-lie/strings.xml-translator?style=flat-square&label=Release&color=119eff&include_prereleases" alt="Latest release" width="133" /></a>
 <br />
-<a href="https://my-live-is-a-lie.github.io/strings.xml-Translator/"><img src="https://img.shields.io/badge/Documentation-Read%20the%20guide-1eb996?style=flat-square&logo=readthedocs&logoColor=white" alt="Documentation" width="178" /></a>
+<a href="https://my-live-is-a-lie.github.io/strings.xml-Translator/"><img src="https://img.shields.io/badge/Website-Read%20the%20guide-1eb996?style=flat-square&logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiPjxjaXJjbGUgY3g9IjEyIiBjeT0iMTIiIHI9IjEwIi8%2BPHBhdGggZD0iTTIgMTJoMjBNMTIgMmExNSAxNSAwIDAgMSAwIDIwTTEyIDJhMTUgMTUgMCAwIDAgMCAyMCIvPjwvc3ZnPg%3D%3D" alt="Website" width="178" /></a>
 
 **Translate Android `strings.xml` files faster, safer and in your own language.**
 

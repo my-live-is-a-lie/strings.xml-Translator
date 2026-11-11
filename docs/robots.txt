@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://my-live-is-a-lie.github.io/strings.xml-Translator/sitemap.xml
