@@ -708,6 +708,8 @@ const TableViewBase: React.FC<TableViewProps> = ({
                 ...(quickActive.includes('new') ? [{ id: 'new', label: isAr ? 'جديد' : 'New' }] : []),
                 ...(quickActive.includes('ai') ? [{ id: 'ai', label: isAr ? 'ذكاء اصطناعي' : 'AI' }] : []),
                 ...(quickActive.includes('manual') ? [{ id: 'manual', label: isAr ? 'يدوي' : 'Manual' }] : []),
+                ...(quickActive.includes('plural') ? [{ id: 'plural', label: isAr ? 'صيغ الجمع' : 'Plurals' }] : []),
+                ...(quickActive.includes('array') ? [{ id: 'array', label: isAr ? 'المصفوفات' : 'Arrays' }] : []),
               ] as const
             ).map((st) => {
               const isSelected = st.id === 'all' ? quickActive.length === 0 : quickActive.includes(st.id as QuickFilterId);

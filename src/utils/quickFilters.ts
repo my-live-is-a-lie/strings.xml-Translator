@@ -1,8 +1,23 @@
 import { useSyncExternalStore } from 'react';
 import { ResourceItem } from '../types';
 
-export type QuickFilterId = 'new' | 'review' | 'untranslated' | 'translated' | 'ai' | 'manual';
-export const QUICK_FILTER_IDS: readonly QuickFilterId[] = ['new', 'review', 'untranslated', 'translated', 'ai', 'manual'];
+export type QuickFilterId = 'new' | 'review' | 'untranslated' | 'translated' | 'ai' | 'manual' | 'plural' | 'array';
+export const QUICK_FILTER_IDS: readonly QuickFilterId[] = ['new', 'review', 'untranslated', 'translated', 'ai', 'manual', 'plural', 'array'];
+
+/**
+ * Which type filters (plurals / arrays) make sense for a file. They appear only when the file mixes at least two
+ * kinds of resources (plain strings, plurals, arrays); a file of a single kind has nothing to filter by.
+ */
+export function availableTypeFilters(items: ResourceItem[]): ('plural' | 'array')[] {
+  const hasString = items.some((i) => i.type === 'string');
+  const hasPlural = items.some((i) => i.type === 'plural');
+  const hasArray = items.some((i) => i.type === 'array');
+  if ([hasString, hasPlural, hasArray].filter(Boolean).length < 2) return [];
+  const out: ('plural' | 'array')[] = [];
+  if (hasPlural) out.push('plural');
+  if (hasArray) out.push('array');
+  return out;
+}
 
 const STORAGE_KEY = 'app_quick_filters_v1';
 
@@ -73,7 +88,10 @@ export function resetQuickSnapshot(items: ResourceItem[]): void {
   // "New" only exists while some string carries a source-update flag
   const hasNew = items.some((i) => i.sourceChange);
   const hasReview = items.some((i) => i.status === 'needs_review');
-  const active = state.active.filter((id) => (id === 'new' ? hasNew : id === 'review' ? hasReview : true));
+  const typeFilters = availableTypeFilters(items);
+  const active = state.active.filter((id) =>
+    id === 'new' ? hasNew : id === 'review' ? hasReview : id === 'plural' || id === 'array' ? typeFilters.includes(id) : true
+  );
   commit({ ...state, active, snapshot: takeSnapshot(items, active) });
 }
 
@@ -106,8 +124,8 @@ export function applyQuickSnapshot(items: ResourceItem[], qf: Pick<QuickFilterSt
 }
 
 /**
- * Within a group (status: untranslated/translated, origin: ai/manual) selected filters are OR'ed;
- * the two groups are AND'ed, so "translated + AI" shows only AI-translated strings.
+ * Within a group (status: untranslated/translated, origin: ai/manual, type: plural/array) selected filters are OR'ed;
+ * the groups are AND'ed, so "translated + AI" shows only AI-translated strings.
  * Origin filters only match translated strings.
  */
 export function applyQuickFilters(items: ResourceItem[], active: readonly QuickFilterId[]): ResourceItem[] {
@@ -118,10 +136,15 @@ export function applyQuickFilters(items: ResourceItem[], active: readonly QuickF
   const wantTranslated = active.includes('translated');
   const wantAi = active.includes('ai');
   const wantManual = active.includes('manual');
+  const wantPlural = active.includes('plural');
+  const wantArray = active.includes('array');
   const statusOn = wantUntranslated || wantTranslated;
   const originOn = wantAi || wantManual;
   return items.filter((item) => {
     const isTranslated = item.status !== 'untranslated';
+    if ((wantPlural || wantArray) && !((wantPlural && item.type === 'plural') || (wantArray && item.type === 'array'))) {
+      return false;
+    }
     if (wantNew && !item.sourceChange) return false;
     if (wantReview && item.status !== 'needs_review') return false;
     if (statusOn && !((wantUntranslated && !isTranslated) || (wantTranslated && isTranslated))) return false;
@@ -136,8 +159,10 @@ export function applyQuickFilters(items: ResourceItem[], active: readonly QuickF
 
 /** How many strings each filter could show on its own; a filter with 0 can't be switched on. */
 export function quickFilterCounts(items: ResourceItem[]): Record<QuickFilterId, number> {
-  const counts: Record<QuickFilterId, number> = { new: 0, review: 0, untranslated: 0, translated: 0, ai: 0, manual: 0 };
+  const counts: Record<QuickFilterId, number> = { new: 0, review: 0, untranslated: 0, translated: 0, ai: 0, manual: 0, plural: 0, array: 0 };
   for (const item of items) {
+    if (item.type === 'plural') counts.plural++;
+    else if (item.type === 'array') counts.array++;
     if (item.sourceChange) counts.new++;
     if (item.status === 'needs_review') counts.review++;
     if (item.status === 'untranslated') {

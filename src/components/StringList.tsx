@@ -428,6 +428,12 @@ const StringListBase: React.FC<StringListProps> = ({
               ...(quickActive.includes('manual')
                 ? [{ id: 'manual', label: isAr ? 'يدوي' : 'Manual', count: counts.manual }]
                 : []),
+              ...(quickActive.includes('plural')
+                ? [{ id: 'plural', label: isAr ? 'صيغ الجمع' : 'Plurals', count: items.filter((i) => i.type === 'plural').length }]
+                : []),
+              ...(quickActive.includes('array')
+                ? [{ id: 'array', label: isAr ? 'المصفوفات' : 'Arrays', count: items.filter((i) => i.type === 'array').length }]
+                : []),
             ] as const
           ).map((chip) => {
             const isSelected = chip.id === 'all' ? quickActive.length === 0 : quickActive.includes(chip.id as QuickFilterId);
@@ -454,7 +460,18 @@ const StringListBase: React.FC<StringListProps> = ({
           id="sidebar-translation-stats-summary"
           className="rounded-xl bg-slate-50/90 dark:bg-[#191C24] border border-slate-200/80 dark:border-slate-800/90"
         >
-          <div className="flex items-center justify-between gap-2 px-2.5 py-2 text-[11px]">
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={toggleSummary}
+            onKeyDown={(e) => {
+              if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                e.preventDefault();
+                toggleSummary();
+              }
+            }}
+            className="flex items-center justify-between gap-2 px-2.5 py-2 text-[11px] cursor-pointer select-none"
+          >
             <div className="flex items-center gap-1.5 font-semibold text-slate-700 dark:text-slate-200 min-w-0">
               <BarChart3 className="w-3.5 h-3.5 text-[#1EB996] shrink-0" />
               <span className="truncate">
@@ -467,7 +484,10 @@ const StringListBase: React.FC<StringListProps> = ({
               {sourceFilter !== 'all' && !summaryCollapsed && (
                 <button
                   type="button"
-                  onClick={() => handleSetSourceFilter('all')}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSetSourceFilter('all');
+                  }}
                   className="text-[10px] font-medium text-[#0B57D0] dark:text-[#A8C7FA] hover:underline cursor-pointer"
                 >
                   {tb('show_all')}
@@ -482,7 +502,10 @@ const StringListBase: React.FC<StringListProps> = ({
               )}
               <button
                 type="button"
-                onClick={toggleSummary}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleSummary();
+                }}
                 aria-expanded={!summaryCollapsed}
                 className="w-6 h-6 inline-flex items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-700/50 transition-colors cursor-pointer"
                 title={summaryCollapsed ? (t('show_content')) : (t('hide_content'))}

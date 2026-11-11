@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { ListFilter } from 'lucide-react';
 import { ResourceItem } from '../types';
 import {
+  availableTypeFilters,
   QUICK_FILTER_IDS,
   quickFilterCounts,
   QuickFilterId,
@@ -18,6 +19,8 @@ const LABELS: Record<QuickFilterId, { ar: string; en: string }> = {
   translated: { ar: 'مترجم', en: 'Translated' },
   ai: { ar: 'ذكاء اصطناعي', en: 'AI' },
   manual: { ar: 'يدوي', en: 'Manual' },
+  plural: { ar: 'صيغ الجمع', en: 'Plurals' },
+  array: { ar: 'المصفوفات', en: 'Arrays' },
 };
 
 interface Props {
@@ -65,6 +68,7 @@ export const QuickFilterBar: React.FC<BarProps> = ({ appLang, items, className =
   const { t } = useT();
   const { active, open } = useQuickFilters();
   const counts = useMemo(() => quickFilterCounts(items), [items]);
+  const typeFilters = useMemo(() => availableTypeFilters(items), [items]);
   const isAr = appLang === 'ar';
   if (!open) return null;
   return (
@@ -75,7 +79,10 @@ export const QuickFilterBar: React.FC<BarProps> = ({ appLang, items, className =
       className={`flex items-center gap-1.5 flex-wrap ${className}`}
     >
       {QUICK_FILTER_IDS.filter(
-        (id) => (id !== 'new' && id !== 'review') || counts[id] > 0 || active.includes(id)
+        (id) =>
+          id === 'plural' || id === 'array'
+            ? typeFilters.includes(id) || active.includes(id)
+            : (id !== 'new' && id !== 'review') || counts[id] > 0 || active.includes(id)
       ).map((id) => {
         const on = active.includes(id);
         const unavailable = counts[id] === 0 && !on; // an active filter can always be switched off
