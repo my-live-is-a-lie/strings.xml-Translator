@@ -218,6 +218,8 @@ export const HighlightedTextarea = forwardRef<HTMLTextAreaElement, HighlightedTe
       let activeDragStartIdx = 0;
       let startHeight = 0;
       let natHeight = 48;
+      // Height resizing is only allowed for a gesture that started on the pill itself, never on the box edges
+      let onHandle = false;
 
       const onTouchStart = (e: TouchEvent) => {
         if (e.touches.length !== 1) return;
@@ -226,6 +228,7 @@ export const HighlightedTextarea = forwardRef<HTMLTextAreaElement, HighlightedTe
         startX = touch.clientX;
         startTime = Date.now();
         activeGesture = 'none';
+        onHandle = e.target instanceof Element && !!e.target.closest('[data-resize-handle]');
         isRearrangeDraggingRef.current = false;
 
         const ta = textareaRef.current;
@@ -275,8 +278,8 @@ export const HighlightedTextarea = forwardRef<HTMLTextAreaElement, HighlightedTe
           // Detect clear vertical swipe
           if (absY > 7 && absY > absX * 1.05) {
             const hist = rearrangeHistoryRef.current;
-            const canMoveUp = hist && hist.currentIndex < hist.states.length - 1;
-            const canRestoreDown = hist && hist.currentIndex > 0;
+            const canMoveUp = !onHandle && hist && hist.currentIndex < hist.states.length - 1;
+            const canRestoreDown = !onHandle && hist && hist.currentIndex > 0;
 
             if (deltaY < -5 && canMoveUp) {
               // Swipe UP: move bottom text up to empty new line
@@ -288,14 +291,14 @@ export const HighlightedTextarea = forwardRef<HTMLTextAreaElement, HighlightedTe
               activeGesture = 'rearrange';
               activeDragStartIdx = hist.currentIndex;
               isRearrangeDraggingRef.current = true;
-            } else if (!isExpandedRef.current && deltaY > 5) {
+            } else if (onHandle && !isExpandedRef.current && deltaY > 5) {
               // Not expanded and swiping DOWN: start extending!
               // A box that is already tall because of its text has no use for more height: the swipe scrolls the page.
               if (natHeight < window.innerHeight * 0.35) {
                 activeGesture = 'resize';
                 setIsDragging(true);
               }
-            } else if (isExpandedRef.current && deltaY < -5) {
+            } else if (onHandle && isExpandedRef.current && deltaY < -5) {
               // Already expanded and swiping UP: start collapsing back!
               // A box that is already tall because of its text has nothing worth collapsing: the swipe scrolls the page.
               const tallBox = natHeight >= window.innerHeight * 0.35;
@@ -303,7 +306,7 @@ export const HighlightedTextarea = forwardRef<HTMLTextAreaElement, HighlightedTe
                 activeGesture = 'resize';
                 setIsDragging(true);
               }
-            } else if (isExpandedRef.current && deltaY > 5) {
+            } else if (onHandle && isExpandedRef.current && deltaY > 5) {
               // Already expanded and swiping DOWN further (not when the box is already tall: scroll the page)
               if (natHeight < window.innerHeight * 0.35) {
                 activeGesture = 'resize';
@@ -672,6 +675,7 @@ export const HighlightedTextarea = forwardRef<HTMLTextAreaElement, HighlightedTe
         {enableSwipeResize && (
           <div className="absolute bottom-0 inset-x-0 h-3.5 z-30 flex justify-center pointer-events-none">
           <div
+            data-resize-handle
             onPointerDown={handleHandlePointerDown}
             onClick={(e) => {
               e.stopPropagation();
