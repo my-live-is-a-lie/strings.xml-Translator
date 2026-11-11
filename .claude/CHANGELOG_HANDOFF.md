@@ -49,3 +49,13 @@ Commits are on `main`; short hashes where known.
 ### Conversation notes
 - Answered (no code): Android keyboard cannot be limited to half the screen; suggested Gboard floating/one-handed mode, or a custom in-app keyboard (not built).
 - Every change was checked with lint, unit tests and headless Chromium screenshots; none confirmed on the user's device yet.
+
+---
+## 2026-11-11 session (main, up to `c843f14`)
+- `b799f4e`/`e7f14fa`/`975f3e6`: global ordering, shared quick filters, All/AI/manual/new chips.
+- `e64d7e3`/`7c095a8`: strings list performance and scroll-up fix; badge cleared on save.
+- `63bec20`/`c0d6974`/`6b1a72b`/`fb45c7c`: table cleanups, source alignment, badges, selected highlight.
+- `9ea5456`/`ba8af6d`: table background `#121318` (dark, all themes) / white (day), no side borders, rounded selected card.
+- `8c0d05b`: docs SEO, Website badge, Google verification file, sitemap/robots.
+- `8124764`: plural/array type filters (mixed files only); summary header toggles card.
+- `74e27d1`/`c843f14`: editor resize only from the pill; no translucent bar.

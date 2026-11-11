@@ -45,3 +45,23 @@ All items below were verified only in headless Chromium (landscape ~780x360), no
 1. Confirm the new release on device; fix whatever the user reports.
 2. Consider tying keyboard-open mode to actual viewport shrink.
 3. Possible follow-ups the user hasn't asked for: an in-app compact keyboard (declined as too big for now); float/one-handed keyboard advice was given instead.
+
+---
+# Session update (2026-11-11): table, filters, docs/SEO, editor pill
+Last pushed commit when written: `c843f14`. Lint + 114 vitest tests pass. Everything verified in headless Chromium only, NOT on the user's phone.
+
+### Done and pushed
+- **Order/filters (earlier in session):** one global order (translated → untranslated → needs review, `src/utils/stringOrder.ts`); fresh start opens on first string needing work; one shared quick-filter state (`src/utils/quickFilters.ts`, key `app_quick_filters_v1`) used by editor, strings list and table; All clears everything; counts follow filters.
+- **Strings list perf/scroll:** windowed rows, no hidden desktop list on phones, spacer-based reload when scrolling up; no green check in rows; new/updated badge cleared on save.
+- **Table page:** key names clickable (open editor), selected row highlighted like the list, no status circle, badges next to status icon; background is one flat colour: `#121318` in dark mode in every theme (class `tv-bg` + rule in `index.css` that beats theme overrides), white in day mode with no side borders; selected card rounded (phone cards only; wide table rows still rectangular).
+- **Type filters:** `plural` / `array` quick filters (`availableTypeFilters`). Shown only when the file mixes ≥2 kinds of resources (string/plural/array); single-kind files show none. Group is OR'ed inside, AND'ed with other groups.
+- **Strings list summary card:** whole header row toggles it (arrow and "show all" button stop propagation).
+- **Editor resize pill (`HighlightedTextarea.tsx`):** height resize only from the pill (`data-resize-handle`, ~96px hit area); touch gestures that start elsewhere never resize (`onHandle` flag in the touch listener); translucent bar under the pill removed. Rearrange-by-swipe still works on the whole box.
+- **Docs site / SEO:** `scripts/build-docs.mjs` generates `docs/index.html` (title, description, canonical, OG/Twitter, JSON-LD SoftwareApplication, hero lead text), plus `docs/robots.txt`, `docs/sitemap.xml`. README badge renamed Website with a globe icon. Google Search Console ownership verified via `docs/googlec8cc6f1af188f4fa.html` (never delete it). Sitemap submitted (status "couldn't fetch" at first, normal); indexing requested for the home page. `npm run docs` needs `marked` (installed with `--no-save`).
+
+### Waiting on the user
+- Start a NEW release run (Run workflow, not Re-run) and test on the phone: table backgrounds, type filters, pill-only resize, summary toggle.
+- Check Search Console in a few days (URL inspection should change to "on Google").
+
+### Notes
+- User wants: Arabic replies, concise; no pushes when he says "don't push until I ask"; another Claude session may push to main (use `git pull --rebase`).
