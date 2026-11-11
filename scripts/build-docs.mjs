@@ -187,7 +187,7 @@ ${nav}
       <p class="lead">XML Translator is an Android app for translating the <code>strings.xml</code> localization files of Android apps. Load your base file, translate on your phone, and export a clean <code>strings.xml</code> or one <code>values-xx</code> folder per language.</p>
       <div class="row">
         <a class="btn primary" href="${REPO}/releases/latest" target="_blank" rel="noopener">Download the app</a>
-        <a class="btn primary try" href="demo/" target="_blank" rel="noopener">Try it <svg class="chev" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></a>
+        <a class="btn primary try" href="demo/" target="_blank" rel="noopener">Try it <svg class="chev" viewBox="7.5 4.5 8.5 15" width="7.8" height="13.75" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></a>
         <a class="btn" href="#2-quick-start">Quick start</a>
         <a class="btn" href="${REPO}" target="_blank" rel="noopener">Source code</a>
       </div>

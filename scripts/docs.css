@@ -159,4 +159,4 @@ body.nav-open .side{transform:none}.shots img{height:260px}.hero{padding:22px}.t
 .gal-h{flex-direction:column;gap:2px}.gal-h span{font-size:13px}.gallery{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.card .thumb{height:120px}.card .t{padding:10px 12px 12px}.card b{font-size:14.5px}.card .t span{font-size:12.5px}.card .t i{display:none}}
 @media (max-width:600px){#lb{padding:16px 6px}#lb .stage{gap:6px}#lb .stage button{width:34px;height:34px;font-size:19px}#lb img{max-width:calc(100vw - 96px)}}
 .hero .lead{max-width:62ch;margin:14px auto 0;color:var(--muted);font-size:17px;line-height:1.6;text-align:center}
-.btn.try{display:inline-flex;align-items:center;gap:6px;letter-spacing:.04em;margin-inline-end:12px;box-shadow:9px 0 0 -1.5px #12997a}.btn.try .chev{flex:none}
+.btn.try{display:inline-flex;align-items:center;gap:12px;padding-right:11px;margin-inline-end:8px;box-shadow:6px 0 0 0 #0c9776}.btn.try .chev{flex:none}

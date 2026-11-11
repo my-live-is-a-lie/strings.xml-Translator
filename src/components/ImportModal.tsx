@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { X, Upload, FileCode, Sparkles, FolderUp, AlertCircle } from 'lucide-react';
+import { X, Upload, FileCode, AlertCircle } from 'lucide-react';
 import { useDialog } from '../utils/useDialog';
 import { parseAndroidXml, mergeTargetXml, normalizePluralsForLanguage } from '../utils/xmlParser';
 import { TranslationProject } from '../types';
@@ -135,9 +135,6 @@ export const ImportModal: React.FC<ImportModalProps> = ({
         {/* Modal Header */}
         <div className="p-6 pb-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-[#D3E3FD] dark:bg-[#0842A0] flex items-center justify-center text-[#041E49] dark:text-[#D3E3FD]">
-              <FolderUp className="w-5 h-5" />
-            </div>
             <div>
               <h2 data-i18n id="ImportModal-title" className="text-lg font-semibold text-slate-900 dark:text-white">
                 {t('import_strings_xml')}
@@ -310,32 +307,28 @@ export const ImportModal: React.FC<ImportModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="p-6 pt-4 flex items-center justify-between">
+        <div className="p-6 pt-4 flex items-center gap-5">
+          <button
+            onClick={onClose}
+            className="py-2 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition cursor-pointer"
+          >
+            {tb('cancel')}
+          </button>
           <button
             onClick={() => {
               onLoadSample();
               onClose();
             }}
-            className="inline-flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white font-medium cursor-pointer"
+            className="py-2 text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white font-medium cursor-pointer"
           >
-            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
             <span data-i18n>{t('load_sample_app')}</span>
           </button>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition cursor-pointer"
-            >
-              {tb('cancel')}
-            </button>
-            <button
-              onClick={handleProcessImport}
-              className="px-5 py-2 rounded-full bg-[#0B57D0] hover:bg-[#0842A0] dark:bg-[#A8C7FA] dark:hover:bg-[#82AAFA] text-white dark:text-[#062E6F] text-xs font-semibold shadow-xs transition cursor-pointer m3-state-layer"
-            >
-              {tb('start_translating')}
-            </button>
-          </div>
+          <button
+            onClick={handleProcessImport}
+            className="ms-auto px-5 py-2 rounded-full bg-[#0B57D0] hover:bg-[#0842A0] dark:bg-[#A8C7FA] dark:hover:bg-[#82AAFA] text-white dark:text-[#062E6F] text-xs font-semibold shadow-xs transition cursor-pointer m3-state-layer"
+          >
+            {tb('start_translating')}
+          </button>
         </div>
       </div>
     </div>
