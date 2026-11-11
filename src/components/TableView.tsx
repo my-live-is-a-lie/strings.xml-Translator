@@ -594,7 +594,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
   );
 
   return (
-    <div ref={tableRootRef} className="tv-bg flex flex-col h-full bg-[#F8F9FA] dark:bg-[#121318] overflow-hidden">
+    <div ref={tableRootRef} className="tv-bg flex flex-col h-full bg-white dark:bg-[#121318] overflow-hidden">
       {externalAiOpen && (
         <ExternalAiModal
           items={items.filter((i) => checkedIds.has(i.id))}
@@ -739,7 +739,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
         className="h-full overflow-auto px-4 pb-4 sm:px-6 sm:pb-6"
         style={{ paddingTop: headerH + 12, overflowAnchor: 'none' }}
       >
-        <div className="tv-bg bg-white dark:bg-[#121318] rounded-2xl border border-slate-200/80 dark:border-transparent m3-elevation-1 dark:shadow-none overflow-hidden">
+        <div className="tv-bg bg-white dark:bg-[#121318] rounded-2xl overflow-hidden">
           {/* Mobile: one stacked card per string (the 6-column table is too wide for phones) */}
           <div className="md:hidden divide-y divide-slate-100 dark:divide-slate-800/60">
             {filtered.length === 0 ? (
@@ -770,7 +770,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
                     aria-current={item.id === selectedId ? 'true' : undefined}
                     className={`p-3.5 space-y-2.5 ${
                       item.id === selectedId
-                        ? 'bg-[#E8F0FE] dark:bg-[#1E293B] ring-1 ring-inset ring-[#0B57D0]/30 dark:ring-[#A8C7FA]/30'
+                        ? 'rounded-2xl bg-[#E8F0FE] dark:bg-[#1E293B] ring-1 ring-inset ring-[#0B57D0]/30 dark:ring-[#A8C7FA]/30'
                         : isChecked
                           ? 'bg-emerald-50/60 dark:bg-emerald-950/20'
                           : ''

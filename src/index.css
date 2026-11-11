@@ -716,5 +716,6 @@ html:not(.dark) .dark\:border-\[\#2E384D\] {
 }
 
 /* Strings table page: one flat background in dark mode, whatever the theme */
+html .tv-bg { background-color: #fff; }
 html.dark .tv-bg { background-color: #121318 !important; }
 html.dark .tv-bg { box-shadow: none; }
