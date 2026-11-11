@@ -26,13 +26,24 @@ const cspPlugin = {
   },
 };
 
+// Web demo build (published under /demo/ of the docs site): no service worker (it would take over the docs
+// site's scope) and hidden from search engines so it does not compete with the docs page.
+const isDemo = process.env.VITE_DEMO === '1';
+const demoPlugin = {
+  name: 'demo-plugin',
+  transformIndexHtml(html: string) {
+    return isDemo ? html.replace('</head>', '    <meta name="robots" content="noindex, nofollow" />\n  </head>') : html;
+  },
+};
+
 export default defineConfig(() => {
   return {
     plugins: [
       cspPlugin,
+      demoPlugin,
       react(),
       tailwindcss(),
-      VitePWA({
+      ...(isDemo ? [] : [VitePWA({
         registerType: 'autoUpdate',
         includeAssets: ['icon.svg'],
         manifest: {
@@ -60,7 +71,7 @@ export default defineConfig(() => {
         devOptions: {
           enabled: false,
         },
-      }),
+      })]),
     ],
     resolve: {
       alias: {

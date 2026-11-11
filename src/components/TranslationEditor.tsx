@@ -6,6 +6,7 @@ import { Copy, Check, Sparkles, RotateCcw, Undo2, Redo2, Clipboard, AlertCircle 
 import { ResourceItem, SingleStringItem, PluralStringItem, ArrayStringItem } from '../types';
 import { EditorActionButtons } from './EditorActionButtons';
 import { EditorNavFooter } from './EditorNavFooter';
+import { DemoBanner } from './DemoBanner';
 import { LanguageSelectorModal } from './LanguageSelectorModal';
 import { HighlightedTextarea } from './HighlightedTextarea';
 import { getArabicLanguageName, getLanguageOption } from '../utils/languages';
@@ -2027,6 +2028,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
           onNext={() => discardDraftAndNavigate(onNavigateNext)}
           onNextUntranslated={() => discardDraftAndNavigate(onNavigateNextUntranslated)}
         />)}
+        {slot('r4', '', <DemoBanner isAr={isAr} placement="editor" className="mt-2" />)}
       </div>
 
       {/* Target Language Selection Dialog */}

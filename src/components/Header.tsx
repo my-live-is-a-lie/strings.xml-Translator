@@ -12,6 +12,7 @@ import { QaSection } from './QaSection';
 import { APP_LANGUAGES, THEME_OPTIONS } from './headerOptions';
 
 import { PWAInstallButton } from './PWAInstallButton';
+import { DemoBanner } from './DemoBanner';
 import { OfflineBadge } from './OfflineBadge';
 import { OfflineDot } from './OfflineDot';
 import { QuickFilterButton } from './QuickFilters';
@@ -1067,6 +1068,8 @@ const HeaderBase: React.FC<HeaderProps> = ({
                   <span data-i18n>{t('keyboard_shortcuts')}</span>
                 </button>
               )}
+
+              <DemoBanner isAr={isAr} placement="settings" />
             </div>
           </aside>
           {addLangOpen && (

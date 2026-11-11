@@ -18,7 +18,9 @@
     if (metaScheme) metaScheme.setAttribute('content', scheme);
     var metaTheme = document.querySelector('meta[name="theme-color"]');
     if (metaTheme) metaTheme.setAttribute('content', isDay ? '#f8f9fa' : (t === 'black_hole' ? '#000000' : '#111318'));
-    var ui = localStorage.getItem('app_ui_language') === 'en' ? 'en' : 'ar';
+    var saved = localStorage.getItem('app_ui_language');
+    var dev = (navigator.languages && navigator.languages[0]) || navigator.language || '';
+    var ui = saved === 'ar' || saved === 'en' ? saved : /^ar\b/i.test(dev) ? 'ar' : 'en';
     root.setAttribute('lang', ui);
     root.setAttribute('dir', ui === 'ar' ? 'rtl' : 'ltr');
     var a = localStorage.getItem('app_accent_color') || 'teal';

@@ -32,6 +32,7 @@ import { getAutoCorrectEnabled, setAutoCorrectEnabled } from './utils/autoCorrec
 import { applyQuickSnapshot, resetQuickSnapshot, showOnlyNewStrings, useQuickFilters } from './utils/quickFilters';
 import { TranslationProject, ResourceItem, FilterStatus, SourceFilter, StoredXmlFile } from './types';
 import { parseAndroidXml, mergeTargetXml, normalizePluralsForLanguage } from './utils/xmlParser';
+import { SUPPORTED_LANGUAGES } from './utils/languages';
 import { SAMPLE_ANDROID_STRINGS_XML, SAMPLE_TARGET_ARABIC_XML } from './utils/sampleData';
 import { saveCurrentProject, loadCurrentProject, getStoredItem, setStoredItem } from './utils/storage';
 import { getLastSelectedId, saveLastSelectedId } from './utils/lastPosition';
@@ -117,19 +118,37 @@ function repairSavedProjectItems(items: ResourceItem[], targetLang: string): Res
   });
 }
 
+/** The sample project follows the device language: Arabic devices get the Arabic sample (pre-translated), others
+ *  get the same source file to translate into their own language (Spanish when theirs is not supported). */
 function createDefaultProject(): TranslationProject {
   const { items, resourcesAttributes, indentStyle, itemIndentStyle } = parseAndroidXml(SAMPLE_ANDROID_STRINGS_XML);
-  // Pre-merge with Arabic sample (including all 6 Arabic plural forms: zero, one, two, few, many, other)
-  const { updatedItems } = mergeTargetXml(items, SAMPLE_TARGET_ARABIC_XML, 'ar');
+  const device = (typeof navigator !== 'undefined' ? (navigator.languages?.[0] ?? navigator.language ?? '') : '').toLowerCase();
+  const isArabicDevice = /^ar\b/.test(device);
+  let targetLang = 'ar';
+  let targetLocaleName = 'العربية';
+  let sampleItems = items;
+  if (isArabicDevice) {
+    // Pre-merge with Arabic sample (including all 6 Arabic plural forms: zero, one, two, few, many, other)
+    sampleItems = mergeTargetXml(items, SAMPLE_TARGET_ARABIC_XML, 'ar').updatedItems;
+  } else {
+    const match =
+      SUPPORTED_LANGUAGES.find((l) => l.code.toLowerCase() === device.replace('-', '-r')) ||
+      SUPPORTED_LANGUAGES.find((l) => l.code.toLowerCase() === device.split('-')[0]);
+    const picked = match && match.code !== 'en' && match.code !== 'ar' ? match : SUPPORTED_LANGUAGES.find((l) => l.code === 'es');
+    if (picked) {
+      targetLang = picked.code;
+      targetLocaleName = picked.nativeName;
+    }
+  }
 
   return {
     id: 'sample_project_1',
     name: 'XML Translator',
     sourceFileName: 'strings.xml',
     sourceLang: 'en',
-    targetLang: 'ar',
-    targetLocaleName: 'العربية',
-    items: updatedItems,
+    targetLang,
+    targetLocaleName,
+    items: sampleItems,
     rawSourceXml: SAMPLE_ANDROID_STRINGS_XML,
     resourcesAttributes,
     indentStyle,
@@ -249,7 +268,10 @@ export default function App() {
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [uiLang, setUiLangState] = useState<string>(() => {
     const saved = getStoredItem('app_ui_language');
-    const code = saved === 'en' || (saved && findCustomLanguage(saved)) ? (saved as string) : 'ar';
+    // First visit: follow the device language (Arabic only for Arabic devices, English for everyone else)
+    const deviceLang = typeof navigator !== 'undefined' ? (navigator.languages?.[0] ?? navigator.language ?? '') : '';
+    const fallback = /^ar\b/i.test(deviceLang) ? 'ar' : 'en';
+    const code = saved === 'en' || saved === 'ar' || (saved && findCustomLanguage(saved)) ? (saved as string) : fallback;
     setActiveLanguage(code);
     return code;
   });

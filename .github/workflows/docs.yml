@@ -1,12 +1,17 @@
 name: Deploy docs to GitHub Pages
 
-# Only rebuild the docs site when the docs themselves (or this workflow) change,
+# Rebuild the docs site (and the web demo built from the app sources) only when those inputs change,
 # instead of on every push to main like the built-in Pages workflow did.
 on:
   push:
     branches: [main]
     paths:
       - 'docs/**'
+      - 'src/**'
+      - 'index.html'
+      - 'public/**'
+      - 'package.json'
+      - 'vite.config.ts'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
 
@@ -27,6 +32,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # The web demo of the app, served at <site>/demo/
+      - run: npm run build:demo
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
