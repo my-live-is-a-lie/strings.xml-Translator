@@ -51,7 +51,7 @@ export const MultiLanguageModal: React.FC<MultiLanguageModalProps> = ({
     const q = query.trim().toLowerCase();
     return !q || l.code.toLowerCase().includes(q) || l.name.toLowerCase().includes(q) || l.nativeName.toLowerCase().includes(q) || getArabicLanguageName(l.code, l.name).includes(q);
   });
-  const doneCount = Object.values(statuses).filter((s) => s.state === 'done').length;
+  const doneCount = Object.entries(statuses).filter(([code, s]) => s.state === 'done' && selected.has(code)).length;
 
   const toggle = (code: string) =>
     setSelected((prev) => {
