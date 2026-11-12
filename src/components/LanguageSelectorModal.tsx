@@ -1,6 +1,6 @@
 import { useDialog } from '../utils/useDialog';
 import React, { useState, useMemo } from 'react';
-import { X, Search, Globe, Check, Plus } from 'lucide-react';
+import { X, Search, Check, Plus } from 'lucide-react';
 import {
   SUPPORTED_LANGUAGES,
   LanguageOption,
@@ -73,9 +73,6 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
         {/* Dialog Header */}
         <div className="px-5 py-4 border-b border-slate-100 dark:border-[#242D3D] flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-2xl bg-[#0B57D0]/10 dark:bg-[#1EB996]/20 flex items-center justify-center text-[#0B57D0] dark:text-[#1EB996]">
-              <Globe className="w-5 h-5" />
-            </div>
             <div>
               <h2 data-i18n id="language-modal-title" className="text-base font-semibold text-slate-900 dark:text-white">
                 {t('switch_target_language_2')}

@@ -162,7 +162,7 @@ export const UI_STRINGS: Record<string, { en: string; ar: string }> = {
   "load_sample_app": { en: "Load Sample App", ar: "تحميل مشروع تجريبي" },
   "start_translating": { en: "Start Translating", ar: "بدء الترجمة" },
   "switch_target_language_2": { en: "Switch Target Language", ar: "تغيير لغة الترجمة المستهدفة" },
-  "select_an_android_locale_to": { en: "Select an Android locale to translate your strings into", ar: "اختر لغة أندرويد لترجمة النصوص إليها" },
+  "select_an_android_locale_to": { en: "Select a language to translate to", ar: "اختر لغة للترجمة إليها" },
   "search_by_language_name_or": { en: "Search by language name or code", ar: "ابحث باسم اللغة، الرمز" },
   "no_matching_languages_found_you": { en: "No matching languages found. You can add it below as a custom locale.", ar: "لم يتم العثور على لغات مطابقة. يمكنك إضافتها أدناه كرمز لغة مخصص." },
   "rtl": { en: "· RTL", ar: "· من اليمين لليسار" },
