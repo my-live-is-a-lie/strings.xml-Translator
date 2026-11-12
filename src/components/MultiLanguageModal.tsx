@@ -268,14 +268,6 @@ export const MultiLanguageModal: React.FC<MultiLanguageModalProps> = ({
             {showDownload && (
               <>
                 <button
-                  id="multilang-clear"
-                  type="button"
-                  onClick={clearSelection}
-                  className="px-4 py-2 rounded-full border border-slate-300 dark:border-slate-600 text-xs font-medium text-slate-700 dark:text-slate-200 cursor-pointer"
-                >
-                  {t('clear')}
-                </button>
-                <button
                   id="multilang-download"
                   type="button"
                   onClick={download}
@@ -284,6 +276,14 @@ export const MultiLanguageModal: React.FC<MultiLanguageModalProps> = ({
                 >
                   {zipping && <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />}
                   {t('download_zip')}
+                </button>
+                <button
+                  id="multilang-clear"
+                  type="button"
+                  onClick={clearSelection}
+                  className="px-4 py-2 rounded-full border border-slate-300 dark:border-slate-600 text-xs font-medium text-slate-700 dark:text-slate-200 cursor-pointer"
+                >
+                  {t('clear')}
                 </button>
               </>
             )}
