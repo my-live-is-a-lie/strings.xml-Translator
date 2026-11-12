@@ -33,6 +33,8 @@ export const MultiLanguageModal: React.FC<MultiLanguageModalProps> = ({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [statuses, setStatuses] = useState<Record<string, LangStatus>>({});
   const [results, setResults] = useState<Record<string, ResourceItem[]>>({});
+  // Which provider translated each language, so it can be shown under the language row
+  const [usedProviders, setUsedProviders] = useState<Record<string, string>>({});
   // Providers that need a key are only offered once a key has been saved; the choice applies to this run only
   const [providers] = useState(() => getAllTranslationProviders().filter((p) => p.isBuiltIn || p.apiKey));
   const [providerId, setProviderId] = useState(() => {
@@ -83,6 +85,7 @@ export const MultiLanguageModal: React.FC<MultiLanguageModalProps> = ({
         const byId = new Map(translated.map((t) => [t.id, t]));
         out[code] = base.map((item) => byId.get(item.id) ?? item);
         setStatuses((s) => ({ ...s, [code]: { state: 'done', done: todo.length, total: todo.length } }));
+        setUsedProviders((s) => ({ ...s, [code]: providerId }));
       } catch (err) {
         setStatuses((s) => ({
           ...s,
@@ -164,6 +167,7 @@ export const MultiLanguageModal: React.FC<MultiLanguageModalProps> = ({
           {visible.map((l) => {
             const st = statuses[l.code];
             const isCurrent = l.code.toLowerCase() === project.targetLang.toLowerCase();
+            const usedProvider = st?.state === 'done' ? providers.find((p) => p.id === usedProviders[l.code]) : undefined;
             return (
               <li key={l.code}>
                 <label className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2 text-xs cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60">
@@ -193,6 +197,11 @@ export const MultiLanguageModal: React.FC<MultiLanguageModalProps> = ({
                     </span>
                   )}
                 </label>
+                {usedProvider && (
+                  <div className="px-3 pt-0.5 text-[10px] text-slate-500 dark:text-slate-400 truncate">
+                    {getProviderDisplayName(usedProvider, isAr)}
+                  </div>
+                )}
               </li>
             );
           })}
