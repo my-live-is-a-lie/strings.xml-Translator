@@ -4,7 +4,7 @@ import { ResourceItem, TranslationProject } from '../types';
 import { SUPPORTED_LANGUAGES, getArabicLanguageName } from '../utils/languages';
 import { bulkTranslateItems, getActiveProviderId, getAllTranslationProviders, withTranslationProvider } from '../utils/translator';
 import { getProviderDisplayName } from './ProvidersPanel';
-import { downloadZip, itemsForLanguage, needsTranslation, valuesDirFor, xmlForLanguage } from '../utils/multiLang';
+import { blankItems, downloadZip, itemsForLanguage, needsTranslation, valuesDirFor, xmlForLanguage } from '../utils/multiLang';
 import { useDialog } from '../utils/useDialog';
 import { useT } from '../i18n/i18n';
 
@@ -67,13 +67,18 @@ export const MultiLanguageModal: React.FC<MultiLanguageModalProps> = ({
     cancelRef.current = false;
     setRunning(true);
     setSaved(false);
-    const codes = SUPPORTED_LANGUAGES.map((l) => l.code).filter((c) => selected.has(c));
-    setStatuses(Object.fromEntries(codes.map((c) => [c, { state: 'pending', done: 0, total: 0 } as LangStatus])));
+    // Skip languages already translated with the currently selected provider; re-translate the rest
+    // (including ones done with a different provider, which forces a full redo with the new one)
+    const codes = SUPPORTED_LANGUAGES.map((l) => l.code).filter(
+      (c) => selected.has(c) && (statuses[c]?.state !== 'done' || usedProviders[c] !== providerId)
+    );
+    setStatuses((s) => ({ ...s, ...Object.fromEntries(codes.map((c) => [c, { state: 'pending', done: 0, total: 0 } as LangStatus])) }));
     const out: Record<string, ResourceItem[]> = {};
 
     for (const code of codes) {
       if (cancelRef.current) break;
-      const base = itemsForLanguage(project, code);
+      const isRetranslation = statuses[code]?.state === 'done';
+      const base = isRetranslation ? blankItems(itemsForLanguage(project, code)) : itemsForLanguage(project, code);
       const todo = base.filter(needsTranslation);
       setStatuses((s) => ({ ...s, [code]: { state: 'running', done: 0, total: todo.length } }));
       try {
@@ -115,8 +120,11 @@ export const MultiLanguageModal: React.FC<MultiLanguageModalProps> = ({
 
   const clearSelection = () => setSelected(new Set());
 
-  // "Start translating" is only actionable when at least one checked language still needs translating
-  const canStart = Array.from(selected).some((code) => statuses[code]?.state !== 'done');
+  // "Start translating" is only actionable when at least one checked language still needs translating,
+  // or was translated with a different provider than the one currently selected (allows re-translating it)
+  const canStart = Array.from(selected).some(
+    (code) => statuses[code]?.state !== 'done' || usedProviders[code] !== providerId
+  );
   // The ZIP download (and its Clear button) only appear once a translation run has finished with results
   const showDownload = !running && Object.keys(results).length > 0;
 
