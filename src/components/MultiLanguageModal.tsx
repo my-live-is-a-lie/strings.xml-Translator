@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Archive, Check, Loader2, X } from 'lucide-react';
+import { Check, Loader2, X } from 'lucide-react';
 import { ResourceItem, TranslationProject } from '../types';
 import { SUPPORTED_LANGUAGES, getArabicLanguageName } from '../utils/languages';
 import { bulkTranslateItems, getActiveProviderId, getAllTranslationProviders, withTranslationProvider } from '../utils/translator';
@@ -94,18 +94,28 @@ export const MultiLanguageModal: React.FC<MultiLanguageModalProps> = ({
     setRunning(false);
   };
 
+  // Only languages that were both translated (present in results) AND are still checked are included
+  const downloadableCodes = Object.keys(results).filter((code) => selected.has(code));
+
   const download = async () => {
     setZipping(true);
     try {
-      const files = Object.entries(results).map(([code, items]) => ({
+      const files = downloadableCodes.map((code) => ({
         path: `${valuesDirFor(code)}/strings.xml`,
-        content: xmlForLanguage(project, items),
+        content: xmlForLanguage(project, results[code]),
       }));
       await downloadZip(files, `${(project.name || 'strings').replace(/[^\w.-]+/g, '_')}-translations.zip`);
     } finally {
       setZipping(false);
     }
   };
+
+  const clearSelection = () => setSelected(new Set());
+
+  // "Start translating" is only actionable when at least one checked language still needs translating
+  const canStart = Array.from(selected).some((code) => statuses[code]?.state !== 'done');
+  // The ZIP download (and its Clear button) only appear once a translation run has finished with results
+  const showDownload = !running && Object.keys(results).length > 0;
 
   const close = () => {
     if (running) cancelRef.current = true;
@@ -125,7 +135,6 @@ export const MultiLanguageModal: React.FC<MultiLanguageModalProps> = ({
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
-            <Archive className="w-6 h-6 text-[#1EB996]" aria-hidden="true" />
             <div>
               <h2 data-i18n id="multilang-title" className="text-lg font-semibold text-slate-900 dark:text-white">
                 {t('translate_several_languages_zip')}
@@ -221,7 +230,7 @@ export const MultiLanguageModal: React.FC<MultiLanguageModalProps> = ({
                 id="multilang-start"
                 type="button"
                 onClick={start}
-                disabled={selected.size === 0}
+                disabled={!canStart}
                 className="px-4 py-2 rounded-full bg-[#0B57D0] hover:bg-[#0842A0] dark:bg-[#1EB996] dark:hover:bg-[#19A585] text-white text-xs font-semibold disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
               >
                 {tb('start_translating_2')}
@@ -239,16 +248,28 @@ export const MultiLanguageModal: React.FC<MultiLanguageModalProps> = ({
             >
               {saved ? (t('saved_to_project')) : t('save_to_project')}
             </button>
-            <button
-              id="multilang-download"
-              type="button"
-              onClick={download}
-              disabled={Object.keys(results).length === 0 || running || zipping}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#1EB996] hover:bg-[#19A585] text-white text-xs font-semibold disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
-            >
-              {zipping && <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />}
-              {t('download_zip')}
-            </button>
+            {showDownload && (
+              <>
+                <button
+                  id="multilang-clear"
+                  type="button"
+                  onClick={clearSelection}
+                  className="px-4 py-2 rounded-full border border-slate-300 dark:border-slate-600 text-xs font-medium text-slate-700 dark:text-slate-200 cursor-pointer"
+                >
+                  {t('clear')}
+                </button>
+                <button
+                  id="multilang-download"
+                  type="button"
+                  onClick={download}
+                  disabled={downloadableCodes.length === 0 || zipping}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#1EB996] hover:bg-[#19A585] text-white text-xs font-semibold disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
+                >
+                  {zipping && <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />}
+                  {t('download_zip')}
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
