@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { X, Download, Copy, Check, Sliders, Folder, Filter, ShieldAlert, ChevronDown } from 'lucide-react';
+import { X, Download, Copy, Check, Sliders, Filter, ShieldAlert, ChevronDown } from 'lucide-react';
 import { useDialog } from '../utils/useDialog';
 import { FilterStatus, SourceFilter, TranslationProject } from '../types';
 import { copyTextToClipboard } from '../utils/storage';
@@ -167,22 +167,6 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
         {/* Content */}
         <div className="px-6 py-2 space-y-4 flex-1 overflow-y-auto">
-          {/* Target Folder Placement Guide */}
-          <div className="flex items-start gap-3 p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/70 dark:border-slate-700/60 text-xs text-slate-700 dark:text-slate-300">
-            <Folder className="w-4 h-4 text-[#0B57D0] dark:text-[#A8C7FA] shrink-0 mt-0.5" />
-            <div>
-              <p data-i18n className="font-semibold text-slate-900 dark:text-slate-100">
-                {t('android_studio_destination')}
-              </p>
-              <code
-                dir="ltr"
-                className="font-mono text-[11px] bg-white dark:bg-slate-900 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700 mt-1 inline-block text-[#0B57D0] dark:text-[#A8C7FA]"
-              >
-                app/src/main/res/values-{project.targetLang}/strings.xml
-              </code>
-            </div>
-          </div>
-
           {/* Export Settings */}
           <div className="bg-slate-50/60 dark:bg-slate-800/40 p-4 rounded-2xl border border-slate-200/70 dark:border-slate-800/80 space-y-3">
             <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
