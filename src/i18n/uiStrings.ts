@@ -45,7 +45,7 @@ export const UI_STRINGS: Record<string, { en: string; ar: string }> = {
   "and_more": { en: "and %1$s more…", ar: "و%1$s أخرى…" },
   "i_understand_the_risk_export": { en: "I understand the risk, export anyway", ar: "أفهم المخاطر وأريد التصدير رغم ذلك" },
   "copied_2": { en: "Copied", ar: "تم النسخ" },
-  "copy_xml": { en: "Copy XML", ar: "نسخ XML" },
+  "copy_xml": { en: "Copy", ar: "نسخ" },
   "download_strings_xml": { en: "Download strings.xml", ar: "تنزيل strings.xml" },
   "the_reply_is_not_valid": { en: "The reply is not valid JSON (it may have been cut off). Ask the AI to continue.", ar: "الرد ليس JSON صالحاً (ربما قُطع في المنتصف). اطلب من الذكاء الاصطناعي إكماله." },
   "no_translations_found_in_this": { en: "No translations found in this text.", ar: "لم أجد ترجمات في هذا النص." },
