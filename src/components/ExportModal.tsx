@@ -241,16 +241,24 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 {(
                   [
                     { id: 'all', label: t('all'), count: totalCount },
-                    {
-                      id: 'untranslated',
-                      label: t('untranslated'),
-                      count: untranslatedCount,
-                    },
-                    {
-                      id: 'translated',
-                      label: t('translated'),
-                      count: translatedCount,
-                    },
+                    ...(untranslatedCount > 0
+                      ? [
+                          {
+                            id: 'untranslated',
+                            label: t('untranslated'),
+                            count: untranslatedCount,
+                          },
+                        ]
+                      : []),
+                    ...(translatedCount > 0
+                      ? [
+                          {
+                            id: 'translated',
+                            label: t('translated'),
+                            count: translatedCount,
+                          },
+                        ]
+                      : []),
                     ...(reviewCount > 0
                       ? [
                           {
@@ -290,9 +298,13 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
                 {(
                   [
-                    { id: 'ai', label: t('ai_translated'), count: aiCount },
-                    { id: 'manual', label: t('manual_input'), count: manualCount },
-                  ] as const
+                    ...(aiCount > 0
+                      ? [{ id: 'ai' as SourceFilter, label: t('ai_translated'), count: aiCount }]
+                      : []),
+                    ...(manualCount > 0
+                      ? [{ id: 'manual' as SourceFilter, label: t('manual_input'), count: manualCount }]
+                      : []),
+                  ]
                 ).map((srcChip) => {
                   const isSelected = activeSourceFilter === srcChip.id;
                   return (
@@ -330,14 +342,11 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               </span>
               <button
                 onClick={handleCopy}
-                className="inline-flex items-center gap-1 text-[#0B57D0] dark:text-[#A8C7FA] hover:underline cursor-pointer"
+                aria-label={copied ? t('copied') : t('copy_raw_xml')}
+                title={copied ? t('copied') : t('copy_raw_xml')}
+                className="inline-flex items-center text-[#0B57D0] dark:text-[#A8C7FA] cursor-pointer"
               >
                 {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>
-                  {copied
-                    ? t('copied')
-                    : t('copy_raw_xml')}
-                </span>
               </button>
             </div>
 

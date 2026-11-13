@@ -37,7 +37,7 @@ export const UI_STRINGS: Record<string, { en: string; ar: string }> = {
   "include_comments": { en: "Include comments", ar: "تضمين التعليقات" },
   "export_only_strings_matching_active": { en: "Export only strings matching active filter", ar: "تصدير النصوص المطابقة للتصفية النشطة فقط" },
   "all": { en: "All", ar: "الكل" },
-  "live_preview": { en: "Live Preview", ar: "معاينة مباشرة لملف XML" },
+  "live_preview": { en: "Preview", ar: "معاينة" },
   "copied": { en: "Copied!", ar: "تم النسخ!" },
   "copy_raw_xml": { en: "Copy raw XML", ar: "نسخ كود XML الخام" },
   "xml_preview": { en: "XML preview", ar: "معاينة ملف XML" },
