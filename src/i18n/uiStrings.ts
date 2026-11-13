@@ -366,7 +366,7 @@ export const UI_STRINGS: Record<string, { en: string; ar: string }> = {
   "no_translated_strings_yet": { en: "No translated strings yet", ar: "لا توجد نصوص مترجمة حالياً" },
   "reset_translation_history_for": { en: "Reset translation history for \"%1$s\"", ar: "إعادة تعيين ترجمة \"%1$s\"" },
   "the_file_is_larger_than": { en: "The file is larger than 5 MB.", ar: "الملف أكبر من 5 ميغابايت." },
-  "load_a_newer_english_strings": { en: "Load a newer English strings.xml. Your translations are kept and changed strings are flagged for review.", ar: "ارفع نسخة جديدة من strings.xml الإنجليزي. تبقى ترجماتك، وتُعلَّم النصوص المتغيرة للمراجعة." },
+  "load_a_newer_english_strings": { en: "Load a newer strings.xml to update the current one. Your translations are kept and changed strings are flagged for review.", ar: "ارفع نسخة أحدث من strings.xml لتحديث النسخة الحالية. تبقى ترجماتك، وتُعلَّم النصوص المتغيرة للمراجعة." },
   "choose_a_new_strings_xml": { en: "Choose a new strings.xml file", ar: "اختيار ملف strings.xml جديد" },
   "the_text_is_larger_than": { en: "The text is larger than 5 MB.", ar: "النص أكبر من 5 ميغابايت." },
   "or_paste_the_strings_xml": { en: "Or paste the strings.xml content", ar: "أو الصق محتوى strings.xml" },

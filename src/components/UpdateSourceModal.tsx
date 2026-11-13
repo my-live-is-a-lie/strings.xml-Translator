@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { FileDiff, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { TranslationProject } from '../types';
 import { parseAndroidXml, normalizePluralsForLanguage } from '../utils/xmlParser';
 import { diffSources } from '../utils/sourceDiff';
@@ -88,7 +88,6 @@ export const UpdateSourceModal: React.FC<UpdateSourceModalProps> = ({
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
-            <FileDiff className="w-6 h-6 text-[#1EB996]" aria-hidden="true" />
             <div>
               <h2 data-i18n id="update-source-title" className="text-lg font-semibold text-slate-900 dark:text-white">
                 {t('update_source_file')}
