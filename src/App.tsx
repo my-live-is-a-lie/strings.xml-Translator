@@ -1195,14 +1195,13 @@ currentItem ? (
       />
 
       {/* Export Modal */}
+      {/* filterStatus/sourceFilter are intentionally not passed here: they are dead placeholders in this file
+          (real filtering lives in the quickFilters store used by TableView), so passing them would make the
+          modal's own filter pills a no-op. Leaving them out lets ExportModal manage its filter pills itself. */}
       <ExportModal
         isOpen={isExportOpen}
         onClose={() => setIsExportOpen(false)}
         project={project}
-        filterStatus={filterStatus}
-        onFilterChange={setFilterStatus}
-        sourceFilter={sourceFilter}
-        onSourceFilterChange={setSourceFilter}
         searchQuery={searchQuery}
         appLang={appLang}
       />

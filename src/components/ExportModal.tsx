@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { X, Download, Copy, Check, Sliders, Folder, Filter, ShieldAlert } from 'lucide-react';
+import { X, Download, Copy, Check, Sliders, Folder, Filter, ShieldAlert, ChevronDown } from 'lucide-react';
 import { useDialog } from '../utils/useDialog';
 import { FilterStatus, SourceFilter, TranslationProject } from '../types';
 import { copyTextToClipboard } from '../utils/storage';
@@ -41,6 +41,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const dialogRef = useDialog(isOpen, onClose);
   const [options, setOptions] = useState<ExportOptions>(defaultExportOptions);
   const [copied, setCopied] = useState(false);
+  // The placeholder/tag warning starts collapsed; its title toggles it open/closed.
+  const [warningExpanded, setWarningExpanded] = useState(false);
   const [localFilterStatus, setLocalFilterStatus] = useState<FilterStatus>('all');
   const [localSourceFilter, setLocalSourceFilter] = useState<SourceFilter>('all');
 
@@ -142,9 +144,6 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         {/* Header */}
         <div className="p-6 pb-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-emerald-100 dark:bg-emerald-950/60 flex items-center justify-center text-emerald-700 dark:text-emerald-300">
-              <Download className="w-5 h-5" />
-            </div>
             <div>
               <h2 data-i18n id="ExportModal-title" className="text-lg font-semibold text-slate-900 dark:text-white">
                 {t('export_android_strings_xml')}
@@ -376,55 +375,70 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             role="alert"
             className="mx-6 mb-3 rounded-2xl border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-700 dark:text-rose-300"
           >
-            <div className="flex items-center gap-2 font-semibold">
-              <ShieldAlert className="w-4 h-4 shrink-0" aria-hidden="true" />
-              <span data-i18n>
-                {t('placeholder_tag_error_s_may', blockingIssues.length)}
+            <button
+              type="button"
+              onClick={() => setWarningExpanded((v) => !v)}
+              aria-expanded={warningExpanded}
+              className="w-full flex items-center justify-between gap-2 font-semibold cursor-pointer"
+            >
+              <span className="flex items-center gap-2">
+                <ShieldAlert className="w-4 h-4 shrink-0" aria-hidden="true" />
+                <span data-i18n>
+                  {t('placeholder_tag_error_s_may', blockingIssues.length)}
+                </span>
               </span>
-            </div>
-            <ul className="mt-2 space-y-0.5 ps-5 list-disc">
-              {blockingIssues.slice(0, 5).map((iss) => (
-                <li key={iss.id}>
-                  <span className="font-mono">{iss.itemName}</span>: {isAr ? iss.messageAr : iss.messageEn}
-                </li>
-              ))}
-              {blockingIssues.length > 5 && (
-                <li data-i18n>{t('and_more', blockingIssues.length - 5)}</li>
-              )}
-            </ul>
-            <label className="mt-2 flex items-center gap-2 cursor-pointer select-none">
-              <input
-                id="export-allow-broken"
-                type="checkbox"
-                checked={allowBroken}
-                onChange={(e) => setAllowBroken(e.target.checked)}
-                className="w-4 h-4 accent-rose-600"
+              <ChevronDown
+                className={`w-4 h-4 shrink-0 transition-transform ${warningExpanded ? 'rotate-180' : ''}`}
+                aria-hidden="true"
               />
-              <span data-i18n>{t('i_understand_the_risk_export')}</span>
-            </label>
+            </button>
+            {warningExpanded && (
+              <>
+                <ul className="mt-2 space-y-0.5 ps-5 list-disc">
+                  {blockingIssues.slice(0, 5).map((iss) => (
+                    <li key={iss.id}>
+                      <span className="font-mono">{iss.itemName}</span>: {isAr ? iss.messageAr : iss.messageEn}
+                    </li>
+                  ))}
+                  {blockingIssues.length > 5 && (
+                    <li data-i18n>{t('and_more', blockingIssues.length - 5)}</li>
+                  )}
+                </ul>
+                <label className="mt-2 flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    id="export-allow-broken"
+                    type="checkbox"
+                    checked={allowBroken}
+                    onChange={(e) => setAllowBroken(e.target.checked)}
+                    className="w-4 h-4 accent-rose-600"
+                  />
+                  <span data-i18n>{t('i_understand_the_risk_export')}</span>
+                </label>
+              </>
+            )}
           </div>
         )}
 
         <div className="p-6 pt-4 flex items-center justify-between">
           <button
-            onClick={handleCopy}
-            disabled={exportBlocked}
-            className="disabled:opacity-40 disabled:pointer-events-none inline-flex items-center gap-1.5 px-4 py-2 rounded-full border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-200 transition cursor-pointer m3-state-layer"
+            onClick={onClose}
+            className="px-4 py-2 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition cursor-pointer"
           >
-            {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-            <span>
-              {copied
-                ? t('copied_2')
-                : t('copy_xml')}
-            </span>
+            {tb('close')}
           </button>
 
           <div className="flex items-center gap-2">
             <button
-              onClick={onClose}
-              className="px-4 py-2 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition cursor-pointer"
+              onClick={handleCopy}
+              disabled={exportBlocked}
+              className="disabled:opacity-40 disabled:pointer-events-none inline-flex items-center gap-1.5 px-4 py-2 rounded-full border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-200 transition cursor-pointer m3-state-layer"
             >
-              {tb('close')}
+              {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>
+                {copied
+                  ? t('copied_2')
+                  : t('copy_xml')}
+              </span>
             </button>
             <button
               onClick={handleDownload}
