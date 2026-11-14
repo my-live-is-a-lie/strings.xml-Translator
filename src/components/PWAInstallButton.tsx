@@ -37,6 +37,10 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({ appLang = 'a
     }
   });
   const [showIOSGuide, setShowIOSGuide] = useState(false);
+  // beforeinstallprompt never fires on some browsers (e.g. Brave, Firefox, Samsung Internet) even though
+  // they support installing the PWA through their own menu. Give it a moment, then fall back to a generic
+  // "check your browser's menu" hint instead of silently showing nothing.
+  const [showFallback, setShowFallback] = useState(false);
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: Event) => {
@@ -56,6 +60,11 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({ appLang = 'a
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('appinstalled', handleAppInstalled);
     };
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setShowFallback(true), 1500);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const handleInstallClick = async () => {
@@ -147,6 +156,51 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({ appLang = 'a
                     </>
                   )}
                 </ol>
+              </div>
+              <button
+                onClick={() => setShowIOSGuide(false)}
+                className="mt-5 w-full rounded-full bg-[#0B57D0] dark:bg-[#A8C7FA] py-2.5 text-xs font-semibold text-white dark:text-[#062E6F] shadow-xs transition m3-state-layer"
+              >
+                {tb('got_it')}
+              </button>
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  if (showFallback) {
+    return (
+      <>
+        <button
+          id="pwa-fallback-guide-btn"
+          type="button"
+          onClick={() => setShowIOSGuide(true)}
+          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl border border-slate-200/90 dark:border-[#2F384B] text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#202634] text-xs font-medium transition cursor-pointer shrink-0"
+        >
+          <Download className="w-4 h-4" aria-hidden="true" />
+          <span data-i18n>{t('install')}</span>
+        </button>
+
+        {showIOSGuide && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="w-full max-w-sm rounded-3xl bg-white dark:bg-[#1E1F20] p-6 m3-elevation-3 border border-slate-200/80 dark:border-slate-800/80">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                <h3 data-i18n className="text-base font-semibold text-slate-900 dark:text-white">
+                  {t('install_to_home_screen')}
+                </h3>
+                <button
+                  onClick={() => setShowIOSGuide(false)}
+                  className="p-1 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="mt-4 space-y-3 text-sm text-slate-600 dark:text-slate-300">
+                <p data-i18n className="text-xs leading-relaxed">
+                  {t('to_install_this_app_browser_menu')}
+                </p>
               </div>
               <button
                 onClick={() => setShowIOSGuide(false)}

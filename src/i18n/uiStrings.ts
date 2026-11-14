@@ -194,6 +194,10 @@ export const UI_STRINGS: Record<string, { en: string; ar: string }> = {
   "install_to_home_screen": { en: "Install to Home Screen", ar: "التثبيت على الشاشة الرئيسية" },
   "to_use_this_app_offline": { en: "To use this app offline on your iPhone or iPad:", ar: "لاستخدام هذا التطبيق بدون إنترنت على جهاز iPhone أو iPad:" },
   "got_it": { en: "Got it", ar: "حسناً" },
+  "to_install_this_app_browser_menu": {
+    en: "Your browser doesn't offer an in-page install button for this site. Look for \"Install app\" or \"Add to Home screen\" in its own menu (usually the ⋮ or ☰ icon) instead.",
+    ar: "متصفحك لا يوفر زر تثبيت داخل الصفحة لهذا الموقع. ابحث عن \"تثبيت التطبيق\" أو \"إضافة إلى الشاشة الرئيسية\" في قائمة المتصفح نفسه (عادة أيقونة ⋮ أو ☰).",
+  },
   "google_translate": { en: "Google Translate", ar: "ترجمة جوجل" },
   "translate_providers": { en: "Translate Providers", ar: "مزودو الترجمة الآلية" },
   "the_free_google_engine_is": { en: "The free Google engine is not responding. Add a provider with a key, or a LibreTranslate server, to keep translating.", ar: "محرك جوجل المجاني لا يستجيب حالياً. أضف مزوداً بمفتاح أو خادم LibreTranslate لضمان استمرار الترجمة." },
