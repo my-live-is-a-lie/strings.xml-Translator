@@ -1044,7 +1044,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
           {/* Loaded-range footer */}
           {filtered.length > 0 && (
             <div data-i18n className="tv-bg px-4 py-3 bg-white dark:bg-[#121318] border-t border-slate-200/80 dark:border-slate-800/80 text-xs text-slate-600 dark:text-slate-400 tabular-nums text-center">
-              {t('loaded_of_strings', start + 1, end, total)}
+              {t('loaded_of_strings', total)}
             </div>
           )}
         </div>

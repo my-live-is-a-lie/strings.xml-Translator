@@ -323,7 +323,7 @@ export const UI_STRINGS: Record<string, { en: string; ar: string }> = {
   "english_source": { en: "English Source", ar: "النص الإنجليزي" },
   "target_translation": { en: "Target Translation", ar: "الترجمة" },
   "open": { en: "Open", ar: "فتح" },
-  "loaded_of_strings": { en: "Loaded %1$s–%2$s of %3$s strings", ar: "المحمَّل %1$s–%2$s من %3$s نص" },
+  "loaded_of_strings": { en: "%1$s strings", ar: "%1$s نص" },
   "tap_to_insert_at_cursor": { en: "Tap to insert at cursor", ar: "انقر لإدراج هذا الرمز في موضع المؤشر" },
   "keys": { en: "Keys", ar: "مفاتيح" },
   "english": { en: "English", ar: "الإنجليزية" },
