@@ -449,8 +449,6 @@ const HeaderBase: React.FC<HeaderProps> = ({
           <div className="flex items-center gap-2 shrink-0">
             <OfflineBadge appLang={appLang} />
 
-            <PWAInstallButton appLang={appLang} />
-
             <button
               id="header-load-sample-btn"
               onClick={onLoadSample}
@@ -1068,6 +1066,8 @@ const HeaderBase: React.FC<HeaderProps> = ({
                   <span data-i18n>{t('keyboard_shortcuts')}</span>
                 </button>
               )}
+
+              <PWAInstallButton appLang={appLang} />
 
               <DemoBanner isAr={isAr} placement="settings" />
             </div>

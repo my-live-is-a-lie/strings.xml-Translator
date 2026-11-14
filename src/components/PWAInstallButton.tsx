@@ -80,13 +80,14 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({ appLang = 'a
     return (
       <button
         id="pwa-install-btn"
+        type="button"
         onClick={handleInstallClick}
-        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium shadow-xs transition cursor-pointer m3-state-layer"
+        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl border border-slate-200/90 dark:border-[#2F384B] text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#202634] text-xs font-medium transition cursor-pointer shrink-0"
         title={
           t('install_android_strings_translator_on')
         }
       >
-        <Smartphone className="w-3.5 h-3.5" />
+        <Smartphone className="w-4 h-4" aria-hidden="true" />
         <span data-i18n>{t('install_app')}</span>
       </button>
     );
@@ -97,10 +98,11 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({ appLang = 'a
       <>
         <button
           id="pwa-ios-guide-btn"
+          type="button"
           onClick={() => setShowIOSGuide(true)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-medium transition cursor-pointer m3-state-layer"
+          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl border border-slate-200/90 dark:border-[#2F384B] text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#202634] text-xs font-medium transition cursor-pointer shrink-0"
         >
-          <Download className="w-3.5 h-3.5" />
+          <Download className="w-4 h-4" aria-hidden="true" />
           <span data-i18n>{t('install')}</span>
         </button>
 
