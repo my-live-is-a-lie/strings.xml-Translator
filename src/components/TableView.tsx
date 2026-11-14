@@ -119,16 +119,27 @@ const TableViewBase: React.FC<TableViewProps> = ({
   const heightsRef = useRef<Map<string, number>>(new Map());
   const anchorRef = useRef<{ id: string; top: number } | null>(null);
   const lastTopRef = useRef(0);
+  // True while the table is auto-centring the selected string on open: that programmatic scroll
+  // shouldn't trigger the "hide the top block on scroll down" behavior in handleScroll below,
+  // or the header flashes and immediately disappears as soon as the table opens.
+  const suppressHeaderToggleRef = useRef(false);
   const [headerHidden, setHeaderHidden] = useState(false);
   const [headerH, setHeaderH] = useState(0);
 
   useEffect(() => {
     const root = tableRootRef.current;
     if (!selectedId || !root) return;
+    suppressHeaderToggleRef.current = true;
     scrollItemIntoView(root, selectedId, 'center');
     // Row heights are measured after the first paint and shift what is above the string: centre it again once they settle
     const timer = window.setTimeout(() => scrollItemIntoView(root, selectedId, 'center'), 120);
-    return () => window.clearTimeout(timer);
+    const release = window.setTimeout(() => {
+      suppressHeaderToggleRef.current = false;
+    }, 250);
+    return () => {
+      window.clearTimeout(timer);
+      window.clearTimeout(release);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only once, when the table opens
   }, []);
   // Back to the top of the list and closing the editor when the search or filters change (during render)
@@ -239,10 +250,13 @@ const TableViewBase: React.FC<TableViewProps> = ({
     const delta = top - lastTopRef.current;
     lastTopRef.current = top;
 
-    // Scrolling down hides the top block, scrolling up brings it back
-    if (top <= 8) setHeaderHidden(false);
-    else if (delta > 4) setHeaderHidden(true);
-    else if (delta < -4) setHeaderHidden(false);
+    // Scrolling down hides the top block, scrolling up brings it back (not during the
+    // programmatic auto-centring scroll on open, see suppressHeaderToggleRef above)
+    if (!suppressHeaderToggleRef.current) {
+      if (top <= 8) setHeaderHidden(false);
+      else if (delta > 4) setHeaderHidden(true);
+      else if (delta < -4) setHeaderHidden(false);
+    }
 
     // Where the rendered strings begin and end, in scroll-content coordinates (spacers stand in for the rest)
     const rootRect = root.getBoundingClientRect();
