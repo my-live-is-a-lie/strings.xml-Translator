@@ -82,7 +82,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({ appLang = 'a
         id="pwa-install-btn"
         type="button"
         onClick={handleInstallClick}
-        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl border border-slate-200/90 dark:border-[#2F384B] text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#202634] text-xs font-medium transition cursor-pointer shrink-0"
+        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium shadow-xs transition cursor-pointer shrink-0"
         title={
           t('install_android_strings_translator_on')
         }
