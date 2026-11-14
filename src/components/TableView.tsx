@@ -828,7 +828,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
                         }`}
 
                       >
-                        {breakAfterUnderscores(item.name)}
+                        {breakAfterUnderscores(highlightText(item.name, q))}
                         {item.type !== 'string' && (
                           <span className="ms-1 text-[10px] text-slate-600 dark:text-slate-400 font-sans">
                             ({isAr ? (item.type === 'plural' ? 'جمع' : 'مصفوفة') : item.type})
@@ -979,6 +979,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
                 {pagedItems.map((item) => {
                   const isChecked = checkedIds.has(item.id);
                   const { sourceSnippet, targetSnippet } = getSnippets(item);
+                  const q = search.trim().toLowerCase();
 
                   return (
                     <tr
@@ -1015,7 +1016,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
                       </td>
                       <td className="py-3 px-4 font-mono font-medium text-slate-900 dark:text-slate-100">
                         <div className="flex items-center gap-1.5">
-                          <span dir="ltr" onClick={() => onSelectString(item.id)} title={t('open_in_translation_editor')} className="break-words cursor-pointer hover:underline">{breakAfterUnderscores(item.name)}</span>
+                          <span dir="ltr" onClick={() => onSelectString(item.id)} title={t('open_in_translation_editor')} className="break-words cursor-pointer hover:underline">{breakAfterUnderscores(highlightText(item.name, q))}</span>
                           <SourceChangeBadge item={item} isAr={isAr} />
                           {item.type !== 'string' && (
                             <span className="text-[10px] text-slate-600 dark:text-slate-400 font-sans">
@@ -1025,7 +1026,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
                         </div>
                       </td>
                       <td dir="ltr" className="py-3 px-4 text-left text-slate-700 dark:text-slate-300 max-w-xs sm:max-w-md break-words">
-                        {item.type === 'string' ? <bdi>{sourceSnippet}</bdi> : renderVariantLines(item, 'source')}
+                        {item.type === 'string' ? <bdi>{highlightText(sourceSnippet, q)}</bdi> : renderVariantLines(item, 'source')}
                       </td>
                       <td className="py-3 px-4 max-w-xs sm:max-w-md break-words">
                         {item.type !== 'string'
