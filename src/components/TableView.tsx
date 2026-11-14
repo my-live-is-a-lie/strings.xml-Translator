@@ -858,8 +858,8 @@ const TableViewBase: React.FC<TableViewProps> = ({
                             <div className="min-w-0 flex-1 space-y-0.5 text-xs leading-relaxed">
                               <p
                                 onClick={isLong ? () => setExpanded(!expanded) : undefined}
-                                dir={item.status === 'untranslated' ? 'ltr' : 'rtl'}
-                                className={`${item.status === 'untranslated' ? 'text-left' : 'text-right'} text-slate-600 dark:text-slate-400 break-words ${isLong ? 'cursor-pointer' : ''}`}
+                                dir={item.status === 'untranslated' ? 'ltr' : targetIsRtl ? 'rtl' : 'ltr'}
+                                className={`${item.status === 'untranslated' || !targetIsRtl ? 'text-left' : 'text-right'} text-slate-600 dark:text-slate-400 break-words ${isLong ? 'cursor-pointer' : ''}`}
                               >
                                 <bdi>{highlightText(v.source, q)}</bdi>
                               </p>
@@ -879,8 +879,8 @@ const TableViewBase: React.FC<TableViewProps> = ({
                     <p
                       onClick={isLong ? () => setExpanded(!expanded) : undefined}
                       data-src-toggle
-                      dir={item.status === 'untranslated' ? 'ltr' : 'rtl'}
-                      className={`${item.status === 'untranslated' ? 'text-left' : 'text-right'} text-xs leading-relaxed text-slate-600 dark:text-slate-400 break-words whitespace-pre-wrap ${
+                      dir={item.status === 'untranslated' ? 'ltr' : targetIsRtl ? 'rtl' : 'ltr'}
+                      className={`${item.status === 'untranslated' || !targetIsRtl ? 'text-left' : 'text-right'} text-xs leading-relaxed text-slate-600 dark:text-slate-400 break-words whitespace-pre-wrap ${
                         expanded ? '' : 'line-clamp-3'
                       } ${isLong ? 'cursor-pointer' : ''}`}
                     >
