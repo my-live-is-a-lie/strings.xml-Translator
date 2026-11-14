@@ -793,7 +793,10 @@ const TableViewBase: React.FC<TableViewProps> = ({
                     }`}
                   >
                     <div className="flex items-center gap-2.5">
-                      {onBulkUpdateTranslations && (
+                      {/* The checkbox and the status (completion) icon both sit on the physical right in
+                          both directions: they render here (before the key) in RTL, where that's already
+                          the right side, and after the key (see below) in LTR instead of always being first. */}
+                      {onBulkUpdateTranslations && isAr && (
                         <button
                           type="button"
                           onClick={() => toggleItemChecked(item.id)}
@@ -808,7 +811,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
                           )}
                         </button>
                       )}
-                      <span className="shrink-0">{renderStatusIcon(item)}</span>
+                      {isAr && <span className="shrink-0">{renderStatusIcon(item)}</span>}
                       <SourceChangeBadge item={item} isAr={isAr} />
                       <span
                         dir="ltr"
@@ -829,6 +832,22 @@ const TableViewBase: React.FC<TableViewProps> = ({
                           </span>
                         )}
                       </span>
+                      {!isAr && <span className="shrink-0">{renderStatusIcon(item)}</span>}
+                      {onBulkUpdateTranslations && !isAr && (
+                        <button
+                          type="button"
+                          onClick={() => toggleItemChecked(item.id)}
+                          disabled={isBulkTranslating}
+                          className="shrink-0 inline-flex items-center justify-center text-slate-400 cursor-pointer"
+                          title={t('select_row_for_bulk_translation')}
+                        >
+                          {isChecked ? (
+                            <CheckSquare className="w-4 h-4 text-[#1EB996]" />
+                          ) : (
+                            <Square className="w-4 h-4" />
+                          )}
+                        </button>
+                      )}
                     </div>
 
                     {item.type !== 'string' ? (
