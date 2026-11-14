@@ -26,9 +26,11 @@ const cspPlugin = {
   },
 };
 
-// Web demo build (published under /demo/ of the docs site): no service worker (it would take over the docs
-// site's scope) and hidden from search engines so it does not compete with the docs page.
+// Web demo build (published under /demo/ of the docs site): hidden from search engines so it does not
+// compete with the docs page. It still gets its own installable PWA manifest/service worker, scoped to
+// /demo/ (via --base), so it can't reach outside that path and never touches the docs site's own scope.
 const isDemo = process.env.VITE_DEMO === '1';
+const demoBase = '/strings.xml-Translator/demo/';
 const demoPlugin = {
   name: 'demo-plugin',
   transformIndexHtml(html: string) {
@@ -43,22 +45,22 @@ export default defineConfig(() => {
       demoPlugin,
       react(),
       tailwindcss(),
-      ...(isDemo ? [] : [VitePWA({
+      VitePWA({
         registerType: 'autoUpdate',
         includeAssets: ['icon.svg'],
         manifest: {
-          id: '/',
+          id: isDemo ? demoBase : '/',
           name: 'Android Strings XML Translator',
           short_name: 'StringsTrans',
           description: 'Offline Android strings.xml translator inspired by Weblate',
           theme_color: '#2563eb',
           background_color: '#f8fafc',
           display: 'standalone',
-          start_url: '/',
-          scope: '/',
+          start_url: isDemo ? demoBase : '/',
+          scope: isDemo ? demoBase : '/',
           icons: [
             {
-              src: '/icon.svg',
+              src: 'icon.svg',
               sizes: '512x512',
               type: 'image/svg+xml',
               purpose: 'any',
@@ -71,7 +73,7 @@ export default defineConfig(() => {
         devOptions: {
           enabled: false,
         },
-      })]),
+      }),
     ],
     resolve: {
       alias: {
