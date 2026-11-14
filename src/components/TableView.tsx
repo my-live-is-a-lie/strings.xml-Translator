@@ -812,7 +812,10 @@ const TableViewBase: React.FC<TableViewProps> = ({
                         </button>
                       )}
                       {isAr && <span className="shrink-0">{renderStatusIcon(item)}</span>}
-                      <SourceChangeBadge item={item} isAr={isAr} />
+                      {/* The New/Updated badge always sits on the physical left, immediately before the key
+                          text: it renders here (before the key) in LTR, where that's already the left side,
+                          and after the key (see below) in RTL instead of always being in the same DOM spot. */}
+                      {!isAr && <SourceChangeBadge item={item} isAr={isAr} />}
                       <span
                         dir="ltr"
                         data-key-name
@@ -832,6 +835,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
                           </span>
                         )}
                       </span>
+                      {isAr && <SourceChangeBadge item={item} isAr={isAr} />}
                       {!isAr && <span className="shrink-0">{renderStatusIcon(item)}</span>}
                       {onBulkUpdateTranslations && !isAr && (
                         <button
