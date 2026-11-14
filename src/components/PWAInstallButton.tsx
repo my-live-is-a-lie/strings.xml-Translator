@@ -81,7 +81,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({ appLang = 'a
       <button
         id="pwa-install-btn"
         onClick={handleInstallClick}
-        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium shadow-xs transition cursor-pointer m3-state-layer"
+        className="w-full flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium shadow-xs transition cursor-pointer m3-state-layer"
         title={
           t('install_android_strings_translator_on')
         }
@@ -98,7 +98,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({ appLang = 'a
         <button
           id="pwa-ios-guide-btn"
           onClick={() => setShowIOSGuide(true)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-medium transition cursor-pointer m3-state-layer"
+          className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-full border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-medium transition cursor-pointer m3-state-layer"
         >
           <Download className="w-3.5 h-3.5" />
           <span data-i18n>{t('install')}</span>
