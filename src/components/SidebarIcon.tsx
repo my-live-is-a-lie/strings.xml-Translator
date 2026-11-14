@@ -30,12 +30,6 @@ export const SidebarIcon: React.FC<SidebarIconProps> = ({
       <rect x="3" y="3" width="18" height="18" rx="3.5" />
       {/* Vertical sidebar panel divider */}
       <line x1={isRight ? '15.5' : '8.5'} y1="3" x2={isRight ? '15.5' : '8.5'} y2="21" />
-      {/* Chevron inside the sidebar panel */}
-      {isRight ? (
-        <path d="M18.8 9.75L16.4 12L18.8 14.25" />
-      ) : (
-        <path d="M5.2 9.75L7.6 12L5.2 14.25" />
-      )}
     </svg>
   );
 };
