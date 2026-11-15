@@ -30,7 +30,7 @@ const cspPlugin = {
 // compete with the docs page. It still gets its own installable PWA manifest/service worker, scoped to
 // /demo/ (via --base), so it can't reach outside that path and never touches the docs site's own scope.
 const isDemo = process.env.VITE_DEMO === '1';
-const demoBase = '/strings.xml-Translator/demo/';
+const demoBase = '/demo/';
 const demoPlugin = {
   name: 'demo-plugin',
   transformIndexHtml(html: string) {
