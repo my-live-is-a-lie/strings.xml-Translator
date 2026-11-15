@@ -21,6 +21,7 @@ import { SidebarIcon } from './SidebarIcon';
 import { getAllTranslationProviders, getActiveProviderId } from '../utils/translator';
 import { useT, useCustomLanguages } from '../i18n/i18n';
 import AddLanguageModal from './AddLanguageModal';
+import { ACCENT_VARIANTS, applyAccentVariant, AccentColorId } from '../utils/accentVariants';
 
 const ACCENT_COLORS = [
   { id: 'teal', label: 'Teal', labelAr: 'زمردي', swatchClass: 'bg-emerald-500' },
@@ -29,9 +30,29 @@ const ACCENT_COLORS = [
   { id: 'rose', label: 'Rose', labelAr: 'وردي', swatchClass: 'bg-rose-500' },
   { id: 'amber', label: 'Amber', labelAr: 'كهرماني', swatchClass: 'bg-amber-500' },
   { id: 'cyan', label: 'Cyan', labelAr: 'سماوي', swatchClass: 'bg-cyan-500' },
-] as const;
+] as const satisfies readonly { id: AccentColorId; label: string; labelAr: string; swatchClass: string }[];
 
-type AccentColorId = (typeof ACCENT_COLORS)[number]['id'];
+const ACCENT_VARIANTS_STORAGE_KEY = 'app_accent_variants';
+/** Vertical drag distance (px) needed to cycle one step through a swatch's shade variants. */
+const ACCENT_DRAG_STEP_PX = 20;
+
+/** Which shade variant (index into ACCENT_VARIANTS[id]) is currently assigned to each swatch slot. */
+function loadAccentVariantIndexes(): Record<AccentColorId, number> {
+  const base = { teal: 0, blue: 0, violet: 0, rose: 0, amber: 0, cyan: 0 } as Record<AccentColorId, number>;
+  try {
+    const raw = getStoredItem(ACCENT_VARIANTS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<Record<AccentColorId, number>>;
+      for (const id of ACCENT_COLORS.map((c) => c.id)) {
+        const n = parsed[id];
+        if (typeof n === 'number' && n >= 0 && n < ACCENT_VARIANTS[id].length) base[id] = n;
+      }
+    }
+  } catch (err) {
+    debugIgnored('accentVariants', err);
+  }
+  return base;
+}
 
 interface HeaderProps {
   project: TranslationProject;
@@ -228,6 +249,15 @@ const HeaderBase: React.FC<HeaderProps> = ({
     return 'teal';
   });
 
+  // Per-swatch assigned shade variant (independent of which slot is the active accent)
+  const [accentVariantIndexes, setAccentVariantIndexes] = useState<Record<AccentColorId, number>>(loadAccentVariantIndexes);
+  // Which swatch's shade-picker column is currently open (only one at a time)
+  const [openVariantSlot, setOpenVariantSlot] = useState<AccentColorId | null>(null);
+  // Tracks an in-progress drag-to-cycle gesture on a swatch, and whether the most recent pointer-up was a
+  // drag (so the click that follows it can be suppressed instead of toggling the dropdown / reselecting).
+  const accentDragRef = useRef<{ id: AccentColorId; startY: number; lastY: number; dragged: boolean } | null>(null);
+  const lastAccentDragEndRef = useRef<{ id: AccentColorId; time: number } | null>(null);
+
   // The panel owns the provider forms; the header only needs to know which provider is active
   const [providersRevision, setProvidersRevision] = useState(0);
   const activeProviderObj = useMemo(() => {
@@ -259,6 +289,42 @@ const HeaderBase: React.FC<HeaderProps> = ({
     document.documentElement.setAttribute('data-accent', accentColor);
     setStoredItem('app_accent_color', accentColor);
   }, [accentColor]);
+
+  // Re-applies the active slot's assigned shade (or clears the override for the family's original shade)
+  // whenever the active accent or that slot's assigned variant changes.
+  useEffect(() => {
+    const index = accentVariantIndexes[accentColor] ?? 0;
+    applyAccentVariant(ACCENT_VARIANTS[accentColor][index], index);
+  }, [accentColor, accentVariantIndexes]);
+
+  const selectAccentVariant = (id: AccentColorId, index: number) => {
+    setAccentVariantIndexes((prev) => {
+      if (prev[id] === index) return prev;
+      const next = { ...prev, [id]: index };
+      try {
+        setStoredItem(ACCENT_VARIANTS_STORAGE_KEY, JSON.stringify(next));
+      } catch (err) {
+        debugIgnored('accentVariants', err);
+      }
+      return next;
+    });
+    setOpenVariantSlot(null);
+  };
+
+  const cycleAccentVariant = (id: AccentColorId, direction: 1 | -1) => {
+    const variants = ACCENT_VARIANTS[id];
+    setAccentVariantIndexes((prev) => {
+      const current = prev[id] ?? 0;
+      const next = (current + direction + variants.length) % variants.length;
+      const updated = { ...prev, [id]: next };
+      try {
+        setStoredItem(ACCENT_VARIANTS_STORAGE_KEY, JSON.stringify(updated));
+      } catch (err) {
+        debugIgnored('accentVariants', err);
+      }
+      return updated;
+    });
+  };
 
   const handleRandomAccentColor = () => {
     const remaining = ACCENT_COLORS.filter((c) => c.id !== accentColor);
@@ -677,6 +743,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
                     setAppLangMenuOpen((prev) => !prev);
                     setThemeSubmenuOpen(false);
                     setPaletteSubmenuOpen(false);
+                    setOpenVariantSlot(null);
                   }}
                   className={`w-9.5 h-9.5 rounded-2xl flex items-center justify-center transition cursor-pointer shrink-0 border ${
                     appLangMenuOpen
@@ -697,6 +764,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
                     setThemeSubmenuOpen((prev) => !prev);
                     setAppLangMenuOpen(false);
                     setPaletteSubmenuOpen(false);
+                    setOpenVariantSlot(null);
                   }}
                   className={`w-9.5 h-9.5 rounded-2xl flex items-center justify-center transition cursor-pointer shrink-0 border ${
                     themeSubmenuOpen
@@ -726,6 +794,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
                   id="drawer-accent-palette-btn"
                   type="button"
                   onClick={() => {
+                    if (paletteSubmenuOpen) setOpenVariantSlot(null);
                     setPaletteSubmenuOpen((prev) => !prev);
                     setThemeSubmenuOpen(false);
                     setAppLangMenuOpen(false);
@@ -749,6 +818,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
                   setAppLangMenuOpen(false);
                   setThemeSubmenuOpen(false);
                   setPaletteSubmenuOpen(false);
+                  setOpenVariantSlot(null);
                   setRightDrawerOpen(false);
                 }}
                 className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#1E2533] transition cursor-pointer shrink-0"
@@ -827,22 +897,85 @@ const HeaderBase: React.FC<HeaderProps> = ({
 
             {/* Sub-menu Row: Accent Color Palette Swatches matching mockup */}
             {paletteSubmenuOpen && (
-              <div className="px-4 py-2.5 flex items-center justify-between sm:justify-start sm:gap-4 border-b border-slate-200/80 dark:border-[#252C3A] bg-slate-50/70 dark:bg-[#141822]/60 animate-in fade-in duration-150">
+              <div className="px-4 py-2.5 flex items-start justify-between sm:justify-start sm:gap-4 border-b border-slate-200/80 dark:border-[#252C3A] bg-slate-50/70 dark:bg-[#141822]/60 animate-in fade-in duration-150">
                 {ACCENT_COLORS.map((c) => {
                   const isSelected = accentColor === c.id;
+                  const variants = ACCENT_VARIANTS[c.id];
+                  const variantIndex = accentVariantIndexes[c.id] ?? 0;
+                  const isOpen = openVariantSlot === c.id;
                   return (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => setAccentColor(c.id)}
-                      className={`w-6.5 h-6.5 rounded-full ${c.swatchClass} transition cursor-pointer flex items-center justify-center shrink-0 ${
-                        isSelected
-                          ? 'scale-115 ring-2.5 ring-slate-900 dark:ring-white ring-offset-2 ring-offset-white dark:ring-offset-[#161922]'
-                          : 'opacity-85 hover:opacity-100 hover:scale-105'
-                      }`}
-                      title={isAr ? `لون ${c.labelAr}` : `${c.label} accent`}
-                      aria-label={isAr ? `اختيار اللون ${c.labelAr}` : `Set ${c.label} accent color`}
-                    />
+                    <div key={c.id} className="relative flex flex-col items-center">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const last = lastAccentDragEndRef.current;
+                          if (last && last.id === c.id && Date.now() - last.time < 400) {
+                            lastAccentDragEndRef.current = null;
+                            return;
+                          }
+                          setAccentColor(c.id);
+                          setOpenVariantSlot((prev) => (prev === c.id ? null : c.id));
+                        }}
+                        onPointerDown={(e) => {
+                          accentDragRef.current = { id: c.id, startY: e.clientY, lastY: e.clientY, dragged: false };
+                          try {
+                            e.currentTarget.setPointerCapture(e.pointerId);
+                          } catch (err) {
+                            debugIgnored('accentVariants', err);
+                          }
+                        }}
+                        onPointerMove={(e) => {
+                          const d = accentDragRef.current;
+                          if (!d || d.id !== c.id) return;
+                          if (!d.dragged && Math.abs(e.clientY - d.startY) > 4) d.dragged = true;
+                          const stepDy = e.clientY - d.lastY;
+                          if (Math.abs(stepDy) >= ACCENT_DRAG_STEP_PX) {
+                            cycleAccentVariant(c.id, stepDy > 0 ? 1 : -1);
+                            d.lastY = e.clientY;
+                          }
+                        }}
+                        onPointerUp={() => {
+                          const d = accentDragRef.current;
+                          if (d && d.id === c.id && d.dragged) {
+                            lastAccentDragEndRef.current = { id: c.id, time: Date.now() };
+                          }
+                          accentDragRef.current = null;
+                        }}
+                        onPointerCancel={() => {
+                          accentDragRef.current = null;
+                        }}
+                        style={{ backgroundColor: variants[variantIndex].primary, touchAction: 'none' }}
+                        className={`w-6.5 h-6.5 rounded-full transition cursor-pointer flex items-center justify-center shrink-0 select-none ${
+                          isSelected
+                            ? 'scale-115 ring-2.5 ring-slate-900 dark:ring-white ring-offset-2 ring-offset-white dark:ring-offset-[#161922]'
+                            : 'opacity-85 hover:opacity-100 hover:scale-105'
+                        }`}
+                        title={isAr ? `لون ${c.labelAr}` : `${c.label} accent`}
+                        aria-label={isAr ? `اختيار اللون ${c.labelAr}` : `Set ${c.label} accent color`}
+                      />
+                      {isOpen && (
+                        <div
+                          data-accent-variant-menu
+                          className="absolute top-full mt-2 z-20 flex flex-col gap-1.5 p-1.5 rounded-2xl bg-white dark:bg-[#1E232F] shadow-lg border border-slate-200/80 dark:border-[#2A3244] animate-in fade-in duration-150"
+                        >
+                          {variants.map((v, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => selectAccentVariant(c.id, idx)}
+                              style={{ backgroundColor: v.primary }}
+                              className={`w-5.5 h-5.5 rounded-full transition cursor-pointer shrink-0 ${
+                                idx === variantIndex
+                                  ? 'ring-2 ring-slate-900 dark:ring-white ring-offset-1 ring-offset-white dark:ring-offset-[#1E232F]'
+                                  : 'opacity-85 hover:opacity-100 hover:scale-105'
+                              }`}
+                              title={isAr ? `درجة ${idx + 1}` : `Shade ${idx + 1}`}
+                              aria-label={isAr ? `اختيار درجة ${idx + 1} من ${c.labelAr}` : `Select shade ${idx + 1} of ${c.label}`}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
               </div>
