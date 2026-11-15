@@ -82,22 +82,17 @@ export const QuickFilterBar: React.FC<BarProps> = ({ appLang, items, className =
         (id) =>
           id === 'plural' || id === 'array'
             ? typeFilters.includes(id) || active.includes(id)
-            : (id !== 'new' && id !== 'review') || counts[id] > 0 || active.includes(id)
+            : counts[id] > 0 || active.includes(id)
       ).map((id) => {
         const on = active.includes(id);
-        const unavailable = counts[id] === 0 && !on; // an active filter can always be switched off
         return (
           <button
             key={id}
             type="button"
             data-filter={id}
             aria-pressed={on}
-            disabled={unavailable}
-            title={unavailable ? (t('no_strings_for_this_filter')) : undefined}
             onClick={() => toggleQuickFilter(id, items)}
-            className={`px-3 py-1 rounded-full border text-xs font-medium transition ${
-              unavailable ? 'opacity-40 cursor-not-allowed ' : 'cursor-pointer '
-            }${
+            className={`px-3 py-1 rounded-full border text-xs font-medium transition cursor-pointer ${
               on
                 ? 'bg-[#0B57D0] dark:bg-[#A8C7FA] border-transparent text-white dark:text-slate-900'
                 : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
