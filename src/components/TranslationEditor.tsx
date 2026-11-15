@@ -1692,7 +1692,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                 rows={1}
                 containerClassName="rounded-xl bg-slate-100/90 dark:bg-[#0E121A] border border-slate-200/90 dark:border-transparent"
                 backdropClassName="border-0 border-b-2 border-transparent px-3.5 pt-2 pb-3.5 sm:pt-2.5 sm:pb-4 text-xs sm:text-sm leading-relaxed"
-                className="px-3.5 pt-2 pb-3.5 sm:pt-2.5 sm:pb-4 rounded-xl border-0 border-b-2 border-[#16695E] focus:border-[#1EB996] text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 text-xs sm:text-sm leading-relaxed focus:outline-none transition-colors resize-none overflow-hidden block"
+                className="px-3.5 pt-2 pb-3.5 sm:pt-2.5 sm:pb-4 rounded-xl border-0 border-b-2 border-[#1EB996]/30 focus:border-[#1EB996] text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 text-xs sm:text-sm leading-relaxed focus:outline-none transition-colors duration-300 resize-none overflow-hidden block"
               />
             )}
 
@@ -1764,7 +1764,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                       }
                       containerClassName="rounded-lg bg-slate-100/90 dark:bg-[#0E121A] border border-slate-200/90 dark:border-transparent"
                       backdropClassName="border-0 border-b-2 border-transparent px-3.5 pt-1.5 pb-3 text-xs sm:text-sm leading-relaxed"
-                      className="px-3.5 pt-1.5 pb-3 text-xs sm:text-sm leading-relaxed rounded-lg border-0 border-b-2 border-[#16695E] focus:border-[#1EB996] text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none transition resize-none overflow-hidden block"
+                      className="px-3.5 pt-1.5 pb-3 text-xs sm:text-sm leading-relaxed rounded-lg border-0 border-b-2 border-[#1EB996]/30 focus:border-[#1EB996] text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none transition-colors duration-300 resize-none overflow-hidden block"
                     />
                   </div>
                 ))}
@@ -1830,7 +1830,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                       }
                       containerClassName="rounded-lg bg-slate-100/90 dark:bg-[#0E121A] border border-slate-200/90 dark:border-transparent"
                       backdropClassName="border-0 border-b-2 border-transparent px-3.5 pt-1.5 pb-3 text-xs sm:text-sm leading-relaxed"
-                      className="px-3.5 pt-1.5 pb-3 text-xs sm:text-sm leading-relaxed rounded-lg border-0 border-b-2 border-[#16695E] focus:border-[#1EB996] text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none transition resize-none overflow-hidden block"
+                      className="px-3.5 pt-1.5 pb-3 text-xs sm:text-sm leading-relaxed rounded-lg border-0 border-b-2 border-[#1EB996]/30 focus:border-[#1EB996] text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none transition-colors duration-300 resize-none overflow-hidden block"
                     />
                   </div>
                 ))}
