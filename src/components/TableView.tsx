@@ -647,8 +647,8 @@ const TableViewBase: React.FC<TableViewProps> = ({
           <div
             className="absolute inset-y-0 flex items-center transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
             style={{
-              insetInlineStart: 0,
-              insetInlineEnd: '2.75rem',
+              left: 0,
+              right: '2.75rem',
               opacity: searchOpen ? 0 : 1,
               transform: searchOpen ? 'translateY(-4px) scale(0.98)' : 'translateY(0) scale(1)',
               pointerEvents: searchOpen ? 'none' : 'auto',
@@ -657,10 +657,27 @@ const TableViewBase: React.FC<TableViewProps> = ({
             {statsNode}
           </div>
 
+          {/* Forced ltr so the toggle button always sits at the physical-right edge, in both collapsed and expanded
+              states and in both app languages; the input's own text direction is set independently below. */}
           <div
+            dir="ltr"
             className="absolute inset-y-0 flex items-center bg-slate-100 dark:bg-slate-800/80 rounded-full ring-1 ring-slate-200/60 dark:ring-slate-700/60 focus-within:ring-2 focus-within:ring-[#0B57D0] dark:focus-within:ring-[#A8C7FA] focus-within:bg-white dark:focus-within:bg-[#1E1F20] transition-[width,background-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] overflow-hidden z-10"
-            style={{ insetInlineEnd: 0, width: searchOpen ? '100%' : '2.25rem' }}
+            style={{ right: 0, width: searchOpen ? '100%' : '2.25rem' }}
           >
+            {searchOpen && (
+              <input
+                ref={searchInputRef}
+                id="table-search-input"
+                type="text"
+                placeholder={t('search_all_strings_by_key')}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                dir="auto"
+                style={{ textAlign: isAr ? 'right' : 'left' }}
+                className="flex-1 min-w-0 text-xs bg-transparent text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none ps-3 animate-in fade-in duration-200"
+              />
+            )}
+
             <button
               id="table-search-toggle-btn"
               type="button"
@@ -692,18 +709,6 @@ const TableViewBase: React.FC<TableViewProps> = ({
                 }}
               />
             </button>
-
-            {searchOpen && (
-              <input
-                ref={searchInputRef}
-                id="table-search-input"
-                type="text"
-                placeholder={t('search_all_strings_by_key')}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="flex-1 min-w-0 text-xs bg-transparent text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none pe-3 animate-in fade-in duration-200"
-              />
-            )}
           </div>
         </div>
       </div>
