@@ -93,14 +93,30 @@ export const EditorActionButtons: React.FC<EditorActionButtonsProps> = ({
   compact = false,
 }) => {
   const { t, tb } = useT();
-  const [row1, row1h] = useResizablePair('editor_buttons_row1_ratio_v1');
-  const [row2, row2h] = useResizablePair('editor_buttons_row2_ratio_v1');
   // Press-and-hold + drag swaps a button with its vertical neighbour (top <-> bottom). Each column (the round icon,
-  // the text button next to it, and the big pill on the right) remembers its own swap independently. The resize
-  // hooks above stay tied to the physical row; only which content renders in each row changes with the swap.
+  // the text button next to it, and the big pill on the right) remembers its own swap independently.
   const iconSwap = useColumnSwap('editor_buttons_icon_swap_v1');
   const textSwap = useColumnSwap('editor_buttons_text_swap_v1');
   const mainSwap = useColumnSwap('editor_buttons_main_swap_v1');
+
+  // Row 1 is always the physical top row, row 2 the physical bottom row; swapping only changes which content (and
+  // which swap-column "position") renders in each.
+  const row1IconContent: IconContent = iconSwap.swapped ? 'globe' : 'trash';
+  const row2IconContent: IconContent = iconSwap.swapped ? 'trash' : 'globe';
+  const row1TextContent: TextContent = textSwap.swapped ? 'suggest' : 'skip';
+  const row2TextContent: TextContent = textSwap.swapped ? 'skip' : 'suggest';
+  const row1MainContent: MainContent = mainSwap.swapped ? 'stay' : 'continue';
+  const row2MainContent: MainContent = mainSwap.swapped ? 'continue' : 'stay';
+
+  // The remembered width split is keyed by which content currently occupies the row, not by the row itself: when a
+  // button is dragged into a new row, the row resizes (animated, via gridStyle's own transition) to whatever width
+  // that content last had there, instead of keeping the previous occupant's width.
+  const [row1, row1h] = useResizablePair(
+    `editor_buttons_pair_${row1IconContent}_${row1TextContent}_${row1MainContent}_v1`
+  );
+  const [row2, row2h] = useResizablePair(
+    `editor_buttons_pair_${row2IconContent}_${row2TextContent}_${row2MainContent}_v1`
+  );
 
   const c = compact
     ? { sq: 'w-[calc(2rem_+_var(--ex,0px))] h-8', h: 'h-8' }
@@ -242,15 +258,6 @@ export const EditorActionButtons: React.FC<EditorActionButtonsProps> = ({
       </button>
     );
   };
-
-  // Row 1 is always the physical top row, row 2 the physical bottom row; swapping only changes which content (and
-  // which swap-column "position") renders in each.
-  const row1IconContent: IconContent = iconSwap.swapped ? 'globe' : 'trash';
-  const row2IconContent: IconContent = iconSwap.swapped ? 'trash' : 'globe';
-  const row1TextContent: TextContent = textSwap.swapped ? 'suggest' : 'skip';
-  const row2TextContent: TextContent = textSwap.swapped ? 'skip' : 'suggest';
-  const row1MainContent: MainContent = mainSwap.swapped ? 'stay' : 'continue';
-  const row2MainContent: MainContent = mainSwap.swapped ? 'continue' : 'stay';
 
   return (
     <div className={`${compact ? 'px-2 py-1.5' : 'px-3 sm:px-4 py-2.5 sm:py-3'} bg-slate-50 dark:bg-[#131720] border-t border-slate-200 dark:border-[#232936] ${compact ? 'space-y-1.5' : 'space-y-2'}`}>

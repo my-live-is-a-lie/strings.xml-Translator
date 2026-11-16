@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/immutability -- `ctx` is deliberate mutable bookkeeping for pointer gestures: it is only
    written from event handlers and callback refs and never read while rendering. */
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getStoredItem, setStoredItem } from '../utils/storage';
 
 /**
@@ -105,6 +105,19 @@ export function useResizablePair(storageKey: string) {
   });
   const [live, setLive] = useState<Live | null>(null);
   const [activeSide, setActiveSide] = useState<Side | null>(null);
+
+  // `storageKey` can change across renders (e.g. it encodes which content currently occupies this slot, after a
+  // swap): when it does, reload the remembered split for the new key instead of keeping the old one, so the layout
+  // animates (via gridStyle's transition below) towards whatever width that content last had.
+  const prevKeyRef = useRef(storageKey);
+  useEffect(() => {
+    if (prevKeyRef.current === storageKey) return;
+    prevKeyRef.current = storageKey;
+    const n = parseFloat(getStoredItem(storageKey) ?? '');
+    setRatio(Number.isFinite(n) ? Math.min(0.75, Math.max(0.25, n)) : 0.5);
+    const en = parseFloat(getStoredItem(storageKey + '_icon') ?? '');
+    setExtra(Number.isFinite(en) ? Math.min(240, Math.max(0, en)) : 0);
+  }, [storageKey]);
 
   const finish = useCallback(
     (commit: boolean) => {
