@@ -1553,11 +1553,11 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                     <span
                       className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold border ${
                         item.translationSource === 'ai'
-                          ? 'bg-amber-500/10 text-amber-300 border-amber-500/25'
+                          ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/25'
                           : 'bg-[#1EB996]/10 text-[#1EB996] border-[#1EB996]/25'
                       }`}
                     >
-                      <Sparkles className="w-2.5 h-2.5 text-amber-400" />
+                      <Sparkles className="w-2.5 h-2.5 text-amber-600 dark:text-amber-400" />
                       <span data-i18n>{t('ai_translated_2')}</span>
                     </span>
                     )}
@@ -1649,9 +1649,9 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             {slot('r1', 'kb-r1 space-y-2.5 rounded-2xl bg-white dark:bg-[#151922] border border-slate-200/80 dark:border-transparent p-3', <>
             {/* Single Multiple Consecutive Spaces Typing Mistake Warning Banner */}
             {hasMultipleSpaces && (
-              <div className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-rose-500/15 border border-rose-500/40 text-rose-200 text-xs font-medium animate-in fade-in duration-150 gap-2">
+              <div className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-rose-500/15 border border-rose-500/40 text-rose-700 dark:text-rose-200 text-xs font-medium animate-in fade-in duration-150 gap-2">
                 <div className="flex items-center gap-1.5 min-w-0">
-                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
                   <span data-i18n className="truncate">
                     {t('multiple_spaces_detected_between_words')}
                   </span>
