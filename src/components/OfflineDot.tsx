@@ -61,6 +61,9 @@ export const OfflineDot: React.FC<Props> = ({ appLang: _appLang = 'ar' }) => {
     ? t('online')
     : t('offline');
 
+  // Only ever shown while offline; it disappears again as soon as connectivity is confirmed.
+  if (online) return null;
+
   return (
     <button
       type="button"
