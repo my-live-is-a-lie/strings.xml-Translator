@@ -179,7 +179,7 @@ export const FilesModal: React.FC<FilesModalProps> = ({
         {/* Content Body */}
         <div className="p-4 sm:p-5 overflow-y-auto flex-1 min-h-0 space-y-3.5">
           {storedFiles.length === 0 ? (
-            <div className="text-center py-10 px-4 rounded-xl border border-dashed border-slate-200 dark:border-[#2A364A] bg-slate-50/50 dark:bg-[#1A212E]/50">
+            <div className="text-center py-10 px-4">
               <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-[#202938] flex items-center justify-center mx-auto mb-3 text-slate-400">
                 <FileCode2 className="w-6 h-6" />
               </div>
