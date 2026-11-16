@@ -20,12 +20,12 @@ export const EditorNavFooter: React.FC<EditorNavFooterProps> = ({
 }) => {
   const { t, tb } = useT();
   return (
-    <div className="flex items-center justify-between text-[11px] text-slate-400 px-2 py-0.5">
+    <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 px-2 py-0.5">
       <div className="flex items-center gap-1.5">
         <button
           onClick={() => onPrevious()}
           disabled={currentIndex === 0}
-          className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full hover:bg-slate-800/60 disabled:opacity-30 disabled:pointer-events-none transition cursor-pointer"
+          className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full hover:bg-slate-200/70 dark:hover:bg-slate-800/60 disabled:opacity-30 disabled:pointer-events-none transition cursor-pointer"
         >
           <ChevronLeft className="w-3 h-3 rtl:rotate-180" />
           <span data-i18n>{t('previous')}</span>
@@ -33,7 +33,7 @@ export const EditorNavFooter: React.FC<EditorNavFooterProps> = ({
         <button
           onClick={() => onNext()}
           disabled={currentIndex === totalCount - 1}
-          className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full hover:bg-slate-800/60 disabled:opacity-30 disabled:pointer-events-none transition cursor-pointer"
+          className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full hover:bg-slate-200/70 dark:hover:bg-slate-800/60 disabled:opacity-30 disabled:pointer-events-none transition cursor-pointer"
         >
           <span data-i18n>{t('next')}</span>
           <ChevronRight className="w-3 h-3 rtl:rotate-180" />
