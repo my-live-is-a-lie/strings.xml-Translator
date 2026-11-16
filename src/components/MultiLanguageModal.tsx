@@ -178,7 +178,7 @@ export const MultiLanguageModal: React.FC<MultiLanguageModalProps> = ({
             const usedProvider = st?.state === 'done' ? providers.find((p) => p.id === usedProviders[l.code]) : undefined;
             return (
               <li key={l.code}>
-                <label className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2 text-xs cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60">
+                <label className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60">
                   <input
                     type="checkbox"
                     checked={selected.has(l.code)}
