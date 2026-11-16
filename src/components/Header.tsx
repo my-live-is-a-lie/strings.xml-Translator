@@ -385,21 +385,26 @@ const HeaderBase: React.FC<HeaderProps> = ({
   const totalItems = project.items.length;
   let translatedCount = 0;
   let needsReviewCount = 0;
-  let untranslatedCount = 0;
 
   for (const item of project.items) {
     if (item.status === 'translated') {
       translatedCount++;
     } else if (item.status === 'needs_review') {
       needsReviewCount++;
-    } else {
-      untranslatedCount++;
     }
   }
 
   const translatedPercent = totalItems > 0 ? Math.round((translatedCount / totalItems) * 100) : 0;
   const reviewPercent = totalItems > 0 ? Math.round((needsReviewCount / totalItems) * 100) : 0;
   const untranslatedPercent = totalItems > 0 ? Math.max(0, 100 - translatedPercent - reviewPercent) : 0;
+  const translatedPillColorClass =
+    translatedPercent <= 30
+      ? 'bg-red-600'
+      : translatedPercent <= 60
+        ? 'bg-orange-700'
+        : translatedPercent <= 80
+          ? 'bg-yellow-600'
+          : 'bg-green-600';
   const exactTranslatedWidth = totalItems > 0 ? (translatedCount / totalItems) * 100 : 0;
   const exactReviewWidth = totalItems > 0 ? (needsReviewCount / totalItems) * 100 : 0;
 
@@ -672,27 +677,18 @@ const HeaderBase: React.FC<HeaderProps> = ({
             {/* Breakdown Legend & Mobile View Switcher */}
             <div className={`flex items-center justify-between gap-2 text-slate-600 dark:text-slate-400 ${part === 'legend' ? 'text-[10px] flex-nowrap' : 'text-[11px] sm:text-xs flex-wrap'}`}>
               <div className={`flex items-center ${part === 'legend' ? 'gap-2 flex-nowrap whitespace-nowrap' : 'gap-3 flex-wrap'}`}>
-                {/* Translated stat */}
+                {/* Translated stat pill */}
                 <div className="inline-flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-[#1EB996] shrink-0" />
-                  <span className="font-semibold text-slate-900 dark:text-slate-100 tabular-nums">
-                    {translatedPercent}% {t('translated')}
-                  </span>
+                  <div className="inline-flex items-center rounded-full overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.25)]">
+                    <span className={`px-2 py-0.5 text-[11px] sm:text-xs font-bold text-white tabular-nums transition-colors duration-300 ${translatedPillColorClass}`}>
+                      {translatedPercent}%
+                    </span>
+                    <span className="px-2.5 py-0.5 text-[11px] sm:text-xs font-semibold bg-slate-800 dark:bg-slate-700 text-white">
+                      {t('translated')}
+                    </span>
+                  </div>
                   <span className="text-slate-600 dark:text-slate-400 tabular-nums">
                     ({translatedCount}/{totalItems})
-                  </span>
-                </div>
-
-                <span aria-hidden="true" className="text-slate-300 dark:text-slate-700">·</span>
-
-                {/* Untranslated stat */}
-                <div className="inline-flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-600 shrink-0" />
-                  <span className="font-medium text-slate-700 dark:text-slate-300 tabular-nums">
-                    {untranslatedPercent}% {t('untranslated')}
-                  </span>
-                  <span className="text-slate-600 dark:text-slate-400 tabular-nums">
-                    ({untranslatedCount})
                   </span>
                 </div>
 
