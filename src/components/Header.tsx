@@ -679,7 +679,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
               <div className={`flex items-center ${part === 'legend' ? 'gap-2 flex-nowrap whitespace-nowrap' : 'gap-3 flex-wrap'}`}>
                 {/* Translated stat pill */}
                 <div className="inline-flex items-center gap-1.5">
-                  <div className="inline-flex items-center rounded-full overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.25)]">
+                  <div className="inline-flex items-center rounded-md overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.25)]">
                     <span className={`px-2 py-0.5 text-[11px] sm:text-xs font-bold text-white tabular-nums transition-colors duration-300 ${translatedPillColorClass}`}>
                       {translatedPercent}%
                     </span>
