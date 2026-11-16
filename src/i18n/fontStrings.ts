@@ -1,0 +1,21 @@
+// Texts of the font picker (sidebar "F" button) and its "add a font" window.
+export const FONT_STRINGS: Record<string, { en: string; ar: string }> = {
+  font_btn_title: { en: 'App font', ar: 'خط التطبيق' },
+  font_default: { en: 'Default', ar: 'الافتراضي' },
+  font_pick_family: { en: 'Choose a font', ar: 'اختيار الخط' },
+  font_pick_style: { en: 'Choose a font style', ar: 'اختيار نوع الخط' },
+  font_add: { en: 'Add a font', ar: 'إضافة خط' },
+  font_add_title: { en: 'Add a new font', ar: 'إضافة خط جديد' },
+  font_browse: { en: 'Browse files', ar: 'استعراض الملفات' },
+  font_browse_hint: { en: 'Choose a font file (TTF, OTF or WOFF) from your device.', ar: 'اختر ملف خط (TTF أو OTF أو WOFF) من جهازك.' },
+  font_added_list: { en: 'Added fonts', ar: 'الخطوط المضافة' },
+  font_tap_to_use: { en: 'Tap a font to use it', ar: 'اضغط على خط لاستخدامه' },
+  font_none_added: { en: 'No fonts added yet', ar: 'لم تتم إضافة أي خط بعد' },
+  font_delete: { en: 'Delete font', ar: 'حذف الخط' },
+  font_added_count: { en: '%1$s font file(s) added', ar: 'تمت إضافة %1$s ملف خط' },
+  font_failed_count: { en: '%1$s file(s) could not be read', ar: 'تعذّرت قراءة %1$s ملف' },
+  font_separate: { en: 'Separate font for text fields', ar: 'خط مستقل لحقلي النص' },
+  font_label_app: { en: 'App', ar: 'التطبيق' },
+  font_label_editor: { en: 'Text fields (source and translation)', ar: 'حقلا النص (الأصلي والترجمة)' },
+  font_close: { en: 'Close', ar: 'إغلاق' },
+};

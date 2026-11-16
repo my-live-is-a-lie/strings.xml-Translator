@@ -719,3 +719,11 @@ html:not(.dark) .dark\:border-\[\#2E384D\] {
 html .tv-bg { background-color: #fff; }
 html.dark .tv-bg { background-color: #121318 !important; }
 html.dark .tv-bg { box-shadow: none; }
+
+/* Separate font for the text fields (source / translation). Only active when the user turned it on in
+   the sidebar font panel; the variables are set by src/utils/fonts.ts. Unlayered, so it wins over utilities. */
+:root[data-editor-font] .app-editor-font {
+  font-family: var(--editor-font-family);
+  font-weight: var(--editor-font-weight);
+  font-style: var(--editor-font-style);
+}
