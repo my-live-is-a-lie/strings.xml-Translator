@@ -3,7 +3,7 @@ import React, { useState, useMemo, useRef, useEffect, useLayoutEffect } from 're
 import { scrollItemIntoView } from '../utils/scrollToItem';
 import { ResourceItem, FilterStatus, SourceFilter, SingleStringItem } from '../types';
 import { breakAfterUnderscores } from './keyBreaks';
-import { Search, CheckCircle2, AlertCircle, Check, Sparkles, CheckSquare, Square, Loader2, ChevronDown, ChevronUp, ArrowUpDown, ArrowUp } from 'lucide-react';
+import { Search, X, CheckCircle2, AlertCircle, Check, Sparkles, CheckSquare, Square, Loader2, ChevronDown, ChevronUp, ArrowUpDown, ArrowUp } from 'lucide-react';
 import { bulkTranslateItems, withTranslationProvider } from '../utils/translator';
 import { BulkProviderModal, EXTERNAL_AI_PROVIDER_ID } from './BulkProviderModal';
 import { ExternalAiModal } from './ExternalAiModal';
@@ -62,6 +62,9 @@ const TableViewBase: React.FC<TableViewProps> = ({
   // Rows whose key name is shown in full instead of cut with an ellipsis
   const [editingId, setEditingId] = useState<string | null>(null);
   const [bulkProgress, setBulkProgress] = useState<{ completed: number; total: number } | null>(null);
+  // The search pill: collapsed to a round icon button beside the stats line, expands over it on tap.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const search = controlledSearch !== undefined ? controlledSearch : localSearch;
   const setSearch = (q: string) => {
@@ -638,22 +641,74 @@ const TableViewBase: React.FC<TableViewProps> = ({
         className="tv-bg absolute top-0 inset-x-0 z-20 bg-white dark:bg-[#121318] transition-transform duration-200 ease-out will-change-transform"
         style={{ transform: headerHidden ? 'translateY(-100%)' : 'translateY(0)' }}
       >
-      {statsNode}
-      {/* Search, Filter & Bulk Actions Header */}
-      <div className="tv-bg p-4 sm:p-5 border-b border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-[#121318] flex flex-wrap items-center justify-between gap-3">
-        {/* M3 Search Bar */}
-        <div className="relative flex-1 min-w-[240px] max-w-md flex items-center bg-slate-100 dark:bg-slate-800/80 rounded-full px-4 py-2 ring-1 ring-slate-200/60 dark:ring-slate-700/60 focus-within:ring-2 focus-within:ring-[#0B57D0] dark:focus-within:ring-[#A8C7FA] focus-within:bg-white dark:focus-within:bg-[#1E1F20] transition-all">
-          <Search className="w-4 h-4 text-slate-600 dark:text-slate-400 me-2.5 shrink-0" />
-          <input
-            id="table-search-input"
-            type="text"
-            placeholder={t('search_all_strings_by_key')}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full text-xs bg-transparent text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none"
-          />
-        </div>
+      {/* Stats line + search toggle: tap the round icon to expand a search bar over the stats line, in its place */}
+      <div className="tv-bg px-4 sm:px-5 pt-3 sm:pt-4 bg-white dark:bg-[#121318]">
+        <div className="relative h-9">
+          <div
+            className="absolute inset-y-0 flex items-center transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
+            style={{
+              insetInlineStart: 0,
+              insetInlineEnd: '2.75rem',
+              opacity: searchOpen ? 0 : 1,
+              transform: searchOpen ? 'translateY(-4px) scale(0.98)' : 'translateY(0) scale(1)',
+              pointerEvents: searchOpen ? 'none' : 'auto',
+            }}
+          >
+            {statsNode}
+          </div>
 
+          <div
+            className="absolute inset-y-0 flex items-center bg-slate-100 dark:bg-slate-800/80 rounded-full ring-1 ring-slate-200/60 dark:ring-slate-700/60 focus-within:ring-2 focus-within:ring-[#0B57D0] dark:focus-within:ring-[#A8C7FA] focus-within:bg-white dark:focus-within:bg-[#1E1F20] transition-[width,background-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] overflow-hidden z-10"
+            style={{ insetInlineEnd: 0, width: searchOpen ? '100%' : '2.25rem' }}
+          >
+            <button
+              id="table-search-toggle-btn"
+              type="button"
+              onClick={() => {
+                setSearchOpen((v) => {
+                  const next = !v;
+                  if (next) window.setTimeout(() => searchInputRef.current?.focus(), 260);
+                  else setSearch('');
+                  return next;
+                });
+              }}
+              className="relative grid place-items-center shrink-0 w-9 h-9 rounded-full cursor-pointer text-slate-600 dark:text-slate-400"
+              title={searchOpen ? (isAr ? 'إغلاق البحث' : 'Close search') : t('search_all_strings_by_key')}
+            >
+              <Search
+                className="col-start-1 row-start-1 w-4 h-4"
+                style={{
+                  opacity: searchOpen ? 0 : 1,
+                  transform: searchOpen ? 'rotate(90deg) scale(0.5)' : 'rotate(0deg) scale(1)',
+                  transition: 'transform 300ms cubic-bezier(0.34, 1.2, 0.64, 1), opacity 200ms ease',
+                }}
+              />
+              <X
+                className="col-start-1 row-start-1 w-4 h-4"
+                style={{
+                  opacity: searchOpen ? 1 : 0,
+                  transform: searchOpen ? 'rotate(0deg) scale(1)' : 'rotate(-90deg) scale(0.5)',
+                  transition: 'transform 300ms cubic-bezier(0.34, 1.2, 0.64, 1), opacity 200ms ease',
+                }}
+              />
+            </button>
+
+            {searchOpen && (
+              <input
+                ref={searchInputRef}
+                id="table-search-input"
+                type="text"
+                placeholder={t('search_all_strings_by_key')}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="flex-1 min-w-0 text-xs bg-transparent text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none pe-3 animate-in fade-in duration-200"
+              />
+            )}
+          </div>
+        </div>
+      </div>
+      {/* Filter & Bulk Actions Header */}
+      <div className="tv-bg p-4 sm:p-5 border-b border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-[#121318] flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2">
           {/* Bulk Selection & AI Translation Controls */}
           {onBulkUpdateTranslations && (
