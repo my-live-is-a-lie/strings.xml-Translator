@@ -255,12 +255,18 @@ const HeaderBase: React.FC<HeaderProps> = ({
   const [accentVariantIndexes, setAccentVariantIndexes] = useState<Record<AccentColorId, number>>(loadAccentVariantIndexes);
   // Which swatch's shade-picker column is currently open (only one at a time)
   const [openVariantSlot, setOpenVariantSlot] = useState<AccentColorId | null>(null);
-  // Tracks an in-progress drag-to-cycle gesture on a swatch, and whether the most recent pointer-up was a
-  // drag (so the click that follows it can be suppressed instead of toggling the dropdown / reselecting).
-  const accentDragRef = useRef<{ id: AccentColorId; startY: number; lastY: number; dragged: boolean } | null>(null);
+  // Tracks an in-progress drag-to-cycle gesture on a swatch: at most one shade change per gesture
+  // (`cycled`), and whether the most recent pointer-up was a drag (so the click that follows it can
+  // be suppressed instead of toggling the dropdown / reselecting).
+  const accentDragRef = useRef<{ id: AccentColorId; startY: number; dragged: boolean; cycled: boolean } | null>(null);
   const lastAccentDragEndRef = useRef<{ id: AccentColorId; time: number } | null>(null);
-  // Wraps all 6 swatches (and any open shade column); a click outside this row closes the open column.
+  // Wraps all 6 swatches (and any open shade column); a tap outside this row closes the open column.
   const paletteRowRef = useRef<HTMLDivElement>(null);
+  // Live mirror of openVariantSlot for the always-on outside-tap listener below (avoids resubscribing).
+  const openVariantSlotRef = useRef<AccentColorId | null>(null);
+  useEffect(() => {
+    openVariantSlotRef.current = openVariantSlot;
+  }, [openVariantSlot]);
 
   // The panel owns the provider forms; the header only needs to know which provider is active
   const [providersRevision, setProvidersRevision] = useState(0);
@@ -335,18 +341,32 @@ const HeaderBase: React.FC<HeaderProps> = ({
     });
   };
 
-  // Closes the open shade column on a click/tap anywhere outside the swatch row (including the
-  // open column itself counts as inside; selectAccentVariant decides when picking a shade closes it).
+  // Closes the open shade column on a tap anywhere outside the swatch row (the open column itself
+  // counts as inside; selectAccentVariant decides when picking a shade closes it). The click that
+  // follows the closing tap is swallowed so it doesn't also activate whatever is underneath it.
   useEffect(() => {
-    if (!openVariantSlot) return;
+    const suppressNextClickRef = { current: false };
     const handlePointerDown = (e: PointerEvent) => {
+      if (!openVariantSlotRef.current) return;
       if (paletteRowRef.current && e.target instanceof Node && !paletteRowRef.current.contains(e.target)) {
         setOpenVariantSlot(null);
+        suppressNextClickRef.current = true;
+      }
+    };
+    const handleClickCapture = (e: MouseEvent) => {
+      if (suppressNextClickRef.current) {
+        suppressNextClickRef.current = false;
+        e.preventDefault();
+        e.stopPropagation();
       }
     };
     document.addEventListener('pointerdown', handlePointerDown, true);
-    return () => document.removeEventListener('pointerdown', handlePointerDown, true);
-  }, [openVariantSlot]);
+    document.addEventListener('click', handleClickCapture, true);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true);
+      document.removeEventListener('click', handleClickCapture, true);
+    };
+  }, []);
 
   const handleRandomAccentColor = () => {
     const remaining = ACCENT_COLORS.filter((c) => c.id !== accentColor);
@@ -546,6 +566,11 @@ const HeaderBase: React.FC<HeaderProps> = ({
               <Sparkles className="w-3.5 h-3.5 text-amber-500" />
               <span data-i18n>{t('sample')}</span>
             </button>
+
+            {/* Offline indicator dot, mobile-only, mirroring the one next to the dock's Table button */}
+            <div className="md:hidden">
+              <OfflineDot appLang={appLang} />
+            </div>
 
             {/* Table / Editor View Switch Button next to the top-right Sidebar Button */}
             <button
@@ -942,7 +967,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
                           setOpenVariantSlot((prev) => (prev === c.id ? null : c.id));
                         }}
                         onPointerDown={(e) => {
-                          accentDragRef.current = { id: c.id, startY: e.clientY, lastY: e.clientY, dragged: false };
+                          accentDragRef.current = { id: c.id, startY: e.clientY, dragged: false, cycled: false };
                           try {
                             e.currentTarget.setPointerCapture(e.pointerId);
                           } catch (err) {
@@ -951,12 +976,15 @@ const HeaderBase: React.FC<HeaderProps> = ({
                         }}
                         onPointerMove={(e) => {
                           const d = accentDragRef.current;
-                          if (!d || d.id !== c.id) return;
-                          if (!d.dragged && Math.abs(e.clientY - d.startY) > 4) d.dragged = true;
-                          const stepDy = e.clientY - d.lastY;
-                          if (Math.abs(stepDy) >= ACCENT_DRAG_STEP_PX) {
-                            cycleAccentVariant(c.id, stepDy > 0 ? 1 : -1);
-                            d.lastY = e.clientY;
+                          if (!d || d.id !== c.id || d.cycled) return;
+                          const dy = e.clientY - d.startY;
+                          if (!d.dragged && Math.abs(dy) > 4) d.dragged = true;
+                          // At most one shade change per drag gesture: dragging down moves to the next
+                          // shade, dragging up moves to the previous one; further movement in the same
+                          // gesture does nothing until the pointer is released and a new drag starts.
+                          if (Math.abs(dy) >= ACCENT_DRAG_STEP_PX) {
+                            cycleAccentVariant(c.id, dy > 0 ? 1 : -1);
+                            d.cycled = true;
                           }
                         }}
                         onPointerUp={() => {
@@ -970,7 +998,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
                           accentDragRef.current = null;
                         }}
                         style={{ backgroundColor: variants[variantIndex].primary, touchAction: 'none' }}
-                        className={`w-6.5 h-6.5 rounded-full transition-all duration-300 ease-out cursor-pointer flex items-center justify-center shrink-0 select-none ${
+                        className={`w-6.5 h-6.5 rounded-full transition-[background-color,transform,box-shadow] duration-500 ease-out cursor-pointer flex items-center justify-center shrink-0 select-none ${
                           isSelected
                             ? 'scale-115 ring-2.5 ring-slate-900 dark:ring-white ring-offset-2 ring-offset-white dark:ring-offset-[#161922]'
                             : 'opacity-85 hover:opacity-100 hover:scale-105'
@@ -986,7 +1014,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
                           {/* Selection ring: a single element that slides between shades instead of jumping. */}
                           <div
                             aria-hidden
-                            className="absolute rounded-full ring-2 ring-slate-900 dark:ring-white ring-offset-1 ring-offset-white dark:ring-offset-[#1E232F] transition-transform duration-300 ease-out pointer-events-none"
+                            className="absolute rounded-full ring-2 ring-slate-900 dark:ring-white ring-offset-1 ring-offset-white dark:ring-offset-[#1E232F] transition-transform duration-300 ease-[cubic-bezier(0.65,0,0.35,1)] pointer-events-none"
                             style={{ width: '1.375rem', height: '1.375rem', top: '0.375rem', left: '0.375rem', transform: `translateY(${variantIndex * 28}px)` }}
                           />
                           {variants.map((v, idx) => (
