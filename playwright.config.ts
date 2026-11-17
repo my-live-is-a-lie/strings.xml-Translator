@@ -13,6 +13,9 @@ export default defineConfig({
   use: {
     baseURL: `http://localhost:${PORT}`,
     viewport: { width: 1400, height: 900 },
+    // The tests assert Arabic UI text, and the app follows the device language on first visit,
+    // so pin the browser locale to Arabic instead of relying on the runner's default (en-US).
+    locale: 'ar-EG',
     acceptDownloads: true,
     trace: 'retain-on-failure',
   },

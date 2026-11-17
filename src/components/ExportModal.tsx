@@ -41,8 +41,10 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const dialogRef = useDialog(isOpen, onClose);
   const [options, setOptions] = useState<ExportOptions>(defaultExportOptions);
   const [copied, setCopied] = useState(false);
-  // The placeholder/tag warning starts collapsed; its title toggles it open/closed.
-  const [warningExpanded, setWarningExpanded] = useState(false);
+  // The placeholder/tag warning starts expanded; its title toggles it open/closed.
+  // It must start expanded: export is blocked until the user acknowledges the warning, so the
+  // issues and the acknowledge checkbox must be visible as soon as the modal opens with blocking issues.
+  const [warningExpanded, setWarningExpanded] = useState(true);
   const [localFilterStatus, setLocalFilterStatus] = useState<FilterStatus>('all');
   const [localSourceFilter, setLocalSourceFilter] = useState<SourceFilter>('all');
 
