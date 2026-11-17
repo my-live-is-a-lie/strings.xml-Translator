@@ -34,8 +34,12 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '21'
-          # Cache Gradle dependencies so each run does not re-download them
+          # Cache Gradle dependencies so each run does not re-download them.
+          # The Android project is generated later by Capacitor, so no Gradle
+          # files exist yet: key the cache on package-lock.json instead, which
+          # is what determines the native dependencies (Capacitor + plugins).
           cache: 'gradle'
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
         run: npm ci
