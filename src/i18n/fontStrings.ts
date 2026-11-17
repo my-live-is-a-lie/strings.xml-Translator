@@ -14,8 +14,8 @@ export const FONT_STRINGS: Record<string, { en: string; ar: string }> = {
   font_delete: { en: 'Delete font', ar: 'حذف الخط' },
   font_added_count: { en: '%1$s font file(s) added', ar: 'تمت إضافة %1$s ملف خط' },
   font_failed_count: { en: '%1$s file(s) could not be read', ar: 'تعذّرت قراءة %1$s ملف' },
-  font_separate: { en: 'Separate font for text fields', ar: 'خط مستقل لحقلي النص' },
-  font_label_app: { en: 'App', ar: 'التطبيق' },
-  font_label_editor: { en: 'Text fields (source and translation)', ar: 'حقلا النص (الأصلي والترجمة)' },
+  font_separate: { en: 'Separate fonts for source and translation fields', ar: 'خطوط مستقلة لحقل النص الأصلي وحقل الترجمة' },
+  font_label_source: { en: 'Source text field', ar: 'حقل النص الأصلي' },
+  font_label_editor: { en: 'Translation field', ar: 'حقل الترجمة' },
   font_close: { en: 'Close', ar: 'إغلاق' },
 };

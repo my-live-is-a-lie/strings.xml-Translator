@@ -22,7 +22,7 @@ export default function AddFontModal({ target, onClose }: Props) {
   const [message, setMessage] = useState('');
 
   const userFamilies = useMemo(() => buildFamilies(snap.fonts).filter((f) => !f.builtin), [snap.fonts]);
-  const current = resolveChoice(buildFamilies(snap.fonts), target === 'app' ? snap.selection.app : snap.selection.editor);
+  const current = resolveChoice(buildFamilies(snap.fonts), snap.selection[target]);
 
   const onFiles = async (list: FileList | null) => {
     const files = list ? Array.from(list) : [];

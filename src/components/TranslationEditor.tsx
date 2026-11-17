@@ -1523,7 +1523,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               {/* Source content container */}
               <div dir="ltr" className="kb-src flex-1 min-h-[38px] px-3 py-1.5 rounded-lg bg-slate-100/90 dark:bg-[#141822] border border-slate-200/90 dark:border-[#283140]">
                 {/* The copy button floats at the top-left of the text: the first line sits beside it and the rest wraps underneath */}
-                <span dir="auto" data-src-text data-src-raw={sourceText} className="block text-xs sm:text-sm font-normal text-slate-800 dark:text-slate-100 select-text break-words whitespace-pre-line leading-relaxed">
+                <span dir="auto" data-src-text data-src-raw={sourceText} className="app-source-font block text-xs sm:text-sm font-normal text-slate-800 dark:text-slate-100 select-text break-words whitespace-pre-line leading-relaxed">
                   <button
                     id="copy-source-text-btn"
                     type="button"
@@ -1712,7 +1712,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                           </span>
                         )}
                       </div>
-                      <span className="text-slate-300 text-[11px] truncate max-w-xs">
+                      <span className="app-source-font text-slate-300 text-[11px] truncate max-w-xs">
                         {renderSourceWithSyntaxHighlights(pi.source, {
                           fieldType: 'plural',
                           quantity: pi.quantity,
@@ -1780,7 +1780,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                       <span data-i18n className="font-mono font-semibold text-[#1EB996]">
                         {t('item', ai.index)}
                       </span>
-                      <span className="text-slate-300 text-[11px] truncate max-w-xs">
+                      <span className="app-source-font text-slate-300 text-[11px] truncate max-w-xs">
                         {renderSourceWithSyntaxHighlights(ai.source, {
                           fieldType: 'array',
                           index: ai.index,

@@ -6,7 +6,8 @@ import { useSyncExternalStore } from 'react';
 import { getStoredItem, setStoredItem } from './storage';
 import { debugIgnored } from './debug';
 
-export type FontTarget = 'app' | 'editor';
+/** 'app' = whole app, 'source' = source text field, 'editor' = translation field. */
+export type FontTarget = 'app' | 'source' | 'editor';
 
 export interface UserFontMeta {
   id: string;
@@ -24,6 +25,9 @@ export interface FontChoice {
 
 export interface FontSelection {
   app: FontChoice;
+  /** Source text field (only used while `separate` is on). */
+  source: FontChoice;
+  /** Translation field (only used while `separate` is on). */
   editor: FontChoice;
   separate: boolean;
 }
@@ -366,6 +370,7 @@ function loadSelection(): FontSelection {
     if (raw && typeof raw === 'object') {
       return {
         app: isChoice(raw.app) ? raw.app : DEFAULT_CHOICE,
+        source: isChoice(raw.source) ? raw.source : DEFAULT_CHOICE,
         editor: isChoice(raw.editor) ? raw.editor : DEFAULT_CHOICE,
         separate: raw.separate === true,
       };
@@ -373,7 +378,7 @@ function loadSelection(): FontSelection {
   } catch (err) {
     debugIgnored('fonts.loadSelection', err);
   }
-  return { app: DEFAULT_CHOICE, editor: DEFAULT_CHOICE, separate: false };
+  return { app: DEFAULT_CHOICE, source: DEFAULT_CHOICE, editor: DEFAULT_CHOICE, separate: false };
 }
 
 let snapshot: Snapshot = { fonts: loadFonts(), selection: loadSelection() };
@@ -415,14 +420,18 @@ export function applyFonts(): void {
   root.style.fontStyle = app.variant.italic ? 'italic' : '';
 
   if (snapshot.selection.separate) {
-    const ed = resolveChoice(families, snapshot.selection.editor);
-    root.style.setProperty('--editor-font-family', ed.family.css);
-    root.style.setProperty('--editor-font-weight', String(ed.variant.weight));
-    root.style.setProperty('--editor-font-style', ed.variant.italic ? 'italic' : 'normal');
+    for (const [prefix, choice] of [['editor', snapshot.selection.editor], ['source', snapshot.selection.source]] as const) {
+      const r = resolveChoice(families, choice);
+      root.style.setProperty(`--${prefix}-font-family`, r.family.css);
+      root.style.setProperty(`--${prefix}-font-weight`, String(r.variant.weight));
+      root.style.setProperty(`--${prefix}-font-style`, r.variant.italic ? 'italic' : 'normal');
+    }
     root.setAttribute('data-editor-font', '');
   } else {
     root.removeAttribute('data-editor-font');
-    for (const p of ['--editor-font-family', '--editor-font-weight', '--editor-font-style']) root.style.removeProperty(p);
+    for (const prefix of ['editor', 'source']) {
+      for (const p of ['family', 'weight', 'style']) root.style.removeProperty(`--${prefix}-font-${p}`);
+    }
   }
 }
 
@@ -459,7 +468,7 @@ export function initFonts(): void {
   applyFonts();
   const families = buildFamilies(snapshot.fonts);
   const wanted = new Set<string>();
-  for (const c of [snapshot.selection.app, snapshot.selection.editor]) wanted.add(resolveChoice(families, c).family.id);
+  for (const c of [snapshot.selection.app, snapshot.selection.source, snapshot.selection.editor]) wanted.add(resolveChoice(families, c).family.id);
   void Promise.all(snapshot.fonts.filter((f) => wanted.has(`u:${f.family}`)).map(loadFace)).then(applyFonts);
 }
 
@@ -472,7 +481,13 @@ export function setFontChoice(target: FontTarget, choice: FontChoice): void {
 }
 
 export function setSeparateEditorFont(separate: boolean): void {
-  emit({ ...snapshot, selection: { ...snapshot.selection, separate } });
+  const sel = snapshot.selection;
+  // First time on: start both fields from the app font instead of snapping back to "Default"
+  const isUnset = (c: FontChoice) => c.f === DEFAULT_CHOICE.f && c.v === DEFAULT_CHOICE.v;
+  const next: FontSelection = separate
+    ? { ...sel, separate, source: isUnset(sel.source) ? sel.app : sel.source, editor: isUnset(sel.editor) ? sel.app : sel.editor }
+    : { ...sel, separate };
+  emit({ ...snapshot, selection: next });
   persist();
   applyFonts();
 }
@@ -541,7 +556,8 @@ export async function removeFont(id: string): Promise<void> {
     const fam = families.find((f) => f.id === c.f);
     return fam ? { f: fam.id, v: pickVariantKey(fam, c.v) } : DEFAULT_CHOICE;
   };
-  emit({ fonts, selection: { ...snapshot.selection, app: fix(snapshot.selection.app), editor: fix(snapshot.selection.editor) } });
+  const sel = snapshot.selection;
+  emit({ fonts, selection: { ...sel, app: fix(sel.app), source: fix(sel.source), editor: fix(sel.editor) } });
   persist();
   applyFonts();
 }

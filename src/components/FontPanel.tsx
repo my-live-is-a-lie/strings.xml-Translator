@@ -25,7 +25,7 @@ export default function FontPanel() {
   const { t, tb } = useT();
   const snap = useFonts();
   const [menu, setMenu] = useState<MenuState>(null);
-  const [addTarget, setAddTarget] = useState<FontTarget | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
   const families = useMemo(() => buildFamilies(snap.fonts), [snap.fonts]);
 
   // Register all added fonts so the lists preview each name in its own font
@@ -48,7 +48,7 @@ export default function FontPanel() {
   const familyName = (f: FontFamilyEntry) => (f.nameKey ? tb(f.nameKey) : f.name);
 
   const renderStrip = (target: FontTarget) => {
-    const choice = target === 'app' ? snap.selection.app : snap.selection.editor;
+    const choice = snap.selection[target];
     const { family, variant } = resolveChoice(families, choice);
     const previewStyle = {
       fontFamily: family.css,
@@ -144,18 +144,20 @@ export default function FontPanel() {
           )}
         </div>
 
-        <button
-          type="button"
-          onClick={() => {
-            setMenu(null);
-            setAddTarget(target);
-          }}
-          title={tb('font_add')}
-          aria-label={tb('font_add')}
-          className="ms-auto w-8 h-8 rounded-full flex items-center justify-center shrink-0 cursor-pointer transition active:scale-95 bg-slate-200/80 hover:bg-slate-200 dark:bg-[#252F42] dark:hover:bg-[#2C3850] text-slate-700 dark:text-slate-200"
-        >
-          <Plus className="w-4.5 h-4.5" />
-        </button>
+        {target === 'app' && (
+          <button
+            type="button"
+            onClick={() => {
+              setMenu(null);
+              setAddOpen(true);
+            }}
+            title={tb('font_add')}
+            aria-label={tb('font_add')}
+            className="ms-auto w-8 h-8 rounded-full flex items-center justify-center shrink-0 cursor-pointer transition active:scale-95 bg-slate-200/80 hover:bg-slate-200 dark:bg-[#252F42] dark:hover:bg-[#2C3850] text-slate-700 dark:text-slate-200"
+          >
+            <Plus className="w-4.5 h-4.5" />
+          </button>
+        )}
       </div>
     );
   };
@@ -165,7 +167,6 @@ export default function FontPanel() {
 
   return (
     <div className="px-4 py-3 flex flex-col gap-2.5 border-b border-slate-200/80 dark:border-[#252C3A] bg-slate-50/70 dark:bg-[#141822]/60 animate-in fade-in duration-150">
-      {separate && <span className={labelClass} data-i18n>{t('font_label_app')}</span>}
       {renderStrip('app')}
 
       <button
@@ -190,12 +191,14 @@ export default function FontPanel() {
 
       {separate && (
         <>
+          <span className={`${labelClass} pt-1`} data-i18n>{t('font_label_source')}</span>
+          {renderStrip('source')}
           <span className={`${labelClass} pt-1`} data-i18n>{t('font_label_editor')}</span>
           {renderStrip('editor')}
         </>
       )}
 
-      {addTarget && <AddFontModal target={addTarget} onClose={() => setAddTarget(null)} />}
+      {addOpen && <AddFontModal target="app" onClose={() => setAddOpen(false)} />}
     </div>
   );
 }
