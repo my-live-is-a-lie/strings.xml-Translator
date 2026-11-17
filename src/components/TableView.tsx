@@ -641,28 +641,32 @@ const TableViewBase: React.FC<TableViewProps> = ({
         className="tv-bg absolute top-0 inset-x-0 z-20 bg-white dark:bg-[#121318] transition-transform duration-200 ease-out will-change-transform"
         style={{ transform: headerHidden ? 'translateY(-100%)' : 'translateY(0)' }}
       >
-      {/* Stats line + search toggle: tap the round icon to expand a search bar over the stats line, in its place */}
-      <div className="tv-bg px-4 sm:px-5 pt-3 sm:pt-4 bg-white dark:bg-[#121318]">
-        <div className="relative h-9">
-          <div
-            className="absolute inset-y-0 flex items-center transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
-            style={{
-              left: 0,
-              right: '2.75rem',
-              opacity: searchOpen ? 0 : 1,
-              transform: searchOpen ? 'translateY(-4px) scale(0.98)' : 'translateY(0) scale(1)',
-              pointerEvents: searchOpen ? 'none' : 'auto',
-            }}
-          >
-            {statsNode}
-          </div>
+      {/* Stats line + search toggle: tap the round icon to expand a search bar over the stats line, in its place.
+          No padding of our own here: statsNode already carries its own spacing, unchanged from before. */}
+      <div className="tv-bg relative bg-white dark:bg-[#121318]">
+        <div
+          className="transition-opacity duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
+          style={{
+            // Physical (not logical) padding: reserves room for the search button, which always sits on the
+            // physical-right regardless of app language, without adding any vertical spacing of our own.
+            paddingRight: '2.75rem',
+            opacity: searchOpen ? 0 : 1,
+            pointerEvents: searchOpen ? 'none' : 'auto',
+          }}
+        >
+          {statsNode}
+        </div>
 
-          {/* Forced ltr so the toggle button always sits at the physical-right edge, in both collapsed and expanded
-              states and in both app languages; the input's own text direction is set independently below. */}
+        {/* Forced ltr so the toggle button always sits at the physical-right edge, in both collapsed and expanded
+            states and in both app languages; the input's own text direction is set independently below. */}
+        <div
+          dir="ltr"
+          className="absolute inset-y-0 flex items-center px-4 sm:px-6 pt-3 pointer-events-none"
+          style={{ right: 0 }}
+        >
           <div
-            dir="ltr"
-            className="absolute inset-y-0 flex items-center bg-slate-100 dark:bg-slate-800/80 rounded-full ring-1 ring-slate-200/60 dark:ring-slate-700/60 focus-within:ring-2 focus-within:ring-[#0B57D0] dark:focus-within:ring-[#A8C7FA] focus-within:bg-white dark:focus-within:bg-[#1E1F20] transition-[width,background-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] overflow-hidden z-10"
-            style={{ right: 0, width: searchOpen ? '100%' : '2.25rem' }}
+            className="pointer-events-auto flex items-center bg-slate-100 dark:bg-slate-800/80 rounded-full ring-1 ring-slate-200/60 dark:ring-slate-700/60 transition-[width,background-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] overflow-hidden"
+            style={{ width: searchOpen ? 'min(100%, 26rem)' : '2.25rem' }}
           >
             {searchOpen && (
               <input
@@ -672,9 +676,9 @@ const TableViewBase: React.FC<TableViewProps> = ({
                 placeholder={t('search_all_strings_by_key')}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                dir="auto"
+                dir={isAr ? 'rtl' : 'ltr'}
                 style={{ textAlign: isAr ? 'right' : 'left' }}
-                className="flex-1 min-w-0 text-xs bg-transparent text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none ps-3 animate-in fade-in duration-200"
+                className="flex-1 min-w-0 text-xs bg-transparent text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none px-3 animate-in fade-in duration-200"
               />
             )}
 
@@ -688,8 +692,10 @@ const TableViewBase: React.FC<TableViewProps> = ({
                   else setSearch('');
                   return next;
                 });
+                (document.activeElement as HTMLElement | null)?.blur?.();
               }}
-              className="relative grid place-items-center shrink-0 w-9 h-9 rounded-full cursor-pointer text-slate-600 dark:text-slate-400"
+              onMouseUp={(e) => e.currentTarget.blur()}
+              className="relative grid place-items-center shrink-0 w-9 h-9 rounded-full cursor-pointer text-slate-600 dark:text-slate-400 outline-none focus:outline-none focus-visible:outline-none"
               title={searchOpen ? (isAr ? 'إغلاق البحث' : 'Close search') : t('search_all_strings_by_key')}
             >
               <Search
