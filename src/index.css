@@ -740,3 +740,14 @@ html.dark .tv-bg { box-shadow: none; }
   font-weight: var(--source-font-weight);
   font-style: var(--source-font-style);
 }
+
+/* App-font weight chosen in the font panel: applies to all app text,
+   including headings and buttons that carry their own weight utilities.
+   Only active for non-default weights (see data-app-weight in fonts.ts),
+   so Regular keeps the designed emphasis. Unlayered, so it wins over
+   utilities. The text fields keep their own weight: their rule is more
+   specific, so it still wins for .app-editor-font / .app-source-font. */
+:root[data-app-weight] body,
+:root[data-app-weight] body * {
+  font-weight: var(--app-font-weight);
+}

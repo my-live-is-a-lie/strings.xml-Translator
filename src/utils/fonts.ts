@@ -418,6 +418,16 @@ export function applyFonts(): void {
   else root.style.setProperty('--font-sans', app.family.css);
   root.style.fontWeight = app.variant.weight === 400 ? '' : String(app.variant.weight);
   root.style.fontStyle = app.variant.italic ? 'italic' : '';
+  // Non-default app weights win over the weight utilities on headings and
+  // buttons (which would otherwise ignore the panel choice). Regular keeps
+  // the designed emphasis: no variable, no override.
+  if (app.variant.weight === 400) {
+    root.style.removeProperty('--app-font-weight');
+    root.removeAttribute('data-app-weight');
+  } else {
+    root.style.setProperty('--app-font-weight', String(app.variant.weight));
+    root.setAttribute('data-app-weight', '');
+  }
 
   if (snapshot.selection.separate) {
     for (const [prefix, choice] of [['editor', snapshot.selection.editor], ['source', snapshot.selection.source]] as const) {
