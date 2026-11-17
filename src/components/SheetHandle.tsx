@@ -6,11 +6,12 @@ interface SheetHandleProps {
   threshold?: number;
 }
 
-const EXIT_MS = 200;
+const EXIT_MS = 130;
 
 /**
- * Pill at the bottom of a dialog. Drag it upwards like the Android "home" gesture: the dialog follows the
- * finger, shrinks and fades; letting go far enough (or with a quick flick) closes it, otherwise it springs back.
+ * Pill at the bottom of a dialog. Drag it upwards like the Android navigation-bar gesture: the dialog follows the
+ * finger and shrinks into a small card (no fading); letting go far enough (or with a quick flick) closes it with a
+ * short shrink-and-fly-up animation, otherwise it springs back.
  * The dialog is the closest `[role="dialog"]` ancestor and its parent is treated as the dimmed backdrop.
  */
 export function SheetHandle({ onClose, threshold = 110 }: SheetHandleProps) {
@@ -26,19 +27,31 @@ export function SheetHandle({ onClose, threshold = 110 }: SheetHandleProps) {
     return card ? { card, backdrop: card.parentElement } : null;
   };
 
+  // Only the dimmed background fades (never the dialog itself, which is a child of it, so no `opacity` here)
+  const dim = (backdrop: HTMLElement | null, factor: number, animate: boolean) => {
+    if (!backdrop) return;
+    backdrop.style.transition = animate ? `background-color ${EXIT_MS}ms ease-out` : 'none';
+    backdrop.style.backgroundColor = factor < 1 ? `rgba(0, 0, 0, ${0.6 * factor})` : '';
+    backdrop.style.backdropFilter = factor < 1 ? 'none' : '';
+  };
+
   const paint = (el: HTMLElement, dy: number, animate: boolean) => {
     const p = parts(el);
     if (!p) return;
-    const progress = Math.min(1, dy / Math.max(1, window.innerHeight * 0.6));
-    const transition = animate ? `transform ${EXIT_MS}ms ease-out, opacity ${EXIT_MS}ms ease-out` : 'none';
-    p.card.style.transition = transition;
+    const progress = Math.min(1, dy / Math.max(1, window.innerHeight * 0.5));
+    p.card.style.transition = animate ? `transform ${EXIT_MS}ms ease-out` : 'none';
     p.card.style.transformOrigin = '50% 100%';
-    p.card.style.transform = dy > 0 ? `translateY(${-dy}px) scale(${1 - progress * 0.4})` : '';
-    p.card.style.opacity = dy > 0 ? String(1 - progress * 0.6) : '';
-    if (p.backdrop) {
-      p.backdrop.style.transition = animate ? `opacity ${EXIT_MS}ms ease-out` : 'none';
-      p.backdrop.style.opacity = dy > 0 ? String(Math.max(0, 1 - Math.min(1, dy / 320))) : '';
-    }
+    p.card.style.transform = dy > 0 ? `translateY(${-dy}px) scale(${1 - progress * 0.55})` : '';
+    dim(p.backdrop, dy > 0 ? Math.max(0, 1 - Math.min(1, dy / 320)) : 1, animate);
+  };
+
+  /** Fast exit: the card keeps shrinking into a small card and flies up, like closing an app from the nav bar. */
+  const exit = (el: HTMLElement) => {
+    const p = parts(el);
+    if (!p) return;
+    p.card.style.transition = `transform ${EXIT_MS}ms cubic-bezier(0.4, 0, 1, 1)`;
+    p.card.style.transform = `translateY(${-window.innerHeight * 0.5}px) scale(0.3)`;
+    dim(p.backdrop, 0, true);
   };
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -70,7 +83,7 @@ export function SheetHandle({ onClose, threshold = 110 }: SheetHandleProps) {
         onClose();
         return;
       }
-      paint(el, window.innerHeight, true);
+      exit(el);
       timer.current = window.setTimeout(onClose, EXIT_MS);
     } else {
       paint(el, 0, true);
