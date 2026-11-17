@@ -661,8 +661,8 @@ const TableViewBase: React.FC<TableViewProps> = ({
             states and in both app languages; the input's own text direction is set independently below. */}
         <div
           dir="ltr"
-          className="absolute inset-y-0 flex items-center px-4 sm:px-6 pt-3 pointer-events-none"
-          style={{ right: 0 }}
+          className="absolute inset-y-0 flex items-center px-4 sm:px-6 pt-3 pointer-events-none transition-[left] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
+          style={{ right: 0, left: searchOpen ? 0 : 'auto' }}
         >
           <div
             className="pointer-events-auto flex items-center bg-slate-100 dark:bg-slate-800/80 rounded-full ring-1 ring-slate-200/60 dark:ring-slate-700/60 transition-[width,background-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] overflow-hidden"
