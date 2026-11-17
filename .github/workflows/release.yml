@@ -38,6 +38,8 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '21'
+          # Cache Gradle dependencies so each run does not re-download them
+          cache: 'gradle'
 
       - name: Check signing secrets
         env:
