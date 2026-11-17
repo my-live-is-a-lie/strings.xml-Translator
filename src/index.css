@@ -3,6 +3,13 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @layer base {
+  /* Pin the root font size: when the app font is monospace, Chrome resolves
+     html's default `medium` size to its smaller fixed-font size (13px),
+     shrinking every rem-based size in the UI (drawer, text, icons). */
+  html {
+    font-size: 16px;
+  }
+
   :root {
     --font-sans: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     --font-mono: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
