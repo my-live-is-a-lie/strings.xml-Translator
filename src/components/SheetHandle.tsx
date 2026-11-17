@@ -6,7 +6,7 @@ interface SheetHandleProps {
   threshold?: number;
 }
 
-const EXIT_MS = 90;
+const EXIT_MS = 70;
 const SPRING_MS = 280;
 const SPRING = 'cubic-bezier(0.34, 1.56, 0.64, 1)';
 const PILL_TRANSITION = `width 160ms ease-out, transform ${SPRING_MS}ms ${SPRING}`;
@@ -22,8 +22,8 @@ const rubber = (x: number): number => {
  *  - Pressing it widens the pill from both ends; letting go shrinks it back.
  *  - Dragging UP: the dialog follows the finger and shrinks into a small card (no fading). Letting go far enough
  *    (or with a quick flick) closes it with a very short shrink-and-fly-up animation, otherwise it springs back.
- *  - Dragging DOWN: rubber-band resistance. The dialog grows slightly and the pill sinks a little; letting go
- *    springs both back.
+ *  - Dragging DOWN: rubber-band resistance. The dialog moves down a little while it grows, and the pill sinks
+ *    a little; letting go springs both back.
  * The dialog is the closest `[role="dialog"]` ancestor and its parent is treated as the dimmed backdrop.
  */
 export function SheetHandle({ onClose, threshold = 110 }: SheetHandleProps) {
@@ -68,14 +68,14 @@ export function SheetHandle({ onClose, threshold = 110 }: SheetHandleProps) {
     setPill(0, false);
   };
 
-  /** Pulling downwards: rubber-band stretch of the dialog and a small sink of the pill. */
+  /** Pulling downwards: rubber-band stretch. The dialog sinks and grows downwards (origin = top edge). */
   const paintDown = (el: HTMLElement, down: number) => {
     const p = parts(el);
     if (!p) return;
     const r = rubber(down);
     p.card.style.transition = 'none';
-    p.card.style.transformOrigin = '50% 100%';
-    p.card.style.transform = `scale(${1 + r * 0.0007})`;
+    p.card.style.transformOrigin = '50% 0%';
+    p.card.style.transform = `translateY(${r * 0.3}px) scale(${1 + r * 0.0007})`;
     dim(p.backdrop, 1, 'none');
     setPill(Math.min(10, r * 0.25), false);
   };
@@ -102,7 +102,9 @@ export function SheetHandle({ onClose, threshold = 110 }: SheetHandleProps) {
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
-    e.currentTarget.setPointerCapture(e.pointerId);
+    // Touch pointers are already tied to the element they started on; an explicit capture is only needed for a
+    // mouse. (Explicit capture on touch can leave the next touch unanswered on Android WebView.)
+    if (e.pointerType === 'mouse') e.currentTarget.setPointerCapture(e.pointerId);
     drag.current = { id: e.pointerId, startY: e.clientY, lastY: e.clientY, lastT: e.timeStamp, velocity: 0, dy: 0 };
     setPressed(true);
   };
@@ -126,6 +128,7 @@ export function SheetHandle({ onClose, threshold = 110 }: SheetHandleProps) {
     drag.current = null;
     setPressed(false);
     const el = e.currentTarget;
+    if (el.hasPointerCapture?.(e.pointerId)) el.releasePointerCapture(e.pointerId);
     const flick = d.velocity > 0.5 && d.dy > 30;
     if (!cancelled && (d.dy >= threshold || flick)) {
       const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -148,13 +151,14 @@ export function SheetHandle({ onClose, threshold = 110 }: SheetHandleProps) {
       onPointerMove={onPointerMove}
       onPointerUp={(e) => finish(e, false)}
       onPointerCancel={(e) => finish(e, true)}
+      onLostPointerCapture={(e) => finish(e, true)}
       style={{ touchAction: 'none' }}
       className="flex items-center justify-center h-9 cursor-grab active:cursor-grabbing select-none shrink-0"
     >
       {/* Centered in a flex row, so changing the width grows / shrinks it from both ends */}
       <span
         ref={pill}
-        className={`block h-1.5 rounded-full bg-slate-300 dark:bg-slate-600 ${pressed ? 'w-[4.5rem]' : 'w-12'}`}
+        className={`block h-1.5 rounded-full bg-slate-300 dark:bg-slate-600 ${pressed ? 'w-[3.625rem]' : 'w-12'}`}
         style={{ transition: PILL_TRANSITION }}
       />
     </div>
