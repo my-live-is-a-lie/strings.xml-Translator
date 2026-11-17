@@ -1,6 +1,11 @@
 name: Build Web & Android APK
 
 # Manual only: run it from the Actions tab (Run workflow).
+# Tests are NOT run here; they run automatically on every push via test.yml.
+# The APK is a signed release build (same as release.yml produces, but named
+# xml-translator-test-<version>.apk), so it is ~1 MB smaller than a debug APK
+# and installs as an update over the previous test build or release instead of
+# requiring an uninstall first.
 on:
   workflow_dispatch:
 
@@ -15,6 +20,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          # Full history: versionCode is the commit count, shared with release.yml
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -27,31 +35,26 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '21'
+          # Cache Gradle dependencies so each run does not re-download them.
+          # The Android project is generated later by Capacitor, so no Gradle
+          # files exist yet: key the cache on package-lock.json instead, which
+          # is what determines the native dependencies (Capacitor + plugins).
+          cache: 'gradle'
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Run linter and type check
-        run: npm run lint
-
-      - name: Run unit tests
-        run: npm test
-
-      - name: Install Playwright browser
-        run: npx playwright install --with-deps chromium
-
-      - name: Run end-to-end and accessibility tests
-        run: npm run test:e2e
-
-      - name: Upload Playwright report
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: playwright-report
-          path: |
-            playwright-report/
-            test-results/
-          retention-days: 7
+      - name: Check signing secrets
+        env:
+          KS: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KSP: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KA: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ -z "$KS" ] || [ -z "$KSP" ] || [ -z "$KA" ]; then
+            echo "::error::Missing secrets: ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS (see RELEASE.md)"
+            exit 1
+          fi
 
       - name: Build web project
         run: npm run build
@@ -62,16 +65,60 @@ jobs:
       - name: Add Capacitor Android platform
         run: npx cap add android
 
-      - name: Harden Android manifest
+      - name: Apply custom app icon
+        run: |
+          for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            cp "assets/icons/mipmap-$d/ic_launcher.png" "android/app/src/main/res/mipmap-$d/ic_launcher.png"
+            cp "assets/icons/mipmap-$d/ic_launcher_round.png" "android/app/src/main/res/mipmap-$d/ic_launcher_round.png"
+            cp "assets/icons/mipmap-$d/ic_launcher_foreground.png" "android/app/src/main/res/mipmap-$d/ic_launcher_foreground.png"
+          done
+          cp assets/icons/ic_launcher_background.xml android/app/src/main/res/values/ic_launcher_background.xml
+
+      - name: Sync web assets
+        run: npx cap sync android
+
+      - name: Harden Android manifest and set version
         run: |
           # Keep encrypted API-key storage out of cloud/adb backups; forbid cleartext traffic
           sed -i 's/<application/<application android:allowBackup="false" android:usesCleartextTraffic="false"/' android/app/src/main/AndroidManifest.xml
           sed -i 's/android:allowBackup="true"//' android/app/src/main/AndroidManifest.xml
           grep -n "<application" android/app/src/main/AndroidManifest.xml
+          # versionCode is the commit count, the same scheme release.yml uses,
+          # so any later build or release has a higher versionCode than any earlier one.
+          VC=$(git rev-list --count HEAD)
+          echo "VERSION_CODE=$VC" >> "$GITHUB_ENV"
+          # versionName is the latest release tag plus -test (package.json is stale at 1.0.0)
+          VERSION=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
+          VERSION="${VERSION:-$(node -p "require('./package.json').version")}"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          G=android/app/build.gradle
+          sed -i "s/versionCode [0-9]*/versionCode ${VC}/" "$G"
+          sed -i "s/versionName \"[^\"]*\"/versionName \"${VERSION}-test\"/" "$G"
+          grep -n "versionCode\|versionName" "$G"
 
-      - name: Build Android Debug APK
+      - name: Build unsigned release APK
         working-directory: android
-        run: ./gradlew assembleDebug
+        run: ./gradlew assembleRelease
+
+      - name: Align and sign APK
+        env:
+          KS: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KSP: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KA: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KP: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -e
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          UNSIGNED=$(ls android/app/build/outputs/apk/release/*.apk | head -1)
+          echo "$KS" | base64 -d > "$RUNNER_TEMP/release.jks"
+          "$BT/zipalign" -p -f 4 "$UNSIGNED" "$RUNNER_TEMP/aligned.apk"
+          export KP_OR_KSP="${KP:-$KSP}"
+          "$BT/apksigner" sign --ks "$RUNNER_TEMP/release.jks" \
+            --ks-key-alias "$KA" --ks-pass env:KSP --key-pass env:KP_OR_KSP \
+            --out "xml-translator-test-${VERSION}.apk" "$RUNNER_TEMP/aligned.apk"
+          "$BT/apksigner" verify --print-certs "xml-translator-test-${VERSION}.apk"
+          sha256sum "xml-translator-test-${VERSION}.apk" | tee "xml-translator-test-${VERSION}.apk.sha256"
+          rm -f "$RUNNER_TEMP/release.jks"
 
       - name: Upload Web Build Artifact
         uses: actions/upload-artifact@v7
@@ -83,6 +130,8 @@ jobs:
       - name: Upload Android APK Artifact
         uses: actions/upload-artifact@v7
         with:
-          name: android-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: android-release-apk
+          path: |
+            xml-translator-test-*.apk
+            xml-translator-test-*.apk.sha256
           retention-days: 14
