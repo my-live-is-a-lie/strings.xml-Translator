@@ -8,6 +8,7 @@ import {
   getArabicLanguageName,
 } from '../utils/languages';
 import { useT } from '../i18n/i18n';
+import { SheetHandle } from './SheetHandle';
 
 interface LanguageSelectorModalProps {
   isOpen: boolean;
@@ -192,6 +193,11 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
               </button>
             </div>
           </form>
+        </div>
+
+        {/* Drag up to close */}
+        <div className="bg-slate-50/50 dark:bg-[#121620]">
+          <SheetHandle onClose={onClose} />
         </div>
       </div>
     </div>
