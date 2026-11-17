@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface SheetHandleProps {
   onClose: () => void;
@@ -6,17 +6,31 @@ interface SheetHandleProps {
   threshold?: number;
 }
 
-const EXIT_MS = 130;
+const EXIT_MS = 90;
+const SPRING_MS = 280;
+const SPRING = 'cubic-bezier(0.34, 1.56, 0.64, 1)';
+const PILL_TRANSITION = `width 160ms ease-out, transform ${SPRING_MS}ms ${SPRING}`;
+
+/** Rubber band: grows quickly at first, then resists more and more (never passes ~60px). */
+const rubber = (x: number): number => {
+  const dim = 60;
+  return dim * (1 - 1 / ((x * 0.5) / dim + 1));
+};
 
 /**
- * Pill at the bottom of a dialog. Drag it upwards like the Android navigation-bar gesture: the dialog follows the
- * finger and shrinks into a small card (no fading); letting go far enough (or with a quick flick) closes it with a
- * short shrink-and-fly-up animation, otherwise it springs back.
+ * Pill at the bottom of a dialog, behaving like the Android navigation-bar gesture.
+ *  - Pressing it widens the pill from both ends; letting go shrinks it back.
+ *  - Dragging UP: the dialog follows the finger and shrinks into a small card (no fading). Letting go far enough
+ *    (or with a quick flick) closes it with a very short shrink-and-fly-up animation, otherwise it springs back.
+ *  - Dragging DOWN: rubber-band resistance. The dialog grows slightly and the pill sinks a little; letting go
+ *    springs both back.
  * The dialog is the closest `[role="dialog"]` ancestor and its parent is treated as the dimmed backdrop.
  */
 export function SheetHandle({ onClose, threshold = 110 }: SheetHandleProps) {
   const drag = useRef<{ id: number; startY: number; lastY: number; lastT: number; velocity: number; dy: number } | null>(null);
   const timer = useRef<number | null>(null);
+  const pill = useRef<HTMLSpanElement>(null);
+  const [pressed, setPressed] = useState(false);
 
   useEffect(() => () => {
     if (timer.current !== null) window.clearTimeout(timer.current);
@@ -28,36 +42,69 @@ export function SheetHandle({ onClose, threshold = 110 }: SheetHandleProps) {
   };
 
   // Only the dimmed background fades (never the dialog itself, which is a child of it, so no `opacity` here)
-  const dim = (backdrop: HTMLElement | null, factor: number, animate: boolean) => {
+  const dim = (backdrop: HTMLElement | null, factor: number, transition: string) => {
     if (!backdrop) return;
-    backdrop.style.transition = animate ? `background-color ${EXIT_MS}ms ease-out` : 'none';
+    backdrop.style.transition = transition;
     backdrop.style.backgroundColor = factor < 1 ? `rgba(0, 0, 0, ${0.6 * factor})` : '';
     backdrop.style.backdropFilter = factor < 1 ? 'none' : '';
   };
 
-  const paint = (el: HTMLElement, dy: number, animate: boolean) => {
+  const setPill = (y: number, animate: boolean) => {
+    const el = pill.current;
+    if (!el) return;
+    el.style.transition = animate ? PILL_TRANSITION : 'width 160ms ease-out';
+    el.style.transform = y ? `translateY(${y}px)` : '';
+  };
+
+  /** Follows the finger upwards: translate + shrink. */
+  const paintUp = (el: HTMLElement, dy: number) => {
     const p = parts(el);
     if (!p) return;
     const progress = Math.min(1, dy / Math.max(1, window.innerHeight * 0.5));
-    p.card.style.transition = animate ? `transform ${EXIT_MS}ms ease-out` : 'none';
+    p.card.style.transition = 'none';
     p.card.style.transformOrigin = '50% 100%';
-    p.card.style.transform = dy > 0 ? `translateY(${-dy}px) scale(${1 - progress * 0.55})` : '';
-    dim(p.backdrop, dy > 0 ? Math.max(0, 1 - Math.min(1, dy / 320)) : 1, animate);
+    p.card.style.transform = `translateY(${-dy}px) scale(${1 - progress * 0.55})`;
+    dim(p.backdrop, Math.max(0, 1 - Math.min(1, dy / 320)), 'none');
+    setPill(0, false);
   };
 
-  /** Fast exit: the card keeps shrinking into a small card and flies up, like closing an app from the nav bar. */
+  /** Pulling downwards: rubber-band stretch of the dialog and a small sink of the pill. */
+  const paintDown = (el: HTMLElement, down: number) => {
+    const p = parts(el);
+    if (!p) return;
+    const r = rubber(down);
+    p.card.style.transition = 'none';
+    p.card.style.transformOrigin = '50% 100%';
+    p.card.style.transform = `scale(${1 + r * 0.0007})`;
+    dim(p.backdrop, 1, 'none');
+    setPill(Math.min(10, r * 0.25), false);
+  };
+
+  /** Back to the normal size/place with a small elastic overshoot. */
+  const springBack = (el: HTMLElement) => {
+    const p = parts(el);
+    if (p) {
+      p.card.style.transition = `transform ${SPRING_MS}ms ${SPRING}`;
+      p.card.style.transform = '';
+      dim(p.backdrop, 1, `background-color ${SPRING_MS}ms ease-out`);
+    }
+    setPill(0, true);
+  };
+
+  /** Very short exit: the card keeps shrinking into a small card and flies up, like closing an app from the nav bar. */
   const exit = (el: HTMLElement) => {
     const p = parts(el);
     if (!p) return;
     p.card.style.transition = `transform ${EXIT_MS}ms cubic-bezier(0.4, 0, 1, 1)`;
     p.card.style.transform = `translateY(${-window.innerHeight * 0.5}px) scale(0.3)`;
-    dim(p.backdrop, 0, true);
+    dim(p.backdrop, 0, `background-color ${EXIT_MS}ms ease-out`);
   };
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     e.currentTarget.setPointerCapture(e.pointerId);
     drag.current = { id: e.pointerId, startY: e.clientY, lastY: e.clientY, lastT: e.timeStamp, velocity: 0, dy: 0 };
+    setPressed(true);
   };
 
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -67,14 +114,17 @@ export function SheetHandle({ onClose, threshold = 110 }: SheetHandleProps) {
     d.velocity = (d.lastY - e.clientY) / dt; // px/ms, positive = upwards
     d.lastY = e.clientY;
     d.lastT = e.timeStamp;
-    d.dy = Math.max(0, d.startY - e.clientY);
-    paint(e.currentTarget, d.dy, false);
+    const moved = d.startY - e.clientY; // positive = upwards
+    d.dy = Math.max(0, moved);
+    if (moved > 0) paintUp(e.currentTarget, moved);
+    else paintDown(e.currentTarget, -moved);
   };
 
   const finish = (e: React.PointerEvent<HTMLDivElement>, cancelled: boolean) => {
     const d = drag.current;
     if (!d || d.id !== e.pointerId) return;
     drag.current = null;
+    setPressed(false);
     const el = e.currentTarget;
     const flick = d.velocity > 0.5 && d.dy > 30;
     if (!cancelled && (d.dy >= threshold || flick)) {
@@ -83,10 +133,11 @@ export function SheetHandle({ onClose, threshold = 110 }: SheetHandleProps) {
         onClose();
         return;
       }
+      setPill(0, false);
       exit(el);
       timer.current = window.setTimeout(onClose, EXIT_MS);
     } else {
-      paint(el, 0, true);
+      springBack(el);
     }
   };
 
@@ -100,7 +151,12 @@ export function SheetHandle({ onClose, threshold = 110 }: SheetHandleProps) {
       style={{ touchAction: 'none' }}
       className="flex items-center justify-center h-9 cursor-grab active:cursor-grabbing select-none shrink-0"
     >
-      <span className="block w-12 h-1.5 rounded-full bg-slate-300 dark:bg-slate-600" />
+      {/* Centered in a flex row, so changing the width grows / shrinks it from both ends */}
+      <span
+        ref={pill}
+        className={`block h-1.5 rounded-full bg-slate-300 dark:bg-slate-600 ${pressed ? 'w-[4.5rem]' : 'w-12'}`}
+        style={{ transition: PILL_TRANSITION }}
+      />
     </div>
   );
 }
