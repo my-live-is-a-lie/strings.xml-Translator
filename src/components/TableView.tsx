@@ -666,7 +666,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
         >
           <div
             className="pointer-events-auto flex items-center bg-slate-100 dark:bg-slate-800/80 rounded-full ring-1 ring-slate-200/60 dark:ring-slate-700/60 transition-[width,background-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] overflow-hidden"
-            style={{ width: searchOpen ? 'min(100%, 26rem)' : '2.25rem' }}
+            style={{ width: searchOpen ? '100%' : '2.25rem' }}
           >
             {searchOpen && (
               <input
