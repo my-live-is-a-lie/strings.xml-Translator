@@ -116,12 +116,14 @@ test('the editor buttons move through the strings', async ({ page }) => {
   await openAppWithProvider(page);
   await loadSample(page);
   const counter = page.locator('text=/^\\d+ \\/ \\d+$/').first();
-  await expect(counter).toHaveText('1 / 17');
+  // The Arabic sample pre-merges 6 translated strings, which sort first, so the editor
+  // opens on the first untranslated string at position 7 of 17.
+  await expect(counter).toHaveText('7 / 17');
   await page.locator('textarea').first().fill('نص تجريبي');
   await page.getByText('حفظ ومتابعة').click();
-  await expect(counter).toHaveText('2 / 17');
+  await expect(counter).toHaveText('8 / 17');
   await page.locator('#weblate-skip-btn').click();
-  await expect(counter).toHaveText('3 / 17');
+  await expect(counter).toHaveText('9 / 17');
 });
 
 test('server health endpoint answers and metrics stay hidden without a token', async ({ request }) => {
@@ -187,21 +189,22 @@ test('the strings list and the table open on the string being translated', async
   await expect.poll(() => inView(`[data-item-id="${selectedItemId}"]`)).toBe(true);
 });
 
-test('quick filters drive the editor and dim filters that have no strings', async ({ page }) => {
+test('quick filters drive the editor and hide filters that have no strings', async ({ page }) => {
   await mockProviderApi(page);
   await openAppWithProvider(page);
   await loadSample(page);
   await page.setViewportSize({ width: 390, height: 800 });
   await page.locator('[data-quick-filters-btn]:visible').click();
 
-  // The sample has no AI-translated strings, so that filter is dimmed and can't be switched on
-  const ai = page.locator('[data-filter="ai"]:visible');
-  await expect(ai).toBeDisabled();
+  // The sample has no AI-translated strings, so that filter is hidden
+  await expect(page.locator('[data-filter="ai"]')).toHaveCount(0);
   await expect(page.locator('[data-filter="review"]')).toHaveCount(0); // nothing to review: the filter is hidden
   await expect(page.locator('[data-filter="untranslated"]:visible')).toBeEnabled();
 
   const counter = page.locator('text=/^\\d+ \\/ \\d+$/').first();
-  await expect(counter).toHaveText('1 / 17');
+  // The editor opens on the first untranslated string, which sorts at position 7
+  // (the 6 pre-merged Arabic translations sort first).
+  await expect(counter).toHaveText('7 / 17');
   await page.locator('[data-filter="translated"]:visible').click();
   const total = Number((await counter.innerText()).split('/')[1]);
   expect(total).toBeLessThan(17);
