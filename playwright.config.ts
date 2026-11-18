@@ -9,6 +9,9 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: process.env.CI ? 1 : 0,
+  // Stop the suite after a few failures instead of grinding through every
+  // test when the failure is deterministic (each retry then wastes ~6s).
+  maxFailures: process.env.CI ? 3 : undefined,
   reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : 'list',
   use: {
     baseURL: `http://localhost:${PORT}`,
