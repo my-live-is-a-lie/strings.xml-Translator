@@ -33,15 +33,17 @@ const menuItemClass =
   'block w-full shrink-0 text-start px-3 py-1.5 text-base truncate cursor-pointer hover:bg-slate-100 dark:hover:bg-[#1C2333]';
 
 /** Sub-menu of the sidebar "F" button: choose the default font, its style, add or remove fonts. */
-export default function FontPanel({ targetLang }: { targetLang: string }) {
+export default function FontPanel({ targetLang, uiLang, sourceLang }: { targetLang: string; uiLang: string; sourceLang: string }) {
   const { t, tb } = useT();
   const snap = useFonts();
   const [menu, setMenu] = useState<MenuState>(null);
   const [addOpen, setAddOpen] = useState(false);
   const families = useMemo(() => buildFamilies(snap.fonts), [snap.fonts]);
-  // Letter-spacing breaks Arabic letter joining, so the translation field's
-  // spacing control stays disabled while the target language is Arabic/RTL.
+  // Letter-spacing breaks Arabic letter joining, so a spacing control stays
+  // disabled (silently, no note) while its content language is Arabic/RTL.
   const isTargetRtl = isRtlLanguageCode(targetLang);
+  const isUiRtl = isRtlLanguageCode(uiLang);
+  const isSourceRtl = isRtlLanguageCode(sourceLang);
   const labelClass = 'text-[11px] font-medium text-slate-500 dark:text-slate-400';
 
   // Register all added fonts so the lists preview each name in its own font
@@ -232,7 +234,7 @@ export default function FontPanel({ targetLang }: { targetLang: string }) {
   return (
     <div className="px-4 py-3 flex flex-col gap-2.5 border-b border-slate-200/80 dark:border-[#252C3A] bg-slate-50/70 dark:bg-[#141822]/60 animate-in fade-in duration-150">
       {renderStrip('app')}
-      {renderSpacingRow('app', false)}
+      {renderSpacingRow('app', isUiRtl)}
 
       <button
         type="button"
@@ -258,7 +260,7 @@ export default function FontPanel({ targetLang }: { targetLang: string }) {
         <>
           <span className={`${labelClass} pt-1`} data-i18n>{t('font_label_source')}</span>
           {renderStrip('source')}
-          {renderSpacingRow('source', false)}
+          {renderSpacingRow('source', isSourceRtl)}
           <span className={`${labelClass} pt-1`} data-i18n>{t('font_label_editor')}</span>
           {renderStrip('editor')}
           {renderSpacingRow('editor', isTargetRtl)}

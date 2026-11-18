@@ -908,7 +908,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
             </div>
 
             {/* Sub-menu Row: Default font (name, style, add / delete fonts) */}
-            {fontSubmenuOpen && <FontPanel targetLang={project.targetLang} />}
+            {fontSubmenuOpen && <FontPanel targetLang={project.targetLang} uiLang={uiLang ?? appLang} sourceLang={project.sourceLang} />}
 
             {/* Sub-menu Row: Language Options */}
             {appLangMenuOpen && (

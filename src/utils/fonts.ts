@@ -336,10 +336,19 @@ function openDb(): Promise<IDBDatabase | null> {
   return dbPromise;
 }
 
-async function putFile(id: string, data: ArrayBuffer): Promise<void> {
-  memoryFiles.set(id, data);
+/**
+ * Stores a font file. Returns true when the file reached IndexedDB. When
+ * IndexedDB is unavailable the file is kept in memory only (so the font still
+ * works for this session) and false is returned, so the caller can warn the
+ * user that the font will not survive a restart. A failed transaction still
+ * rejects, and in that case nothing is cached.
+ */
+async function putFile(id: string, data: ArrayBuffer): Promise<boolean> {
   const db = await openDb();
-  if (!db) return;
+  if (!db) {
+    memoryFiles.set(id, data);
+    return false;
+  }
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(STORE, 'readwrite');
     tx.objectStore(STORE).put(data, id);
@@ -347,6 +356,8 @@ async function putFile(id: string, data: ArrayBuffer): Promise<void> {
     tx.onerror = () => reject(tx.error);
     tx.onabort = () => reject(tx.error);
   });
+  memoryFiles.set(id, data);
+  return true;
 }
 
 async function getFile(id: string): Promise<ArrayBuffer | null> {
@@ -575,6 +586,8 @@ function loadFace(meta: UserFontMeta): Promise<void> {
       style: meta.italic ? 'italic' : 'normal',
     });
     await face.load();
+    // The FontFace now holds the data, so the in-memory copy is redundant.
+    memoryFiles.delete(meta.id);
     document.fonts.add(face);
     faces.set(meta.id, face);
   })()
@@ -667,11 +680,14 @@ export function setEffectThickness(thickness: number): void {
 export interface AddFontsResult {
   added: UserFontMeta[];
   failed: number;
+  /** Fonts that were added but could not be persisted (IndexedDB unavailable). */
+  sessionOnly: number;
 }
 
 export async function addFontFiles(files: File[]): Promise<AddFontsResult> {
   const added: UserFontMeta[] = [];
   let failed = 0;
+  let sessionOnly = 0;
   for (const file of files) {
     try {
       if (file.size === 0 || file.size > MAX_FONT_BYTES) throw new Error('size');
@@ -685,16 +701,21 @@ export async function addFontFiles(files: File[]): Promise<AddFontsResult> {
       });
       await probe.load();
 
-      // Same family + weight + italic replaces the older file
+      // Same family + weight + italic replaces the older file. The new file is
+      // written first: if that write fails, the old font stays untouched
+      // instead of being deleted while its metadata still points at it.
       const same = snapshot.fonts.find(
         (f) => f.family.toLowerCase() === info.family.toLowerCase() && f.weight === info.weight && f.italic === info.italic
       );
-      if (same) await removeFontFiles(same.id);
       const id = `f${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
       const meta: UserFontMeta = { id, family: info.family, weight: info.weight, italic: info.italic, fileName: file.name };
-      await putFile(id, data);
+      const persisted = await putFile(id, data);
+      if (!persisted) sessionOnly++;
+      if (same) await removeFontFiles(same.id);
       document.fonts.add(probe);
       faces.set(id, probe);
+      // The FontFace now holds the data, so the in-memory copy is redundant.
+      memoryFiles.delete(id);
       emit({ ...snapshot, fonts: [...snapshot.fonts.filter((f) => f.id !== same?.id), meta] });
       persist();
       added.push(meta);
@@ -704,7 +725,7 @@ export async function addFontFiles(files: File[]): Promise<AddFontsResult> {
     }
   }
   applyFonts();
-  return { added, failed };
+  return { added, failed, sessionOnly };
 }
 
 async function removeFontFiles(id: string): Promise<void> {

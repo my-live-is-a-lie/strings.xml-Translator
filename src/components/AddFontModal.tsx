@@ -31,11 +31,12 @@ export default function AddFontModal({ target, onClose }: Props) {
     if (!files.length) return;
     setBusy(true);
     setMessage('');
-    const { added, failed } = await addFontFiles(files);
+    const { added, failed, sessionOnly } = await addFontFiles(files);
     setBusy(false);
     const parts: string[] = [];
     if (added.length) parts.push(t('font_added_count', added.length));
     if (failed) parts.push(t('font_failed_count', failed));
+    if (sessionOnly) parts.push(t('font_session_only', sessionOnly));
     setMessage(parts.join(' · '));
   };
 

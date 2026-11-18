@@ -754,14 +754,19 @@ html.dark .tv-bg { box-shadow: none; }
 
 /* ---------- Font picker: letter spacing ---------- */
 /* The panel writes --ls-* (em) from the chosen preset; an unset value means
-   the Default preset, i.e. no explicit spacing. The editor (translation
-   field) is guarded by :dir(rtl): Arabic letter joining breaks when
-   letter-spacing is applied, so Arabic content never gets it, and the panel
-   control stays disabled for an Arabic target instead. */
-:root[data-ls-on] body {
+   the Default preset, i.e. no explicit spacing. Letter-spacing breaks Arabic
+   letter joining, so Arabic content never gets it: the app rule only applies
+   while the document is LTR, the editor/source fields are guarded by
+   :dir(rtl), and any RTL element is reset to normal (it would otherwise
+   inherit the app value). The panel controls stay disabled for an Arabic
+   target instead. */
+:root[data-ls-on] body:not(:dir(rtl)) {
   letter-spacing: var(--ls-app, normal);
 }
 :root[data-ls-on] body :is(textarea, input) {
+  letter-spacing: normal;
+}
+:root[data-ls-on] body :dir(rtl) {
   letter-spacing: normal;
 }
 :root[data-ls-on] .app-editor-font {
@@ -772,6 +777,9 @@ html.dark .tv-bg { box-shadow: none; }
 }
 :root[data-ls-on] .app-source-font {
   letter-spacing: var(--ls-source, var(--ls-app, normal));
+}
+:root[data-ls-on] .app-source-font:dir(rtl) {
+  letter-spacing: normal;
 }
 
 /* ---------- Font picker: text effect ---------- */
