@@ -752,6 +752,16 @@ html.dark .tv-bg { box-shadow: none; }
   font-weight: var(--app-font-weight);
 }
 
+/* String key titles (e.g. app_name): monospace by default so code identifiers
+   stay readable, but they follow the app font when the user picked a custom
+   one (see data-app-font in fonts.ts). Unlayered, so it wins over utilities. */
+.app-key-font {
+  font-family: var(--font-mono);
+}
+:root[data-app-font='custom'] .app-key-font {
+  font-family: var(--font-sans);
+}
+
 /* ---------- Font picker: letter spacing ---------- */
 /* The panel writes --ls-* (em) from the chosen preset; an unset value means
    the Default preset, i.e. no explicit spacing. Letter-spacing breaks Arabic

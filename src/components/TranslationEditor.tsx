@@ -1475,7 +1475,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                       toggleKeyName(item.id);
                     }
                   }}
-                  className={`text-xs sm:text-sm font-semibold text-slate-900 dark:text-slate-100 cursor-pointer min-w-0 ${
+                  className={`app-key-font text-xs sm:text-sm font-semibold text-slate-900 dark:text-slate-100 cursor-pointer min-w-0 ${
                     openKeyId === item.id ? 'break-words' : 'truncate'
                   }`}
                 >

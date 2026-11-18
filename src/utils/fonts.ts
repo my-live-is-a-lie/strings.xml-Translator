@@ -158,7 +158,9 @@ export function buildFamilies(fonts: UserFontMeta[]): FontFamilyEntry[] {
     const key = f.family.toLowerCase();
     let entry = map.get(key);
     if (!entry) {
-      entry = { id: `u:${f.family}`, name: f.family, builtin: false, css: userCssStack(f.family), variants: [] };
+      // The id is built from the lowercased key (not the file's own casing),
+      // so every lookup of a family id matches no matter how the name was cased.
+      entry = { id: `u:${key}`, name: f.family, builtin: false, css: userCssStack(f.family), variants: [] };
       map.set(key, entry);
     }
     entry.variants.push(makeVariant(f.weight, f.italic, f.id));
@@ -301,6 +303,9 @@ export async function readFontInfo(buf: ArrayBuffer, fileName: string): Promise<
     const italic = (fsSelection & 1) !== 0 || (fsSelection & 512) !== 0 || (macStyle & 2) !== 0 || /italic|oblique/i.test(sub);
     let weight = os2 && os2.byteLength >= 6 ? os2.getUint16(4) : 0;
     if (!weight || weight < 1 || weight > 1000) weight = (macStyle & 1) !== 0 || /bold/i.test(sub) ? 700 : 400;
+    // Variable fonts expose a weight axis, but it is recorded here as a single
+    // rounded value (nearest 100), so the axis is not used; the panel offers
+    // only the fixed Regular/Bold styles. Known limitation, not a bug.
     weight = Math.min(900, Math.max(100, Math.round(weight / 100) * 100));
     return { family, weight, italic };
   } catch (err) {
@@ -540,6 +545,11 @@ export function applyFonts(): void {
 
   if (app.family.id === DEFAULT_FAMILY_ID) root.style.removeProperty('--font-sans');
   else root.style.setProperty('--font-sans', app.family.css);
+  // Key titles stay monospace unless the user picked a non-default app font
+  // (see .app-key-font in index.css); a stored choice that no longer resolves
+  // falls back to Default, so the resolved family id is the right test.
+  if (app.family.id === DEFAULT_FAMILY_ID) root.removeAttribute('data-app-font');
+  else root.setAttribute('data-app-font', 'custom');
   root.style.fontWeight = app.variant.weight === 400 ? '' : String(app.variant.weight);
   root.style.fontStyle = app.variant.italic ? 'italic' : '';
   // Non-default app weights win over the weight utilities on headings and
@@ -588,6 +598,8 @@ function loadFace(meta: UserFontMeta): Promise<void> {
     await face.load();
     // The FontFace now holds the data, so the in-memory copy is redundant.
     memoryFiles.delete(meta.id);
+    // The font may have been removed while it was loading; don't resurrect it.
+    if (!snapshot.fonts.some((f) => f.id === meta.id)) return;
     document.fonts.add(face);
     faces.set(meta.id, face);
   })()
@@ -608,7 +620,7 @@ export function initFonts(): void {
   const families = buildFamilies(snapshot.fonts);
   const wanted = new Set<string>();
   for (const c of [snapshot.selection.app, snapshot.selection.source, snapshot.selection.editor]) wanted.add(resolveChoice(families, c).family.id);
-  void Promise.all(snapshot.fonts.filter((f) => wanted.has(`u:${f.family}`)).map(loadFace)).then(applyFonts);
+  void Promise.all(snapshot.fonts.filter((f) => wanted.has(`u:${f.family.toLowerCase()}`)).map(loadFace)).then(applyFonts);
 }
 
 // ---------- Actions ----------
@@ -655,8 +667,31 @@ export function setEffectKind(kind: TextEffectKind): void {
 // frame and the storage write is deferred until the drag settles.
 let effectRafId = 0;
 let effectPersistTimer: ReturnType<typeof setTimeout> | null = null;
+let effectPersistListenerRegistered = false;
+
+/** Writes a pending debounced storage write right away (no-op when none is pending). */
+function flushEffectPersist(): void {
+  if (effectPersistTimer) {
+    clearTimeout(effectPersistTimer);
+    effectPersistTimer = null;
+    persist();
+  }
+}
+
+/** Flushes the pending write when the app is hidden or closed, so the last
+    thickness value is not lost if the app dies inside the 300ms window.
+    Registered once, on first use. */
+function registerEffectPersistFlush(): void {
+  if (effectPersistListenerRegistered || typeof document === 'undefined') return;
+  effectPersistListenerRegistered = true;
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) flushEffectPersist();
+  });
+  if (typeof window !== 'undefined') window.addEventListener('pagehide', flushEffectPersist);
+}
 
 export function setEffectThickness(thickness: number): void {
+  registerEffectPersistFlush();
   const value = Math.round(thickness * 100) / 100;
   const sel = snapshot.selection;
   emit({ ...snapshot, selection: { ...sel, effect: { ...sel.effect, thickness: value } } });
