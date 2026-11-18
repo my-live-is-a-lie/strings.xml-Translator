@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/immutability -- `ctx` is deliberate mutable bookkeeping for a pointer gesture: it is
    only written from event handlers and never read while rendering. */
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getStoredItem, setStoredItem } from '../utils/storage';
 
 type Position = 'top' | 'bottom';
@@ -33,9 +33,25 @@ export function useColumnSwap(storageKey: string) {
   const [pulse, setPulse] = useState(false);
   const [ctx] = useState(() => ({ gesture: null as Gesture | null, suppressClick: false }));
 
+  // Timers that outlive a gesture: cancelled on unmount so no state update runs after
+  // the component is gone (the hold timer lifts the button, the pulse timer clears the
+  // swap animation). The click-suppression timer only flips a plain flag, so it needs
+  // no cleanup.
+  const holdTimerRef = useRef<number | undefined>(undefined);
+  const pulseTimerRef = useRef<number | undefined>(undefined);
+
+  useEffect(
+    () => () => {
+      if (holdTimerRef.current !== undefined) window.clearTimeout(holdTimerRef.current);
+      if (pulseTimerRef.current !== undefined) window.clearTimeout(pulseTimerRef.current);
+    },
+    []
+  );
+
   const clearGesture = useCallback(() => {
     if (ctx.gesture) window.clearTimeout(ctx.gesture.timer);
     ctx.gesture = null;
+    holdTimerRef.current = undefined;
     setLiftedPosition(null);
   }, [ctx]);
 
@@ -46,7 +62,10 @@ export function useColumnSwap(storageKey: string) {
       return next;
     });
     setPulse(true);
-    window.setTimeout(() => setPulse(false), 260);
+    pulseTimerRef.current = window.setTimeout(() => {
+      pulseTimerRef.current = undefined;
+      setPulse(false);
+    }, 260);
     try {
       navigator.vibrate?.(18);
     } catch {
@@ -68,6 +87,7 @@ export function useColumnSwap(storageKey: string) {
         triggered: false,
       };
       g.timer = window.setTimeout(() => {
+        holdTimerRef.current = undefined;
         if (ctx.gesture !== g) return;
         g.active = true;
         setLiftedPosition(position);
@@ -77,6 +97,7 @@ export function useColumnSwap(storageKey: string) {
           /* no haptics here */
         }
       }, HOLD_MS);
+      holdTimerRef.current = g.timer;
       ctx.gesture = g;
     },
     [ctx, clearGesture]
