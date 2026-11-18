@@ -397,13 +397,17 @@ const HeaderBase: React.FC<HeaderProps> = ({
   const translatedPercent = totalItems > 0 ? Math.round((translatedCount / totalItems) * 100) : 0;
   const reviewPercent = totalItems > 0 ? Math.round((needsReviewCount / totalItems) * 100) : 0;
   const untranslatedPercent = totalItems > 0 ? Math.max(0, 100 - translatedPercent - reviewPercent) : 0;
+  // The orange band uses a vivid orange so the color change is unmistakable;
+  // the previous orange-700 read as red. The yellow band uses amber-500
+  // (user-picked from a six-shade comparison): yellow-700 read as brown
+  // and yellow-600 still read as mustard.
   const translatedPillColorClass =
     translatedPercent <= 30
       ? 'bg-red-600'
       : translatedPercent <= 60
-        ? 'bg-orange-700'
+        ? 'bg-orange-500'
         : translatedPercent <= 80
-          ? 'bg-yellow-700'
+          ? 'bg-amber-500'
           : 'bg-green-700';
   const exactTranslatedWidth = totalItems > 0 ? (translatedCount / totalItems) * 100 : 0;
   const exactReviewWidth = totalItems > 0 ? (needsReviewCount / totalItems) * 100 : 0;
