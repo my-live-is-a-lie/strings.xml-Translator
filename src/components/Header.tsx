@@ -21,6 +21,8 @@ import { SidebarIcon } from './SidebarIcon';
 import { getAllTranslationProviders, getActiveProviderId } from '../utils/translator';
 import { useT, useCustomLanguages } from '../i18n/i18n';
 import AddLanguageModal from './AddLanguageModal';
+import FontPanel from './FontPanel';
+import { FontIcon } from './FontIcon';
 import { ACCENT_VARIANTS, applyAccentVariant, getDefaultVariantIndex, AccentColorId } from '../utils/accentVariants';
 
 const ACCENT_COLORS = [
@@ -278,6 +280,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
 
   const [themeSubmenuOpen, setThemeSubmenuOpen] = useState(false);
   const [paletteSubmenuOpen, setPaletteSubmenuOpen] = useState(false);
+  const [fontSubmenuOpen, setFontSubmenuOpen] = useState(false);
 
   const [localAppTheme, setLocalAppTheme] = useState<AppTheme>(() => getInitialAppTheme());
 
@@ -734,6 +737,9 @@ const HeaderBase: React.FC<HeaderProps> = ({
             key={shownSide}
             onTouchStart={(e) => {
               if (e.touches.length === 1) {
+                // A drag that starts on a control (a slider, an input, ...) belongs to
+                // that control; the drawer must not move along with it.
+                if ((e.target as Element | null)?.closest('input,textarea,select,button')) return;
                 drawerTouchStartRef.current = {
                   x: e.touches[0].clientX,
                   y: e.touches[0].clientY,
@@ -781,7 +787,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
           >
             {/* Drawer Header: 4 Squircle Buttons (Language, Theme, Random Accent, Palette) + Close Button */}
             <div className="relative flex items-center justify-between gap-2 px-3.5 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] border-b border-slate-200/80 dark:border-[#252C3A]">
-              <div className="flex items-center gap-2 min-w-0">
+              <div className="flex items-center gap-1.5 min-w-0">
                 {/* 1. App Language Button */}
                 <button
                   id="drawer-language-btn"
@@ -790,6 +796,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
                     setAppLangMenuOpen((prev) => !prev);
                     setThemeSubmenuOpen(false);
                     setPaletteSubmenuOpen(false);
+                    setFontSubmenuOpen(false);
                     setOpenVariantSlot(null);
                   }}
                   className={`w-9.5 h-9.5 rounded-2xl flex items-center justify-center transition cursor-pointer shrink-0 border ${
@@ -811,6 +818,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
                     setThemeSubmenuOpen((prev) => !prev);
                     setAppLangMenuOpen(false);
                     setPaletteSubmenuOpen(false);
+                    setFontSubmenuOpen(false);
                     setOpenVariantSlot(null);
                   }}
                   className={`w-9.5 h-9.5 rounded-2xl flex items-center justify-center transition cursor-pointer shrink-0 border ${
@@ -845,6 +853,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
                     setPaletteSubmenuOpen((prev) => !prev);
                     setThemeSubmenuOpen(false);
                     setAppLangMenuOpen(false);
+                    setFontSubmenuOpen(false);
                   }}
                   className={`w-9.5 h-9.5 rounded-2xl flex items-center justify-center transition cursor-pointer shrink-0 border ${
                     paletteSubmenuOpen
@@ -856,6 +865,28 @@ const HeaderBase: React.FC<HeaderProps> = ({
                 >
                   <Palette style={{ color: 'var(--accent-primary)' }} className="w-5 h-5" />
                 </button>
+
+                {/* 5. Default Font Picker */}
+                <button
+                  id="drawer-font-btn"
+                  type="button"
+                  onClick={() => {
+                    if (!fontSubmenuOpen) setOpenVariantSlot(null);
+                    setFontSubmenuOpen((prev) => !prev);
+                    setPaletteSubmenuOpen(false);
+                    setThemeSubmenuOpen(false);
+                    setAppLangMenuOpen(false);
+                  }}
+                  className={`w-9.5 h-9.5 rounded-2xl flex items-center justify-center transition cursor-pointer shrink-0 border ${
+                    fontSubmenuOpen
+                      ? 'bg-slate-200 dark:bg-[#252F42] border-[var(--accent-primary)]/70 shadow-xs'
+                      : 'bg-slate-100 hover:bg-slate-200/80 dark:bg-[#1C2333] dark:hover:bg-[#242E40] border-slate-200/80 dark:border-[#2A3446]'
+                  }`}
+                  title={t('font_btn_title')}
+                  aria-label="Choose app font"
+                >
+                  <FontIcon style={{ color: 'var(--accent-primary)' }} className="w-5 h-5" />
+                </button>
               </div>
 
               {/* Close Drawer Button */}
@@ -865,6 +896,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
                   setAppLangMenuOpen(false);
                   setThemeSubmenuOpen(false);
                   setPaletteSubmenuOpen(false);
+                  setFontSubmenuOpen(false);
                   setOpenVariantSlot(null);
                   setRightDrawerOpen(false);
                 }}
@@ -874,6 +906,9 @@ const HeaderBase: React.FC<HeaderProps> = ({
                 <X className="w-4.5 h-4.5" />
               </button>
             </div>
+
+            {/* Sub-menu Row: Default font (name, style, add / delete fonts) */}
+            {fontSubmenuOpen && <FontPanel targetLang={project.targetLang} uiLang={uiLang ?? appLang} sourceLang={project.sourceLang} />}
 
             {/* Sub-menu Row: Language Options */}
             {appLangMenuOpen && (

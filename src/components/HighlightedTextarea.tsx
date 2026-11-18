@@ -647,7 +647,7 @@ export const HighlightedTextarea = forwardRef<HTMLTextAreaElement, HighlightedTe
             ...style,
             backgroundColor: 'transparent',
           }}
-          className={`relative z-10 w-full ${effectiveTextareaClass}`}
+          className={`relative z-10 w-full app-editor-font ${effectiveTextareaClass}`}
           {...props}
         />
 
@@ -656,7 +656,7 @@ export const HighlightedTextarea = forwardRef<HTMLTextAreaElement, HighlightedTe
           ref={backdropRef}
           aria-hidden="true"
           dir={dir}
-          className={`absolute inset-0 pointer-events-none select-none z-20 font-sans whitespace-pre-wrap break-words overflow-hidden ${backdropClassName}`}
+          className={`absolute inset-0 pointer-events-none select-none z-20 font-sans app-editor-font whitespace-pre-wrap break-words overflow-hidden ${backdropClassName}`}
           style={{
             wordBreak: 'break-word',
             overflowWrap: 'break-word',
