@@ -1712,7 +1712,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                           </span>
                         )}
                       </div>
-                      <span className="text-slate-500 dark:text-slate-300 text-[11px] truncate max-w-xs">
+                      <span className="app-source-font text-slate-500 dark:text-slate-300 text-[11px] truncate max-w-xs">
                         {renderSourceWithSyntaxHighlights(pi.source, {
                           fieldType: 'plural',
                           quantity: pi.quantity,
@@ -1780,7 +1780,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                       <span data-i18n className="font-mono font-semibold text-[#1EB996]">
                         {t('item', ai.index)}
                       </span>
-                      <span className="text-slate-500 dark:text-slate-300 text-[11px] truncate max-w-xs">
+                      <span className="app-source-font text-slate-500 dark:text-slate-300 text-[11px] truncate max-w-xs">
                         {renderSourceWithSyntaxHighlights(ai.source, {
                           fieldType: 'array',
                           index: ai.index,

@@ -403,8 +403,8 @@ const HeaderBase: React.FC<HeaderProps> = ({
       : translatedPercent <= 60
         ? 'bg-orange-700'
         : translatedPercent <= 80
-          ? 'bg-yellow-600'
-          : 'bg-green-600';
+          ? 'bg-yellow-700'
+          : 'bg-green-700';
   const exactTranslatedWidth = totalItems > 0 ? (translatedCount / totalItems) * 100 : 0;
   const exactReviewWidth = totalItems > 0 ? (needsReviewCount / totalItems) * 100 : 0;
 

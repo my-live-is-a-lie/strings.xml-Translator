@@ -697,7 +697,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
                 (document.activeElement as HTMLElement | null)?.blur?.();
               }}
               onMouseUp={(e) => e.currentTarget.blur()}
-              className="relative grid place-items-center shrink-0 w-9 h-9 rounded-full cursor-pointer text-slate-600 dark:text-slate-400 outline-none focus:outline-none focus-visible:outline-none"
+              className="relative grid place-items-center shrink-0 w-9 h-9 rounded-full cursor-pointer text-slate-600 dark:text-slate-400 focus-visible:outline-2 focus-visible:outline-[#0B57D0] dark:focus-visible:outline-[#A8C7FA]"
               title={searchOpen ? (isAr ? 'إغلاق البحث' : 'Close search') : t('search_all_strings_by_key')}
             >
               <Search
