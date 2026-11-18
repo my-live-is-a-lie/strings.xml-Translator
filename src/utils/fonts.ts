@@ -23,6 +23,24 @@ export interface FontChoice {
   v: string;
 }
 
+/** Letter-spacing value in em; `null` = Default (no explicit spacing). */
+export type SpacingValue = number | null;
+
+export interface SpacingSelection {
+  app: SpacingValue;
+  source: SpacingValue;
+  editor: SpacingValue;
+}
+
+/** Text effect applied to the interface text (never to the text fields). */
+export type TextEffectKind = 'none' | 'shadow' | 'outline';
+
+export interface TextEffect {
+  kind: TextEffectKind;
+  /** Thickness in px: shadow blur radius, outline ring radius. */
+  thickness: number;
+}
+
 export interface FontSelection {
   app: FontChoice;
   /** Source text field (only used while `separate` is on). */
@@ -30,6 +48,8 @@ export interface FontSelection {
   /** Translation field (only used while `separate` is on). */
   editor: FontChoice;
   separate: boolean;
+  spacing: SpacingSelection;
+  effect: TextEffect;
 }
 
 export interface FontVariant {
@@ -65,6 +85,26 @@ export const DEFAULT_STACK = "'Roboto', -apple-system, BlinkMacSystemFont, 'Sego
 const FALLBACK_STACK = ", 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
 export const DEFAULT_FAMILY_ID = 'b:default';
 const DEFAULT_CHOICE: FontChoice = { f: DEFAULT_FAMILY_ID, v: '400' };
+
+/** Letter-spacing presets (em) offered in the panel dropdown; `null` = Default. */
+export const SPACING_PRESETS: SpacingValue[] = [null, -0.02, -0.01, 0, 0.01, 0.02, 0.03, 0.05, 0.08, 0.1];
+export const SPACING_MIN = -0.02;
+export const SPACING_MAX = 0.1;
+
+/** Thickness range (px) per effect mode. */
+export const EFFECT_RANGES: Record<'shadow' | 'outline', { min: number; max: number }> = {
+  shadow: { min: 0, max: 3 },
+  outline: { min: 0.5, max: 1.5 },
+};
+
+/** Colour of the shadow halo and the outline ring. */
+export const FX_COLOR = '#202634';
+const FX_SHADOW_ALPHA = 0.55;
+
+/** Display text for a spacing value: "-0.02 em", "0 em", "+0.1 em". */
+export function formatSpacingValue(value: number): string {
+  return `${value > 0 ? '+' : ''}${value} em`;
+}
 
 // ---------- Names of styles ----------
 
@@ -364,21 +404,48 @@ function loadFonts(): UserFontMeta[] {
   }
 }
 
+const isSpacingValue = (v: unknown): v is SpacingValue =>
+  v === null || (typeof v === 'number' && Number.isFinite(v));
+
+const clampSpacing = (v: SpacingValue): SpacingValue =>
+  v === null ? null : Math.round(Math.min(SPACING_MAX, Math.max(SPACING_MIN, v)) * 100) / 100;
+
 function loadSelection(): FontSelection {
   try {
     const raw = JSON.parse(getStoredItem(SELECTION_KEY) ?? 'null');
     if (raw && typeof raw === 'object') {
+      const spacing = raw.spacing && typeof raw.spacing === 'object' ? raw.spacing : {};
+      const effect = raw.effect && typeof raw.effect === 'object' ? raw.effect : {};
+      const kind: TextEffectKind = effect.kind === 'shadow' || effect.kind === 'outline' ? effect.kind : 'none';
+      const range = kind === 'outline' ? EFFECT_RANGES.outline : EFFECT_RANGES.shadow;
+      const thickness =
+        typeof effect.thickness === 'number' && Number.isFinite(effect.thickness)
+          ? Math.round(Math.min(range.max, Math.max(range.min, effect.thickness)) * 100) / 100
+          : 1;
       return {
         app: isChoice(raw.app) ? raw.app : DEFAULT_CHOICE,
         source: isChoice(raw.source) ? raw.source : DEFAULT_CHOICE,
         editor: isChoice(raw.editor) ? raw.editor : DEFAULT_CHOICE,
         separate: raw.separate === true,
+        spacing: {
+          app: clampSpacing(isSpacingValue(spacing.app) ? spacing.app : null),
+          source: clampSpacing(isSpacingValue(spacing.source) ? spacing.source : null),
+          editor: clampSpacing(isSpacingValue(spacing.editor) ? spacing.editor : null),
+        },
+        effect: { kind, thickness },
       };
     }
   } catch (err) {
     debugIgnored('fonts.loadSelection', err);
   }
-  return { app: DEFAULT_CHOICE, source: DEFAULT_CHOICE, editor: DEFAULT_CHOICE, separate: false };
+  return {
+    app: DEFAULT_CHOICE,
+    source: DEFAULT_CHOICE,
+    editor: DEFAULT_CHOICE,
+    separate: false,
+    spacing: { app: null, source: null, editor: null },
+    effect: { kind: 'none', thickness: 1 },
+  };
 }
 
 let snapshot: Snapshot = { fonts: loadFonts(), selection: loadSelection() };
@@ -404,6 +471,52 @@ const subscribe = (cb: () => void) => {
 
 export function useFonts(): Snapshot {
   return useSyncExternalStore(subscribe, getFontsSnapshot);
+}
+
+// ---------- Letter spacing and text effect ----------
+
+/** Builds the text-shadow value for the effect, or null when no effect is active. */
+function buildFxShadow(effect: TextEffect): string | null {
+  if (effect.kind === 'none') return null;
+  if (effect.kind === 'shadow') return `0 0 ${effect.thickness}px rgba(32,38,52,${FX_SHADOW_ALPHA})`;
+  // Outline: a ring of 16 shadows around each glyph, growing purely outward
+  // (a text stroke would draw half inside the glyph and darken the fill).
+  const parts: string[] = [];
+  for (let m = 0; m < 16; m++) {
+    const a = (m * Math.PI) / 8;
+    parts.push(`${(Math.cos(a) * effect.thickness).toFixed(2)}px ${(Math.sin(a) * effect.thickness).toFixed(2)}px 0 ${FX_COLOR}`);
+  }
+  return parts.join(', ');
+}
+
+/** Applies the letter-spacing choice (CSS vars + gate read by index.css). */
+function applySpacing(): void {
+  if (typeof document === 'undefined') return;
+  const root = document.documentElement;
+  const s = snapshot.selection.spacing;
+  const set = (name: string, v: SpacingValue) => {
+    if (v === null) root.style.removeProperty(name);
+    else root.style.setProperty(name, `${v}em`);
+  };
+  set('--ls-app', s.app);
+  set('--ls-source', s.source);
+  set('--ls-editor', s.editor);
+  if (s.app !== null || s.source !== null || s.editor !== null) root.setAttribute('data-ls-on', '');
+  else root.removeAttribute('data-ls-on');
+}
+
+/** Applies the text-effect choice (CSS var + gate read by index.css). */
+function applyEffect(): void {
+  if (typeof document === 'undefined') return;
+  const root = document.documentElement;
+  const shadow = buildFxShadow(snapshot.selection.effect);
+  if (shadow === null) {
+    root.style.removeProperty('--fx-text-shadow');
+    root.removeAttribute('data-text-fx');
+  } else {
+    root.style.setProperty('--fx-text-shadow', shadow);
+    root.setAttribute('data-text-fx', '');
+  }
 }
 
 // ---------- Applying the choice to the page ----------
@@ -443,6 +556,9 @@ export function applyFonts(): void {
       for (const p of ['family', 'weight', 'style']) root.style.removeProperty(`--${prefix}-font-${p}`);
     }
   }
+
+  applySpacing();
+  applyEffect();
 }
 
 // ---------- Registering fonts with the browser ----------
@@ -500,6 +616,52 @@ export function setSeparateEditorFont(separate: boolean): void {
   emit({ ...snapshot, selection: next });
   persist();
   applyFonts();
+}
+
+export function setSpacing(target: FontTarget, value: SpacingValue): void {
+  emit({ ...snapshot, selection: { ...snapshot.selection, spacing: { ...snapshot.selection.spacing, [target]: value } } });
+  persist();
+  applyFonts();
+}
+
+export function setEffectKind(kind: TextEffectKind): void {
+  const sel = snapshot.selection;
+  let thickness = sel.effect.thickness;
+  if (kind === 'outline') thickness = Math.min(EFFECT_RANGES.outline.max, Math.max(EFFECT_RANGES.outline.min, thickness));
+  else if (kind === 'shadow') thickness = Math.min(EFFECT_RANGES.shadow.max, Math.max(EFFECT_RANGES.shadow.min, thickness));
+  emit({ ...snapshot, selection: { ...sel, effect: { kind, thickness } } });
+  persist();
+  applyFonts();
+}
+
+// Dragging the thickness slider fires input events far faster than the screen
+// refreshes, and every event used to re-render all subscribers, rewrite storage
+// and rebuild the 16-layer shadow (plus a full style recalc of all chrome text),
+// so the drag felt jumpy. The thumb fill and px label still update synchronously
+// on every event, but the heavy effect apply runs at most once per animation
+// frame and the storage write is deferred until the drag settles.
+let effectRafId = 0;
+let effectPersistTimer: ReturnType<typeof setTimeout> | null = null;
+
+export function setEffectThickness(thickness: number): void {
+  const value = Math.round(thickness * 100) / 100;
+  const sel = snapshot.selection;
+  emit({ ...snapshot, selection: { ...sel, effect: { ...sel.effect, thickness: value } } });
+  if (!effectRafId) {
+    if (typeof requestAnimationFrame === 'function') {
+      effectRafId = requestAnimationFrame(() => {
+        effectRafId = 0;
+        applyEffect();
+      });
+    } else {
+      applyEffect();
+    }
+  }
+  if (effectPersistTimer) clearTimeout(effectPersistTimer);
+  effectPersistTimer = setTimeout(() => {
+    effectPersistTimer = null;
+    persist();
+  }, 300);
 }
 
 export interface AddFontsResult {

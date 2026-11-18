@@ -1,32 +1,48 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, Plus } from 'lucide-react';
-import { useT } from '../i18n/i18n';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { ChevronDown } from 'lucide-react';
+import { isRtlLanguageCode, useT } from '../i18n/i18n';
 import AddFontModal from './AddFontModal';
 import {
+  EFFECT_RANGES,
+  SPACING_PRESETS,
   buildFamilies,
+  formatSpacingValue,
   loadAllFonts,
   pickVariantKey,
   resolveChoice,
+  setEffectKind,
+  setEffectThickness,
   setFontChoice,
   setSeparateEditorFont,
+  setSpacing,
   useFonts,
   type FontFamilyEntry,
   type FontTarget,
+  type SpacingValue,
+  type TextEffectKind,
 } from '../utils/fonts';
 
-type MenuState = { target: FontTarget; kind: 'family' | 'style' } | null;
+type MenuState = { target: FontTarget; kind: 'family' | 'style' | 'spacing' } | null;
 
 const menuClass =
-  'absolute top-full mt-1 start-0 z-40 min-w-[8.5rem] max-w-[14rem] max-h-56 overflow-y-auto rounded-xl border border-slate-200 dark:border-[#2A3446] bg-white dark:bg-[#161922] shadow-lg py-1';
+  'absolute top-full mt-1 start-0 z-40 min-w-[8.5rem] max-w-[14rem] max-h-56 overflow-y-auto rounded-xl border border-slate-200 dark:border-[#2A3446] bg-white dark:bg-[#161922] shadow-lg py-1 flex flex-col no-scrollbar';
+const spacingMenuClass =
+  'absolute top-full mt-1 end-0 z-40 min-w-[8.5rem] max-w-[14rem] max-h-56 overflow-y-auto rounded-xl border border-slate-200 dark:border-[#2A3446] bg-white dark:bg-[#161922] shadow-lg py-1 flex flex-col no-scrollbar';
 const chipClass = 'flex items-center gap-1.5 max-w-full min-w-0 text-base text-slate-900 dark:text-white cursor-pointer select-none';
+const menuItemClass =
+  'block w-full shrink-0 text-start px-3 py-1.5 text-base truncate cursor-pointer hover:bg-slate-100 dark:hover:bg-[#1C2333]';
 
 /** Sub-menu of the sidebar "F" button: choose the default font, its style, add or remove fonts. */
-export default function FontPanel() {
+export default function FontPanel({ targetLang }: { targetLang: string }) {
   const { t, tb } = useT();
   const snap = useFonts();
   const [menu, setMenu] = useState<MenuState>(null);
   const [addOpen, setAddOpen] = useState(false);
   const families = useMemo(() => buildFamilies(snap.fonts), [snap.fonts]);
+  // Letter-spacing breaks Arabic letter joining, so the translation field's
+  // spacing control stays disabled while the target language is Arabic/RTL.
+  const isTargetRtl = isRtlLanguageCode(targetLang);
+  const labelClass = 'text-[11px] font-medium text-slate-500 dark:text-slate-400';
 
   // Register all added fonts so the lists preview each name in its own font
   useEffect(() => {
@@ -90,7 +106,7 @@ export default function FontPanel() {
                     setFontChoice(target, { f: f.id, v: pickVariantKey(f, variant.key) });
                     setMenu(null);
                   }}
-                  className={`block w-full text-start px-3 py-1.5 text-base truncate cursor-pointer hover:bg-slate-100 dark:hover:bg-[#1C2333] ${
+                  className={`${menuItemClass} ${
                     f.id === family.id ? 'text-[var(--accent-primary)]' : 'text-slate-800 dark:text-slate-100'
                   }`}
                   style={{ fontFamily: f.css }}
@@ -132,7 +148,7 @@ export default function FontPanel() {
                     setFontChoice(target, { f: family.id, v: v.key });
                     setMenu(null);
                   }}
-                  className={`block w-full text-start px-3 py-1.5 text-base truncate cursor-pointer hover:bg-slate-100 dark:hover:bg-[#1C2333] ${
+                  className={`${menuItemClass} ${
                     v.key === variant.key ? 'text-[var(--accent-primary)]' : 'text-slate-800 dark:text-slate-100'
                   }`}
                   style={{ fontFamily: family.css, fontWeight: v.weight, fontStyle: v.italic ? 'italic' : 'normal' }}
@@ -153,21 +169,70 @@ export default function FontPanel() {
             }}
             title={tb('font_add')}
             aria-label={tb('font_add')}
-            className="ms-auto w-8 h-8 rounded-full flex items-center justify-center shrink-0 cursor-pointer transition active:scale-95 bg-slate-200/80 hover:bg-slate-200 dark:bg-[#252F42] dark:hover:bg-[#2C3850] text-slate-700 dark:text-slate-200"
+            className="ms-auto w-7 h-7 rounded-full shrink-0 flex items-center justify-center text-lg leading-none text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white bg-slate-200/70 dark:bg-[#252F42] cursor-pointer"
           >
-            <Plus className="w-4.5 h-4.5" />
+            +
           </button>
         )}
       </div>
     );
   };
 
+  const renderSpacingRow = (target: FontTarget, disabled: boolean) => {
+    const value = snap.selection.spacing[target];
+    const open = menu?.target === target && menu.kind === 'spacing';
+    const toggle = () =>
+      setMenu((prev) => (prev && prev.target === target && prev.kind === 'spacing' ? null : { target, kind: 'spacing' }));
+    return (
+      <div className="flex items-center justify-between gap-3">
+        <span className={labelClass} data-i18n>{t('font_spacing')}</span>
+        <div className="relative min-w-0">
+          <button
+            type="button"
+            data-font-chip
+            disabled={disabled}
+            onClick={toggle}
+            className={`${chipClass} disabled:cursor-default disabled:opacity-50`}
+            aria-haspopup="listbox"
+            aria-expanded={open}
+            aria-label={tb('font_pick_spacing')}
+          >
+            <span className="truncate">{value === null ? tb('font_default') : formatSpacingValue(value)}</span>
+            <ChevronDown className={`w-4 h-4 shrink-0 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+          </button>
+          {open && (
+            <div data-font-menu role="listbox" className={spacingMenuClass}>
+              {SPACING_PRESETS.map((v: SpacingValue) => (
+                <button
+                  key={v === null ? 'default' : String(v)}
+                  type="button"
+                  role="option"
+                  aria-selected={v === value}
+                  onClick={() => {
+                    setSpacing(target, v);
+                    setMenu(null);
+                  }}
+                  className={`${menuItemClass} ${v === value ? 'text-[var(--accent-primary)]' : 'text-slate-800 dark:text-slate-100'}`}
+                >
+                  {v === null ? tb('font_default') : formatSpacingValue(v)}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const separate = snap.selection.separate;
-  const labelClass = 'text-[11px] font-medium text-slate-500 dark:text-slate-400';
+  const effect = snap.selection.effect;
+  const effectRange = effect.kind === 'outline' ? EFFECT_RANGES.outline : EFFECT_RANGES.shadow;
+  const effectPct = Math.round(((effect.thickness - effectRange.min) / (effectRange.max - effectRange.min)) * 10000) / 100;
 
   return (
     <div className="px-4 py-3 flex flex-col gap-2.5 border-b border-slate-200/80 dark:border-[#252C3A] bg-slate-50/70 dark:bg-[#141822]/60 animate-in fade-in duration-150">
       {renderStrip('app')}
+      {renderSpacingRow('app', false)}
 
       <button
         type="button"
@@ -193,9 +258,49 @@ export default function FontPanel() {
         <>
           <span className={`${labelClass} pt-1`} data-i18n>{t('font_label_source')}</span>
           {renderStrip('source')}
+          {renderSpacingRow('source', false)}
           <span className={`${labelClass} pt-1`} data-i18n>{t('font_label_editor')}</span>
           {renderStrip('editor')}
+          {renderSpacingRow('editor', isTargetRtl)}
         </>
+      )}
+
+      <div className="border-t border-slate-200/80 dark:border-[#252C3A]" />
+      <span className={labelClass} data-i18n>{t('font_effect')}</span>
+      <div className="flex rounded-xl bg-slate-100 dark:bg-[#1C2333] p-1 gap-1" role="group" aria-label={t('font_effect')}>
+        {(['none', 'shadow', 'outline'] as const).map((k: TextEffectKind) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => setEffectKind(k)}
+            aria-pressed={effect.kind === k}
+            className={`flex-1 h-8 rounded-lg text-sm font-medium cursor-pointer transition ${
+              effect.kind === k
+                ? 'bg-[var(--accent-primary)] text-white'
+                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-[#242E40]'
+            }`}
+          >
+            {t(`font_effect_${k}`)}
+          </button>
+        ))}
+      </div>
+      {effect.kind !== 'none' && (
+        <div className="flex items-center gap-3">
+          <input
+            type="range"
+            className="fx-slider flex-1 min-w-0"
+            min={effectRange.min}
+            max={effectRange.max}
+            step={0.01}
+            value={effect.thickness}
+            onChange={(e) => setEffectThickness(parseFloat(e.target.value))}
+            style={{ '--p': `${effectPct}%` } as CSSProperties}
+            aria-label={tb('font_effect_thickness')}
+          />
+          <span className="text-sm font-medium text-slate-700 dark:text-slate-200 tabular-nums shrink-0 w-12 text-end">
+            {effect.thickness} px
+          </span>
+        </div>
       )}
 
       {addOpen && <AddFontModal target="app" onClose={() => setAddOpen(false)} />}

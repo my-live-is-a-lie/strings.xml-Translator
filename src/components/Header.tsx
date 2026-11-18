@@ -737,6 +737,9 @@ const HeaderBase: React.FC<HeaderProps> = ({
             key={shownSide}
             onTouchStart={(e) => {
               if (e.touches.length === 1) {
+                // A drag that starts on a control (a slider, an input, ...) belongs to
+                // that control; the drawer must not move along with it.
+                if ((e.target as Element | null)?.closest('input,textarea,select,button')) return;
                 drawerTouchStartRef.current = {
                   x: e.touches[0].clientX,
                   y: e.touches[0].clientY,
@@ -905,7 +908,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
             </div>
 
             {/* Sub-menu Row: Default font (name, style, add / delete fonts) */}
-            {fontSubmenuOpen && <FontPanel />}
+            {fontSubmenuOpen && <FontPanel targetLang={project.targetLang} />}
 
             {/* Sub-menu Row: Language Options */}
             {appLangMenuOpen && (
