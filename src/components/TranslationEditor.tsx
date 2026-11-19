@@ -108,6 +108,12 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   // ICU branch editor: the textareas by `field:clause` (clause is `t` for a text run) and the view toggle
   const icuTextareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const [icuRawView, setIcuRawView] = useState(false);
+  // The branch editor defaults to the fields view for each string
+  const [lastIcuItemId, setLastIcuItemId] = useState(item.id);
+  if (lastIcuItemId !== item.id) {
+    setLastIcuItemId(item.id);
+    setIcuRawView(false);
+  }
 
   // Track last active input box & cursor (line indicator) position so tapping a syntax token inserts right at the caret
   const lastCursorRef = useRef<{
