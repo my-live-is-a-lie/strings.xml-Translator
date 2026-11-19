@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  bulkTranslateItems,
   clearTranslationCache,
   saveCustomProviders,
   setActiveProviderId,
@@ -8,6 +9,7 @@ import {
   suggestionRejectedForIcu,
 } from '../src/utils/translator';
 import { validatePlaceholders } from '../src/utils/placeholderCheck';
+import type { SingleStringItem } from '../src/types';
 
 /**
  * Phase 3: an ICU string is translated piece by piece when the whole-block reply
@@ -204,5 +206,51 @@ describe('AI providers still translate the whole string', () => {
     expect(res.source).toBe('gemini');
     // No machine-translation call at all: the whole-string AI reply succeeded.
     expect(seenGtx).toEqual([]);
+  });
+
+  it('does not assemble a half-English string when the text outside the block fails', async () => {
+    // The clause bodies translate but the surrounding text does not. Returning that mix as a
+    // `google` result let the bulk path save it with status 'translated', which hid the string
+    // from the "Untranslated" filter while it still read "Purchase … now" in English. Text
+    // outside a block is the sentence the user reads, so the attempt fails and the string stays
+    // untranslated (R2 in the round-9 review).
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const q = new URL(String(url)).searchParams.get('q') ?? '';
+        if (q.startsWith('Purchase {'))
+          return new Response(JSON.stringify([[[ '{العدد، جمع، واحد {# عنصر}}', '', null, null, 1]], null, 'en']), { status: 200 });
+        if (q === 'Purchase' || q === 'now')
+          return new Response(JSON.stringify([[[ '', '', null, null, 1]], null, 'en']), { status: 200 });
+        const dict: Record<string, string> = { '# item': '# عنصر', '# items': '# عناصر' };
+        return new Response(JSON.stringify([[[ dict[q] ?? '', '', null, null, 1]], null, 'en']), { status: 200 });
+      })
+    );
+    const src = 'Purchase {count, plural, one {# item} other {# items}} now';
+    const res = await suggestTranslation(src, 'ar');
+    expect(res.text).toBe(src);
+    expect(res.source).toBe('heuristic');
+    const item = { id: 'a', name: 'a', type: 'string', order: 0, status: 'untranslated', source: src, target: '' } as SingleStringItem;
+    const [out] = (await bulkTranslateItems([item], 'ar')) as SingleStringItem[];
+    expect(out.target).toBe('');
+    expect(out.status).toBe('untranslated');
+  });
+
+  it('keeps a clause body that failed on purpose, and still reports it as translated', async () => {
+    // The opposite of the test above: a body inside the block may keep its source text — the
+    // block is still valid ICU and the user can fix one short phrase.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const q = new URL(String(url)).searchParams.get('q') ?? '';
+        if (q.startsWith('You have {'))
+          return new Response(JSON.stringify([[[ 'x', '', null, null, 1]], null, 'en']), { status: 200 });
+        const dict: Record<string, string> = { 'You have': 'لديك', '# items': '# عناصر' };
+        return new Response(JSON.stringify([[[ dict[q] ?? '', '', null, null, 1]], null, 'en']), { status: 200 });
+      })
+    );
+    const res = await suggestTranslation('You have {count, plural, one {# item} other {# items}}', 'ar');
+    expect(res.text).toBe('لديك {count, plural, one {# item} other {# عناصر}}');
+    expect(res.source).toBe('google');
   });
 });

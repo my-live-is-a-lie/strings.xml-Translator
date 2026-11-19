@@ -834,6 +834,15 @@ async function translateIcuPerClause(
   if (!parts) return null;
   let overallSource: TranslationEngine = 'glossary';
   let translatedAny = false;
+  /**
+   * Set when text OUTSIDE a block kept its source language. A clause body that fails is kept
+   * on purpose (the block is still valid ICU and the user can fix one short phrase), but text
+   * outside a block is the sentence the user actually reads: assembling a half-English string
+   * and returning it as a `google` result made the bulk path save it with status 'translated',
+   * which hid it from the "Untranslated" filter while it still read English. That is not a
+   * translation, so the attempt fails and the normal fallback takes over.
+   */
+  let surroundingLeftUntranslated = false;
   const out: string[] = [];
   for (const part of parts) {
     if (part.kind === 'text') {
@@ -842,9 +851,16 @@ async function translateIcuPerClause(
         continue;
       }
       const res = await translateSingleSegment(part.text, baseLang, directLang, targetLocaleName, pluralQuantity);
-      if (res.source !== 'glossary' && res.source !== 'heuristic') overallSource = res.source;
-      if (res.source !== 'heuristic' && res.text !== part.text) translatedAny = true;
-      out.push(res.source === 'heuristic' ? part.text : res.text);
+      const translated = res.source !== 'heuristic' && Boolean(res.text.trim()) && res.text !== part.text;
+      if (translated) {
+        if (res.source !== 'glossary') overallSource = res.source;
+        translatedAny = true;
+        out.push(res.text);
+      } else {
+        // Punctuation-only runs ("!", "…", " — ") legitimately come back unchanged.
+        if (hasTranslatableText(part.text)) surroundingLeftUntranslated = true;
+        out.push(part.text);
+      }
       continue;
     }
     // Block: rebuild from the source, translating each clause body on its own.
@@ -875,7 +891,7 @@ async function translateIcuPerClause(
     rebuilt += part.text.slice(cursor);
     out.push(rebuilt);
   }
-  if (!translatedAny) return null;
+  if (!translatedAny || surroundingLeftUntranslated) return null;
   const assembled = out.join('');
   if (!validatePlaceholders(coreText, assembled, directLang).valid) return null;
   return { text: assembled, source: overallSource };
