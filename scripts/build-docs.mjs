@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { marked } from 'marked';
 
 const REPO = 'https://github.com/my-live-is-a-lie/strings.xml-translator';
-const SITE = 'https://my-live-is-a-lie.github.io/strings.xml-Translator/';
+const SITE = 'https://xml-translator.is-a.dev/';
 const md = readFileSync('docs/GUIDE.md', 'utf8');
 const body = md.slice(md.indexOf('## 1. What it is'));
 const css = readFileSync('scripts/docs.css', 'utf8');
