@@ -3,6 +3,13 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @layer base {
+  /* Pin the root font size: when the app font is monospace, Chrome resolves
+     html's default `medium` size to its smaller fixed-font size (13px),
+     shrinking every rem-based size in the UI (drawer, text, icons). */
+  html {
+    font-size: 16px;
+  }
+
   :root {
     --font-sans: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     --font-mono: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
@@ -719,3 +726,156 @@ html:not(.dark) .dark\:border-\[\#2E384D\] {
 html .tv-bg { background-color: #fff; }
 html.dark .tv-bg { background-color: #121318 !important; }
 html.dark .tv-bg { box-shadow: none; }
+
+/* Separate font for the text fields (source / translation). Only active when the user turned it on in
+   the sidebar font panel; the variables are set by src/utils/fonts.ts. Unlayered, so it wins over utilities.
+   .app-editor-font = translation field, .app-source-font = source text. */
+:root[data-editor-font] .app-editor-font {
+  font-family: var(--editor-font-family);
+  font-weight: var(--editor-font-weight);
+  font-style: var(--editor-font-style);
+}
+:root[data-editor-font] .app-source-font {
+  font-family: var(--source-font-family);
+  font-weight: var(--source-font-weight);
+  font-style: var(--source-font-style);
+}
+
+/* App-font weight chosen in the font panel: applies to all app text,
+   including headings and buttons that carry their own weight utilities.
+   Only active for non-default weights (see data-app-weight in fonts.ts),
+   so Regular keeps the designed emphasis. Unlayered, so it wins over
+   utilities. The text fields keep their own weight: their rule is more
+   specific, so it still wins for .app-editor-font / .app-source-font. */
+:root[data-app-weight] body,
+:root[data-app-weight] body * {
+  font-weight: var(--app-font-weight);
+}
+
+/* String key titles (e.g. app_name): monospace by default so code identifiers
+   stay readable, but they follow the app font when the user picked a custom
+   one (see data-app-font in fonts.ts). Unlayered, so it wins over utilities. */
+.app-key-font {
+  font-family: var(--font-mono);
+}
+:root[data-app-font='custom'] .app-key-font {
+  font-family: var(--font-sans);
+}
+
+/* ---------- Font picker: letter spacing ---------- */
+/* The panel writes --ls-* (em) from the chosen preset; an unset value means
+   the Default preset, i.e. no explicit spacing. Letter-spacing breaks Arabic
+   letter joining, so Arabic content never gets it: the app rule only applies
+   while the document is LTR, the editor/source fields are guarded by
+   :dir(rtl), and any RTL element is reset to normal (it would otherwise
+   inherit the app value). The panel controls stay disabled for an Arabic
+   target instead. */
+:root[data-ls-on] body:not(:dir(rtl)) {
+  letter-spacing: var(--ls-app, normal);
+}
+:root[data-ls-on] body :is(textarea, input) {
+  letter-spacing: normal;
+}
+:root[data-ls-on] body :dir(rtl) {
+  letter-spacing: normal;
+}
+:root[data-ls-on] .app-editor-font {
+  letter-spacing: var(--ls-editor, var(--ls-app, normal));
+}
+:root[data-ls-on] .app-editor-font:dir(rtl) {
+  letter-spacing: normal;
+}
+:root[data-ls-on] .app-source-font {
+  letter-spacing: var(--ls-source, var(--ls-app, normal));
+}
+:root[data-ls-on] .app-source-font:dir(rtl) {
+  letter-spacing: normal;
+}
+
+/* ---------- Font picker: text effect ---------- */
+/* The effect lives on every interface element, so buttons (which do not
+   inherit text-shadow from body) show it too. The text fields are excluded,
+   and so are the dropdown menus: the rule must not cancel their padding. */
+:root[data-text-fx] body,
+:root[data-text-fx] body *:not(input):not(textarea):not([data-font-menu]):not([data-font-menu] *) {
+  text-shadow: var(--fx-text-shadow, none);
+}
+
+/* ---------- Font picker: thickness slider ---------- */
+/* The slider paints itself completely (appearance: none + an explicit pill
+   track + an explicit round thumb). A native range control is painted by the
+   browser with its accent colour, which drew a ring around the track that no
+   border/outline/box-shadow rule could remove. */
+.fx-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 9999px;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  background: linear-gradient(
+    to right,
+    var(--accent-primary) 0%,
+    var(--accent-primary) var(--p, 50%),
+    var(--slider-track, #d7dce3) var(--p, 50%),
+    var(--slider-track, #d7dce3) 100%
+  );
+  cursor: pointer;
+  touch-action: none;
+}
+.fx-slider::-webkit-slider-runnable-track {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 9999px;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  background: transparent;
+}
+.fx-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  border: none;
+  outline: none;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.35);
+  background: var(--accent-primary);
+  cursor: pointer;
+  margin-top: -4px;
+}
+.fx-slider::-moz-range-track {
+  height: 6px;
+  border-radius: 9999px;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  background: transparent;
+}
+.fx-slider::-moz-range-progress {
+  height: 6px;
+  border-radius: 9999px;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  background: var(--accent-primary);
+}
+.fx-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  border: none;
+  outline: none;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.35);
+  background: var(--accent-primary);
+  cursor: pointer;
+}
+.fx-slider:focus,
+.fx-slider:active {
+  border: none;
+  outline: none;
+  box-shadow: none;
+}

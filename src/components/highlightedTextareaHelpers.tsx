@@ -103,6 +103,7 @@ export function getTextContentHeight(ta: HTMLTextAreaElement, text: string): num
     probe.style.fontSize = computed.fontSize;
     probe.style.fontFamily = computed.fontFamily;
     probe.style.fontWeight = computed.fontWeight;
+    probe.style.fontStyle = computed.fontStyle;
     probe.style.lineHeight = computed.lineHeight;
     probe.style.letterSpacing = computed.letterSpacing;
     probe.style.whiteSpace = 'pre-wrap';

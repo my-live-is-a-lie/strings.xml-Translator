@@ -889,7 +889,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
                         data-key-name
                         onClick={() => onSelectString(item.id)}
                         title={t('open_in_translation_editor')}
-                        className={`flex-1 min-w-0 font-mono text-xs text-start cursor-pointer break-words ${
+                        className={`app-key-font flex-1 min-w-0 text-xs text-start cursor-pointer break-words ${
                           item.id === selectedId
                             ? 'font-semibold text-[#0B57D0] dark:text-[#A8C7FA]'
                             : 'font-medium text-slate-900 dark:text-slate-100'

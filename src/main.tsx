@@ -4,6 +4,7 @@ import App from './App.tsx';
 import './index.css';
 import { initStorage } from './utils/storage';
 import { migrateCustomProviderKeys } from './utils/translator';
+import { initFonts } from './utils/fonts';
 
 if (typeof window !== 'undefined') {
   window.addEventListener(
@@ -65,7 +66,10 @@ class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorBoundary
 const storageReady = Promise.race([
   initStorage(),
   new Promise<void>((resolve) => setTimeout(resolve, 3000)),
-]).then(() => migrateCustomProviderKeys());
+]).then(() => {
+  initFonts();
+  return migrateCustomProviderKeys();
+});
 
 storageReady.finally(() => {
   createRoot(document.getElementById('root')!).render(
