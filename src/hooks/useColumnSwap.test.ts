@@ -8,6 +8,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useColumnSwap } from './useColumnSwap';
 import { getStoredItem } from '../utils/storage';
+import * as storage from '../utils/storage';
 
 // React's act() needs the test-environment flag when rendering outside a runner setup.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -290,6 +291,48 @@ describe('useColumnSwap', () => {
     expect(h.bottomBtn().style.transform).toBe('');
     expect(h.bottomBtn().style.transition).toBe('');
     expect(h.bottomBtn().style.opacity).toBe('');
+    rectSpy.mockRestore();
+    h.unmount();
+  });
+
+  it('keeps transitions off through the content flip, not just the transform clear', () => {
+    // Regression test: the caller re-renders each button's own className when `swapped` flips (its color
+    // belongs to its content, e.g. a 'skip' button is teal and a 'suggest' button is grey — swapping which
+    // content a button holds changes that button's own color, not just which row shows which color). If the
+    // inline `transition: none` were restored *before* that content flip lands, the browser would animate
+    // the resulting color change over the button's own (Tailwind) transition — each button briefly flashing
+    // to the color it's leaving and fading back to the one it's taking on. `setStoredItem` is called from
+    // inside the same state update that flips `swapped`, synchronously and still under `transition: none`;
+    // it stands in here for "the content flip is landing now".
+    const h = renderSwapHookWithButtons(freshKey());
+    const rectSpy = mockButtonRects();
+    const transitionsAtFlip: { top: string; bottom: string } | null = (() => {
+      let captured: { top: string; bottom: string } | null = null;
+      const realSetStoredItem = storage.setStoredItem;
+      const storeSpy = vi.spyOn(storage, 'setStoredItem').mockImplementation((key, value) => {
+        captured = { top: h.topBtn().style.transition, bottom: h.bottomBtn().style.transition };
+        realSetStoredItem(key, value);
+      });
+      act(() => {
+        h.result.bind('top').onPointerDown(pointerEvent());
+      });
+      act(() => {
+        vi.advanceTimersByTime(420);
+      });
+      act(() => {
+        h.result.bind('top').onPointerMove(pointerEvent({ clientY: 250 }));
+      });
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+      storeSpy.mockRestore();
+      return captured;
+    })();
+    expect(h.result.swapped).toBe(true);
+    expect(transitionsAtFlip).toEqual({ top: 'none', bottom: 'none' });
+    // The transition is restored only once the flip has landed.
+    expect(h.topBtn().style.transition).toBe('');
+    expect(h.bottomBtn().style.transition).toBe('');
     rectSpy.mockRestore();
     h.unmount();
   });

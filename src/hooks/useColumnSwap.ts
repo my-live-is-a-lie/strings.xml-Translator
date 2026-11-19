@@ -147,15 +147,10 @@ export function useColumnSwap(storageKey: string) {
         el.style.opacity = '';
         el.style.willChange = '';
       }
-      // Force a style recalc so the cleared transform is committed with `transition: none` in effect; only
-      // then can the inline transition be removed without the buttons' Tailwind transition animating the
-      // transform back from its displaced value (which would be the jump this commit exists to avoid).
+      // Force a style recalc so the cleared transform is committed with `transition: none` in effect — the
+      // jump this commit exists to avoid.
       if (top) void top.getBoundingClientRect();
       else if (bottom) void bottom.getBoundingClientRect();
-      for (const el of [top, bottom]) {
-        if (!el) continue;
-        el.style.transition = '';
-      }
       // Decide the gesture reset first (mutable bookkeeping, not state). The pointer is still down and this is
       // still the current gesture: reset it so dragging back reverses the swap. The held content is now in the
       // opposite row, so the gesture's position flips and the drag origin moves to the finger's current position.
@@ -168,9 +163,14 @@ export function useColumnSwap(storageKey: string) {
         g.moved = true;
       }
       // Flush the content flip and the lift move synchronously, in the same task as the transform clearing
-      // above: the two must land in the same frame, or the pills would flash back to their home rows with the
-      // old content for a frame before the flip paints. (A plain setState here would be batched and could flush
-      // a task later, after the browser has already painted the cleared transforms.)
+      // above, and still under `transition: none`: each button's background and text color belong to its
+      // content ('skip' is teal, 'suggest' is grey), so flipping the content changes a real button's own
+      // className, not just which row shows which color. With the inline transition already restored to the
+      // buttons' own (Tailwind) transition, the browser would animate that color change — each button
+      // visibly flashing to the *other's* color and fading back to its own over the transition's duration.
+      // Flipping the content while transition is still 'none' makes that change land instantly, same as the
+      // transform clear above. (A plain setState here would be batched and could flush a task later, after
+      // the browser has already painted the cleared transforms with the old content.)
       flushSync(() => {
         setSwapped((prev) => {
           const next = !prev;
@@ -181,6 +181,15 @@ export function useColumnSwap(storageKey: string) {
         // press took over), the gesture is already gone and the ring just clears.
         setLiftedPosition(keepGesture ? g.position : null);
       });
+      // Now that the transform clear and the content flip have both landed under `transition: none`, hand
+      // control back to the buttons' own transition classes for whatever changes next (hover, active, the
+      // next swap). Force a recalc first so this doesn't itself re-open a window to animate the change above.
+      if (top) void top.getBoundingClientRect();
+      else if (bottom) void bottom.getBoundingClientRect();
+      for (const el of [top, bottom]) {
+        if (!el) continue;
+        el.style.transition = '';
+      }
       try {
         navigator.vibrate?.(18);
       } catch {
