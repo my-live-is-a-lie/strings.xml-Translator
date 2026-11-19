@@ -60,7 +60,7 @@ function renderSwapHook(storageKey: string) {
 }
 
 /** Drives a full swap gesture: press and hold, then drag past the 40px threshold. */
-function swap(h: ReturnType<typeof renderSwapHook>, position: 'top' | 'bottom') {
+function swap(h: { result: HookResult }, position: 'top' | 'bottom') {
   const dy = position === 'bottom' ? -50 : 50;
   act(() => {
     h.result.bind(position).onPointerDown(pointerEvent());
@@ -70,6 +70,67 @@ function swap(h: ReturnType<typeof renderSwapHook>, position: 'top' | 'bottom') 
   });
   act(() => {
     h.result.bind(position).onPointerMove(pointerEvent({ clientY: 200 + dy }));
+  });
+}
+
+/** Renders the hook with two real buttons attached through bind()'s ref callbacks, so the commit animation has
+ *  elements to move and the hold can measure the row pitch. The buttons sit 48px apart vertically (tops 100 and
+ *  148) once getBoundingClientRect is mocked in the test. */
+function renderSwapHookWithButtons(storageKey: string) {
+  let latest: HookResult | null = null;
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root: Root = createRoot(container);
+  function Probe() {
+    const result = useColumnSwap(storageKey);
+    latest = result;
+    return createElement(
+      'div',
+      null,
+      createElement('button', { ref: result.bind('top').ref, id: 'top-btn' }, 'top'),
+      createElement('button', { ref: result.bind('bottom').ref, id: 'bottom-btn' }, 'bottom')
+    );
+  }
+  act(() => {
+    root.render(createElement(Probe));
+  });
+  return {
+    get result(): HookResult {
+      if (!latest) throw new Error('hook did not render');
+      return latest;
+    },
+    topBtn: () => container.querySelector('#top-btn') as HTMLButtonElement,
+    bottomBtn: () => container.querySelector('#bottom-btn') as HTMLButtonElement,
+    unmount() {
+      act(() => {
+        root.unmount();
+      });
+      container.remove();
+    },
+  };
+}
+
+/** Mocks getBoundingClientRect so the two buttons sit 48px apart vertically — and, like a real browser, the
+ *  returned top includes any translateY currently applied to the element, so the hold-time pitch measurement
+ *  reads the true row distance. */
+function mockButtonRects() {
+  return vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+    this: HTMLElement
+  ) {
+    const base = this.id === 'top-btn' ? 100 : 148;
+    const tyMatch = /translateY\(\s*(-?[\d.]+)px\s*\)/.exec(this.style.transform || '');
+    const top = base + (tyMatch ? parseFloat(tyMatch[1]) : 0);
+    return {
+      x: 0,
+      y: top,
+      width: 200,
+      height: 40,
+      top,
+      right: 200,
+      bottom: top + 40,
+      left: 0,
+      toJSON: () => ({}),
+    } as DOMRect;
   });
 }
 
@@ -113,6 +174,14 @@ describe('useColumnSwap', () => {
       vi.advanceTimersByTime(420);
     });
     expect(h.result.bind('bottom').className).toContain('ring-2');
+    // No filter on the lifted button: the brightness filter duplicated the held button's text on the
+    // phone's GPU compositor (see the flicker fix). The ring is the lift affordance.
+    expect(h.result.bind('bottom').className).not.toContain('brightness');
+    expect(h.result.bind('bottom').className).not.toContain('filter');
+    // No scale on the lifted button either: the CSS `scale` property composes before `transform`, so it
+    // scales the drag/commit translateY itself and overshoots the target row (~2.6px snap back at the
+    // commit). The ring alone is the lift affordance.
+    expect(h.result.bind('bottom').className).not.toContain('scale-');
     h.unmount();
   });
 
@@ -185,15 +254,388 @@ describe('useColumnSwap', () => {
     h.unmount();
   });
 
-  it('shows the pulse animation after a swap and clears it after 260ms', () => {
+  it('trades the buttons places on swap: animates to the target rows first, then flips the content with styles cleared', () => {
+    const h = renderSwapHookWithButtons(freshKey());
+    const rectSpy = mockButtonRects();
+    act(() => {
+      h.result.bind('bottom').onPointerDown(pointerEvent());
+    });
+    act(() => {
+      vi.advanceTimersByTime(420);
+    });
+    // Drag up 45px: past the 40px threshold, so the swap starts — but the content does NOT flip yet.
+    // Phase 1 animates both buttons to their target rows, keeping the content in the same nodes: the held
+    // bottom button to the top row (-48px), the top button to the bottom row (+48px).
+    act(() => {
+      h.result.bind('bottom').onPointerMove(pointerEvent({ clientY: 155 }));
+    });
+    expect(h.result.swapped).toBe(false);
+    expect(h.bottomBtn().style.transform).toBe('translateY(-48px)');
+    expect(h.topBtn().style.transform).toBe('translateY(48px)');
+    expect(h.bottomBtn().style.transition).toContain('250ms');
+    // Phase 2 commits once the animation finishes (fallback timer): the content flips and the inline styles
+    // are cleared, with the buttons already in their new rows.
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(h.result.swapped).toBe(true);
+    expect(h.topBtn().style.transform).toBe('');
+    expect(h.topBtn().style.transition).toBe('');
+    expect(h.bottomBtn().style.transform).toBe('');
+    expect(h.bottomBtn().style.transition).toBe('');
+    rectSpy.mockRestore();
+    h.unmount();
+  });
+
+  it('follows the finger while dragging: held button tracks dy, other counter-moves', () => {
+    const h = renderSwapHookWithButtons(freshKey());
+    const rectSpy = mockButtonRects();
+    act(() => {
+      h.result.bind('top').onPointerDown(pointerEvent());
+    });
+    act(() => {
+      vi.advanceTimersByTime(420);
+    });
+    // Drag down 20px (below the 40px swap threshold): the held top button tracks the finger, the bottom
+    // one counter-moves by the same amount.
+    act(() => {
+      h.result.bind('top').onPointerMove(pointerEvent({ clientY: 220 }));
+    });
+    expect(h.topBtn().style.transform).toBe('translateY(20px)');
+    expect(h.bottomBtn().style.transform).toBe('translateY(-20px)');
+    expect(h.topBtn().style.transition).toBe('none');
+    // Further down, still below the threshold: both keep tracking.
+    act(() => {
+      h.result.bind('top').onPointerMove(pointerEvent({ clientY: 235 }));
+    });
+    expect(h.topBtn().style.transform).toBe('translateY(35px)');
+    expect(h.bottomBtn().style.transform).toBe('translateY(-35px)');
+    // Dragging back moves the buttons back with the finger.
+    act(() => {
+      h.result.bind('top').onPointerMove(pointerEvent({ clientY: 210 }));
+    });
+    expect(h.topBtn().style.transform).toBe('translateY(10px)');
+    expect(h.bottomBtn().style.transform).toBe('translateY(-10px)');
+    expect(h.result.swapped).toBe(false);
+    rectSpy.mockRestore();
+    h.unmount();
+  });
+
+  it('clamps the drag-follow to the row pitch when dragging away from the other row', () => {
+    const h = renderSwapHookWithButtons(freshKey());
+    const rectSpy = mockButtonRects();
+    act(() => {
+      h.result.bind('top').onPointerDown(pointerEvent());
+    });
+    act(() => {
+      vi.advanceTimersByTime(420);
+    });
+    // Dragging up from the top row (the wrong way for a swap) follows the finger only up to the row pitch.
+    act(() => {
+      h.result.bind('top').onPointerMove(pointerEvent({ clientY: 100 }));
+    });
+    expect(h.topBtn().style.transform).toBe('translateY(-48px)');
+    expect(h.bottomBtn().style.transform).toBe('translateY(48px)');
+    expect(h.result.swapped).toBe(false);
+    rectSpy.mockRestore();
+    h.unmount();
+  });
+
+  it('does not flip the content or jump at the threshold: the dragged pill keeps moving in the drag direction', () => {
+    const h = renderSwapHookWithButtons(freshKey());
+    const rectSpy = mockButtonRects();
+    act(() => {
+      h.result.bind('top').onPointerDown(pointerEvent());
+    });
+    act(() => {
+      vi.advanceTimersByTime(420);
+    });
+    // Drag down 45px: past the threshold. The held top button stays on the drag side (down, +48px) through
+    // the commit animation — it never jumps up to the other row the way the old FLIP made it — and the
+    // content has not flipped yet.
+    act(() => {
+      h.result.bind('top').onPointerMove(pointerEvent({ clientY: 245 }));
+    });
+    expect(h.result.swapped).toBe(false);
+    expect(h.topBtn().style.transform).toBe('translateY(48px)');
+    expect(h.bottomBtn().style.transform).toBe('translateY(-48px)');
+    // The commit lands the swap with the buttons already in their new rows.
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(h.result.swapped).toBe(true);
+    expect(h.topBtn().style.transform).toBe('');
+    expect(h.bottomBtn().style.transform).toBe('');
+    rectSpy.mockRestore();
+    h.unmount();
+  });
+
+  it('keeps tracking the finger smoothly when it moves during the commit animation (no jump from a stale drag origin)', () => {
+    const h = renderSwapHookWithButtons(freshKey());
+    const rectSpy = mockButtonRects();
+    act(() => {
+      h.result.bind('top').onPointerDown(pointerEvent());
+    });
+    act(() => {
+      vi.advanceTimersByTime(420);
+    });
+    // Drag down past the threshold: the swap starts (phase 1 animates the pills to their target rows).
+    act(() => {
+      h.result.bind('top').onPointerMove(pointerEvent({ clientY: 250 }));
+    });
+    expect(h.result.swapped).toBe(false);
+    expect(h.topBtn().style.transform).toBe('translateY(48px)');
+    // The finger keeps moving further down WHILE the commit animation is still running. The drag origin
+    // must follow it: if it froze at the trigger point (clientY 250), the commit would reset the origin
+    // there and the next move would apply the whole distance the finger travelled during the animation
+    // at once — the pills would jump ~40px on a 10px finger move (on the phone that reads as a ghost
+    // duplicate of the pill).
+    act(() => {
+      h.result.bind('top').onPointerMove(pointerEvent({ clientY: 280 }));
+    });
+    expect(h.topBtn().style.transform).toBe('translateY(48px)');
+    // The commit lands (fallback timer): the content flips, the styles are cleared, the held content is
+    // now in the bottom row.
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(h.result.swapped).toBe(true);
+    expect(h.topBtn().style.transform).toBe('');
+    expect(h.bottomBtn().style.transform).toBe('');
+    // Move the finger 10px further down from where it was when the commit landed (clientY 280): the
+    // held bottom button must track just those 10px, not the 40px the finger covered during the
+    // animation.
+    act(() => {
+      h.result.bind('top').onPointerMove(pointerEvent({ clientY: 290 }));
+    });
+    expect(h.bottomBtn().style.transform).toBe('translateY(10px)');
+    expect(h.topBtn().style.transform).toBe('translateY(-10px)');
+    rectSpy.mockRestore();
+    h.unmount();
+  });
+
+  it('reverses the swap when dragged back in the same gesture', () => {
+    const h = renderSwapHookWithButtons(freshKey());
+    const rectSpy = mockButtonRects();
+    act(() => {
+      h.result.bind('top').onPointerDown(pointerEvent());
+    });
+    act(() => {
+      vi.advanceTimersByTime(420);
+    });
+    // Drag down past the threshold: the swap commits and the held content moves to the bottom row.
+    act(() => {
+      h.result.bind('top').onPointerMove(pointerEvent({ clientY: 250 }));
+    });
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(h.result.swapped).toBe(true);
+    expect(h.topBtn().style.transform).toBe('');
+    // The lift ring follows the held content to its new (bottom) row.
+    expect(h.result.bind('bottom').className).toContain('ring-2');
+    expect(h.result.bind('top').className).not.toContain('ring-2');
+    // Drag back up from the commit point (clientY 250): the held bottom button tracks the finger up.
+    act(() => {
+      h.result.bind('top').onPointerMove(pointerEvent({ clientY: 230 }));
+    });
+    expect(h.bottomBtn().style.transform).toBe('translateY(-20px)');
+    expect(h.topBtn().style.transform).toBe('translateY(20px)');
+    expect(h.result.swapped).toBe(true);
+    // Drag up past the threshold again: the reverse swap starts, the content does not flip yet.
+    act(() => {
+      h.result.bind('top').onPointerMove(pointerEvent({ clientY: 200 }));
+    });
+    expect(h.result.swapped).toBe(true);
+    expect(h.bottomBtn().style.transform).toBe('translateY(-48px)');
+    expect(h.topBtn().style.transform).toBe('translateY(48px)');
+    // The reverse commit flips the content back.
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(h.result.swapped).toBe(false);
+    expect(h.topBtn().style.transform).toBe('');
+    expect(h.bottomBtn().style.transform).toBe('');
+    rectSpy.mockRestore();
+    h.unmount();
+  });
+
+  it('still completes the swap when the pointer is lifted mid-commit', () => {
+    const h = renderSwapHookWithButtons(freshKey());
+    const rectSpy = mockButtonRects();
+    act(() => {
+      h.result.bind('top').onPointerDown(pointerEvent());
+    });
+    act(() => {
+      vi.advanceTimersByTime(420);
+    });
+    act(() => {
+      h.result.bind('top').onPointerMove(pointerEvent({ clientY: 250 }));
+    });
+    expect(h.result.swapped).toBe(false);
+    // Lift the finger while the commit animation is still running: the swap must still land.
+    act(() => {
+      h.result.bind('top').onPointerUp(pointerEvent({ clientY: 250 }));
+    });
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(h.result.swapped).toBe(true);
+    expect(h.topBtn().style.transform).toBe('');
+    expect(h.bottomBtn().style.transform).toBe('');
+    rectSpy.mockRestore();
+    h.unmount();
+  });
+
+  it('springs back on release before the threshold, without swapping', () => {
+    const h = renderSwapHookWithButtons(freshKey());
+    const rectSpy = mockButtonRects();
+    act(() => {
+      h.result.bind('top').onPointerDown(pointerEvent());
+    });
+    act(() => {
+      vi.advanceTimersByTime(420);
+    });
+    act(() => {
+      h.result.bind('top').onPointerMove(pointerEvent({ clientY: 220 }));
+    });
+    expect(h.topBtn().style.transform).toBe('translateY(20px)');
+    act(() => {
+      h.result.bind('top').onPointerUp(pointerEvent({ clientY: 220 }));
+    });
+    expect(h.result.swapped).toBe(false);
+    expect(h.topBtn().style.transform).toBe('translateY(0)');
+    expect(h.topBtn().style.transition).toContain('180ms');
+    expect(h.bottomBtn().style.transform).toBe('translateY(0)');
+    // After the spring the inline styles are cleared.
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(h.topBtn().style.transform).toBe('');
+    expect(h.topBtn().style.transition).toBe('');
+    expect(h.bottomBtn().style.transform).toBe('');
+    expect(h.bottomBtn().style.transition).toBe('');
+    rectSpy.mockRestore();
+    h.unmount();
+  });
+
+  it('suppresses the click after a cancelled drag, then lets clicks through again', () => {
+    const h = renderSwapHook(freshKey());
+    act(() => {
+      h.result.bind('top').onPointerDown(pointerEvent());
+    });
+    act(() => {
+      vi.advanceTimersByTime(420);
+    });
+    act(() => {
+      h.result.bind('top').onPointerMove(pointerEvent({ clientY: 220 }));
+    });
+    act(() => {
+      h.result.bind('top').onPointerUp(pointerEvent({ clientY: 220 }));
+    });
+    expect(h.result.swapped).toBe(false);
+    const first = clickEvent();
+    act(() => {
+      h.result.bind('top').onClickCapture(first.event);
+    });
+    expect(first.preventDefault).toHaveBeenCalled();
+    expect(first.stopPropagation).toHaveBeenCalled();
+    const second = clickEvent();
+    act(() => {
+      h.result.bind('top').onClickCapture(second.event);
+    });
+    expect(second.preventDefault).not.toHaveBeenCalled();
+    expect(second.stopPropagation).not.toHaveBeenCalled();
+    h.unmount();
+  });
+
+  it('does not drag-follow when prefers-reduced-motion is set', () => {
+    const h = renderSwapHookWithButtons(freshKey());
+    vi.spyOn(window, 'matchMedia').mockImplementation(
+      (query: string) =>
+        ({
+          matches: query === '(prefers-reduced-motion: reduce)',
+          media: query,
+          onchange: null,
+          addListener: () => {},
+          removeListener: () => {},
+          addEventListener: () => {},
+          removeEventListener: () => {},
+          dispatchEvent: () => false,
+        }) as MediaQueryList
+    );
+    const rectSpy = mockButtonRects();
+    act(() => {
+      h.result.bind('top').onPointerDown(pointerEvent());
+    });
+    act(() => {
+      vi.advanceTimersByTime(420);
+    });
+    act(() => {
+      h.result.bind('top').onPointerMove(pointerEvent({ clientY: 220 }));
+    });
+    expect(h.topBtn().style.transform).toBe('');
+    expect(h.bottomBtn().style.transform).toBe('');
+    expect(h.result.swapped).toBe(false);
+    rectSpy.mockRestore();
+    h.unmount();
+  });
+
+  it('does not slide when prefers-reduced-motion is set', () => {
+    const h = renderSwapHookWithButtons(freshKey());
+    vi.spyOn(window, 'matchMedia').mockImplementation(
+      (query: string) =>
+        ({
+          matches: query === '(prefers-reduced-motion: reduce)',
+          media: query,
+          onchange: null,
+          addListener: () => {},
+          removeListener: () => {},
+          addEventListener: () => {},
+          removeEventListener: () => {},
+          dispatchEvent: () => false,
+        }) as MediaQueryList
+    );
+    swap(h, 'bottom');
+    expect(h.result.swapped).toBe(true);
+    expect(h.topBtn().style.transform).toBe('');
+    expect(h.bottomBtn().style.transform).toBe('');
+    h.unmount();
+  });
+
+  it('does not crash when the buttons are not registered', () => {
     const h = renderSwapHook(freshKey());
     swap(h, 'bottom');
-    expect(h.result.bind('bottom').className).toContain('animate-in');
-    act(() => {
-      vi.advanceTimersByTime(260);
-    });
-    expect(h.result.bind('bottom').className).not.toContain('animate-in');
+    expect(h.result.swapped).toBe(true);
     h.unmount();
+  });
+
+  it('cancels the commit when unmounted mid-animation', () => {
+    const h = renderSwapHookWithButtons(freshKey());
+    const setTimeoutSpy = vi.spyOn(window, 'setTimeout');
+    const clearTimeoutSpy = vi.spyOn(window, 'clearTimeout');
+    const rectSpy = mockButtonRects();
+    act(() => {
+      h.result.bind('top').onPointerDown(pointerEvent());
+    });
+    act(() => {
+      vi.advanceTimersByTime(420);
+    });
+    act(() => {
+      h.result.bind('top').onPointerMove(pointerEvent({ clientY: 250 }));
+    });
+    expect(h.result.swapped).toBe(false);
+    // Identify the commit fallback timer by its 370ms delay (250ms slide + 120ms).
+    const commitCall = setTimeoutSpy.mock.calls.findIndex((c) => c[1] === 370);
+    const commitTimerId = setTimeoutSpy.mock.results[commitCall]?.value;
+    expect(commitTimerId).toBeDefined();
+    h.unmount();
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(commitTimerId);
+    // Advancing time after unmount must not throw or update anything.
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    rectSpy.mockRestore();
   });
 
   it('cancels the hold timer when unmounted before the hold completes', () => {
@@ -215,21 +657,4 @@ describe('useColumnSwap', () => {
     });
   });
 
-  it('cancels the pulse timer when unmounted right after a swap', () => {
-    const h = renderSwapHook(freshKey());
-    const setTimeoutSpy = vi.spyOn(window, 'setTimeout');
-    const clearTimeoutSpy = vi.spyOn(window, 'clearTimeout');
-    swap(h, 'bottom');
-    expect(h.result.swapped).toBe(true);
-    // Identify the 260ms pulse timer by its delay (the 400ms click-suppression timer
-    // is started just before it, and React may schedule its own timers too).
-    const pulseCall = setTimeoutSpy.mock.calls.findIndex((c) => c[1] === 260);
-    const pulseTimerId = setTimeoutSpy.mock.results[pulseCall]?.value;
-    expect(pulseTimerId).toBeDefined();
-    h.unmount();
-    expect(clearTimeoutSpy).toHaveBeenCalledWith(pulseTimerId);
-    act(() => {
-      vi.advanceTimersByTime(1000);
-    });
-  });
 });

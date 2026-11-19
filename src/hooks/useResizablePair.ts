@@ -117,7 +117,22 @@ export function useResizablePair(storageKey: string) {
     setRatio(Number.isFinite(n) ? Math.min(0.75, Math.max(0.25, n)) : 0.5);
     const en = parseFloat(getStoredItem(storageKey + '_icon') ?? '');
     setExtra(Number.isFinite(en) ? Math.min(240, Math.max(0, en)) : 0);
-  }, [storageKey]);
+    // A key change means the content in this row was swapped for another button while a press-and-hold was
+    // still in flight: the held button moved to the other row, but `activeSide` still points at this row's
+    // slot, so the ring would sit on the button that just arrived here — which the person is not holding.
+    // Clear it; the held button's own swap-lift ring already cleared with the swap.
+    setActiveSide(null);
+    // Cancel the resize gesture for the old content too: its measurements and live widths belong to the
+    // button that just left this row. Left running, the gesture is stranded — its `live` widths keep the
+    // row on pixel widths instead of the remembered split, and a later press can inherit its state.
+    // (The swap's own gesture is a separate hook and is unaffected.)
+    setLive(null);
+    const g = ctx.gesture;
+    if (g) {
+      window.clearTimeout(g.timer);
+      ctx.gesture = null;
+    }
+  }, [storageKey, ctx]);
 
   const finish = useCallback(
     (commit: boolean) => {

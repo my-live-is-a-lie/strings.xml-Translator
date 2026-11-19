@@ -14,7 +14,12 @@ const RESIZE_STYLE: React.CSSProperties = {
   WebkitUserSelect: 'none',
   WebkitTouchCallout: 'none',
 };
-const ACTIVE_CLASS = 'ring-2 ring-white/50 brightness-110 scale-[1.03] z-10';
+// No brightness filter here either: it is the same held button as the swap lift (both classes apply
+// while a button is held), and the filter duplicated the button's text on the phone's GPU compositor.
+// No scale either: the CSS `scale` property composes before `transform`, so it would scale the swap's
+// drag/commit translateY and overshoot the target row (see the lift comment in useColumnSwap.ts).
+// The ring alone carries the active look.
+const ACTIVE_CLASS = 'ring-2 ring-white/50 z-10';
 
 type IconContent = 'trash' | 'globe';
 type TextContent = 'skip' | 'suggest';
@@ -30,12 +35,14 @@ interface RowSlotHandlers {
 }
 
 /** Merges a column-swap gesture (vertical, swaps this button with its neighbour) with a resize gesture (horizontal,
- *  trades width with the neighbour in the same row) on the same button. */
+ *  trades width with the neighbour in the same row) on the same button. One ref slot serves both: the swap hook
+ *  needs the element for its FLIP slide, the resize pair for its width bookkeeping. */
 function mergeSwapAndResize(
   swap: ReturnType<typeof useColumnSwap>,
   position: SwapPosition,
   side: 'A' | 'B' | 'I',
-  rowh: RowSlotHandlers
+  rowh: RowSlotHandlers,
+  setRef: (el: HTMLButtonElement | null) => void
 ) {
   const b = swap.bind(position);
   return {
@@ -58,6 +65,10 @@ function mergeSwapAndResize(
     onClickCapture: (e: React.MouseEvent<HTMLButtonElement>) => {
       b.onClickCapture(e);
       rowh.onClickCapture(e);
+    },
+    ref: (el: HTMLButtonElement | null) => {
+      b.ref(el);
+      setRef(el);
     },
     className: b.className,
   };
@@ -130,13 +141,12 @@ export const EditorActionButtons: React.FC<EditorActionButtonsProps> = ({
     iconExtra: number,
     activeSide: 'A' | 'B' | 'I' | null
   ) => {
-    const gesture = mergeSwapAndResize(iconSwap, swapPosition, 'I', rowh);
+    const gesture = mergeSwapAndResize(iconSwap, swapPosition, 'I', rowh, setRef);
     if (content === 'trash') {
       return (
         <button
           id="weblate-quick-delete-btn"
           type="button"
-          ref={setRef}
           {...gesture}
           onContextMenu={(e) => e.preventDefault()}
           style={{ ...RESIZE_STYLE, ['--ex' as string]: `${iconExtra}px` }}
@@ -152,7 +162,6 @@ export const EditorActionButtons: React.FC<EditorActionButtonsProps> = ({
       <button
         id="editor-switch-lang-btn"
         type="button"
-        ref={setRef}
         {...gesture}
         onContextMenu={(e) => e.preventDefault()}
         style={{ ...RESIZE_STYLE, ['--ex' as string]: `${iconExtra}px` }}
@@ -176,12 +185,11 @@ export const EditorActionButtons: React.FC<EditorActionButtonsProps> = ({
     setRef: (el: HTMLButtonElement | null) => void,
     activeSide: 'A' | 'B' | 'I' | null
   ) => {
-    const gesture = mergeSwapAndResize(textSwap, swapPosition, 'A', rowh);
+    const gesture = mergeSwapAndResize(textSwap, swapPosition, 'A', rowh, setRef);
     if (content === 'skip') {
       return (
         <button
           id="weblate-skip-btn"
-          ref={setRef}
           type="button"
           {...gesture}
           onContextMenu={(e) => e.preventDefault()}
@@ -197,7 +205,6 @@ export const EditorActionButtons: React.FC<EditorActionButtonsProps> = ({
     return (
       <button
         id="weblate-suggest-btn"
-        ref={setRef}
         type="button"
         {...gesture}
         onContextMenu={(e) => e.preventDefault()}
@@ -219,12 +226,11 @@ export const EditorActionButtons: React.FC<EditorActionButtonsProps> = ({
     setRef: (el: HTMLButtonElement | null) => void,
     activeSide: 'A' | 'B' | 'I' | null
   ) => {
-    const gesture = mergeSwapAndResize(mainSwap, swapPosition, 'B', rowh);
+    const gesture = mergeSwapAndResize(mainSwap, swapPosition, 'B', rowh, setRef);
     if (content === 'continue') {
       return (
         <button
           id="weblate-save-continue-btn"
-          ref={setRef}
           type="button"
           {...gesture}
           onContextMenu={(e) => e.preventDefault()}
@@ -239,7 +245,6 @@ export const EditorActionButtons: React.FC<EditorActionButtonsProps> = ({
     return (
       <button
         id="weblate-save-stay-btn"
-        ref={setRef}
         type="button"
         {...gesture}
         onContextMenu={(e) => e.preventDefault()}
