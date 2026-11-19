@@ -211,34 +211,70 @@ export interface PlaceholderValidation {
  * translator who drops the final `}` of an ICU block should see this as its
  * own error, not as a confusing "Missing placeholders" list.
  *
- * Note: ICU `'...'` quoted literals can contain literal braces; this check
- * (like the parser) does not handle quoting, so a quoted brace would also
- * count here. That is a known Phase 1 limitation.
+ * Braces inside an ICU `'...'` quoted literal (e.g. `"'{'"`) are literal
+ * text, not structure, so they are skipped. `''` is an escaped quote, not a
+ * quote boundary. An unclosed quote stops the skipping, so braces after it
+ * are still counted.
  */
 function hasUnbalancedBraces(text: string): boolean {
   let depth = 0;
-  for (const ch of text) {
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === "'") {
+      if (text[i + 1] === "'") {
+        i += 2; // escaped quote: a literal `'`, not a boundary
+        continue;
+      }
+      // Skip the quoted literal up to its closing quote.
+      const closing = text.indexOf("'", i + 1);
+      if (closing === -1) {
+        // Unclosed quote: stop skipping so braces after it still count.
+        i++;
+        continue;
+      }
+      i = closing + 1;
+      continue;
+    }
     if (ch === '{') depth++;
     else if (ch === '}') {
       depth--;
       if (depth < 0) return true;
     }
+    i++;
   }
   return depth !== 0;
 }
 
 /**
+ * Converts an Android resource locale (e.g. `pt-rBR`, `zh-rCN`) to BCP 47
+ * (`pt-BR`, `zh-CN`), which is what Intl expects. Codes already in BCP 47
+ * form (e.g. `ar`, `pt-BR`) pass through unchanged.
+ */
+function normalizeLocaleForPluralRules(locale: string): string {
+  return locale.replace(/-r([A-Z]{2})/, '-$1');
+}
+
+/**
  * The plural categories a locale requires, from CLDR via Intl.PluralRules.
  * `type` is 'cardinal' for `plural` and 'ordinal' for `selectordinal`.
- * Returns null when the locale is not a valid BCP 47 tag, so callers can fall
- * back to the plain source/target comparison instead of guessing.
+ * Returns null when the locale is not usable, so callers can fall back to
+ * the plain source/target comparison instead of guessing.
+ *
+ * Two silent-failure modes are guarded here: a well-formed but unsupported
+ * tag (e.g. `zz`) does not throw — it silently falls back to the default
+ * locale and would return the wrong categories — so it is rejected via
+ * `supportedLocalesOf`; and an Android-format tag (e.g. `pt-rBR`) would
+ * throw, so it is normalized to BCP 47 first.
  */
 function getPluralCategoriesForLocale(
   locale: string,
   type: 'cardinal' | 'ordinal'
 ): string[] | null {
   try {
-    return [...new Intl.PluralRules(locale, { type }).resolvedOptions().pluralCategories];
+    const normalized = normalizeLocaleForPluralRules(locale);
+    if (Intl.PluralRules.supportedLocalesOf([normalized]).length === 0) return null;
+    return [...new Intl.PluralRules(normalized, { type }).resolvedOptions().pluralCategories];
   } catch {
     return null;
   }
@@ -341,6 +377,10 @@ function comparePlaceholderTokens(
   return { missing, extra };
 }
 
+// Canonical CLDR order for plural categories, so reported lists are
+// deterministic instead of depending on the runtime's `pluralCategories` order.
+const PLURAL_CATEGORY_ORDER = ['zero', 'one', 'two', 'few', 'many', 'other'];
+
 /**
  * Checks the target's plural categories against what its language requires
  * (CLDR). Only runs when both sides keep a plural/selectordinal block; when
@@ -364,11 +404,31 @@ function checkPluralCategories(
   const targetCategories = new Set(
     [...targetCounts.keys()].filter((t) => ICU_LOCALE_PLURAL_CATEGORIES.has(t))
   );
-  const missingCategories = [...expected].filter(
-    (c) => c !== 'other' && !targetCategories.has(c)
+  const missingCategories = PLURAL_CATEGORY_ORDER.filter(
+    (c) => c !== 'other' && expected.has(c) && !targetCategories.has(c)
   );
-  const extraCategories = [...targetCategories].filter((c) => !expected.has(c));
+  const extraCategories = PLURAL_CATEGORY_ORDER.filter(
+    (c) => targetCategories.has(c) && !expected.has(c)
+  );
   return { missingCategories, extraCategories };
+}
+
+/**
+ * Adds HTML tags and literal `%%` to a token-count map.
+ * `extractFormatTokensWithCounts` only returns printf + ICU tokens, but the
+ * old set-based `validatePlaceholders` also compared tags and `%%`, and the
+ * AI-reply check (`checkReply`) relies on it alone to catch a dropped tag.
+ * These are added here — not inside `extractFormatTokensWithCounts` —
+ * because the QA path already covers tags thoroughly via `checkHtmlTags`,
+ * and counting them there too would duplicate the issue.
+ */
+function addHtmlAndPercentCounts(counts: Map<string, number>, text: string): void {
+  for (const tag of text.match(/<\/?[a-zA-Z][^>]*>/g) || []) {
+    counts.set(tag, (counts.get(tag) || 0) + 1);
+  }
+  for (const pct of text.match(/%%/g) || []) {
+    counts.set(pct, (counts.get(pct) || 0) + 1);
+  }
 }
 
 /**
@@ -390,6 +450,10 @@ export function validatePlaceholders(
 ): PlaceholderValidation {
   const sourceCounts = extractFormatTokensWithCounts(source);
   const targetCounts = extractFormatTokensWithCounts(target);
+  // Also compare HTML tags and literal `%%`, which `extractFormatTokensWithCounts`
+  // does not return but the old check did (see `addHtmlAndPercentCounts`).
+  addHtmlAndPercentCounts(sourceCounts, source);
+  addHtmlAndPercentCounts(targetCounts, target);
   const { missing, extra } = comparePlaceholderTokens(sourceCounts, targetCounts, targetLocale);
   const { missingCategories, extraCategories } = checkPluralCategories(
     sourceCounts,
@@ -580,6 +644,36 @@ function checkHtmlTags(source: string, target: string): {
 }
 
 /**
+ * Compares only the printf specifiers (`%s`, `%d`, `%1$s`, ...) of a pair.
+ * Used when the target has unbalanced braces: the ICU/bracket comparison is
+ * unreliable then, but printf specifiers do not involve braces, so a dropped
+ * `%s` is still worth reporting instead of being silently skipped.
+ */
+function comparePrintfSpecifiers(
+  source: string,
+  target: string
+): { missing: string[]; extra: string[] } {
+  const countMatches = (text: string): Map<string, number> => {
+    const counts = new Map<string, number>();
+    for (const m of text.match(FORMAT_SPECIFIER_REGEX) || []) {
+      counts.set(m, (counts.get(m) || 0) + 1);
+    }
+    return counts;
+  };
+  const src = countMatches(source);
+  const tgt = countMatches(target);
+  const missing: string[] = [];
+  const extra: string[] = [];
+  for (const [token, srcCount] of src.entries()) {
+    if ((tgt.get(token) || 0) < srcCount) missing.push(token);
+  }
+  for (const [token, tgtCount] of tgt.entries()) {
+    if (tgtCount > (src.get(token) || 0)) extra.push(token);
+  }
+  return { missing, extra };
+}
+
+/**
  * Checks a single (source, target) pair for Android XML QA issues
  */
 function validateSourceTargetPair(
@@ -597,16 +691,13 @@ function validateSourceTargetPair(
   const issues: QaIssue[] = [];
   const prefix = subKey ? `[${subKey}] ` : '';
 
-  // 0. Unbalanced braces: the placeholder parser cannot reliably extract
-  // tokens from a string with a missing `}`, so report that directly instead
-  // of a misleading "Missing placeholders" list, and skip the placeholder
-  // comparison for this pair (the other checks below still run).
-  const unbalancedSide = hasUnbalancedBraces(source)
-    ? 'source'
-    : hasUnbalancedBraces(target)
-      ? 'target'
-      : null;
-  if (unbalancedSide) {
+  // 0. Unbalanced braces in the TARGET: the placeholder parser cannot
+  // reliably extract tokens from a string with a missing `}`, so report
+  // that directly instead of a misleading "Missing placeholders" list.
+  // An unbalanced SOURCE is not the translator's fault (a lone `{`/`}` in
+  // the source text, e.g. `:-}`, is ordinary text), so it is not an error.
+  const targetUnbalanced = hasUnbalancedBraces(target);
+  if (targetUnbalanced) {
     issues.push({
       id: `${itemId}_${subKey || 'main'}_unbalanced_braces`,
       itemId,
@@ -614,8 +705,8 @@ function validateSourceTargetPair(
       subKey,
       category: 'placeholder',
       severity: 'error',
-      messageEn: `${prefix}Unbalanced braces in the ${unbalancedSide} (a "{" has no matching "}")`,
-      messageAr: `${prefix}أقواس غير متوازنة في النص ${unbalancedSide === 'source' ? 'الأصلي' : 'المترجم'} (يوجد "{" بلا "}" مطابقة)`,
+      messageEn: `${prefix}Unbalanced braces in the translation (a "{" has no matching "}")`,
+      messageAr: `${prefix}أقواس غير متوازنة في النص المترجم (يوجد "{" بلا "}" مطابقة)`,
       tokens: ['{', '}'],
     });
   }
@@ -624,7 +715,41 @@ function validateSourceTargetPair(
   const sourceFormatCounts = extractFormatTokensWithCounts(source);
   const targetFormatCounts = extractFormatTokensWithCounts(target);
 
-  if (!unbalancedSide) {
+  if (targetUnbalanced) {
+    // The ICU/bracket comparison is unreliable with unbalanced braces, but
+    // printf specifiers do not involve braces, so a dropped `%s` is still
+    // reported instead of being silently skipped.
+    const { missing: missingPrintf, extra: extraPrintf } = comparePrintfSpecifiers(
+      source,
+      target
+    );
+    if (missingPrintf.length > 0) {
+      issues.push({
+        id: `${itemId}_${subKey || 'main'}_missing_ph`,
+        itemId,
+        itemName,
+        subKey,
+        category: 'placeholder',
+        severity: 'error',
+        messageEn: `${prefix}Missing placeholder${missingPrintf.length > 1 ? 's' : ''}: ${missingPrintf.join(', ')}`,
+        messageAr: `${prefix}عنصر نائب مفقود: ${missingPrintf.join(', ')}`,
+        tokens: missingPrintf,
+      });
+    }
+    if (extraPrintf.length > 0) {
+      issues.push({
+        id: `${itemId}_${subKey || 'main'}_extra_ph`,
+        itemId,
+        itemName,
+        subKey,
+        category: 'placeholder',
+        severity: 'warning',
+        messageEn: `${prefix}Extra/mismatched placeholder${extraPrintf.length > 1 ? 's' : ''}: ${extraPrintf.join(', ')}`,
+        messageAr: `${prefix}عنصر نائب إضافي أو غير متطابق: ${extraPrintf.join(', ')}`,
+        tokens: extraPrintf,
+      });
+    }
+  } else {
     const { missing: missingPlaceholders, extra: extraPlaceholders } =
       comparePlaceholderTokens(sourceFormatCounts, targetFormatCounts, targetLocale);
 
@@ -659,7 +784,9 @@ function validateSourceTargetPair(
     // 1b. Plural categories for the target language (CLDR). A correct
     // translation needs the categories its own language requires, not the
     // source language's (e.g. Arabic needs zero/two/few/many, Japanese
-    // needs only `other`).
+    // needs only `other`). A missing category is a warning, not an error:
+    // ICU only mandates `other` (a missing category falls back to it), and
+    // a missing `other` is already an error via the strict check above.
     const { missingCategories, extraCategories } = checkPluralCategories(
       sourceFormatCounts,
       targetFormatCounts,
@@ -672,7 +799,7 @@ function validateSourceTargetPair(
         itemName,
         subKey,
         category: 'placeholder',
-        severity: 'error',
+        severity: 'warning',
         messageEn: `${prefix}Missing plural forms for '${targetLocale}': ${missingCategories.join(', ')}`,
         messageAr: `${prefix}صيغ جمع ناقصة للغة '${targetLocale}': ${missingCategories.join(', ')}`,
         tokens: missingCategories,

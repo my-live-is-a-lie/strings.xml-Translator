@@ -212,6 +212,56 @@ describe('validatePlaceholders', () => {
     expect(result.extraInTarget).toEqual(['one', 'few']);
   });
 
+  it('flags a dropped HTML tag (restored after the count-based change)', () => {
+    // The count-based `validatePlaceholders` only returned printf + ICU
+    // tokens, so a dropped `<b>` was silently missed by the AI-reply check.
+    const result = validatePlaceholders('<b>x</b>', 'x');
+    expect(result.valid).toBe(false);
+    expect(result.missingInTarget).toEqual(['<b>', '</b>']);
+  });
+
+  it('flags a dropped literal `%%`', () => {
+    const result = validatePlaceholders('100%% done', '100 done');
+    expect(result.valid).toBe(false);
+    expect(result.missingInTarget).toEqual(['%%']);
+  });
+
+  it('accepts an Android-format locale (pt-rBR) for Brazilian Portuguese', () => {
+    // The app stores target languages in Android format (`pt-rBR`), which
+    // `Intl.PluralRules` rejects; the locale is normalized to BCP 47 first.
+    // pt-BR needs one/many/other.
+    const result = validatePlaceholders(
+      PLURAL_SRC,
+      '{count, plural, one {# livro} many {# livros} other {# livros}}',
+      'pt-rBR'
+    );
+    expect(result.valid).toBe(true);
+    expect(result.missingInTarget).toEqual([]);
+    expect(result.extraInTarget).toEqual([]);
+  });
+
+  it('accepts an Android-format locale (zh-rCN) for Chinese', () => {
+    // zh-CN needs only `other`.
+    const result = validatePlaceholders(
+      PLURAL_SRC,
+      '{count, plural, other {# 本}}',
+      'zh-rCN'
+    );
+    expect(result.valid).toBe(true);
+    expect(result.missingInTarget).toEqual([]);
+    expect(result.extraInTarget).toEqual([]);
+  });
+
+  it('falls back to the plain comparison for an unsupported locale', () => {
+    // `zz` is well-formed but unsupported: `Intl.PluralRules` would silently
+    // return the default locale's categories, so it is rejected and the
+    // plain source/target comparison is used instead.
+    const result = validatePlaceholders(PLURAL_SRC, PLURAL_AR_FULL, 'zz');
+    expect(result.valid).toBe(true);
+    expect(result.missingInTarget).toEqual([]);
+    expect(result.extraInTarget).toEqual(['zero', '#', 'two', 'few', 'many']);
+  });
+
   it('does not double-count a nested offset onto the outer block', () => {
     // Source: outer block has no offset, the nested block has offset:2.
     // Target: outer block gains offset:1, nested block keeps offset:2.
@@ -256,6 +306,39 @@ describe('getItemQaIssues - ICU MessageFormat strings', () => {
     expect(issues.some((i) => i.id.endsWith('_missing_ph'))).toBe(false);
   });
 
+  it('does not flag an unbalanced SOURCE (a lone brace there is ordinary text)', () => {
+    // The source has a stray `}` (`:-}`); that is the developer's text, not
+    // the translator's fault, so it must not raise an error.
+    const item = makeItem('Smile :-}', 'ابتسم :-)', 'smile');
+
+    const issues = getItemQaIssues(item);
+    expect(issues.some((i) => i.id.endsWith('_unbalanced_braces'))).toBe(false);
+    expect(issues.some((i) => i.category === 'placeholder')).toBe(false);
+  });
+
+  it('does not flag a quoted brace (a valid ICU literal)', () => {
+    const item = makeItem("Say '{' now", "قل '{' الآن", 'say');
+
+    const issues = getItemQaIssues(item);
+    expect(issues.some((i) => i.id.endsWith('_unbalanced_braces'))).toBe(false);
+  });
+
+  it('still reports a dropped %s when the target has unbalanced braces', () => {
+    // The target drops both the final `}` and the `%s`: the braces error is
+    // reported, but the printf comparison still runs.
+    const item = makeItem(
+      'You have %s messages {count, plural, one {# book} other {# books}}',
+      'لديك رسائل {count, plural, one {# كتاب} other {# كتب}',
+      'msg_count'
+    );
+
+    const issues = getItemQaIssues(item);
+    expect(issues.some((i) => i.id.endsWith('_unbalanced_braces'))).toBe(true);
+    const missing = issues.find((i) => i.id.endsWith('_missing_ph'));
+    expect(missing).toBeDefined();
+    expect(missing?.tokens).toEqual(['%s']);
+  });
+
   it('reports no placeholder issue for a complete Arabic translation', () => {
     const item = makeItem(PLURAL_SRC, PLURAL_AR_FULL, 'book_count');
 
@@ -263,13 +346,15 @@ describe('getItemQaIssues - ICU MessageFormat strings', () => {
     expect(issues.some((i) => i.category === 'placeholder')).toBe(false);
   });
 
-  it('reports missing plural forms for an incomplete Arabic translation', () => {
+  it('reports missing plural forms for an incomplete Arabic translation as a warning', () => {
     const item = makeItem(PLURAL_SRC, PLURAL_AR_PARTIAL, 'book_count');
 
     const issues = getItemQaIssues(item, 'ar');
     const formsIssue = issues.find((i) => i.id.endsWith('_missing_plural_forms'));
     expect(formsIssue).toBeDefined();
-    expect(formsIssue?.severity).toBe('error');
+    // ICU only mandates `other` (a missing category falls back to it), so a
+    // missing category is a quality issue, not an export-blocking error.
+    expect(formsIssue?.severity).toBe('warning');
     expect(formsIssue?.tokens).toEqual(['zero', 'two', 'few', 'many']);
   });
 
