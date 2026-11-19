@@ -175,6 +175,40 @@ describe('getIcuFieldModel / assembleIcuFields', () => {
     expect(getIcuFieldModel(source, broken)).toBeNull();
   });
 
+
+  it('keeps a separator between two blocks, and only a separator', () => {
+    // A text run that carries no words is structure: keeping it is what stops two clauses from
+    // being glued together. A run with words stays empty so English is never pre-filled.
+    const source = '{a, plural, one {# file} other {# files}} · {b, select, m {He} other {They}}';
+    const model = getIcuFieldModel(source, '')!;
+    const middle = model[1];
+    expect(middle).toMatchObject({ kind: 'text', value: ' · ' });
+    const filled = setIcuClauseValue(
+      setIcuClauseValue(
+        setIcuClauseValue(setIcuClauseValue(model, 0, 0, '# ملف'), 0, 1, '# ملفات'),
+        2,
+        0,
+        'هو'
+      ),
+      2,
+      1,
+      'هم'
+    );
+    expect(assembleIcuFields(filled)).toBe('{a, plural, one {# ملف} other {# ملفات}} · {b, select, m {هو} other {هم}}');
+
+    // A run with words is not kept: the user writes it.
+    const withWords = getIcuFieldModel('You have {n, plural, one {a} other {b}}', '')!;
+    expect(withWords[0]).toMatchObject({ kind: 'text', value: '', sourceValue: 'You have ' });
+  });
+
+  it('keeps a punctuation-only prefix too, and still empties a real sentence', () => {
+    const punct = getIcuFieldModel('({n, plural, one {a} other {b}})', '')!;
+    expect(punct[0]).toMatchObject({ kind: 'text', value: '(' });
+    expect(punct[2]).toMatchObject({ kind: 'text', value: ')' });
+    const sentence = getIcuFieldModel('Note: {n, plural, one {a} other {b}}', '')!;
+    expect(sentence[0]).toMatchObject({ kind: 'text', value: '' });
+  });
+
   it('editing one body only changes that body', () => {
     const t = '{g, select, male {He} female {She} other {They}} wrote';
     const model = getIcuFieldModel(t, t)!;

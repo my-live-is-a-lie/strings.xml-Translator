@@ -483,6 +483,13 @@ export type IcuField = IcuTextField | IcuBlockField;
 
 const ICU_BLOCK_HEADER = /^\{([^,]*),([^,]*),/;
 
+/**
+ * A text run between two blocks that carries no words: only whitespace and punctuation
+ * (`' · '`, `' / '`, `' — '`). It is structure, so the fields view keeps it instead of
+ * starting it empty — otherwise the separator vanished from the saved string.
+ */
+const STRUCTURAL_TEXT_RUN = /^[\s\p{P}\p{S}]*$/u;
+
 /** Splits one block part into its frame and clauses, or null when it cannot be read reliably. */
 function parseBlockField(part: IcuBlockPart): IcuBlockField | null {
   const bodies = part.bodies;
@@ -603,9 +610,14 @@ export function getIcuFieldModel(source: string, target: string): IcuField[] | n
     if (field.kind === 'text') {
       if (targetIsEmpty) {
         // Every text run starts empty (a placeholder for text the user will type) with the
-        // source as the reference. Whitespace used as structure between blocks (`' '`) is kept
-        // verbatim, because dropping it would glue two blocks together.
-        return { kind: 'text', value: field.value.trim() === '' ? field.value : '', sourceValue: field.value };
+        // source as the reference. Punctuation used as structure between blocks (`' · '`,
+        // `' '`, `' / '`) is kept verbatim: it carries no words to translate, and dropping it
+        // glued two clauses together — `{a…} · {b…}` saved as `{a…}{b…}` with no warning.
+        return {
+          kind: 'text',
+          value: STRUCTURAL_TEXT_RUN.test(field.value) ? field.value : '',
+          sourceValue: field.value,
+        };
       }
       return { kind: 'text', value: field.value, sourceValue: sourceTexts[textIndex++]?.value ?? '' };
     }
