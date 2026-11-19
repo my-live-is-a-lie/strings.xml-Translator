@@ -1,9 +1,135 @@
 import { ResourceItem } from '../types';
 import { countLineBreaks } from './newlines';
 
+// ICU MessageFormat argument types that carry sub-message clauses in braces
+// (e.g. `{count, plural, one {...} other {...}}`). Other ICU types such as
+// `number`, `date`, `time`, `duration`, `spellout` and `ordinal` only take a
+// simple style keyword with no nested braces, so they don't need clause parsing.
+const ICU_PLURAL_LIKE_FORMAT_TYPES = new Set(['plural', 'selectordinal']);
+const ICU_CLAUSE_FORMAT_TYPES = new Set(['plural', 'select', 'selectordinal']);
+
 /**
- * Extracts Android string format specifiers and HTML tags
- * Matches: %s, %d, %1$s, %2$d, %1.2f, {0}, <b>, </b>, etc.
+ * Finds the index of the closing brace that matches the opening brace at
+ * `openIndex`, counting nested `{`/`}` pairs so ICU MessageFormat blocks like
+ * `{count, plural, one {# book} other {# books}}` are matched correctly
+ * instead of stopping at the first `}` found.
+ */
+function findMatchingBrace(text: string, openIndex: number): number {
+  let depth = 0;
+  for (let i = openIndex; i < text.length; i++) {
+    if (text[i] === '{') depth++;
+    else if (text[i] === '}') {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+/**
+ * Walks `text` and extracts placeholder-like tokens, correctly handling
+ * nested/balanced braces for ICU MessageFormat syntax
+ * (`{var, plural|select|selectordinal, ...}`) so the reserved ICU keywords
+ * (plural/select/selectordinal, one/few/many/other/zero/two, male/female,
+ * `=0`/`=1`, `offset:N`) and the variable name are recognized as tokens that
+ * must be preserved, while the translatable sub-message text inside each
+ * clause is left alone (and recursed into, in case it nests further
+ * placeholders or ICU blocks). Plain `{0}` / `{username}`-style placeholders
+ * are still matched as before. `#` is only treated as a token while inside a
+ * plural/selectordinal clause's own sub-message, where ICU replaces it with
+ * the formatted number.
+ *
+ * Note: this is a lightweight, "good enough" parser for Phase 1 — it does
+ * not implement ICU's `'...'` quoted-literal escaping.
+ */
+function extractBraceTokens(text: string, inPluralClause: boolean): string[] {
+  const tokens: string[] = [];
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === '{') {
+      const close = findMatchingBrace(text, i);
+      if (close === -1) {
+        // Unbalanced brace - nothing more we can safely parse from here.
+        i++;
+        continue;
+      }
+      const inner = text.slice(i + 1, close);
+      const commaIdx = inner.indexOf(',');
+      if (commaIdx !== -1) {
+        const argName = inner.slice(0, commaIdx).trim();
+        const rest = inner.slice(commaIdx + 1);
+        const nextCommaIdx = rest.indexOf(',');
+        const formatType = (nextCommaIdx !== -1 ? rest.slice(0, nextCommaIdx) : rest).trim();
+
+        if (/^[a-zA-Z0-9_]+$/.test(argName) && formatType) {
+          tokens.push(`{${argName}}`);
+
+          if (ICU_CLAUSE_FORMAT_TYPES.has(formatType)) {
+            tokens.push(formatType);
+            const styleAndClauses = nextCommaIdx !== -1 ? rest.slice(nextCommaIdx + 1) : '';
+
+            const offsetMatch = styleAndClauses.match(/offset:\s*-?\d+/);
+            if (offsetMatch) {
+              tokens.push(offsetMatch[0].replace(/\s+/g, ''));
+            }
+
+            const clauseIsPluralLike = ICU_PLURAL_LIKE_FORMAT_TYPES.has(formatType);
+            let j = 0;
+            while (j < styleAndClauses.length) {
+              while (j < styleAndClauses.length && /\s/.test(styleAndClauses[j])) j++;
+              if (j >= styleAndClauses.length) break;
+              if (styleAndClauses[j] === '{') {
+                // Stray brace with no preceding selector keyword - skip past it.
+                const strayClose = findMatchingBrace(styleAndClauses, j);
+                if (strayClose === -1) break;
+                j = strayClose + 1;
+                continue;
+              }
+              const kwMatch = /^[=\w-]+/.exec(styleAndClauses.slice(j));
+              if (!kwMatch) {
+                j++;
+                continue;
+              }
+              const keyword = kwMatch[0];
+              j += keyword.length;
+              while (j < styleAndClauses.length && /\s/.test(styleAndClauses[j])) j++;
+              if (styleAndClauses[j] === '{') {
+                const subClose = findMatchingBrace(styleAndClauses, j);
+                if (subClose === -1) break;
+                tokens.push(keyword);
+                const subMessage = styleAndClauses.slice(j + 1, subClose);
+                tokens.push(...extractBraceTokens(subMessage, clauseIsPluralLike));
+                j = subClose + 1;
+              }
+            }
+          } else if (rest.includes('{')) {
+            // An ICU type we don't specially parse (number/date/time/...) but
+            // its style still contains braces - recurse defensively.
+            tokens.push(...extractBraceTokens(rest, false));
+          }
+        } else {
+          tokens.push(...extractBraceTokens(inner, false));
+        }
+      } else if (/^[a-zA-Z0-9_-]+$/.test(inner.trim())) {
+        tokens.push(`{${inner.trim()}}`);
+      } else {
+        tokens.push(...extractBraceTokens(inner, false));
+      }
+      i = close + 1;
+    } else if (ch === '#' && inPluralClause) {
+      tokens.push('#');
+      i++;
+    } else {
+      i++;
+    }
+  }
+  return tokens;
+}
+
+/**
+ * Extracts Android string format specifiers, ICU MessageFormat tokens and HTML tags
+ * Matches: %s, %d, %1$s, %2$d, %1.2f, {0}, {count, plural, one {# book} other {# books}}, <b>, </b>, etc.
  */
 export function extractPlaceholders(text: string): string[] {
   if (!text) return [];
@@ -17,12 +143,9 @@ export function extractPlaceholders(text: string): string[] {
     found.push(...formatMatches);
   }
 
-  // ICU / bracket placeholders like {0}, {count}, {username}
-  const bracketRegex = /\{[a-zA-Z0-9_-]+\}/g;
-  const bracketMatches = text.match(bracketRegex);
-  if (bracketMatches) {
-    found.push(...bracketMatches);
-  }
+  // ICU / bracket placeholders like {0}, {count}, {username}, and ICU MessageFormat
+  // plural/select/selectordinal blocks (with their reserved keywords and variable name).
+  found.push(...extractBraceTokens(text, false));
 
   // HTML tags like <b>, <i>, <u>, <font color="...">, etc.
   const tagRegex = /<\/?[a-zA-Z][^>]*>/g;
@@ -48,7 +171,12 @@ export function validatePlaceholders(source: string, target: string): Placeholde
   const sourceTokens = extractPlaceholders(source);
   const targetTokens = extractPlaceholders(target);
 
-  const missingInTarget = sourceTokens.filter((token) => !target.includes(token));
+  // Note: checked against the extracted target tokens rather than a raw substring
+  // search of `target`, since ICU MessageFormat tokens (e.g. the `{count}` token
+  // representing the `count` variable in `{count, plural, ...}`) are synthesized
+  // from the parsed structure and aren't necessarily a literal substring of the
+  // original ICU text.
+  const missingInTarget = sourceTokens.filter((token) => !targetTokens.includes(token));
   const extraInTarget = targetTokens.filter((token) => !sourceTokens.includes(token));
 
   return {
@@ -82,7 +210,6 @@ export interface ItemQaResult {
 }
 
 const FORMAT_SPECIFIER_REGEX = /%(?:\d+\$)?[+-]?\d*(?:\.\d+)?[bcdefgopsx]/gi;
-const BRACKET_PLACEHOLDER_REGEX = /\{[a-zA-Z0-9_-]+\}/g;
 const ALLOWED_ANDROID_HTML_TAGS = new Set([
   'b',
   'i',
@@ -111,9 +238,9 @@ function extractFormatTokensWithCounts(text: string): Map<string, number> {
   if (!text) return counts;
 
   const printfMatches = text.match(FORMAT_SPECIFIER_REGEX) || [];
-  const bracketMatches = text.match(BRACKET_PLACEHOLDER_REGEX) || [];
+  const icuMatches = extractBraceTokens(text, false);
 
-  for (const token of [...printfMatches, ...bracketMatches]) {
+  for (const token of [...printfMatches, ...icuMatches]) {
     counts.set(token, (counts.get(token) || 0) + 1);
   }
   return counts;
