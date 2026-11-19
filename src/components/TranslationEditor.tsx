@@ -10,7 +10,7 @@ import { DemoBanner } from './DemoBanner';
 import { LanguageSelectorModal } from './LanguageSelectorModal';
 import { HighlightedTextarea } from './HighlightedTextarea';
 import { getArabicLanguageName, getLanguageOption } from '../utils/languages';
-import { suggestTranslation, suggestionRejectedForIcu } from '../utils/translator';
+import { isFillableSuggestion, suggestTranslation, suggestionRejectedForIcu } from '../utils/translator';
 import { normalizePluralsForLanguage } from '../utils/xmlParser';
 import { fixItemEndings } from '../utils/endPunctuation';
 import { fixItemSyntax, FixNote } from '../utils/syntaxFix';
@@ -1210,7 +1210,9 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       if (draftItem.type === 'string') {
         const res = await suggestTranslation(draftItem.source, targetLang, targetLocaleName);
         setIcuRejected(suggestionRejectedForIcu());
-        if (res && res.text) {
+        // A rejected suggestion hands back the unchanged source text; filling it would
+        // show English as "translated", so leave the box and the status untouched.
+        if (isFillableSuggestion(res)) {
           const isNowEmpty = !res.text.trim();
           const updated: SingleStringItem = {
             ...draftItem,
@@ -1222,42 +1224,46 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
           updateDraftItem(updated, { undoDeletesText: true });
         }
       } else if (draftItem.type === 'plural') {
-        const updated = await Promise.all(
-          normalizedPluralItems.map(async (pi) => {
-            const res = await suggestTranslation(pi.source, targetLang, targetLocaleName, pi.quantity);
-            return {
-              ...pi,
-              target: res?.text || pi.target,
-            };
-          })
+        const results = await Promise.all(
+          normalizedPluralItems.map(async (pi) => ({
+            pi,
+            res: await suggestTranslation(pi.source, targetLang, targetLocaleName, pi.quantity),
+          }))
         );
         setIcuRejected(suggestionRejectedForIcu());
+        const anyFilled = results.some(({ res }) => isFillableSuggestion(res));
+        const updated = results.map(({ pi, res }) => ({
+          ...pi,
+          target: isFillableSuggestion(res) ? res.text : pi.target,
+        }));
         updateDraftItem(
           {
             ...draftItem,
             items: updated,
-            status: 'translated',
-            translationSource: 'ai',
+            status: anyFilled ? 'translated' : draftItem.status,
+            translationSource: anyFilled ? 'ai' : draftItem.translationSource,
           },
           { undoDeletesText: true }
         );
       } else if (draftItem.type === 'array') {
-        const updated = await Promise.all(
-          draftItem.items.map(async (ai) => {
-            const res = await suggestTranslation(ai.source, targetLang, targetLocaleName);
-            return {
-              ...ai,
-              target: res?.text || ai.target,
-            };
-          })
+        const results = await Promise.all(
+          draftItem.items.map(async (ai) => ({
+            ai,
+            res: await suggestTranslation(ai.source, targetLang, targetLocaleName),
+          }))
         );
         setIcuRejected(suggestionRejectedForIcu());
+        const anyFilled = results.some(({ res }) => isFillableSuggestion(res));
+        const updated = results.map(({ ai, res }) => ({
+          ...ai,
+          target: isFillableSuggestion(res) ? res.text : ai.target,
+        }));
         updateDraftItem(
           {
             ...draftItem,
             items: updated,
-            status: 'translated',
-            translationSource: 'ai',
+            status: anyFilled ? 'translated' : draftItem.status,
+            translationSource: anyFilled ? 'ai' : draftItem.translationSource,
           },
           { undoDeletesText: true }
         );

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   bulkTranslateItems,
   clearTranslationCache,
+  isFillableSuggestion,
   isRetryableError,
   suggestTranslation,
   suggestionRejectedForIcu,
@@ -275,5 +276,28 @@ describe('a rejected suggestion is reported honestly', () => {
     const [out] = (await bulkTranslateItems([arr], 'ar')) as ArrayStringItem[];
     expect(out.status).toBe('untranslated');
     expect(out.translationEngine).toBeUndefined();
+  });
+
+  it('a later engine succeeding in the same call clears the rejection flag', async () => {
+    // Google breaks the block (flag set), MyMemory answers it whole: the suggestion is
+    // good, so no alert may appear next to it. Before the fix the flag only ever went
+    // true, and the editor warned about a suggestion that was actually fine.
+    replyWith(
+      '{count, plural, one {# رسالة}}',
+      '{count, plural, one {# رسالة} other {# رسائل}}'
+    );
+    const res = await suggestTranslation(PLURAL, 'ar');
+    expect(res.source).toBe('mymemory');
+    expect(res.text).toBe('{count, plural, one {# رسالة} other {# رسائل}}');
+    expect(suggestionRejectedForIcu()).toBe(false);
+  });
+
+  it('isFillableSuggestion only accepts a real translation', () => {
+    expect(isFillableSuggestion({ text: 'مرحبا', source: 'google' })).toBe(true);
+    expect(isFillableSuggestion({ text: 'إلغاء', source: 'glossary' })).toBe(true);
+    expect(isFillableSuggestion({ text: 'Hello', source: 'heuristic' })).toBe(false);
+    expect(isFillableSuggestion({ text: '', source: 'google' })).toBe(false);
+    expect(isFillableSuggestion(undefined)).toBe(false);
+    expect(isFillableSuggestion(null)).toBe(false);
   });
 });

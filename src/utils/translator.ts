@@ -729,6 +729,17 @@ let lastSuggestionRejectedForIcu = false;
 export function suggestionRejectedForIcu(): boolean {
   return lastSuggestionRejectedForIcu;
 }
+
+/**
+ * True when a suggestion is worth filling into the editor: a real translation, not the
+ * unchanged source text handed back when every engine failed or broke an ICU block.
+ * The editor uses this in all three Suggest branches so a rejected suggestion leaves the
+ * box — and the item's status — exactly as they were, instead of showing English as
+ * "translated".
+ */
+export function isFillableSuggestion(res: SuggestionResult | undefined | null): res is SuggestionResult {
+  return Boolean(res && res.text && res.source !== 'heuristic');
+}
 export const GTX_STATUS_EVENT = 'gtx-status-change';
 
 function noteGtxResult(ok: boolean): void {
@@ -767,6 +778,9 @@ async function translateSingleSegment(
   const cached = cachedSegmentLookup(key);
   if (cached) return cached;
   const result = await translateSingleSegmentUncached(segment, baseLang, directLang, targetLocaleName, pluralQuantity);
+  // A later engine can succeed after an earlier one broke the block: the suggestion is
+  // good, so the rejection flag must not survive into the editor's alert.
+  if (result.source !== 'heuristic') lastSuggestionRejectedForIcu = false;
   cacheSegmentResult(key, result);
   return result;
 }
