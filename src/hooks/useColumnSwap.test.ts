@@ -321,7 +321,7 @@ describe('useColumnSwap', () => {
     h.unmount();
   });
 
-  it('clamps the drag-follow to the row pitch when dragging away from the other row', () => {
+  it('does not drag-follow at all when dragging away from the other row (nothing there to receive it)', () => {
     const h = renderSwapHookWithButtons(freshKey());
     const rectSpy = mockButtonRects();
     act(() => {
@@ -330,12 +330,13 @@ describe('useColumnSwap', () => {
     act(() => {
       vi.advanceTimersByTime(420);
     });
-    // Dragging up from the top row (the wrong way for a swap) follows the finger only up to the row pitch.
+    // Dragging up from the top row (the wrong way for a swap): the clamp is one-sided, so the held button
+    // stays put instead of riding up past its own row with nothing above to receive it.
     act(() => {
       h.result.bind('top').onPointerMove(pointerEvent({ clientY: 100 }));
     });
-    expect(h.topBtn().style.transform).toBe('translateY(-48px)');
-    expect(h.bottomBtn().style.transform).toBe('translateY(48px)');
+    expect(h.topBtn().style.transform).toBe('translateY(0px)');
+    expect(h.bottomBtn().style.transform).toBe('translateY(0px)');
     expect(h.result.swapped).toBe(false);
     rectSpy.mockRestore();
     h.unmount();
@@ -402,14 +403,16 @@ describe('useColumnSwap', () => {
     expect(h.result.swapped).toBe(true);
     expect(h.topBtn().style.transform).toBe('');
     expect(h.bottomBtn().style.transform).toBe('');
-    // Move the finger 10px further down from where it was when the commit landed (clientY 280): the
-    // held bottom button must track just those 10px, not the 40px the finger covered during the
-    // animation.
+    // Move the finger 10px back up from where it was when the commit landed (clientY 280): the held
+    // bottom button must track just those 10px, not the 40px the finger covered during the animation
+    // (that staler, larger distance is what a frozen drag origin would produce instead). Moving up
+    // rather than on down the same way as before the commit, since up is now the valid direction for
+    // the bottom position (down has no row below to receive it, and the one-sided clamp zeroes it).
     act(() => {
-      h.result.bind('top').onPointerMove(pointerEvent({ clientY: 290 }));
+      h.result.bind('top').onPointerMove(pointerEvent({ clientY: 270 }));
     });
-    expect(h.bottomBtn().style.transform).toBe('translateY(10px)');
-    expect(h.topBtn().style.transform).toBe('translateY(-10px)');
+    expect(h.bottomBtn().style.transform).toBe('translateY(-10px)');
+    expect(h.topBtn().style.transform).toBe('translateY(10px)');
     rectSpy.mockRestore();
     h.unmount();
   });
@@ -456,6 +459,40 @@ describe('useColumnSwap', () => {
     expect(h.result.swapped).toBe(false);
     expect(h.topBtn().style.transform).toBe('');
     expect(h.bottomBtn().style.transform).toBe('');
+    rectSpy.mockRestore();
+    h.unmount();
+  });
+
+  it('stops at the row after a swap commits, even if the finger keeps moving the same way', () => {
+    // Regression test: holding and dragging straight through a swap (never reversing) used to let the
+    // dragged pill keep riding past its own row by a further full pitch, with nothing there to receive
+    // it (it could ride up over the UI above the top row, or down past the bottom row). On release it
+    // would then spring back from that overshoot, which read as a sudden jump.
+    const h = renderSwapHookWithButtons(freshKey());
+    const rectSpy = mockButtonRects();
+    act(() => {
+      h.result.bind('top').onPointerDown(pointerEvent());
+    });
+    act(() => {
+      vi.advanceTimersByTime(420);
+    });
+    // Drag down past the threshold: the swap commits (held content moves from the top row to the bottom).
+    act(() => {
+      h.result.bind('top').onPointerMove(pointerEvent({ clientY: 250 }));
+    });
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(h.result.swapped).toBe(true);
+    // Keep dragging further down, in the same direction as before — not reversing the swap. The held
+    // content is now in the bottom row, where dragging further down is the wrong way (nothing below it
+    // to swap with), so it should not move at all.
+    act(() => {
+      h.result.bind('top').onPointerMove(pointerEvent({ clientY: 280 }));
+    });
+    expect(h.topBtn().style.transform).toBe('translateY(0px)');
+    expect(h.bottomBtn().style.transform).toBe('translateY(0px)');
+    expect(h.result.swapped).toBe(true);
     rectSpy.mockRestore();
     h.unmount();
   });

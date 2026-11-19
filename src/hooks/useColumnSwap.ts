@@ -322,11 +322,23 @@ export function useColumnSwap(storageKey: string) {
       // the midpoint. Direct style writes only — no React state per pointermove — and vertical only, so the
       // horizontal resize gesture is untouched. `transition: none` keeps the tracking 1:1 instead of lagging
       // behind the buttons' Tailwind transition.
+      //
+      // The clamp is one-sided, not ±pitch: a 'bottom' pill only has somewhere to go upward (toward the
+      // swap), and a 'top' pill only downward. Clamping symmetrically let the held pill keep following the
+      // finger past its own row in the *other* direction — nothing above a 'top' pill or below a 'bottom'
+      // one to receive it — so it could ride up over the toolbar row (or down past its row) with no swap
+      // to show for it. That is also what a drag that continues past a just-committed swap looked like:
+      // commitSwap() flips `g.position` to carry on a reversing drag, and without this one-sided clamp the
+      // same continued motion in the *original* direction (now the wrong way for the new position) dragged
+      // the pill off its row again, springing back with a visible jump on release.
       if (!g.reducedMotion && g.pitch > 0) {
         const held = elsRef.current[g.position];
         const other = elsRef.current[g.position === 'top' ? 'bottom' : 'top'];
         if (held && other) {
-          const clamped = Math.max(-g.pitch, Math.min(g.pitch, dy));
+          const clamped =
+            g.position === 'bottom'
+              ? Math.max(-g.pitch, Math.min(0, dy))
+              : Math.max(0, Math.min(g.pitch, dy));
           for (const [el, ty] of [
             [held, clamped],
             [other, -clamped],
