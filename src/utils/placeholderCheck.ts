@@ -542,17 +542,69 @@ function buildIcuFields(text: string): IcuField[] | null {
 export function getIcuFieldModel(source: string, target: string): IcuField[] | null {
   const sourceFields = buildIcuFields(source);
   const targetIsEmpty = target.trim() === '';
-  const fields = targetIsEmpty ? sourceFields : buildIcuFields(target);
+  const targetFields = targetIsEmpty ? null : buildIcuFields(target);
+  // A non-empty target that yields no fields has no block or a broken one: no fields view.
+  // (An empty target is the "not translated yet" case and borrows the source's structure.)
+  if (!targetIsEmpty && !targetFields) return null;
+  const fields = targetFields ?? sourceFields;
   if (!fields) return null;
 
   const sourceTexts = (sourceFields ?? []).filter((f): f is IcuTextField => f.kind === 'text');
   const sourceBlocks = (sourceFields ?? []).filter((f): f is IcuBlockField => f.kind === 'block');
+
+  // A target that holds every block but is missing a TEXT RUN (the user typed in one field of
+  // an otherwise empty string, or a translation dropped a run) must not shrink the fields view:
+  // deriving from the target alone made the untouched runs disappear, so they could never be
+  // filled in and the saved string silently lost their text. The source layout is used instead
+  // and whatever the target already provides is overlaid.
+  // A target whose block does not parse, or that has no block at all, keeps its own handling:
+  // the caller shows the raw textarea and the save gate explains why.
+  if (targetFields) {
+    const targetBlockCount = targetFields.filter((f) => f.kind === 'block').length;
+    const targetTextCount = targetFields.filter((f) => f.kind === 'text').length;
+    const fillsInMissingTextRuns =
+      targetBlockCount > 0 && targetBlockCount === sourceBlocks.length && targetTextCount < sourceTexts.length;
+    if (fillsInMissingTextRuns) {
+      const targetBlocks = targetFields.filter((f): f is IcuBlockField => f.kind === 'block');
+      // Group the target's text runs by the segment they sit in (before the first block,
+      // between two blocks, after the last block) and overlay each run onto the source run in
+      // the SAME segment. A purely positional overlay got this wrong: when the user had typed
+      // only in the trailing run, the target's only run was assigned to the source's FIRST run,
+      // so the text silently moved to the front of the string on the next keystroke.
+      const targetSegments: string[][] = [[]];
+      for (const f of targetFields) {
+        if (f.kind === 'block') targetSegments.push([]);
+        else targetSegments[targetSegments.length - 1].push(f.value);
+      }
+      const taken = targetSegments.map(() => 0);
+      let b = 0;
+      let segment = 0;
+      return sourceFields!.map((field) => {
+        if (field.kind === 'text') {
+          const value = targetSegments[segment]?.[taken[segment]++] ?? '';
+          return { kind: 'text', value, sourceValue: field.value };
+        }
+        segment++;
+        const fromTarget = targetBlocks[b++];
+        return {
+          ...field,
+          clauses: field.clauses.map((clause) => {
+            const match = fromTarget?.clauses.find((c) => c.selector === clause.selector);
+            return { ...clause, value: match?.value ?? '', sourceValue: clause.value };
+          }),
+        };
+      });
+    }
+  }
+
   let textIndex = 0;
   let blockIndex = 0;
   return fields.map((field) => {
     if (field.kind === 'text') {
       if (targetIsEmpty) {
-        // Whitespace between blocks is structure, so it is kept; real text starts empty.
+        // Every text run starts empty (a placeholder for text the user will type) with the
+        // source as the reference. Whitespace used as structure between blocks (`' '`) is kept
+        // verbatim, because dropping it would glue two blocks together.
         return { kind: 'text', value: field.value.trim() === '' ? field.value : '', sourceValue: field.value };
       }
       return { kind: 'text', value: field.value, sourceValue: sourceTexts[textIndex++]?.value ?? '' };

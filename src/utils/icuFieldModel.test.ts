@@ -126,6 +126,55 @@ describe('getIcuFieldModel / assembleIcuFields', () => {
     expect(roundTrip(t, t)).toBe(t);
   });
 
+
+  it('keeps the text runs the target does not have yet', () => {
+    // The fields view is derived from the target once it holds a block. Typing in ONE field of
+    // an otherwise empty string used to produce a target with a single text run, so the other
+    // runs vanished: their text could never be filled in, and the string saved without it.
+    // ("You have {…} in your inbox" lost " in your inbox" after one keystroke.)
+    const source = 'You have {count, plural, one {# message} other {# messages}} in your inbox';
+    const empty = getIcuFieldModel(source, '')!;
+    expect(empty.filter((f) => f.kind === 'text')).toHaveLength(2);
+
+    // After the user types in the FIRST run only, the trailing run must still be there.
+    const partial = assembleIcuFields(setIcuTextValue(empty, 0, 'لديك '));
+    expect(partial).toBe('لديك {count, plural, one {} other {}}');
+    const model = getIcuFieldModel(source, partial)!;
+    expect(model.filter((f) => f.kind === 'text')).toHaveLength(2);
+    expect(assembleIcuFields(model)).toBe(partial);
+
+    // Filling it in rebuilds the whole string, with the target's own text kept.
+    const filled = setIcuTextValue(
+      setIcuClauseValue(setIcuClauseValue(setIcuTextValue(model, 0, 'لديك '), 1, 0, '# رسالة'), 1, 1, '# رسائل'),
+      2,
+      ' في بريدك'
+    );
+    expect(assembleIcuFields(filled)).toBe('لديك {count, plural, one {# رسالة} other {# رسائل}} في بريدك');
+  });
+
+  it('keeps a trailing run in place when only it was typed', () => {
+    // The overlay matches runs by the segment they sit in (before/after each block), not by
+    // position among all runs: a purely positional overlay assigned the target's only run to
+    // the source's FIRST run, so text typed in the trailing field silently moved to the front
+    // of the string on the next keystroke.
+    const source = 'You have {count, plural, one {# message} other {# messages}} in your inbox';
+    const empty = getIcuFieldModel(source, '')!;
+    const partial = assembleIcuFields(setIcuTextValue(empty, 2, ' في بريدك'));
+    expect(partial).toBe('{count, plural, one {} other {}} في بريدك');
+    const model = getIcuFieldModel(source, partial)!;
+    expect(model.filter((f) => f.kind === 'text')).toHaveLength(2);
+    expect(model[0]).toMatchObject({ kind: 'text', value: '' });
+    expect(model[2]).toMatchObject({ kind: 'text', value: ' في بريدك' });
+    expect(assembleIcuFields(model)).toBe(partial);
+  });
+
+  it('still returns null once the block itself does not parse', () => {
+    // The text-run repair must never hide a damaged block behind a fields view.
+    const source = 'You have {count, plural, one {# message} other {# messages}} after';
+    const broken = 'لديك {count, plural, one {# رسالة} after';
+    expect(getIcuFieldModel(source, broken)).toBeNull();
+  });
+
   it('editing one body only changes that body', () => {
     const t = '{g, select, male {He} female {She} other {They}} wrote';
     const model = getIcuFieldModel(t, t)!;
