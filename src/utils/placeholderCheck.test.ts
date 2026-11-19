@@ -273,13 +273,12 @@ describe('validatePlaceholders', () => {
     const result = validatePlaceholders(PLURAL_SRC, PLURAL_AR_FULL, 'zz');
     expect(result.valid).toBe(true);
     expect(result.missingInTarget).toEqual([]);
-    expect(result.extraInTarget).toEqual([
-      'plural:zero',
-      '#',
-      'plural:two',
-      'plural:few',
-      'plural:many',
-    ]);
+    // The order of the extra tokens is an implementation detail of the
+    // structural comparison (it reports each clause's category, then the
+    // `#` count difference), so compare the set, not the order.
+    expect([...result.extraInTarget].sort()).toEqual(
+      ['plural:zero', '#', 'plural:two', 'plural:few', 'plural:many'].sort()
+    );
   });
 
   it('does not double-count a nested offset onto the outer block', () => {
@@ -702,5 +701,64 @@ describe('regression tests - round-5 review', () => {
     expect(result.valid).toBe(true);
     expect(result.missingInTarget).toEqual([]);
     expect(result.extraInTarget).toEqual([]);
+  });
+});
+
+describe('structural comparison - nested blocks and repeated variables', () => {
+  it('compares a select block nested inside a plural clause by structure', () => {
+    // A nested block is compared in its own clause, not flattened into the
+    // message-wide count: deleting its `male` key is caught even though a
+    // `male` key exists in an outer select block.
+    const src =
+      '{n, plural, one {{g, select, male {He} other {They}} has # book} other {{g, select, male {He} other {They}} have # books}}';
+    const tgt =
+      '{n, plural, one {{g, select, other {They}} has # book} other {{g, select, male {He} other {They}} have # books}}';
+    const result = validatePlaceholders(src, tgt, 'en');
+    expect(result.valid).toBe(false);
+    expect(result.missingInTarget).toContain('male');
+  });
+
+  it('flags a nested block that lost its other clause', () => {
+    const src = '{g, select, male {{n, plural, one {#} other {#}}} other {X}}';
+    const tgt = '{g, select, male {{n, plural, one {#}}} other {X}}';
+    const item = makeItem(src, tgt, 'nested_other');
+    const issues = getItemQaIssues(item, 'en');
+    const otherIssue = issues.find((i) => i.id.endsWith('_missing_other'));
+    expect(otherIssue).toBeDefined();
+    expect(otherIssue?.severity).toBe('error');
+    expect(otherIssue?.tokens).toContain('other:{n}');
+  });
+
+  it('matches repeated blocks with the same variable by position', () => {
+    // Two blocks with the same variable name: the first target block matches
+    // the first source block, the second matches the second. A missing
+    // `other` in the second block is reported for that block, not hidden by
+    // the first block's `other`.
+    const src = '{n, plural, one {#} other {#}} {n, plural, one {#} other {#}}';
+    const tgt = '{n, plural, one {#} other {#}} {n, plural, one {#}}';
+    const item = makeItem(src, tgt, 'repeated');
+    const issues = getItemQaIssues(item, 'en');
+    const otherIssue = issues.find((i) => i.id.endsWith('_missing_other'));
+    expect(otherIssue).toBeDefined();
+    expect(otherIssue?.tokens).toContain('other:{n}');
+  });
+
+  it('reports a dropped whole block with its contents, not just the block', () => {
+    const src = 'Hello {name}. {n, plural, one {# item} other {# items}}';
+    const tgt = 'Hello {name}.';
+    const result = validatePlaceholders(src, tgt, 'en');
+    expect(result.valid).toBe(false);
+    expect(result.missingInTarget).toContain('{n:plural}');
+    expect(result.missingInTarget).toContain('plural:one');
+    expect(result.missingInTarget).toContain('other');
+  });
+
+  it('reports an added whole block with its contents', () => {
+    const src = 'Hello {name}.';
+    const tgt = 'Hello {name}. {n, plural, one {# item} other {# items}}';
+    const result = validatePlaceholders(src, tgt, 'en');
+    expect(result.valid).toBe(true);
+    expect(result.extraInTarget).toContain('{n:plural}');
+    expect(result.extraInTarget).toContain('plural:one');
   });
 });
