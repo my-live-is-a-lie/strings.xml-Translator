@@ -24,8 +24,17 @@ class GeminiHttpError extends Error {
   }
 }
 
-/** The model answered, but the answer broke the ICU structure of the source string. */
-class GeminiStructureError extends Error {}
+/**
+ * The model answered, but the answer broke the ICU structure of the source string.
+ * The name is what `isRetryableError` looks at: resending the same prompt to the same model
+ * with the same temperature just burns quota (and can trip a rate limit), so it is not retried.
+ */
+class GeminiStructureError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'StructuralError';
+  }
+}
 
 /** True when the API says this model can't be used (retired, unknown, or not for this key), not that the key is bad. */
 export function isModelUnavailableMessage(status: number, message: string): boolean {

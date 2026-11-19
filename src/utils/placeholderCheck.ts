@@ -247,6 +247,93 @@ function extractBraceTokens(text: string, inPluralClause: boolean): string[] {
  * Extracts Android string format specifiers, ICU MessageFormat tokens and HTML tags
  * Matches: %s, %d, %1$s, %2$d, %1.2f, {0}, {count, plural, one {# book} other {# books}}, <b>, </b>, etc.
  */
+/**
+ * The absolute offsets of every `{` that opens an ICU *clause body* (the `{He}` in
+ * `{gender, select, male {He} other {They}}`), found with the same parser and the same
+ * quoting rules as `extractBraceTokens`, so the two never disagree.
+ *
+ * The callers need this because a clause body is indistinguishable from a plain
+ * placeholder by its text alone (`{He}` and `{name}` look the same): ICU *replaces* a
+ * clause body with the translation, so a translated clause must not be treated as a
+ * token that "went missing" and re-inserted. Plain `{name}` arguments are not reported.
+ */
+export function findClauseBodyOpens(text: string): Set<number> {
+  const opens = new Set<number>();
+
+  const walk = (src: string, base: number): void => {
+    let i = 0;
+    while (i < src.length) {
+      const ch = src[i];
+      if (ch === "'") {
+        const after = skipQuotedLiteral(src, i);
+        i = after !== -1 ? after : i + 1;
+        continue;
+      }
+      if (ch !== '{') {
+        i++;
+        continue;
+      }
+      const close = findMatchingBrace(src, i);
+      if (close === -1) {
+        i++;
+        continue;
+      }
+      const innerStart = base + i + 1;
+      const inner = src.slice(i + 1, close);
+      const commaIdx = inner.indexOf(',');
+      if (commaIdx !== -1) {
+        const argName = stripBidiControls(inner.slice(0, commaIdx).trim());
+        const rest = inner.slice(commaIdx + 1);
+        const nextCommaIdx = rest.indexOf(',');
+        const formatType = stripBidiControls(
+          (nextCommaIdx !== -1 ? rest.slice(0, nextCommaIdx) : rest).trim()
+        );
+        if (/^[a-zA-Z0-9_-]+$/.test(argName) && ICU_CLAUSE_FORMAT_TYPES.has(formatType) && nextCommaIdx !== -1) {
+          const styleAndClauses = rest.slice(nextCommaIdx + 1);
+          const styleStart = innerStart + commaIdx + 1 + nextCommaIdx + 1;
+          let j = 0;
+          while (j < styleAndClauses.length) {
+            while (j < styleAndClauses.length && /\s/.test(styleAndClauses[j])) j++;
+            if (j >= styleAndClauses.length) break;
+            if (styleAndClauses[j] === "'") {
+              const after = skipQuotedLiteral(styleAndClauses, j);
+              j = after !== -1 ? after : j + 1;
+              continue;
+            }
+            if (styleAndClauses[j] === '{') {
+              const stray = findMatchingBrace(styleAndClauses, j);
+              if (stray === -1) break;
+              j = stray + 1;
+              continue;
+            }
+            const kwMatch = /^[=\w-]+/.exec(styleAndClauses.slice(j));
+            if (!kwMatch) {
+              j++;
+              continue;
+            }
+            j += kwMatch[0].length;
+            while (j < styleAndClauses.length && /\s/.test(styleAndClauses[j])) j++;
+            if (styleAndClauses[j] !== '{') continue;
+            const subClose = findMatchingBrace(styleAndClauses, j);
+            if (subClose === -1) break;
+            opens.add(styleStart + j);
+            walk(styleAndClauses.slice(j + 1, subClose), styleStart + j + 1);
+            j = subClose + 1;
+          }
+        } else {
+          walk(inner, innerStart);
+        }
+      } else {
+        walk(inner, innerStart);
+      }
+      i = close + 1;
+    }
+  };
+
+  walk(text, 0);
+  return opens;
+}
+
 export function extractPlaceholders(text: string): string[] {
   if (!text) return [];
 

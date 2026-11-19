@@ -3,6 +3,7 @@ import {
   analyzeProjectQa,
   extractPlaceholders,
   getItemQaIssues,
+  findClauseBodyOpens,
   validatePlaceholders,
 } from './placeholderCheck';
 import { SingleStringItem } from '../types';
@@ -760,5 +761,37 @@ describe('structural comparison - nested blocks and repeated variables', () => {
     expect(result.valid).toBe(true);
     expect(result.extraInTarget).toContain('{n:plural}');
     expect(result.extraInTarget).toContain('plural:one');
+  });
+});
+
+describe('findClauseBodyOpens', () => {
+  it('marks clause bodies in select and plural blocks, not plain placeholders', () => {
+    const src = 'Hi {name}, {gender, select, male {He} other {They}}';
+    const opens = [...findClauseBodyOpens(src)].map((i) => src.slice(i, i + 5));
+    expect(opens).toEqual(['{He} ', '{They']);
+    // `{name}` is an argument, not a clause body.
+    expect([...findClauseBodyOpens(src)].some((i) => src.startsWith('{name}', i))).toBe(false);
+  });
+
+  it('finds clauses nested inside other clauses', () => {
+    // `male {{n, plural, ...}}`: the first `{` opens the clause body, the second starts the
+    // nested argument, so the body's own offset is the outer brace (ICU needs both).
+    const src = '{g, select, male {{n, plural, one {# book} other {# books}}} other {none}}';
+    const bodies = [...findClauseBodyOpens(src)].map((i) => src.slice(i, i + 9));
+    expect(bodies).toContain('{{n, plur');
+    expect(bodies).toContain('{# book} ');
+    expect(bodies).toContain('{# books}');
+    expect(bodies).toContain('{none}}');
+    // Every reported offset really is a `{`.
+    for (const i of findClauseBodyOpens(src)) expect(src[i]).toBe('{');
+  });
+
+  it('ignores braces inside a quoted literal', () => {
+    const src = "{gender, select, male {'{not a clause}'} other {x}}";
+    expect([...findClauseBodyOpens(src)]).toHaveLength(2);
+  });
+
+  it('returns nothing for a string with no ICU block', () => {
+    expect(findClauseBodyOpens('Hi {name}, you have {0} messages').size).toBe(0);
   });
 });

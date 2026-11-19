@@ -16,6 +16,7 @@ import {
 import { geminiTranslateDirect } from './geminiDirect';
 import { fetchGoogleGtxRaw, fetchWithTimeout, providerHttpError } from '../shared/translateCore';
 import { directCallProviderWithKey, directTestProviderApiKey } from './directProviders';
+import { findClauseBodyOpens, validatePlaceholders } from './placeholderCheck';
 
 /** Every engine a suggestion can come from. 'glossary' and 'heuristic' are offline. */
 export type TranslationEngine = 'glossary' | 'heuristic' | ProviderEngineType;
@@ -58,6 +59,9 @@ export function isRetryableError(err: unknown): boolean {
   if (err instanceof TypeError) return true; // network failure ("Failed to fetch")
   if (err instanceof Error) {
     if (err.name === 'AbortError' || err.name === 'TimeoutError') return true;
+    // A structurally damaged reply is a deterministic answer to this prompt: retrying the
+    // same request costs quota and time without a better chance of success.
+    if (err.name === 'StructuralError') return false;
     const http = err.message.match(/HTTP (\d{3})/);
     if (http) {
       const status = Number(http[1]);
@@ -110,6 +114,8 @@ function toArabicIndicDigits(numStr: string): string {
 
 interface ProtectedToken {
   rawToken: string; // Exact original syntax token, e.g. %1$d, \"%1$s\", @string/msg_threads
+  /** True for an ICU clause body (`{He}` in a `select`): text ICU replaces, not syntax. */
+  isClauseText?: boolean;
   surrogateId: string; // e.g. 987100
   surrogateText: string; // What we put into the text sent to API
   position: 'start' | 'end' | 'before_punct' | 'middle';
@@ -136,6 +142,10 @@ function protectSegmentSyntax(segment: string): {
     /(\\"%(?:\d+\$)?[+# 0,-]*\d*(?:\.\d+)?[bcdefgopsx%]\\"|\\'%(?:\d+\$)?[+# 0,-]*\d*(?:\.\d+)?[bcdefgopsx%]\\'|%(?:\d+\$)?[+# 0,-]*\d*(?:\.\d+)?[bcdefgopsx%]\/%(?:\d+\$)?[+# 0,-]*\d*(?:\.\d+)?[bcdefgopsx%]|%(?:\d+\$)?[+# 0,-]*\d*(?:\.\d+)?[bcdefgopsx%]|@(?:string|plurals|array)\/[a-zA-Z0-9_]+|\{[a-zA-Z0-9_-]+\}|<\/?[a-zA-Z][^>]*>)/gi;
 
   const trimmedSeg = segment.trim();
+  // Offsets of ICU clause bodies, so `{He}` inside a `select` is known to be translatable
+  // text while `{count}` is a placeholder. Without this the two are indistinguishable by
+  // their text alone.
+  const clauseBodyOpens = findClauseBodyOpens(segment);
 
   let cleaned = segment.replace(syntaxRegex, (match, _g1, offset) => {
     const idx = tokens.length;
@@ -162,6 +172,7 @@ function protectSegmentSyntax(segment: string): {
 
     tokens.push({
       rawToken: match,
+      isClauseText: clauseBodyOpens.has(offset),
       surrogateId,
       surrogateText,
       position,
@@ -178,6 +189,33 @@ function protectSegmentSyntax(segment: string): {
   void trimmedSeg;
 
   return { cleanText: cleaned, tokens, usesEscapedDoubleQuotes };
+}
+
+/**
+ * True when re-inserting `rawToken` would duplicate structure the reply already carries.
+ *
+ * Shape tokens (`{name:type}`, `offset:`, `=0`, `#`, `%s`, `<b>`, `@string/...`) are pure
+ * syntax: ICU never translates them, so if the reply has the same token it is already in
+ * place and inserting another copy would break the block. Clause bodies (`{He}` inside a
+ * `select`) are the opposite: ICU *replaces* them with the translation, so the absence of
+ * the English text is the expected, correct outcome and must not trigger an insertion.
+ */
+function reinsertedTokenWouldDuplicate(result: string, rawToken: string): boolean {
+  const inner = rawToken.startsWith('{') && rawToken.endsWith('}') ? rawToken.slice(1, -1) : '';
+  // `{name}` (plain placeholder) and `{name, type}` (ICU argument) are syntax;
+  // `{He}` / `{Some words}` are clause text.
+  if (inner && /^[A-Za-z0-9_-]+$/.test(inner)) return result.includes(rawToken);
+  if (inner.includes(',')) return result.includes(rawToken);
+  if (/^\{\s*(?:offset:|=\d)/.test(rawToken)) return result.includes(rawToken);
+  if (rawToken === '#' || rawToken.startsWith('%') || rawToken.startsWith('<') || rawToken.startsWith('@')) {
+    return result.includes(rawToken);
+  }
+  // Quoted printf specifiers ("\%1$s\", \'%s\') are syntax too, not clause text: they start
+  // with a quote, so the checks above miss them, but dropping one would silently lose the
+  // specifier (the old guarantee re-inserted them).
+  if (rawToken.includes('%')) return result.includes(rawToken);
+  // Anything else is translatable clause text: never re-insert it.
+  return true;
 }
 
 // Restore protected syntax tokens into the translated segment and guarantee none are missing
@@ -210,7 +248,13 @@ function restoreSegmentSyntax(
     }
 
     // Guarantee: If the translation engine stripped the surrogate token, insert rawToken in its structural position
-    if (!result.includes(tk.rawToken)) {
+    // A token whose *meaning* survived must not be re-inserted: an ICU clause such as `{He}`
+    // is translatable text, so when the reply already carries that text inside a clause
+    // (`male {أعجبه}`) there is nothing to restore. Comparing only the raw string would append
+    // the English `{He}` a second time, which ICU then reads as a stray placeholder.
+    // Clause text is what ICU replaces, so a translation that no longer contains the
+    // English words inside the clause is the expected result, never a lost token.
+    if (!tk.isClauseText && !result.includes(tk.rawToken) && !reinsertedTokenWouldDuplicate(result, tk.rawToken)) {
       const trimmedRes = result.trim();
       if (tk.position === 'start') {
         result = `${tk.rawToken} ${trimmedRes}`;
@@ -775,6 +819,16 @@ async function translateSingleSegmentUncached(
 
   const { cleanText, tokens, usesEscapedDoubleQuotes } = protectSegmentSyntax(coreText);
 
+  /**
+   * Rejects a reply that would break the ICU block structure (a dropped `other`, a lost
+   * brace, a translated clause keyword). The AI providers check this inside their own
+   * callers; the plain machine-translation engines rewrite braces freely, so the check has
+   * to happen here for every engine. Only strings that actually contain an ICU block are
+   * checked, so the common path pays nothing.
+   */
+  const breaksIcuStructure = (candidate: string): boolean =>
+    coreText.includes('{') && !validatePlaceholders(coreText, candidate, directLang).valid;
+
   // Helper to reject polluted crowdsourced TM entries (e.g. "[ترجمة المصطلح: Install]")
   const isPollutedTranslation = (candidate: string): boolean => {
     const c = candidate.trim();
@@ -837,7 +891,8 @@ async function translateSingleSegmentUncached(
         if (pData && typeof pData.translatedText === 'string' && pData.translatedText.trim()) {
           const cleaned = stripMetadataLabels(pData.translatedText, coreText);
           if (cleaned && !isPollutedTranslation(cleaned)) {
-            return restoreSegmentSyntax(cleaned, tokens, usesEscapedDoubleQuotes);
+            const restored = restoreSegmentSyntax(cleaned, tokens, usesEscapedDoubleQuotes);
+            if (!breaksIcuStructure(restored)) return restored;
           }
         }
       } catch (err) {
@@ -862,7 +917,8 @@ async function translateSingleSegmentUncached(
       if (directResult && directResult.translatedText) {
         const cleaned = stripMetadataLabels(directResult.translatedText, coreText);
         if (cleaned && !isPollutedTranslation(cleaned)) {
-          return restoreSegmentSyntax(cleaned, tokens, usesEscapedDoubleQuotes);
+          const restored = restoreSegmentSyntax(cleaned, tokens, usesEscapedDoubleQuotes);
+          if (!breaksIcuStructure(restored)) return restored;
         }
       }
     } catch (err) {
@@ -888,7 +944,8 @@ async function translateSingleSegmentUncached(
       });
       const cleanedAi = stripMetadataLabels(translated, coreText);
       if (cleanedAi && !isPollutedTranslation(cleanedAi)) {
-        return restoreSegmentSyntax(cleanedAi, tokens, usesEscapedDoubleQuotes);
+        const restored = restoreSegmentSyntax(cleanedAi, tokens, usesEscapedDoubleQuotes);
+        if (!breaksIcuStructure(restored)) return restored;
       }
     } catch (err) {
       logFallback('gemini', err);
@@ -902,8 +959,11 @@ async function translateSingleSegmentUncached(
       const combined = await withRetry(() => fetchGoogleGtxRaw(cleanText, directLang, 5000));
       const decoded = stripMetadataLabels(decodeHtmlEntities(combined), coreText);
       if (decoded && !isPollutedTranslation(decoded)) {
-        noteGtxResult(true);
-        return restoreSegmentSyntax(decoded, tokens, usesEscapedDoubleQuotes);
+        const restored = restoreSegmentSyntax(decoded, tokens, usesEscapedDoubleQuotes);
+        if (!breaksIcuStructure(restored)) {
+          noteGtxResult(true);
+          return restored;
+        }
       }
     } catch (err) {
       logFallback('google', err);
@@ -961,7 +1021,7 @@ async function translateSingleSegmentUncached(
 
         if (!isPollutedTranslation(rawResult)) {
           const finalResult = restoreSegmentSyntax(rawResult, tokens, usesEscapedDoubleQuotes);
-          if (finalResult) {
+          if (finalResult && !breaksIcuStructure(finalResult)) {
             return finalResult;
           }
         }

@@ -185,7 +185,10 @@ export async function directCallProviderWithKey(
       const cleaned = stripMetadataWrappers(aiRes.data.result.alternatives[0].message.text, sourceText);
       // Never return a reply that breaks the ICU structure (it throws at runtime).
       if (!validatePlaceholders(sourceText, cleaned, targetLang).valid) {
-        throw new Error('Yandex: الردّ يخالف بنية ICU / The AI reply damaged the ICU MessageFormat structure');
+        throw Object.assign(
+          new Error('Yandex: الردّ يخالف بنية ICU / The AI reply damaged the ICU MessageFormat structure'),
+          { name: 'StructuralError' }
+        );
       }
       return cleaned;
     }
@@ -244,7 +247,10 @@ export async function directCallProviderWithKey(
     const cleaned = stripMetadataWrappers(content, sourceText);
     // Never return a reply that breaks the ICU structure (it throws at runtime).
     if (!validatePlaceholders(sourceText, cleaned, targetLang).valid) {
-      throw new Error('OpenAI: الردّ يخالف بنية ICU / The AI reply damaged the ICU MessageFormat structure');
+      throw Object.assign(
+          new Error('OpenAI: الردّ يخالف بنية ICU / The AI reply damaged the ICU MessageFormat structure'),
+          { name: 'StructuralError' }
+        );
     }
     return cleaned;
   };

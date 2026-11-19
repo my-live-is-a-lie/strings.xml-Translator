@@ -1,0 +1,147 @@
+// @vitest-environment jsdom
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { clearTranslationCache, isRetryableError, suggestTranslation } from '../src/utils/translator';
+import { validatePlaceholders } from '../src/utils/placeholderCheck';
+
+/**
+ * End-to-end ICU behaviour of the translation pipeline.
+ *
+ * The earlier tests checked each provider in isolation. These drive `suggestTranslation`,
+ * which is what the editor actually calls, so they cover the path where a provider's reply
+ * is rewritten by `restoreSegmentSyntax` before it reaches the user. Two bugs lived exactly
+ * there: `select` clause text was re-inserted in English because `{He}` looks like `{name}`,
+ * and a machine-translation reply that broke the block structure was accepted as-is.
+ */
+
+const gtxOk = (text: string) =>
+  new Response(JSON.stringify([[[text, 'src', null, null, 1]], null, 'en']), { status: 200 });
+const gtxErr = (status: number) => new Response('{}', { status });
+const myMemoryOk = (text: string) =>
+  new Response(JSON.stringify({ responseData: { translatedText: text }, matches: [] }), { status: 200 });
+
+/** Answers Google GTX with `text` and MyMemory with `fallback`. */
+const replyWith = (text: string, fallback = text) =>
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) =>
+      String(url).includes('translate.googleapis.com') ? gtxOk(text) : myMemoryOk(fallback)
+    )
+  );
+
+beforeEach(() => {
+  clearTranslationCache();
+  vi.unstubAllGlobals();
+});
+
+describe('ICU blocks survive the machine-translation path', () => {
+  const PLURAL = 'You have {count, plural, one {# message} other {# messages}}';
+
+  it('keeps a well-formed plural translation intact', async () => {
+    replyWith('لديك {count, plural, one {# رسالة} other {# رسائل}}');
+    const res = await suggestTranslation(PLURAL, 'ar');
+    expect(res.text).toBe('لديك {count, plural, one {# رسالة} other {# رسائل}}');
+    expect(res.source).toBe('google');
+    expect(validatePlaceholders(PLURAL, res.text, 'ar').valid).toBe(true);
+  });
+
+  it('rejects a reply that dropped the other clause instead of returning it', async () => {
+    replyWith('لديك {count, plural, one {# رسالة}}');
+    const res = await suggestTranslation(PLURAL, 'ar');
+    // Nothing usable came back, so the segment falls through to the offline heuristic
+    // (the source text) rather than reaching the user as a block that throws at runtime.
+    expect(res.source).toBe('heuristic');
+    expect(res.text).toBe(PLURAL);
+  });
+
+  it('rejects a reply whose braces were rewritten by the engine', async () => {
+    replyWith('لديك {count, plural, one {# رسالة} other {# رسائل}');
+    const res = await suggestTranslation(PLURAL, 'ar');
+    expect(res.source).toBe('heuristic');
+  });
+
+  it('does not check strings without braces (no cost on the common path)', async () => {
+    replyWith('مرحبا بالعالم');
+    const res = await suggestTranslation('Hello world', 'ar');
+    expect(res.text).toBe('مرحبا بالعالم');
+    expect(res.source).toBe('google');
+  });
+});
+
+describe('select clause text is translatable, not a token to restore', () => {
+  const SELECT = '{gender, select, male {He} female {She} other {They}} liked your post';
+
+  it('does not append the English clause text after a correct translation', async () => {
+    // `{He}` is indistinguishable from `{name}` by its text alone, so this used to come
+    // back as `... منشورك {He} {She} {They}` — valid ICU, but with English garbage inside.
+    replyWith('{gender, select, male {أعجبه} female {أعجبتها} other {أعجبهم}} منشورك');
+    const res = await suggestTranslation(SELECT, 'ar');
+    expect(res.text).toBe('{gender, select, male {أعجبه} female {أعجبتها} other {أعجبهم}} منشورك');
+    expect(res.text).not.toContain('{He}');
+    expect(validatePlaceholders(SELECT, res.text, 'ar').valid).toBe(true);
+  });
+
+  it('still restores a plain placeholder inside a select clause', async () => {
+    const source = '{gender, select, male {He has %1$d} other {They have %1$d}}';
+    replyWith('{gender, select, male {لديه %1$d} other {لديهم %1$d}}');
+    const res = await suggestTranslation(source, 'ar');
+    expect(res.text).toContain('%1$d');
+    expect(validatePlaceholders(source, res.text, 'ar').valid).toBe(true);
+  });
+
+  it('keeps an offset: selector untouched', async () => {
+    const source = '{count, plural, offset:1 =0 {Nobody} one {# friend} other {# friends}}';
+    replyWith('{count, plural, offset:1 =0 {لا أحد} one {# صديق} other {# أصدقاء}}');
+    const res = await suggestTranslation(source, 'ar');
+    expect(res.text).toContain('offset:1');
+    expect(res.text).toContain('=0');
+    expect(validatePlaceholders(source, res.text, 'ar').valid).toBe(true);
+  });
+});
+
+describe('a structurally damaged reply is not retried', () => {
+  it('is treated as a permanent failure', () => {
+    // A plain error without a retryable status is not retried, and the structural
+    // rejection must behave the same way (it used to fall through to `false` only by luck).
+    expect(isRetryableError(new Error('Gemini: damaged ICU'))).toBe(false);
+    const structural = new Error('OpenAI: الردّ يخالف بنية ICU');
+    structural.name = 'StructuralError';
+    expect(isRetryableError(structural)).toBe(false);
+  });
+
+  it('does not burn a retry cycle on a bad Gemini structure reply', async () => {
+    let geminiCalls = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (!String(url).includes('generativelanguage')) return gtxErr(500);
+        geminiCalls++;
+        // Every model keeps dropping the `other` clause.
+        return new Response(
+          JSON.stringify({ candidates: [{ content: { parts: [{ text: '{count, plural, one {# رسالة}}' }] } }] }),
+          { status: 200 }
+        );
+      })
+    );
+    const { geminiTranslateDirect } = await import('../src/utils/geminiDirect');
+    await expect(
+      geminiTranslateDirect({
+        apiKey: 'k',
+        sourceText: '{count, plural, one {# message} other {# messages}}',
+        targetLang: 'ar',
+      })
+    ).rejects.toThrow(/ICU/);
+    // With the old behaviour each model was tried up to 3 times (withRetry).
+    expect(geminiCalls).toBeLessThanOrEqual(4);
+  });
+});
+
+describe('quoted printf tokens keep their re-insertion guarantee', () => {
+  it('re-inserts a dropped quoted printf specifier instead of losing it', async () => {
+    // `reinsertedTokenWouldDuplicate` must not mistake a quoted "%1$s" for clause text:
+    // it starts with a quote, not with %, so the shape checks above miss it. The old
+    // guarantee re-inserted it; losing it would silently drop the specifier.
+    replyWith('اضغط للمتابعة');
+    const res = await suggestTranslation('Press \\"%1$s\\" to continue', 'ar');
+    expect(res.text).toContain('%1$s');
+  });
+});

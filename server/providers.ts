@@ -161,7 +161,10 @@ export async function callProviderWithKey(
         // Same guard as the Gemini path: an AI reply that breaks the ICU structure is
         // unusable (it throws at runtime), so it is rejected instead of returned.
         if (!validatePlaceholders(sourceText, cleaned, targetLang).valid) {
-          throw new Error('Yandex: الردّ يخالف بنية ICU / The AI reply damaged the ICU MessageFormat structure');
+          throw Object.assign(
+          new Error('Yandex: الردّ يخالف بنية ICU / The AI reply damaged the ICU MessageFormat structure'),
+          { name: 'StructuralError' }
+        );
         }
         return cleaned;
       }
@@ -215,7 +218,10 @@ export async function callProviderWithKey(
     const cleaned = stripMetadataWrappers(content, sourceText);
     // Same guard as the Gemini path: never return a reply that breaks the ICU structure.
     if (!validatePlaceholders(sourceText, cleaned, targetLang).valid) {
-      throw new Error('OpenAI: الردّ يخالف بنية ICU / The AI reply damaged the ICU MessageFormat structure');
+      throw Object.assign(
+          new Error('OpenAI: الردّ يخالف بنية ICU / The AI reply damaged the ICU MessageFormat structure'),
+          { name: 'StructuralError' }
+        );
     }
     return cleaned;
   };
