@@ -10,7 +10,7 @@ import { DemoBanner } from './DemoBanner';
 import { LanguageSelectorModal } from './LanguageSelectorModal';
 import { HighlightedTextarea } from './HighlightedTextarea';
 import { getArabicLanguageName, getLanguageOption } from '../utils/languages';
-import { suggestTranslation } from '../utils/translator';
+import { suggestTranslation, suggestionRejectedForIcu } from '../utils/translator';
 import { normalizePluralsForLanguage } from '../utils/xmlParser';
 import { fixItemEndings } from '../utils/endPunctuation';
 import { fixItemSyntax, FixNote } from '../utils/syntaxFix';
@@ -1121,6 +1121,9 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     () => (saveGuard?.hard && saveGuard.itemId === item.id ? getLineBreakIssues(toStoredItem(draftItem), targetLang) : []),
     [saveGuard, item.id, draftItem, targetLang]
   );
+  // Set when a suggestion was discarded because it would have damaged an ICU block.
+  const [icuRejected, setIcuRejected] = useState(false);
+
   const liveSaveGuard = saveGuard?.hard ? (liveBreakIssues.length > 0 ? { ...saveGuard, remaining: liveBreakIssues } : null) : saveGuard;
   // counts match again (or another string is open): the message is done
   if (saveGuard?.hard && !liveSaveGuard) setSaveGuard(null);
@@ -1206,6 +1209,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     try {
       if (draftItem.type === 'string') {
         const res = await suggestTranslation(draftItem.source, targetLang, targetLocaleName);
+        setIcuRejected(suggestionRejectedForIcu());
         if (res && res.text) {
           const isNowEmpty = !res.text.trim();
           const updated: SingleStringItem = {
@@ -1227,6 +1231,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             };
           })
         );
+        setIcuRejected(suggestionRejectedForIcu());
         updateDraftItem(
           {
             ...draftItem,
@@ -1246,6 +1251,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             };
           })
         );
+        setIcuRejected(suggestionRejectedForIcu());
         updateDraftItem(
           {
             ...draftItem,
@@ -1969,6 +1975,18 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
           </div>
 
           {slot('r2', 'kb-r2 rounded-2xl overflow-hidden bg-white dark:bg-[#151922] border border-slate-200/80 dark:border-transparent', <>
+          {icuRejected && (
+            <div
+              role="alert"
+              className="mx-3 sm:mx-4 mb-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-200"
+            >
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{t('suggestion_rejected_icu')}</span>
+              </div>
+            </div>
+          )}
+
           {liveSaveGuard && (autoCorrect || liveSaveGuard.empty || liveSaveGuard.hard) && (
             <div
               role="alert"

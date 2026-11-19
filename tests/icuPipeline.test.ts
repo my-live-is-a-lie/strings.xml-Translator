@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { clearTranslationCache, isRetryableError, suggestTranslation } from '../src/utils/translator';
+import {
+  bulkTranslateItems,
+  clearTranslationCache,
+  isRetryableError,
+  suggestTranslation,
+  suggestionRejectedForIcu,
+} from '../src/utils/translator';
+import type { ArrayStringItem, PluralStringItem, ResourceItem, SingleStringItem } from '../src/types';
 import { hasMultilineIcuBlock, validatePlaceholders } from '../src/utils/placeholderCheck';
 
 /**
@@ -182,5 +189,91 @@ describe('ICU blocks that span a line break', () => {
     );
     const res = await suggestTranslation('Line one\nLine two', 'ar');
     expect(res.text).toBe('سطر أول\nسطر ثان');
+  });
+});
+
+describe('a rejected suggestion is reported honestly', () => {
+  const PLURAL = '{count, plural, one {# message} other {# messages}}';
+
+  it('flags only the rejection, not a successful suggestion', async () => {
+    replyWith('{count, plural, one {# رسالة} other {# رسائل}}');
+    await suggestTranslation(PLURAL, 'ar');
+    expect(suggestionRejectedForIcu()).toBe(false);
+
+    clearTranslationCache();
+    replyWith('{count, plural, one {# رسالة}}');
+    await suggestTranslation(PLURAL, 'ar');
+    expect(suggestionRejectedForIcu()).toBe(true);
+  });
+
+  it('leaves a rejected string untranslated instead of marking it "Heuristic"', async () => {
+    // The engines answer the source unchanged when nothing usable came back; calling that a
+    // translation marked a broken string as done and hid it from the "Untranslated" filter.
+    replyWith('{count, plural, one {# رسالة}}');
+    const item: ResourceItem = {
+      id: 'a',
+      name: 'a',
+      type: 'string',
+      order: 0,
+      status: 'untranslated',
+      source: PLURAL,
+      target: '',
+    } as SingleStringItem;
+    const [out] = (await bulkTranslateItems([item], 'ar')) as SingleStringItem[];
+    expect(out.status).toBe('untranslated');
+    expect(out.translationEngine).toBeUndefined();
+    expect(out.target).toBe(PLURAL); // nothing was invented
+  });
+
+  it('a cached success clears a stale rejection flag', async () => {
+    // The flag is reset once per suggestion, not per segment: a cache hit never reaches
+    // the uncached path, so resetting there left the flag true after a good suggestion.
+    replyWith('مرحبا');
+    await suggestTranslation('Hello', 'ar');
+    expect(suggestionRejectedForIcu()).toBe(false);
+
+    replyWith('{count, plural, one {# رسالة}}');
+    await suggestTranslation(PLURAL, 'ar');
+    expect(suggestionRejectedForIcu()).toBe(true);
+
+    const again = await suggestTranslation('Hello', 'ar');
+    expect(again.source).toBe('google'); // cache hit
+    expect(suggestionRejectedForIcu()).toBe(false);
+  });
+
+  it('a plural translated by the offline glossary still counts as translated', async () => {
+    // 'Cancel' is in the Android UI glossary; excluding 'glossary' marked a fully
+    // translated plural as untranslated.
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 500 })));
+    const plural: ResourceItem = {
+      id: 'p',
+      name: 'p',
+      type: 'plural',
+      order: 0,
+      status: 'untranslated',
+      items: [
+        { quantity: 'one', source: 'Cancel', target: '' },
+        { quantity: 'other', source: 'Cancel', target: '' },
+      ],
+    } as unknown as PluralStringItem;
+    const [out] = (await bulkTranslateItems([plural], 'ar')) as PluralStringItem[];
+    expect(out.items[0].target).toBe('إلغاء');
+    expect(out.status).toBe('translated');
+    expect(out.translationEngine).toBe('glossary');
+  });
+
+  it('a rejected array element stays untranslated, like strings and plurals', async () => {
+    replyWith('{count, plural, one {# رسالة}}');
+    const arr: ResourceItem = {
+      id: 'arr',
+      name: 'arr',
+      type: 'array',
+      order: 0,
+      status: 'untranslated',
+      items: [{ source: PLURAL, target: '' }],
+    } as unknown as ArrayStringItem;
+    const [out] = (await bulkTranslateItems([arr], 'ar')) as ArrayStringItem[];
+    expect(out.status).toBe('untranslated');
+    expect(out.translationEngine).toBeUndefined();
   });
 });

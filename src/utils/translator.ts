@@ -716,6 +716,19 @@ const ENGINE_LABELS: Record<string, string> = {
 // in a row the UI is told so it can suggest an official or self-hosted provider.
 const GTX_FAILURE_THRESHOLD = 3;
 let gtxConsecutiveFailures = 0;
+
+/**
+ * Set when the last suggestion was thrown away because it would have damaged an ICU block.
+ * The caller then receives the unchanged source (engine `heuristic`), which is honest but
+ * confusing on its own — the editor reads this to tell the user why no suggestion appeared
+ * instead of silently filling the box with the English text.
+ */
+let lastSuggestionRejectedForIcu = false;
+
+/** True when the last `suggestTranslation` result was discarded for damaging an ICU block. */
+export function suggestionRejectedForIcu(): boolean {
+  return lastSuggestionRejectedForIcu;
+}
 export const GTX_STATUS_EVENT = 'gtx-status-change';
 
 function noteGtxResult(ok: boolean): void {
@@ -826,8 +839,13 @@ async function translateSingleSegmentUncached(
    * to happen here for every engine. Only strings that actually contain an ICU block are
    * checked, so the common path pays nothing.
    */
-  const breaksIcuStructure = (candidate: string): boolean =>
-    coreText.includes('{') && !validatePlaceholders(coreText, candidate, directLang).valid;
+  const breaksIcuStructure = (candidate: string): boolean => {
+    if (!coreText.includes('{')) return false;
+    if (validatePlaceholders(coreText, candidate, directLang).valid) return false;
+    // Remembered so the editor can explain why no suggestion is offered.
+    lastSuggestionRejectedForIcu = true;
+    return true;
+  };
 
   // Helper to reject polluted crowdsourced TM entries (e.g. "[ترجمة المصطلح: Install]")
   const isPollutedTranslation = (candidate: string): boolean => {
@@ -1090,6 +1108,10 @@ export async function suggestTranslation(
   targetLocaleName?: string,
   pluralQuantity?: 'zero' | 'one' | 'two' | 'few' | 'many' | 'other'
 ): Promise<SuggestionResult> {
+  // The flag describes this suggestion only. It is reset here — once per suggestion, not
+  // per segment — so a cached success clears a stale rejection (a cache hit never reaches
+  // the uncached path) and a rejection in any part of a split string is still remembered.
+  lastSuggestionRejectedForIcu = false;
   if (!sourceText || !sourceText.trim()) {
     return { text: '', source: 'glossary' };
   }
@@ -1235,7 +1257,10 @@ export async function bulkTranslateItems(
       const single = item as SingleStringItem;
       const res = await suggestTranslation(single.source, targetLang, targetLocaleName);
       const targetText = res?.text || single.target;
-      const hasTranslation = Boolean(targetText.trim());
+      // `heuristic` = no engine produced a usable reply and the string was left untouched;
+      // it must stay untranslated so the user still sees it in the "Untranslated" filter.
+      const hasTranslation =
+        Boolean(targetText.trim()) && res?.source !== 'heuristic' && res?.source !== undefined;
       return {
         ...single,
         target: targetText,
@@ -1265,13 +1290,18 @@ export async function bulkTranslateItems(
           }
         })
       );
-      const anyFilled = updatedQuantities.some((pi) => pi.target.trim().length > 0);
+      // A glossary translation is a real translation; only 'heuristic' means nothing usable
+      // came back. Targets must also be non-empty, so an empty quantity is not "translated".
+      const anyTranslated =
+        updatedQuantities.some((pi) => pi.target.trim().length > 0) &&
+        engineUsed !== undefined &&
+        engineUsed !== 'heuristic';
       return {
         ...plural,
         items: updatedQuantities,
-        status: anyFilled ? 'translated' : 'untranslated',
-        translationSource: anyFilled ? 'ai' : undefined,
-        translationEngine: anyFilled ? engineUsed : undefined,
+        status: anyTranslated ? 'translated' : 'untranslated',
+        translationSource: anyTranslated ? 'ai' : undefined,
+        translationEngine: anyTranslated ? engineUsed : undefined,
       };
     }
 
@@ -1295,13 +1325,18 @@ export async function bulkTranslateItems(
           }
         })
       );
-      const anyFilled = updatedElements.some((ai) => ai.target.trim().length > 0);
+      // Same rule as the plural path: a glossary translation counts, 'heuristic' does not,
+      // and empty elements are not "translated".
+      const anyTranslated =
+        updatedElements.some((ai) => ai.target.trim().length > 0) &&
+        engineUsed !== undefined &&
+        engineUsed !== 'heuristic';
       return {
         ...arr,
         items: updatedElements,
-        status: anyFilled ? 'translated' : 'untranslated',
-        translationSource: anyFilled ? 'ai' : undefined,
-        translationEngine: anyFilled ? engineUsed : undefined,
+        status: anyTranslated ? 'translated' : 'untranslated',
+        translationSource: anyTranslated ? 'ai' : undefined,
+        translationEngine: anyTranslated ? engineUsed : undefined,
       };
     }
 
