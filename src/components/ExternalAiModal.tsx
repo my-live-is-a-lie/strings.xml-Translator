@@ -87,11 +87,11 @@ export const ExternalAiModal: React.FC<Props> = ({ items: selectedItems, reviewP
     }
   };
 
-  const checked = useMemo(() => checkReply(segments, reply), [segments, reply]);
+  const checked = useMemo(() => checkReply(segments, reply, targetLang), [segments, reply, targetLang]);
   const rows: Checked[] = checked.rows.map((r) => {
     const text = edited[r.segment.id];
     if (text === undefined) return r;
-    return checkReply([r.segment], new Map(text ? [[r.segment.id, text]] : []))
+    return checkReply([r.segment], new Map(text ? [[r.segment.id, text]] : []), targetLang)
       .rows[0];
   });
   const problems = rows.filter((r) => r.issues.length > 0);

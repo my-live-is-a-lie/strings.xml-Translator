@@ -77,10 +77,10 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const [allowBroken, setAllowBroken] = useState(false);
   const blockingIssues = useMemo(
     () =>
-      analyzeProjectQa(itemsToExport).allIssues.filter(
+      analyzeProjectQa(itemsToExport, project.targetLang).allIssues.filter(
         (iss) => iss.severity === 'error' && (iss.category === 'placeholder' || iss.category === 'html')
       ),
-    [itemsToExport]
+    [itemsToExport, project.targetLang]
   );
   const exportBlocked = blockingIssues.length > 0 && !allowBroken;
 
