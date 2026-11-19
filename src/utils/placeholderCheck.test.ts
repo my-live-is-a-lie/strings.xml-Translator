@@ -7,6 +7,7 @@ import {
   findClauseBodyOpens,
   getIcuStructureIssues,
   hasMultilineIcuBlock,
+  splitIcuBlocks,
   validatePlaceholders,
 } from './placeholderCheck';
 import { SingleStringItem } from '../types';
@@ -852,5 +853,76 @@ describe('getIcuStructureIssues (save gate)', () => {
       ],
     } as ResourceItem;
     expect(getIcuStructureIssues(plural, 'ar').map((i) => i.subKey)).toEqual(['one']);
+  });
+});
+
+describe('splitIcuBlocks - Phase 3 per-clause translation', () => {
+  it('splits a select block from its surrounding text with body spans', () => {
+    const parts = splitIcuBlocks('{gender, select, male {He} female {She} other {They}} liked your post');
+    expect(parts).toHaveLength(2);
+    expect(parts?.[0].kind).toBe('block');
+    expect(parts?.[0].text).toBe('{gender, select, male {He} female {She} other {They}}');
+    expect(parts?.[0].bodies?.map((b) => parts[0].text.slice(b.start, b.end))).toEqual([
+      'He',
+      'She',
+      'They',
+    ]);
+    expect(parts?.[1]).toEqual({ kind: 'text', text: ' liked your post' });
+  });
+
+  it('returns a lone plural block as a single part', () => {
+    const parts = splitIcuBlocks('{count, plural, one {# message} other {# messages}}');
+    expect(parts).toHaveLength(1);
+    expect(parts?.[0].kind).toBe('block');
+    expect(parts?.[0].bodies?.map((b) => parts[0].text.slice(b.start, b.end))).toEqual([
+      '# message',
+      '# messages',
+    ]);
+  });
+
+  it('skips the offset: prefix when finding plural bodies', () => {
+    const parts = splitIcuBlocks('{count, plural, offset: 1 one {# message} other {# messages}}');
+    expect(parts?.[0].bodies?.map((b) => parts[0].text.slice(b.start, b.end))).toEqual([
+      '# message',
+      '# messages',
+    ]);
+  });
+
+  it('returns only the outer block when a body hides a nested block', () => {
+    const parts = splitIcuBlocks(
+      '{gender, select, male {He has {count, plural, one {# message} other {# messages}}} other {They}}'
+    );
+    expect(parts).toHaveLength(1);
+    expect(parts?.[0].bodies?.map((b) => parts[0].text.slice(b.start, b.end))).toEqual([
+      'He has {count, plural, one {# message} other {# messages}}',
+      'They',
+    ]);
+  });
+
+  it('returns null for plain text and for plain placeholders', () => {
+    expect(splitIcuBlocks('Hello world')).toBeNull();
+    expect(splitIcuBlocks('Hi {name}, you have %d messages')).toBeNull();
+  });
+
+  it('ignores a block inside quotes', () => {
+    expect(splitIcuBlocks("'{gender, select, male {He}}'")).toBeNull();
+  });
+});
+
+describe('doubled braces do not pass the structural check', () => {
+  const SELECT = '{gender, select, male {He} female {She} other {They}} liked your post';
+
+  it('rejects {{He}} even with the keywords intact', () => {
+    const doubled = '{gender, select, male {{He}} female {{She}} other {{They}}} أعجبهم منشورك';
+    expect(validatePlaceholders(SELECT, doubled, 'ar').valid).toBe(false);
+  });
+
+  it('still accepts a correct translation with translated clause text', () => {
+    const good = '{gender, select, male {هو} female {هي} other {هم}} أعجبهم منشورك';
+    expect(validatePlaceholders(SELECT, good, 'ar').valid).toBe(true);
+  });
+
+  it('rejects a doubled plain placeholder too', () => {
+    expect(validatePlaceholders('Hi {name}', 'مرحبا {{name}}', 'ar').valid).toBe(false);
   });
 });

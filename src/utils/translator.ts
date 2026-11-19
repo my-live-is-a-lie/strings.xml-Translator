@@ -16,7 +16,7 @@ import {
 import { geminiTranslateDirect } from './geminiDirect';
 import { fetchGoogleGtxRaw, fetchWithTimeout, providerHttpError } from '../shared/translateCore';
 import { directCallProviderWithKey, directTestProviderApiKey } from './directProviders';
-import { findClauseBodyOpens, hasMultilineIcuBlock, validatePlaceholders } from './placeholderCheck';
+import { findClauseBodyOpens, hasMultilineIcuBlock, splitIcuBlocks, validatePlaceholders } from './placeholderCheck';
 
 /** Every engine a suggestion can come from. 'glossary' and 'heuristic' are offline. */
 export type TranslationEngine = 'glossary' | 'heuristic' | ProviderEngineType;
@@ -638,7 +638,18 @@ export function stripMetadataLabels(text: string, sourceText: string): string {
  * (Custom API Key Provider such as Gemini AI, Google Translate, or MyMemory),
  * while preserving 100% of Android syntax tokens (%s, %d, %1$s, etc.).
  */
-type SuggestionResult = { text: string; source: TranslationEngine };
+type SuggestionResult = {
+  text: string;
+  source: TranslationEngine;
+  /**
+   * Set on the suggestion whose engine reply was rejected for breaking an ICU block.
+   * It rides on the result instead of a module-level variable: the editor reads
+   * several suggestions per action (`Promise.all` for plural and array items) and a
+   * background prediction can be in flight, so a shared flag made one suggestion's
+   * rejection describe another suggestion — the alert was wrong in both directions.
+   */
+  icuRejected?: boolean;
+};
 
 // ---------- Translation cache ----------
 // Repeated strings (and re-opening a project) do not send the same request again. Keys include a hash
@@ -718,17 +729,20 @@ const GTX_FAILURE_THRESHOLD = 3;
 let gtxConsecutiveFailures = 0;
 
 /**
- * Set when the last suggestion was thrown away because it would have damaged an ICU block.
- * The caller then receives the unchanged source (engine `heuristic`), which is honest but
- * confusing on its own — the editor reads this to tell the user why no suggestion appeared
- * instead of silently filling the box with the English text.
+ * True when a suggestion was thrown away because it would have damaged an ICU block.
+ *
+ * Prefer reading `res.icuRejected` off the result: this helper still answers for the
+ * caller that has no result in hand (the array/plural branches of the editor), but it
+ * is hand-maintained state, so it can only describe the last call to `suggestTranslation`.
+ * Pass the result to get the answer for that specific suggestion.
  */
-let lastSuggestionRejectedForIcu = false;
-
-/** True when the last `suggestTranslation` result was discarded for damaging an ICU block. */
-export function suggestionRejectedForIcu(): boolean {
+export function suggestionRejectedForIcu(res?: SuggestionResult | null): boolean {
+  if (res) return res.icuRejected === true;
   return lastSuggestionRejectedForIcu;
 }
+
+/** Mirrors the flag of the most recent `suggestTranslation` call, for callers without a result. */
+let lastSuggestionRejectedForIcu = false;
 
 /**
  * True when a suggestion is worth filling into the editor: a real translation, not the
@@ -778,11 +792,109 @@ async function translateSingleSegment(
   const cached = cachedSegmentLookup(key);
   if (cached) return cached;
   const result = await translateSingleSegmentUncached(segment, baseLang, directLang, targetLocaleName, pluralQuantity);
-  // A later engine can succeed after an earlier one broke the block: the suggestion is
-  // good, so the rejection flag must not survive into the editor's alert.
-  if (result.source !== 'heuristic') lastSuggestionRejectedForIcu = false;
   cacheSegmentResult(key, result);
   return result;
+}
+
+/** True when a clause body holds human-readable words worth translating, as opposed
+ * to pure syntax (`{count}`, `%s`, `#`, an HTML tag, a quoted literal like `'#'`). */
+function hasTranslatableText(body: string): boolean {
+  const stripped = body
+    .replace(/\{[^{}]*\}/g, '')
+    .replace(/%(?:\d+\$)?[+# 0,-]*\d*(?:\.\d+)?[bcdefgopsx%]/gi, '')
+    .replace(/<\/?[a-zA-Z][^>]*>/g, '')
+    .replace(/#/g, '')
+    .replace(/\\n|\\t/g, ' ');
+  return /[\p{L}\p{N}]/u.test(stripped);
+}
+
+/**
+ * Phase 3: translates a string that contains ICU MessageFormat blocks piece by piece,
+ * for engines that cannot be instructed.
+ *
+ * A machine-translation engine translates the block's keywords (`select` → `حدد`),
+ * so a whole-block reply is always rejected by the structural check; the AI providers
+ * never reach this, because their whole-string reply (they see the original text)
+ * already succeeds. Here the structure — variable name, format type, clause keywords,
+ * `offset:`, `=0`/`=1` selectors, `#` — is copied from the source verbatim, and only
+ * the surrounding text and each clause body are translated, each on its own through
+ * the normal engine chain. A body whose translation is unusable (or would lose a `#`)
+ * keeps its source text instead of failing the whole string. The assembled result is
+ * checked structurally before it is returned, so a damaged block can never slip through.
+ * Returns null when nothing could be translated.
+ */
+async function translateIcuPerClause(
+  coreText: string,
+  baseLang: string,
+  directLang: string,
+  targetLocaleName?: string,
+  pluralQuantity?: 'zero' | 'one' | 'two' | 'few' | 'many' | 'other'
+): Promise<{ text: string; source: TranslationEngine } | null> {
+  const parts = splitIcuBlocks(coreText);
+  if (!parts) return null;
+  let overallSource: TranslationEngine = 'glossary';
+  let translatedAny = false;
+  /**
+   * Set when text OUTSIDE a block kept its source language. A clause body that fails is kept
+   * on purpose (the block is still valid ICU and the user can fix one short phrase), but text
+   * outside a block is the sentence the user actually reads: assembling a half-English string
+   * and returning it as a `google` result made the bulk path save it with status 'translated',
+   * which hid it from the "Untranslated" filter while it still read English. That is not a
+   * translation, so the attempt fails and the normal fallback takes over.
+   */
+  let surroundingLeftUntranslated = false;
+  const out: string[] = [];
+  for (const part of parts) {
+    if (part.kind === 'text') {
+      if (!part.text.trim()) {
+        out.push(part.text);
+        continue;
+      }
+      const res = await translateSingleSegment(part.text, baseLang, directLang, targetLocaleName, pluralQuantity);
+      const translated = res.source !== 'heuristic' && Boolean(res.text.trim()) && res.text !== part.text;
+      if (translated) {
+        if (res.source !== 'glossary') overallSource = res.source;
+        translatedAny = true;
+        out.push(res.text);
+      } else {
+        // Punctuation-only runs ("!", "…", " — ") legitimately come back unchanged.
+        if (hasTranslatableText(part.text)) surroundingLeftUntranslated = true;
+        out.push(part.text);
+      }
+      continue;
+    }
+    // Block: rebuild from the source, translating each clause body on its own.
+    const bodies = part.bodies ?? [];
+    let rebuilt = '';
+    let cursor = 0;
+    for (const body of bodies) {
+      const bodyText = part.text.slice(body.start, body.end);
+      rebuilt += part.text.slice(cursor, body.start);
+      let replacement = bodyText;
+      if (hasTranslatableText(bodyText)) {
+        const res = await translateSingleSegment(bodyText, baseLang, directLang, targetLocaleName, pluralQuantity);
+        const hashCount = (s: string) => (s.match(/#/g) || []).length;
+        if (
+          res.source !== 'heuristic' &&
+          res.text &&
+          res.text !== bodyText &&
+          hashCount(res.text) === hashCount(bodyText)
+        ) {
+          replacement = res.text;
+          if (res.source !== 'glossary') overallSource = res.source;
+          translatedAny = true;
+        }
+      }
+      rebuilt += replacement;
+      cursor = body.end;
+    }
+    rebuilt += part.text.slice(cursor);
+    out.push(rebuilt);
+  }
+  if (!translatedAny || surroundingLeftUntranslated) return null;
+  const assembled = out.join('');
+  if (!validatePlaceholders(coreText, assembled, directLang).valid) return null;
+  return { text: assembled, source: overallSource };
 }
 
 async function translateSingleSegmentUncached(
@@ -853,11 +965,15 @@ async function translateSingleSegmentUncached(
    * to happen here for every engine. Only strings that actually contain an ICU block are
    * checked, so the common path pays nothing.
    */
+  // A reply that breaks the block was seen for THIS segment. It travels out on the
+  // result (see `SuggestionResult.icuRejected`), never through a shared variable.
+  let icuRejectedHere = false;
+
   const breaksIcuStructure = (candidate: string): boolean => {
     if (!coreText.includes('{')) return false;
     if (validatePlaceholders(coreText, candidate, directLang).valid) return false;
-    // Remembered so the editor can explain why no suggestion is offered.
-    lastSuggestionRejectedForIcu = true;
+    // Remembered on the result so the editor can explain why no suggestion was offered.
+    icuRejectedHere = true;
     return true;
   };
 
@@ -1084,6 +1200,8 @@ async function translateSingleSegmentUncached(
     strategies = [{ engine: 'google', run: tryGoogleGtx }, { engine: 'mymemory', run: tryMyMemory }];
   }
 
+  // A reply from these strategies already passed `breaksIcuStructure`: whatever an
+  // earlier engine broke, this suggestion is good, so it carries no rejection.
   const primary = strategies[0];
   const primaryResult = await primary.run().catch(() => null);
   if (primaryResult) {
@@ -1108,23 +1226,43 @@ async function translateSingleSegmentUncached(
     }
   }
 
-  // 4. Fallback Heuristic
-  return { text: segment, source: 'heuristic' };
+  // 3b. Phase 3: translate an ICU block piece by piece. The machine-translation
+  // engines translate the block's keywords, so a whole-block reply is always
+  // rejected by the structural check above; translating the surrounding text and
+  // each clause body on their own keeps the structure from the source instead.
+  // AI providers never reach this: their whole-string reply already succeeds.
+  if (coreText.includes('{')) {
+    const perClause = await translateIcuPerClause(coreText, baseLang, directLang, targetLocaleName, pluralQuantity);
+    if (perClause) return { text: wrapResult(perClause.text), source: perClause.source };
+  }
+
+  // 4. Fallback Heuristic. Nothing usable came back, so the rejection (if any) is the
+  // reason no suggestion is offered, and it describes this segment only.
+  return { text: segment, source: 'heuristic', icuRejected: icuRejectedHere };
 }
 
 /**
  * Main translation function that resolves with the highest quality translation available
  * while preserving 100% of Android syntax (%1$s, %1$d, \n, \\n, multiline \n, quotes, etc.)
  */
+/**
+ * Records a finished suggestion as the "last call" the editor can query without a result,
+ * and hands the same value back unchanged. The rejection lives on the result itself, so a
+ * parallel suggestion (a plural item's other quantities, the background word prediction)
+ * can no longer overwrite the answer for this one.
+ */
+function finishSuggestion(res: SuggestionResult): SuggestionResult {
+  lastSuggestionRejectedForIcu = res.icuRejected === true;
+  return res;
+}
+
 export async function suggestTranslation(
   sourceText: string,
   targetLang: string,
   targetLocaleName?: string,
   pluralQuantity?: 'zero' | 'one' | 'two' | 'few' | 'many' | 'other'
 ): Promise<SuggestionResult> {
-  // The flag describes this suggestion only. It is reset here — once per suggestion, not
-  // per segment — so a cached success clears a stale rejection (a cache hit never reaches
-  // the uncached path) and a rejection in any part of a split string is still remembered.
+  // Both the shared last-call flag and each result's own flag describe this suggestion.
   lastSuggestionRejectedForIcu = false;
   if (!sourceText || !sourceText.trim()) {
     return { text: '', source: 'glossary' };
@@ -1138,17 +1276,22 @@ export async function suggestTranslation(
   const parts = sourceText.split(separatorRegex);
 
   if (parts.length === 1) {
-    return translateSingleSegment(sourceText, baseLang, directLang, targetLocaleName, pluralQuantity);
+    return finishSuggestion(
+      await translateSingleSegment(sourceText, baseLang, directLang, targetLocaleName, pluralQuantity)
+    );
   }
 
   // An ICU block that spans a line break cannot be split: each piece would be an unbalanced
   // fragment, invisible to the structural check, so a reply that dropped a clause would be
   // accepted. Such a string is translated whole and checked whole.
   if (hasMultilineIcuBlock(sourceText)) {
-    return translateSingleSegment(sourceText, baseLang, directLang, targetLocaleName, pluralQuantity);
+    return finishSuggestion(
+      await translateSingleSegment(sourceText, baseLang, directLang, targetLocaleName, pluralQuantity)
+    );
   }
 
   let overallSource: TranslationEngine = 'glossary';
+  let anyPartRejected = false;
   const translatedParts = await Promise.all(
     parts.map(async (part) => {
       if (!part) return part;
@@ -1158,6 +1301,7 @@ export async function suggestTranslation(
       }
       separatorRegex.lastIndex = 0;
       const res = await translateSingleSegment(part, baseLang, directLang, targetLocaleName, pluralQuantity);
+      if (res.icuRejected) anyPartRejected = true;
       if (res.source !== 'glossary' && res.source !== 'heuristic') overallSource = res.source;
       return res.text;
     })
@@ -1169,13 +1313,12 @@ export async function suggestTranslation(
   // assembled text as a whole, and if the pieces damaged the block, retry without
   // splitting. A damaged block is never returned.
   if (sourceText.includes('{') && !validatePlaceholders(sourceText, joined, directLang).valid) {
-    return translateSingleSegment(sourceText, baseLang, directLang, targetLocaleName, pluralQuantity);
+    return finishSuggestion(
+      await translateSingleSegment(sourceText, baseLang, directLang, targetLocaleName, pluralQuantity)
+    );
   }
 
-  return {
-    text: joined,
-    source: overallSource,
-  };
+  return finishSuggestion({ text: joined, source: overallSource, icuRejected: anyPartRejected });
 }
 
 // ---------- Batch prewarm for API-key providers ----------
