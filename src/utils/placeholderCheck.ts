@@ -490,6 +490,15 @@ const ICU_BLOCK_HEADER = /^\{([^,]*),([^,]*),/;
  */
 const STRUCTURAL_TEXT_RUN = /^[\s\p{P}\p{S}]*$/u;
 
+/**
+ * Same question, ignoring bidi controls. Arabic text copied from an app or a chat usually wraps
+ * its punctuation in U+200F/U+061C (`'\u200f·\u200f'`): those marks carry no words either, but
+ * they are category Cf — not punctuation — so the plain regex called such a run "text with
+ * words", left the field empty and dropped the separator on save. The bytes are kept as they
+ * are; only the classification ignores the marks.
+ */
+const isStructuralText = (text: string): boolean => STRUCTURAL_TEXT_RUN.test(stripBidiControls(text));
+
 /** Splits one block part into its frame and clauses, or null when it cannot be read reliably. */
 function parseBlockField(part: IcuBlockPart): IcuBlockField | null {
   const bodies = part.bodies;
@@ -588,7 +597,12 @@ export function getIcuFieldModel(source: string, target: string): IcuField[] | n
       let segment = 0;
       return sourceFields!.map((field) => {
         if (field.kind === 'text') {
-          const value = targetSegments[segment]?.[taken[segment]++] ?? '';
+          // A run the target does not have at all is the source's again when it carries no
+          // words: a translation (or a pasted reply) that dropped `' · '` between two blocks
+          // must not silently glue them together, and there is nothing to translate in a
+          // separator. A run with words stays empty — that is the user's text to write.
+          const value =
+            targetSegments[segment]?.[taken[segment]++] ?? (isStructuralText(field.value) ? field.value : '');
           return { kind: 'text', value, sourceValue: field.value };
         }
         segment++;
@@ -615,7 +629,7 @@ export function getIcuFieldModel(source: string, target: string): IcuField[] | n
         // glued two clauses together — `{a…} · {b…}` saved as `{a…}{b…}` with no warning.
         return {
           kind: 'text',
-          value: STRUCTURAL_TEXT_RUN.test(field.value) ? field.value : '',
+          value: isStructuralText(field.value) ? field.value : '',
           sourceValue: field.value,
         };
       }
@@ -632,7 +646,7 @@ export function getIcuFieldModel(source: string, target: string): IcuField[] | n
         // it is copied from the source like the structure around it. Leaving it empty lost it on
         // save, and there is nothing to translate in it.
         const value = targetIsEmpty
-          ? (STRUCTURAL_TEXT_RUN.test(clause.value) ? clause.value : '')
+          ? (isStructuralText(clause.value) ? clause.value : '')
           : clause.value;
         return { ...clause, value, sourceValue };
       }),

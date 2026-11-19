@@ -230,6 +230,41 @@ describe('getIcuFieldModel / assembleIcuFields', () => {
     expect((mixed[0] as IcuBlockField).clauses.map((c) => c.value)).toEqual(['', '—']);
   });
 
+  it('sees a separator wrapped in bidi controls as structure, not as words', () => {
+    // Arabic text copied from an app usually carries U+200F around its punctuation
+    // (`'\u200f·\u200f'`). Those marks are category Cf, so a plain `\p{P}` test called the run
+    // "text with words", left the field empty and the separator was lost on save.
+    const source = '{a, plural, one {# file} other {# files}} \u200f·\u200f {b, select, m {He} other {They}}';
+    const model = getIcuFieldModel(source, '')!;
+    expect(model[1]).toMatchObject({ kind: 'text', value: ' \u200f·\u200f ' });
+    expect(assembleIcuFields(model)).toBe('{a, plural, one {} other {}} \u200f·\u200f {b, select, m {} other {}}');
+    // A run that still holds a word stays empty: the marks alone never qualify.
+    const words = getIcuFieldModel('\u200fYou have\u200f {n, plural, one {a} other {b}}', '')!;
+    expect(words[0]).toMatchObject({ kind: 'text', value: '' });
+    // Same for a clause body: `{\u200f-\u200f}` is still a dash.
+    const body = getIcuFieldModel('{n, plural, one {\u200f-\u200f} other {…}}', '')!;
+    expect((body[0] as IcuBlockField).clauses.map((c) => c.value)).toEqual(['\u200f-\u200f', '…']);
+  });
+
+  it('puts a separator back when the target dropped it, and never glues two blocks together', () => {
+    // A translation (or a pasted AI reply) that drops `' · '` between two blocks must not save
+    // `{a…}{b…}`: the separator is structure, so the source's copy is restored. A run with
+    // words stays empty — that one is the user's to write.
+    const source = '{a, plural, one {# file} other {# files}} \u00b7 {b, select, m {He} other {They}}';
+    const dropped = '{a, plural, one {# \u0645\u0644\u0641} other {# \u0645\u0644\u0641\u0627\u062a}}{b, select, m {\u0647\u0648} other {\u0647\u0645}}';
+    const model = getIcuFieldModel(source, dropped)!;
+    expect(model[1]).toMatchObject({ kind: 'text', value: ' \u00b7 ', sourceValue: ' \u00b7 ' });
+    expect(assembleIcuFields(model)).toBe(
+      '{a, plural, one {# \u0645\u0644\u0641} other {# \u0645\u0644\u0641\u0627\u062a}} \u00b7 {b, select, m {\u0647\u0648} other {\u0647\u0645}}'
+    );
+
+    // A dropped run with words is not invented for the user.
+    const words = getIcuFieldModel('You have {n, plural, one {a} other {b}} now', '\u0644\u062f\u064a\u0643 {n, plural, one {a} other {b}}');
+    expect(words).not.toBeNull();
+    expect(words![0]).toMatchObject({ kind: 'text', value: '\u0644\u062f\u064a\u0643 ' });
+    expect(words![2]).toMatchObject({ kind: 'text', value: '' });
+  });
+
   it('editing one body only changes that body', () => {
     const t = '{g, select, male {He} female {She} other {They}} wrote';
     const model = getIcuFieldModel(t, t)!;
