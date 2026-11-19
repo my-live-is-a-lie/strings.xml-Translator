@@ -19,6 +19,13 @@ export interface HighlightedTextareaProps
   onValueChange?: (newValue: string) => void;
   /** Grey completion shown right after the text (word prediction). */
   ghostText?: string;
+  /**
+   * Tapping the empty space below the text appends a newline (a fast way to start a new line
+   * in a normal translation box). Off for the ICU branch fields: a line break inside a clause
+   * body counts against the line-break save gate, so that tap produced an unsavable string the
+   * user could not explain.
+   */
+  enableEmptySpaceTap?: boolean;
 }
 
 import {
@@ -42,6 +49,7 @@ export const HighlightedTextarea = forwardRef<HTMLTextAreaElement, HighlightedTe
       onExpandedChange,
       onValueChange,
       ghostText,
+      enableEmptySpaceTap = true,
       onScroll,
       style,
       ...props
@@ -620,7 +628,7 @@ export const HighlightedTextarea = forwardRef<HTMLTextAreaElement, HighlightedTe
           value={value}
           onScroll={handleScroll}
           onClick={(e) => {
-            handleEmptyLineTap(e.clientX, e.clientY);
+            if (enableEmptySpaceTap) handleEmptyLineTap(e.clientX, e.clientY);
             props.onClick?.(e);
           }}
           onChange={(e) => {

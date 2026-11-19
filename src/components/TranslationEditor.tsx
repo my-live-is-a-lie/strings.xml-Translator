@@ -440,8 +440,19 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   const icuFieldsActive = draftItem.type === 'string' && icuModel !== null && !icuRawView;
 
   // Reassembles the whole string from one edited field and hands it to the normal string handler
-  const handleIcuFieldChange = (field: number, clause: number | null, value: string) => {
+  /**
+   * Characters a clause body or a text run cannot hold without changing the block's structure.
+   * The fields view promises that its structure cannot be broken by typing, so a stray `{`/`}`
+   * would silently reassemble into a damaged block: the fields view would then disappear (its
+   * model no longer parses) and the hard save gate would refuse the string — a dead end the user
+   * never chose. Braces are stripped as they are typed; the Raw text view stays the way to add or
+   * remove clauses on purpose.
+   */
+  const stripIcuStructureChars = (value: string): string => value.replace(/[{}]/g, '');
+
+  const handleIcuFieldChange = (field: number, clause: number | null, typedValue: string) => {
     if (!icuModel) return;
+    const value = stripIcuStructureChars(typedValue);
     const next =
       clause === null ? setIcuTextValue(icuModel, field, value) : setIcuClauseValue(icuModel, field, clause, value);
     const allEmpty = next.every((f) =>
@@ -1867,6 +1878,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                         value={value}
                         resetKey={`${draftItem.id}-icu-${key}`}
                         data-testid={`icu-field-${key}`}
+                        enableEmptySpaceTap={false}
                         onValueChange={(val) => handleIcuFieldChange(fi, clause, val)}
                         ref={(el) => registerIcuField(key, el)}
                         onFocus={(e) => recordIcuCursor(e.currentTarget, fi, clause)}

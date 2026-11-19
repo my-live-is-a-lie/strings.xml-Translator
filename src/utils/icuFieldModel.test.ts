@@ -4,6 +4,7 @@ import {
   getIcuFieldModel,
   setIcuClauseValue,
   setIcuTextValue,
+  validatePlaceholders,
   type IcuBlockField,
 } from './placeholderCheck';
 
@@ -97,6 +98,32 @@ describe('getIcuFieldModel / assembleIcuFields', () => {
     expect(block.clauses[0].sourceValue).toBe('# books');
     expect(block.clauses[1].sourceValue).toBe('# book');
     expect(assembleIcuFields(getIcuFieldModel(source, target)!)).toBe(target);
+  });
+
+
+  it('keeps the fields view alive when a brace is typed into a body', () => {
+    // The fields view promises the structure cannot be broken by typing. Before the editor
+    // stripped braces, a stray `}` reassembled into `one {# رسالة}} other {}}`: the model no
+    // longer parsed (the fields view vanished mid-edit) and the hard save gate refused the
+    // string, so the user could not tell what happened or how to get back.
+    const source = '{n, plural, one {# message} other {# messages}}';
+    const model = getIcuFieldModel(source, '')!;
+    const withTypedBrace = setIcuClauseValue(model, 0, 0, '# رسالة}');
+    expect(assembleIcuFields(withTypedBrace)).toContain('one {# رسالة}}');
+    expect(getIcuFieldModel(source, assembleIcuFields(withTypedBrace))).toBeNull();
+    // The editor strips the brace before rebuilding, so the model always stays parsable.
+    const stripped = setIcuClauseValue(model, 0, 0, '# رسالة}'.replace(/[{}]/g, ''));
+    const assembled = assembleIcuFields(stripped);
+    expect(getIcuFieldModel(source, assembled)).not.toBeNull();
+    // The structure is intact (`#` still present, no unbalanced brace); the string is invalid
+    // only because this test leaves the `other` body empty on purpose.
+    expect(validatePlaceholders(source, assembled, 'ar').missingInTarget).not.toContain('{n,plural}');
+  });
+
+  it('accepts a literal brace written with ICU quoting (the Raw view escapes them)', () => {
+    // `'{'` is how ICU writes a literal brace; the field keeps the quotes, so nothing is lost.
+    const t = "{g, select, male {Use '{' here} other {No}}";
+    expect(roundTrip(t, t)).toBe(t);
   });
 
   it('editing one body only changes that body', () => {
