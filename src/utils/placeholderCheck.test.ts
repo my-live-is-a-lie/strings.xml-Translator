@@ -4,6 +4,7 @@ import {
   extractPlaceholders,
   getItemQaIssues,
   findClauseBodyOpens,
+  hasMultilineIcuBlock,
   validatePlaceholders,
 } from './placeholderCheck';
 import { SingleStringItem } from '../types';
@@ -793,5 +794,18 @@ describe('findClauseBodyOpens', () => {
 
   it('returns nothing for a string with no ICU block', () => {
     expect(findClauseBodyOpens('Hi {name}, you have {0} messages').size).toBe(0);
+  });
+});
+
+describe('hasMultilineIcuBlock', () => {
+  it('reports a block whose braces are separated by a line break', () => {
+    expect(hasMultilineIcuBlock('{count, plural,\n one {# a} other {# b}}')).toBe(true);
+    expect(hasMultilineIcuBlock('{count, plural, one {# a}\n other {# b}}')).toBe(true);
+  });
+
+  it('does not report a single-line block, plain text, or braces in a quoted literal', () => {
+    expect(hasMultilineIcuBlock('{count, plural, one {# a} other {# b}}')).toBe(false);
+    expect(hasMultilineIcuBlock('a\nb')).toBe(false);
+    expect(hasMultilineIcuBlock("x '{not\nstructure' y")).toBe(false);
   });
 });

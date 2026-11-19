@@ -334,6 +334,35 @@ export function findClauseBodyOpens(text: string): Set<number> {
   return opens;
 }
 
+/**
+ * True when one ICU block straddles a line break, i.e. a `{` and its matching `}` are
+ * separated by `\n`. The translation pipeline splits a source string on its line breaks
+ * and translates each piece on its own; for such a string every piece is an unbalanced
+ * fragment, so the structural check cannot see the block and a reply that drops a clause
+ * would slip through. Callers use this to keep the whole string in one piece instead.
+ */
+export function hasMultilineIcuBlock(text: string): boolean {
+  if (!text.includes('{') || !/[\r\n]/.test(text)) return false;
+  let i = 0;
+  while (i < text.length) {
+    if (text[i] === "'") {
+      const after = skipQuotedLiteral(text, i);
+      i = after !== -1 ? after : i + 1;
+      continue;
+    }
+    if (text[i] === '{') {
+      const close = findMatchingBrace(text, i);
+      if (close !== -1) {
+        if (/[\r\n]/.test(text.slice(i, close))) return true;
+        i = close + 1;
+        continue;
+      }
+    }
+    i++;
+  }
+  return false;
+}
+
 export function extractPlaceholders(text: string): string[] {
   if (!text) return [];
 

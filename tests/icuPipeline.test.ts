@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearTranslationCache, isRetryableError, suggestTranslation } from '../src/utils/translator';
-import { validatePlaceholders } from '../src/utils/placeholderCheck';
+import { hasMultilineIcuBlock, validatePlaceholders } from '../src/utils/placeholderCheck';
 
 /**
  * End-to-end ICU behaviour of the translation pipeline.
@@ -143,5 +143,44 @@ describe('quoted printf tokens keep their re-insertion guarantee', () => {
     replyWith('اضغط للمتابعة');
     const res = await suggestTranslation('Press \\"%1$s\\" to continue', 'ar');
     expect(res.text).toContain('%1$s');
+  });
+});
+
+describe('ICU blocks that span a line break', () => {
+  const MULTILINE = 'Intro {count, plural,\n one {# message} other {# messages}}';
+
+  it('are detected, while plain multiline text and single-line blocks are not', () => {
+    expect(hasMultilineIcuBlock(MULTILINE)).toBe(true);
+    expect(hasMultilineIcuBlock('Intro {count, plural, one {# m} other {# ms}}')).toBe(false);
+    expect(hasMultilineIcuBlock('line one\nline two')).toBe(false);
+  });
+
+  it('are translated as one piece, so the check sees the whole block', async () => {
+    // Splitting on the line break would leave every piece unbalanced, and an unbalanced
+    // source disables the structural check — a dropped clause would pass unnoticed.
+    replyWith('مقدمة {count, plural,\n one {# رسالة} other {# رسائل}}');
+    const res = await suggestTranslation(MULTILINE, 'ar');
+    expect(res.text).toBe('مقدمة {count, plural,\n one {# رسالة} other {# رسائل}}');
+    expect(validatePlaceholders(MULTILINE, res.text, 'ar').valid).toBe(true);
+  });
+
+  it('are rejected when the reply drops a clause', async () => {
+    replyWith('مقدمة {count, plural,\n one {# رسالة}}');
+    const res = await suggestTranslation(MULTILINE, 'ar');
+    expect(res.source).toBe('heuristic');
+    expect(res.text).toBe(MULTILINE);
+  });
+
+  it('plain multiline text still splits and translates piece by piece', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const q = new URL(String(url)).searchParams.get('q') ?? '';
+        const ar = q.includes('one') ? 'سطر أول' : 'سطر ثان';
+        return gtxOk(ar);
+      })
+    );
+    const res = await suggestTranslation('Line one\nLine two', 'ar');
+    expect(res.text).toBe('سطر أول\nسطر ثان');
   });
 });

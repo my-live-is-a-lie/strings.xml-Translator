@@ -16,7 +16,7 @@ import {
 import { geminiTranslateDirect } from './geminiDirect';
 import { fetchGoogleGtxRaw, fetchWithTimeout, providerHttpError } from '../shared/translateCore';
 import { directCallProviderWithKey, directTestProviderApiKey } from './directProviders';
-import { findClauseBodyOpens, validatePlaceholders } from './placeholderCheck';
+import { findClauseBodyOpens, hasMultilineIcuBlock, validatePlaceholders } from './placeholderCheck';
 
 /** Every engine a suggestion can come from. 'glossary' and 'heuristic' are offline. */
 export type TranslationEngine = 'glossary' | 'heuristic' | ProviderEngineType;
@@ -1105,6 +1105,13 @@ export async function suggestTranslation(
     return translateSingleSegment(sourceText, baseLang, directLang, targetLocaleName, pluralQuantity);
   }
 
+  // An ICU block that spans a line break cannot be split: each piece would be an unbalanced
+  // fragment, invisible to the structural check, so a reply that dropped a clause would be
+  // accepted. Such a string is translated whole and checked whole.
+  if (hasMultilineIcuBlock(sourceText)) {
+    return translateSingleSegment(sourceText, baseLang, directLang, targetLocaleName, pluralQuantity);
+  }
+
   let overallSource: TranslationEngine = 'glossary';
   const translatedParts = await Promise.all(
     parts.map(async (part) => {
@@ -1120,8 +1127,17 @@ export async function suggestTranslation(
     })
   );
 
+  const joined = translatedParts.join('');
+
+  // Safety net for a block that only became unbalanced after the split: verify the
+  // assembled text as a whole, and if the pieces damaged the block, retry without
+  // splitting. A damaged block is never returned.
+  if (sourceText.includes('{') && !validatePlaceholders(sourceText, joined, directLang).valid) {
+    return translateSingleSegment(sourceText, baseLang, directLang, targetLocaleName, pluralQuantity);
+  }
+
   return {
-    text: translatedParts.join(''),
+    text: joined,
     source: overallSource,
   };
 }
