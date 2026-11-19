@@ -144,6 +144,7 @@ export function useColumnSwap(storageKey: string) {
         if (!el) continue;
         el.style.transition = 'none';
         el.style.transform = '';
+        el.style.opacity = '';
         el.style.willChange = '';
       }
       // Force a style recalc so the cleared transform is committed with `transition: none` in effect; only
@@ -209,9 +210,15 @@ export function useColumnSwap(storageKey: string) {
         [held, dir * g.pitch],
         [other, -dir * g.pitch],
       ] as const) {
-        el.style.transition = `transform ${SLIDE_MS}ms ${SLIDE_EASING}`;
+        el.style.transition = `transform ${SLIDE_MS}ms ${SLIDE_EASING}, opacity ${SLIDE_MS}ms ${SLIDE_EASING}`;
         el.style.transform = `translateY(${target}px)`;
-        el.style.willChange = 'transform';
+        // The two pills travel the same column by equal and opposite distances, so they are exactly
+        // superimposed partway through the slide. At full opacity the one in front (the held pill, raised
+        // above the other by the lift ring's z-index) completely hides the other at that instant — its
+        // own color appears to cover both rows for a frame, which reads as the two pills' colors swapping.
+        // Dimming both during the slide turns that instant into a visible blend of the two colors instead.
+        el.style.opacity = '0.6';
+        el.style.willChange = 'transform, opacity';
       }
       let done = false;
       const finish = () => {

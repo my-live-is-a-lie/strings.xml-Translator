@@ -273,6 +273,11 @@ describe('useColumnSwap', () => {
     expect(h.bottomBtn().style.transform).toBe('translateY(-48px)');
     expect(h.topBtn().style.transform).toBe('translateY(48px)');
     expect(h.bottomBtn().style.transition).toContain('250ms');
+    // Both pills are dimmed for the slide: they travel the same column by equal and opposite distances, so
+    // they are exactly superimposed partway through, and at full opacity the held one (raised above the
+    // other by the lift ring) would completely hide it for a frame instead of visibly crossing.
+    expect(h.bottomBtn().style.opacity).toBe('0.6');
+    expect(h.topBtn().style.opacity).toBe('0.6');
     // Phase 2 commits once the animation finishes (fallback timer): the content flips and the inline styles
     // are cleared, with the buttons already in their new rows.
     act(() => {
@@ -281,8 +286,10 @@ describe('useColumnSwap', () => {
     expect(h.result.swapped).toBe(true);
     expect(h.topBtn().style.transform).toBe('');
     expect(h.topBtn().style.transition).toBe('');
+    expect(h.topBtn().style.opacity).toBe('');
     expect(h.bottomBtn().style.transform).toBe('');
     expect(h.bottomBtn().style.transition).toBe('');
+    expect(h.bottomBtn().style.opacity).toBe('');
     rectSpy.mockRestore();
     h.unmount();
   });
