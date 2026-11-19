@@ -1224,7 +1224,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     try {
       if (draftItem.type === 'string') {
         const res = await suggestTranslation(draftItem.source, targetLang, targetLocaleName);
-        setIcuRejected(suggestionRejectedForIcu());
+        setIcuRejected(suggestionRejectedForIcu(res));
         // A rejected suggestion hands back the unchanged source text; filling it would
         // show English as "translated", so leave the box and the status untouched.
         if (isFillableSuggestion(res)) {
@@ -1245,7 +1245,9 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             res: await suggestTranslation(pi.source, targetLang, targetLocaleName, pi.quantity),
           }))
         );
-        setIcuRejected(suggestionRejectedForIcu());
+        // Any rejected quantity is worth reporting: the others may have filled, so
+        // without this the alert would stay silent while one form kept the source text.
+        setIcuRejected(results.some(({ res }) => suggestionRejectedForIcu(res)));
         const anyFilled = results.some(({ res }) => isFillableSuggestion(res));
         const updated = results.map(({ pi, res }) => ({
           ...pi,
@@ -1267,7 +1269,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             res: await suggestTranslation(ai.source, targetLang, targetLocaleName),
           }))
         );
-        setIcuRejected(suggestionRejectedForIcu());
+        setIcuRejected(results.some(({ res }) => suggestionRejectedForIcu(res)));
         const anyFilled = results.some(({ res }) => isFillableSuggestion(res));
         const updated = results.map(({ ai, res }) => ({
           ...ai,
@@ -1323,7 +1325,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
           // from the "Untranslated" filter with English text in a translated file. The
           // rejection flag only covers ICU damage, so the fill guard is the same
           // isFillableSuggestion() check the manual Suggest path uses.
-          setIcuRejected(suggestionRejectedForIcu());
+          setIcuRejected(suggestionRejectedForIcu(res));
           if (isFillableSuggestion(res) && res.text.trim()) {
             const updated: SingleStringItem = {
               ...item,
@@ -1351,7 +1353,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             }))
           );
           if (cancelled) return;
-          setIcuRejected(suggestionRejectedForIcu());
+          setIcuRejected(results.some(({ res }) => suggestionRejectedForIcu(res)));
           // Fill per quantity, like the manual Suggest path: a rejected quantity keeps its
           // original target instead of discarding the quantities that did translate.
           const anyFilled = results.some(({ res }) => isFillableSuggestion(res));
@@ -1378,7 +1380,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             }))
           );
           if (cancelled) return;
-          setIcuRejected(suggestionRejectedForIcu());
+          setIcuRejected(results.some(({ res }) => suggestionRejectedForIcu(res)));
           const anyFilled = results.some(({ res }) => isFillableSuggestion(res));
           if (anyFilled) {
             completed = true;

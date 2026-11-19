@@ -351,4 +351,40 @@ describe('a rejected suggestion is reported honestly', () => {
     expect(isFillableSuggestion(undefined)).toBe(false);
     expect(isFillableSuggestion(null)).toBe(false);
   });
+
+  it('each suggestion carries its own rejection, so a parallel success cannot hide it', async () => {
+    // The editor translates a plural item's quantities and an array item's rows with
+    // Promise.all, and the word prediction may be in flight too. The rejection used to
+    // live in one module-level variable, so whichever call finished last decided what the
+    // alert said: a good call erased a real rejection (silent data loss) and a bad one
+    // blamed a suggestion that was fine.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const q = new URL(String(url)).searchParams.get('q') ?? '';
+        // This reply mangles the keywords, so the whole-block check rejects it, and the
+        // empty replies stop the per-clause fallback from translating the pieces either.
+        if (q.startsWith('You have {')) return gtxOk('{العدد، جمع، واحد {# رسالة}}');
+        if (q === 'Messages') return gtxOk('الرسائل');
+        return gtxOk('');
+      })
+    );
+    const [bad, good] = await Promise.all([
+      suggestTranslation('You have {count, plural, one {# message} other {# messages}}', 'ar'),
+      suggestTranslation('Messages', 'ar'),
+    ]);
+    expect(bad.icuRejected).toBe(true);
+    expect(good.icuRejected).toBeUndefined();
+    // The per-result answer is stable no matter which call resolved last.
+    expect(suggestionRejectedForIcu(bad)).toBe(true);
+    expect(suggestionRejectedForIcu(good)).toBe(false);
+  });
+
+  it('a clean translation reports no rejection on its result', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => gtxOk('مرحبا')));
+    const res = await suggestTranslation('Hello', 'ar');
+    expect(res.source).toBe('google');
+    expect(res.icuRejected).toBeUndefined();
+    expect(suggestionRejectedForIcu(res)).toBe(false);
+  });
 });

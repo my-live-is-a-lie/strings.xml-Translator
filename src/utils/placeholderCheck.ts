@@ -1126,7 +1126,7 @@ export function validatePlaceholders(
   }
 
   // Extra tokens are errors too when they are structure the app would choke on:
-  // an added placeholder (`{name}`), format (`{amount:date}`) or printf
+  // an added placeholder (`{name}`), format (`{amount, date}`) or printf
   // specifier (`%s`) is a runtime crash, not a harmless addition — and a doubled
   // brace (`{{name}}`) is malformed ICU. Lenient by design: an added whole block
   // (`{n:plural}`) is a legitimate translation technique, an added HTML tag or
