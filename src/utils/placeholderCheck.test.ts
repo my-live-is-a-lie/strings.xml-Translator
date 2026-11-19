@@ -1,9 +1,11 @@
+import type { ResourceItem } from '../types';
 import { describe, expect, it } from 'vitest';
 import {
   analyzeProjectQa,
   extractPlaceholders,
   getItemQaIssues,
   findClauseBodyOpens,
+  getIcuStructureIssues,
   hasMultilineIcuBlock,
   validatePlaceholders,
 } from './placeholderCheck';
@@ -807,5 +809,48 @@ describe('hasMultilineIcuBlock', () => {
     expect(hasMultilineIcuBlock('{count, plural, one {# a} other {# b}}')).toBe(false);
     expect(hasMultilineIcuBlock('a\nb')).toBe(false);
     expect(hasMultilineIcuBlock("x '{not\nstructure' y")).toBe(false);
+  });
+});
+
+describe('getIcuStructureIssues (save gate)', () => {
+  const item = (target: string, source = '{count, plural, one {# m} other {# ms}}'): ResourceItem =>
+    ({ id: 'x', name: 'inbox', type: 'string', order: 0, status: 'translated', source, target } as ResourceItem);
+
+  it('reports a hand-typed block that would crash at runtime', () => {
+    const issues = getIcuStructureIssues(item('{count, plural, one {# رسالة}}'), 'ar');
+    expect(issues).toHaveLength(1);
+    expect(issues[0].severity).toBe('error');
+    expect(issues[0].id).toContain('icu_structure');
+  });
+
+  it('accepts a correct block', () => {
+    expect(getIcuStructureIssues(item('{count, plural, one {# رسالة} other {# رسائل}}'), 'ar')).toEqual([]);
+  });
+
+  it('ignores strings without an ICU block, so placeholder repair is untouched', () => {
+    expect(getIcuStructureIssues(item('لا يوجد {name}', 'Hi {name}'), 'ar')).toEqual([]);
+  });
+
+  it('ignores an empty target (nothing typed yet)', () => {
+    expect(getIcuStructureIssues(item(''), 'ar')).toEqual([]);
+  });
+
+  it('catches a translated format type', () => {
+    expect(getIcuStructureIssues(item('{count, ترتيبي, one {#} other {#}}'), 'ar')).toHaveLength(1);
+  });
+
+  it('names the quantity that is broken in a plurals item', () => {
+    const plural: ResourceItem = {
+      id: 'p',
+      name: 'p',
+      type: 'plural',
+      order: 0,
+      status: 'translated',
+      items: [
+        { quantity: 'one', source: '{n, plural, one {# a} other {# as}}', target: '{n, plural, one {# أ}}' },
+        { quantity: 'other', source: '{n, plural, one {# a} other {# as}}', target: '{n, plural, one {# أ} other {# أس}}' },
+      ],
+    } as ResourceItem;
+    expect(getIcuStructureIssues(plural, 'ar').map((i) => i.subKey)).toEqual(['one']);
   });
 });

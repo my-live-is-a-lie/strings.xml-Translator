@@ -1491,6 +1491,45 @@ export function getItemQaIssues(item: ResourceItem, targetLocale?: string): QaIs
   return [];
 }
 
+/**
+ * The ICU structural errors of an item: a translation that breaks an ICU block throws at
+ * runtime (`String.format` / `MessageFormat`), the same reason a line-break mismatch is
+ * unsaveable. The translation pipeline already refuses to produce such a reply; this is
+ * the matching gate for text the user types or pastes, so what the app will not generate
+ * it will not save either. Only strings whose source actually contains an ICU block are
+ * reported, so ordinary placeholder repair is unaffected.
+ */
+export function getIcuStructureIssues(item: ResourceItem, targetLocale?: string): QaIssue[] {
+  const parts: Array<{ source: string; target: string; subKey?: string }> = [];
+  if (item.type === 'string') {
+    parts.push({ source: item.source || '', target: item.target || '' });
+  } else if (item.type === 'plural') {
+    for (const q of item.items || []) parts.push({ source: q.source || '', target: q.target || '', subKey: q.quantity });
+  } else if (item.type === 'array') {
+    for (const el of item.items || []) {
+      parts.push({ source: el.source || '', target: el.target || '', subKey: `#${(el.index ?? 0) + 1}` });
+    }
+  }
+
+  return parts
+    .filter((p) => findClauseBodyOpens(p.source).size > 0 && p.target.trim())
+    .filter((p) => !validatePlaceholders(p.source, p.target, targetLocale).valid)
+    .map((p) => {
+      const prefix = p.subKey ? `${p.subKey}: ` : '';
+      return {
+        id: `${item.id}_${p.subKey || 'main'}_icu_structure`,
+        itemId: item.id,
+        itemName: item.name,
+        subKey: p.subKey,
+        category: 'placeholder' as QaIssueCategory,
+        severity: 'error' as const,
+        messageEn: `${prefix}The ICU MessageFormat block is damaged (a clause, a brace or the # was changed), so this string would crash at runtime.`,
+        messageAr: `${prefix}كتلة ICU تالفة (فرع أو قوس أو # تغيّر)، وهذا النص سيتعطّل وقت التشغيل.`,
+        tokens: [],
+      };
+    });
+}
+
 /** Only the line-break errors of an item: a translation with a different number of line breaks cannot be saved. */
 export function getLineBreakIssues(item: ResourceItem, targetLocale?: string): QaIssue[] {
   return getItemQaIssues(item, targetLocale).filter((i) => i.id.endsWith('_linebreaks'));

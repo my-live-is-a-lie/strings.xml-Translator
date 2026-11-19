@@ -17,7 +17,7 @@ import { fixItemSyntax, FixNote } from '../utils/syntaxFix';
 import { debugIgnored } from '../utils/debug';
 import { autoCloseOnDoubleSpace } from '../utils/autoCloseBracket';
 import { usePredictiveWords, PredictField } from '../hooks/usePredictiveWords';
-import { getItemQaIssues, getLineBreakIssues, QaIssue } from '../utils/placeholderCheck';
+import { getIcuStructureIssues, getItemQaIssues, getLineBreakIssues, QaIssue } from '../utils/placeholderCheck';
 import { toEditorItem, toStoredItem, toStoredText, normalizeTypedBreaks } from '../utils/newlines';
 import { getStoredItem, setStoredItem, copyTextToClipboard, readTextFromClipboard } from '../utils/storage';
 import { useT } from '../i18n/i18n';
@@ -1082,6 +1082,16 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     return true;
   }, [draftItem, item.id, targetLang]);
 
+  // A damaged ICU block crashes the app (String.format throws), so it is unsaveable for the
+  // same reason a line-break mismatch is — not a "confirm once and go ahead" warning. The
+  // translation pipeline already refuses to produce such a reply; this gates hand-typed text.
+  const blockIfIcuBroken = React.useCallback((): boolean => {
+    const issues = getIcuStructureIssues(toStoredItem(draftItem), targetLang);
+    if (issues.length === 0) return false;
+    setSaveGuard({ notes: [], remaining: issues, hard: true, itemId: item.id });
+    return true;
+  }, [draftItem, item.id, targetLang]);
+
   // Before saving: repairs placeholders, HTML tags and final punctuation from the source's context.
   // When anything was changed (or unfixable errors remain) the save is blocked once with a message; saving again confirms.
   const blockIfNeedsFix = React.useCallback((): boolean => {
@@ -1118,7 +1128,12 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
 
   // The line-break message follows the text as it is edited and disappears once the counts match
   const liveBreakIssues = React.useMemo(
-    () => (saveGuard?.hard && saveGuard.itemId === item.id ? getLineBreakIssues(toStoredItem(draftItem), targetLang) : []),
+    () => (saveGuard?.hard && saveGuard.itemId === item.id
+      ? [
+          ...getLineBreakIssues(toStoredItem(draftItem), targetLang),
+          ...getIcuStructureIssues(toStoredItem(draftItem), targetLang),
+        ]
+      : []),
     [saveGuard, item.id, draftItem, targetLang]
   );
   // Set when a suggestion was discarded because it would have damaged an ICU block.
@@ -1136,7 +1151,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
 
   // Save without continuing (حفظ بدون متابعة / Save & Stay)
   const handleSaveWithoutContinuing = React.useCallback(() => {
-    if (blockIfNothingTyped() || blockIfLineBreaksDiffer() || blockIfNeedsFix()) return;
+    if (blockIfNothingTyped() || blockIfLineBreaksDiffer() || blockIfIcuBroken() || blockIfNeedsFix()) return;
     // Saving settles the string: the old source text (diff) is no longer shown
     const savedItem = { ...buildSavedItemFromDraft(draftItem), previousSources: undefined };
     const undoDeletesText = savedItem.translationSource === 'ai' && item.status === 'untranslated';
@@ -1150,7 +1165,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     onUpdateTranslation(savedItem, undoDeletesText ? { undoDeletesText: true } : undefined);
     setShowSavedFeedback(true);
     setTimeout(() => setShowSavedFeedback(false), 2000);
-  }, [blockIfNothingTyped, blockIfLineBreaksDiffer, blockIfNeedsFix, buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation]);
+  }, [blockIfNothingTyped, blockIfLineBreaksDiffer, blockIfIcuBroken, blockIfNeedsFix, buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation]);
 
   // Save and continue (حفظ ومتابعة / Save & Continue)
   const handleSaveAndContinue = React.useCallback(() => {
@@ -1158,7 +1173,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       onNavigateNext(); // nothing typed: nothing is saved, just continue
       return;
     }
-    if (blockIfLineBreaksDiffer() || blockIfNeedsFix()) return;
+    if (blockIfLineBreaksDiffer() || blockIfIcuBroken() || blockIfNeedsFix()) return;
     // Saving settles the string: the old source text (diff) is no longer shown
     const savedItem = { ...buildSavedItemFromDraft(draftItem), previousSources: undefined };
     const undoDeletesText = savedItem.translationSource === 'ai' && item.status === 'untranslated';
@@ -1171,7 +1186,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     });
     onUpdateTranslation(savedItem, undoDeletesText ? { undoDeletesText: true } : undefined);
     onNavigateNext();
-  }, [isNothingTyped, blockIfLineBreaksDiffer, blockIfNeedsFix, buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation, onNavigateNext]);
+  }, [isNothingTyped, blockIfLineBreaksDiffer, blockIfIcuBroken, blockIfNeedsFix, buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation, onNavigateNext]);
 
   // Editor keyboard shortcuts for Undo/Redo and Ctrl+Enter (Save & Continue)
   useEffect(() => {
