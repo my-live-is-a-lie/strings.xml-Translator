@@ -62,7 +62,7 @@ export async function geminiTranslateDirect(opts: {
     ? `\nPlural quantity category: "${pluralQuantity}" (CLDR plural form for ${langLabel}).`
     : '';
   const prompt = `Translate the following Android strings.xml value from English to ${langLabel}.${pluralContext}
-Return ONLY the translated text without any metadata labels (never output "[ترجمة المصطلح: ...]") and preserve all placeholders (%s, %d, %1$s, %2$d, \\n, HTML tags, ICU MessageFormat blocks) exactly as they appear.
+Return ONLY the translated text without any metadata labels (never output "[ترجمة المصطلح: ...]") and preserve all placeholders (%s, %d, %1$s, %2$d, \\n, HTML tags) exactly as they appear; for ICU MessageFormat blocks, protect the syntax (variable names, format types, clause selectors, #) but translate the text inside each clause.
 
 Source string:
 ${sourceText}`;

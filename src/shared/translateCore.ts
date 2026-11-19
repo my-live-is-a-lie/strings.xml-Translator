@@ -11,8 +11,8 @@ Follow these strict rules for every translation:
    - Resource references (e.g., @string/..., @plurals/...) and simple ICU placeholders (e.g., {0}, {count})
 3. For ICU MessageFormat blocks, preserve the ENTIRE structure exactly and translate ONLY the text inside each clause:
    - Keep the variable name, the format type (plural, select, selectordinal, number, date, time) and every clause selector unchanged: never translate plural, select, selectordinal, the category names (zero, one, two, few, many, other), offset:, =0/=1 selectors, or the # symbol inside plural clauses.
-   - Keep every clause, including the mandatory other clause; do not add, remove or reorder clauses, and do not change a variable's format type (e.g., {amount, number} must stay number, never become date).
-   - Text inside ICU quoted literals ('...') is literal text, never translate it.
+   - Keep every clause, including the mandatory other clause; do not remove or reorder clauses, and do not change a variable's format type (e.g., {amount, number} must stay number, never become date). For plural and selectordinal blocks, adapt the categories to the target language: Arabic needs zero, one, two, few, many, other, while Japanese needs only other — adding the missing categories is allowed and expected. But never remove other, never change the offset: value or an explicit =0/=1 selector, and never add, remove or change select keys.
+   - Quoted literals ('...') only escape syntax characters; they do not mark text untranslatable: keep the quotes, but translate the human-readable words inside them (e.g., ''Hello!'' — translate "Hello!" and keep the quotes). Text that is itself syntax stays unchanged (e.g., '{username}' shows a placeholder literally, so keep it as-is).
    - Example: {count, plural, one {# message} other {# messages}} — translate only "message" and "messages", keep the braces, the selectors and # exactly.
    - Example: {gender, select, male {He} female {She} other {They}} — translate only He, She and They.
 4. Use natural, concise mobile UI terminology appropriate for Android applications (for example, translate "Install" to "تثبيت" in Arabic).

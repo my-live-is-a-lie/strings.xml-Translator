@@ -55,5 +55,7 @@ describe('gemini model fallback', () => {
     expect(system).toContain('{count, plural, one {# message} other {# messages}}');
     const userPrompt = parsed.contents[0].parts[0].text;
     expect(userPrompt).toContain('ICU MessageFormat blocks');
+    expect(userPrompt).toContain('protect the syntax');
+    expect(userPrompt).toContain('translate the text inside each clause');
   });
 });
