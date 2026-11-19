@@ -127,6 +127,14 @@ export function parseReply(raw: string): Map<number, string> {
 
 export type IssueKind = 'missing' | 'placeholder' | 'same' | 'empty';
 
+/**
+ * Issues that make a row unusable: applying it would put text in the file that breaks the
+ * string at runtime (`String.format` throws on a damaged ICU block) or lose a placeholder.
+ * `empty` and `same` are quality remarks the user may accept deliberately; a broken
+ * placeholder/ICU block is not.
+ */
+export const BLOCKING_ISSUES: readonly IssueKind[] = ['placeholder'];
+
 export interface Checked {
   segment: Segment;
   text: string; // '' when missing
