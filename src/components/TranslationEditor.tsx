@@ -1303,7 +1303,13 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
         if (item.type === 'string') {
           const res = await suggestTranslation(item.source, targetLang, targetLocaleName);
           if (cancelled) return;
-          if (res && res.text && res.text.trim()) {
+          // A `heuristic` result means no engine produced anything usable and the source came
+          // back untouched: filling the box and marking it translated would hide the string
+          // from the "Untranslated" filter with English text in a translated file. The
+          // rejection flag only covers ICU damage, so the fill guard is the same
+          // isFillableSuggestion() check the manual Suggest path uses.
+          setIcuRejected(suggestionRejectedForIcu());
+          if (isFillableSuggestion(res) && res.text.trim()) {
             const updated: SingleStringItem = {
               ...item,
               target: res.text,
@@ -1318,27 +1324,31 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
           const basePlurals = (
             normalizePluralsForLanguage([item], targetLang)[0] as PluralStringItem
           ).items;
-          const updated = await Promise.all(
-            basePlurals.map(async (pi) => {
-              const res = await suggestTranslation(
+          const results = await Promise.all(
+            basePlurals.map(async (pi) => ({
+              pi,
+              res: await suggestTranslation(
                 pi.source,
                 targetLang,
                 targetLocaleName,
                 pi.quantity
-              );
-              return {
-                ...pi,
-                target: res?.text || pi.target,
-              };
-            })
+              ),
+            }))
           );
           if (cancelled) return;
-          if (updated.some((pi) => pi.target.trim().length > 0)) {
+          setIcuRejected(suggestionRejectedForIcu());
+          // Fill per quantity, like the manual Suggest path: a rejected quantity keeps its
+          // original target instead of discarding the quantities that did translate.
+          const anyFilled = results.some(({ res }) => isFillableSuggestion(res));
+          if (anyFilled) {
             completed = true;
             updateDraftItem(
               {
                 ...item,
-                items: updated,
+                items: results.map(({ pi, res }) => ({
+                  ...pi,
+                  target: isFillableSuggestion(res) ? res.text : pi.target,
+                })),
                 status: 'translated',
                 translationSource: 'ai',
               },
@@ -1346,22 +1356,24 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             );
           }
         } else if (item.type === 'array') {
-          const updated = await Promise.all(
-            item.items.map(async (ai) => {
-              const res = await suggestTranslation(ai.source, targetLang, targetLocaleName);
-              return {
-                ...ai,
-                target: res?.text || ai.target,
-              };
-            })
+          const results = await Promise.all(
+            item.items.map(async (ai) => ({
+              ai,
+              res: await suggestTranslation(ai.source, targetLang, targetLocaleName),
+            }))
           );
           if (cancelled) return;
-          if (updated.some((ai) => ai.target.trim().length > 0)) {
+          setIcuRejected(suggestionRejectedForIcu());
+          const anyFilled = results.some(({ res }) => isFillableSuggestion(res));
+          if (anyFilled) {
             completed = true;
             updateDraftItem(
               {
                 ...item,
-                items: updated,
+                items: results.map(({ ai, res }) => ({
+                  ...ai,
+                  target: isFillableSuggestion(res) ? res.text : ai.target,
+                })),
                 status: 'translated',
                 translationSource: 'ai',
               },

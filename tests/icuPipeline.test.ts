@@ -223,7 +223,58 @@ describe('a rejected suggestion is reported honestly', () => {
     const [out] = (await bulkTranslateItems([item], 'ar')) as SingleStringItem[];
     expect(out.status).toBe('untranslated');
     expect(out.translationEngine).toBeUndefined();
-    expect(out.target).toBe(PLURAL); // nothing was invented
+    // Not the English source: leaving it empty keeps it in the editor's "Untranslated" filter
+    // instead of putting English text into a file that is supposed to be Arabic.
+    expect(out.target).toBe('');
+    expect(out.target).not.toBe(PLURAL);
+  });
+
+  it('keeps an existing target when the engines are rejected, and never the English source', async () => {
+    replyWith('{count, plural, one {# رسالة}}');
+    const item: ResourceItem = {
+      id: 'b',
+      name: 'b',
+      type: 'string',
+      order: 0,
+      status: 'translated',
+      source: PLURAL,
+      target: 'ترجمة سابقة للمستخدم',
+      translationSource: 'ai',
+      translationEngine: 'google',
+    } as SingleStringItem;
+    const [out] = (await bulkTranslateItems([item], 'ar')) as SingleStringItem[];
+    expect(out.target).toBe('ترجمة سابقة للمستخدم');
+    expect(out.status).toBe('translated'); // the user's own text is preserved and still counts
+    // The kept text is the user's own: its previous engine stays, 'heuristic' is never
+    // recorded as the engine of text no engine produced.
+    expect(out.translationEngine).toBe('google');
+    expect(out.translationSource).toBe('ai');
+  });
+
+  it('keeps the previous target in bulk plurals and arrays instead of the English source', async () => {
+    replyWith('{count, plural, one {# رسالة}}');
+    const plural: ResourceItem = {
+      id: 'p',
+      name: 'p',
+      type: 'plural',
+      order: 0,
+      status: 'untranslated',
+      items: [{ quantity: 'one', source: PLURAL, target: '' }],
+    } as unknown as PluralStringItem;
+    const [pOut] = (await bulkTranslateItems([plural], 'ar')) as PluralStringItem[];
+    expect(pOut.items[0].target).toBe('');
+    expect(pOut.items[0].target).not.toBe(PLURAL);
+    const arr: ResourceItem = {
+      id: 'arr',
+      name: 'arr',
+      type: 'array',
+      order: 0,
+      status: 'untranslated',
+      items: [{ source: PLURAL, target: '' }],
+    } as unknown as ArrayStringItem;
+    const [aOut] = (await bulkTranslateItems([arr], 'ar')) as ArrayStringItem[];
+    expect(aOut.items[0].target).toBe('');
+    expect(aOut.items[0].target).not.toBe(PLURAL);
   });
 
   it('a cached success clears a stale rejection flag', async () => {

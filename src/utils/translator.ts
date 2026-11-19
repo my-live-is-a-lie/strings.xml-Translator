@@ -1270,17 +1270,26 @@ export async function bulkTranslateItems(
     if (item.type === 'string') {
       const single = item as SingleStringItem;
       const res = await suggestTranslation(single.source, targetLang, targetLocaleName);
-      const targetText = res?.text || single.target;
-      // `heuristic` = no engine produced a usable reply and the string was left untouched;
-      // it must stay untranslated so the user still sees it in the "Untranslated" filter.
-      const hasTranslation =
-        Boolean(targetText.trim()) && res?.source !== 'heuristic' && res?.source !== undefined;
+      // `heuristic` = no engine produced a usable reply and the source came back untouched.
+      // Keeping it as the target would put English text in a translated file, so the string
+      // keeps its previous target (usually empty) and stays in the "Untranslated" filter.
+      const rejectedForIcu = res?.source === 'heuristic';
+      const targetText = rejectedForIcu ? single.target : res?.text || single.target;
+      // When the engines are rejected, the user's own text is kept and still counts as
+      // translated; only a string that would have been filled with the English source is
+      // left untranslated.
+      const hasTranslation = rejectedForIcu
+        ? Boolean(targetText.trim())
+        : Boolean(targetText.trim()) && res?.source !== undefined;
       return {
         ...single,
         target: targetText,
         status: hasTranslation ? 'translated' : 'untranslated',
-        translationSource: hasTranslation ? 'ai' : undefined,
-        translationEngine: hasTranslation ? res?.source : undefined,
+        // On rejection the kept text is the user's own, so its previous source and engine
+        // stay — recording 'heuristic' as the engine of text no engine produced would be
+        // a lie in the other direction.
+        translationSource: hasTranslation ? (rejectedForIcu ? single.translationSource : 'ai') : undefined,
+        translationEngine: hasTranslation ? (rejectedForIcu ? single.translationEngine : res?.source) : undefined,
       };
     }
 
@@ -1294,7 +1303,9 @@ export async function bulkTranslateItems(
             engineUsed = engineUsed ?? res?.source;
             return {
               ...pi,
-              target: res?.text || pi.target,
+              // A rejected quantity keeps its previous target; the English source must not
+              // land in the field (same rule as the string path above).
+              target: res?.source === 'heuristic' ? pi.target : res?.text || pi.target,
             };
           } catch (err) {
             // One bad quantity keeps its original text; the other quantities still translate.
@@ -1329,7 +1340,9 @@ export async function bulkTranslateItems(
             engineUsed = engineUsed ?? res?.source;
             return {
               ...ai,
-              target: res?.text || ai.target,
+              // A rejected element keeps its previous target; the English source must not
+              // land in the field (same rule as the string path above).
+              target: res?.source === 'heuristic' ? ai.target : res?.text || ai.target,
             };
           } catch (err) {
             // One bad element keeps its original text; the other elements still translate.
