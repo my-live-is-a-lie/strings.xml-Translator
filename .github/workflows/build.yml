@@ -16,6 +16,8 @@ jobs:
   build:
     name: Build Web & Android APK
     runs-on: ubuntu-latest
+    # Hard cap so a stuck step can never run indefinitely (GitHub default is 360).
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repository

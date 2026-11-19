@@ -178,7 +178,7 @@ export const MultiLanguageModal: React.FC<MultiLanguageModalProps> = ({
             const usedProvider = st?.state === 'done' ? providers.find((p) => p.id === usedProviders[l.code]) : undefined;
             return (
               <li key={l.code}>
-                <label className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2 text-xs cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60">
+                <label className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60">
                   <input
                     type="checkbox"
                     checked={selected.has(l.code)}
@@ -189,7 +189,7 @@ export const MultiLanguageModal: React.FC<MultiLanguageModalProps> = ({
                   />
                   <span className="flex-1 min-w-0 truncate text-slate-800 dark:text-slate-100">
                     {langName(l.code, l.name, l.nativeName)}
-                    <span className="ms-1 font-mono text-[10px] text-slate-400" dir="ltr">{l.androidDir}</span>
+                    <span className="ms-1 font-mono text-[10px] text-slate-500 dark:text-slate-400" dir="ltr">{l.androidDir}</span>
                     {isCurrent && <span data-i18n className="ms-1 text-[10px] text-[#1EB996]">{t('current')}</span>}
                   </span>
                   {st?.state === 'running' && (

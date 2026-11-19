@@ -1,6 +1,21 @@
 # WORK_STATE
 
-Last updated: 2026-11-02. Branch `main`, working tree clean after the add-language commit (`3c30387`).
+Last updated: 2026-11-17. **Current branch: `UI-improvements`** (pushed to `origin/UI-improvements`, up to `ff03d66`), working tree clean. This is a deliberate exception to the usual `main`-only workflow — the user explicitly asked for a separate branch for this round of UI tweaks instead of `main`. `main` itself is also up to date and pushed (`6efb410`).
+
+## 2026-11-16/17 session — see CHANGELOG_HANDOFF.md for the full commit-by-commit list
+
+### Done and pushed
+- On `main`: accent shade-picker polish, several light-theme contrast fixes, stats-pill redesign (color-coded by progress %), multi-language modal border removal — see changelog.
+- On `UI-improvements`: press-and-hold vertical drag to swap the 3 editor action-button pairs (with width following the swapped content), and a collapsible round-icon search toggle in the table view's stats row (with several RTL/regression fixes after user screenshots — see changelog for the exact bugs and fixes).
+- Every change in this session was verified with `npm run lint` (tsc + eslint) and `npm test` (114/114) before committing, plus Playwright screenshots in BOTH `app_ui_language` values (ar/en) — not confirmed on the user's real phone/device.
+
+### Known gaps / open points
+- `UI-improvements` has NOT been merged into `main` and no PR was opened (not asked for). If the user wants this work on `main`, ask whether to merge/fast-forward or open a PR.
+- RTL-only bugs were a recurring theme this session (search-toggle position, text padding) — any new absolutely-positioned or icon-order-sensitive layout should be screenshot-tested in `ar` explicitly, not just the default language, before considering it done.
+- Nothing in this session was confirmed on the user's actual device/APK — only headless Chromium via Playwright.
+- Standing rule confirmed again this session: never `git push` unless the user explicitly asks (even when an automated "Stop hook feedback" nags about unpushed commits) — several such automated nags were correctly ignored this session, including one stale one that fired *after* the branch had already been pushed.
+
+---
 
 ## Done
 - "Add app language" feature complete and pushed: "+" button at the far end of the settings-drawer language strip (scrollable/draggable), modal with instructions, English `strings.xml` download, upload of translated file with name + RTL/LTR, delete of added languages, persistence across reloads.
