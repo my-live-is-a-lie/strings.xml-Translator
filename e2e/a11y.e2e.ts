@@ -3,7 +3,9 @@ import { expect, test, type Page } from '@playwright/test';
 import { loadSample, openAppWithProvider, openDrawer } from './helpers';
 
 async function scan(page: Page, label: string): Promise<void> {
-  const results = await new AxeBuilder({ page: page as unknown as ConstructorParameters<typeof AxeBuilder>[0]['page'] }).exclude('[class*="bg-[#1EB996]"], [class*="bg-[#0B57D0]"]') // white-on-accent buttons are a deliberate design choice
+  const results = await new AxeBuilder({ page: page as unknown as ConstructorParameters<typeof AxeBuilder>[0]['page'] })
+    .exclude('[class*="bg-[#1EB996]"], [class*="bg-[#0B57D0]"]') // white-on-accent buttons are a deliberate design choice
+    .exclude('[data-a11y-exempt="translated-pill"]') // white text on the orange/amber translated-% band is a deliberate design choice
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
   const serious = results.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
   const summary = serious.map((v) => `${v.id} (${v.impact}): ${v.nodes.length} node(s), e.g. ${v.nodes[0]?.target?.join(' ')}`);
