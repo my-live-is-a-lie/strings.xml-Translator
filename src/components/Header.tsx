@@ -409,6 +409,16 @@ const HeaderBase: React.FC<HeaderProps> = ({
         : translatedPercent <= 80
           ? 'bg-amber-500'
           : 'bg-green-700';
+  // orange-500 and amber-500 are too light for white text to clear WCAG AA
+  // contrast (2.6:1 / 2.1:1); red-600 and green-700 are dark enough for it.
+  // Swap to dark text on the two light bands instead of changing the hues,
+  // which were picked deliberately (see comment above).
+  const translatedPillTextColorClass =
+    translatedPercent <= 30
+      ? 'text-white'
+      : translatedPercent <= 80
+        ? 'text-slate-900'
+        : 'text-white';
   const exactTranslatedWidth = totalItems > 0 ? (translatedCount / totalItems) * 100 : 0;
   const exactReviewWidth = totalItems > 0 ? (needsReviewCount / totalItems) * 100 : 0;
 
@@ -684,7 +694,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
                 {/* Translated stat pill */}
                 <div className="inline-flex items-center gap-1.5">
                   <div className="inline-flex items-center rounded-md overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.25)]">
-                    <span className={`px-2 py-0.5 text-[11px] sm:text-xs font-bold text-white tabular-nums transition-colors duration-300 ${translatedPillColorClass}`}>
+                    <span className={`px-2 py-0.5 text-[11px] sm:text-xs font-bold tabular-nums transition-colors duration-300 ${translatedPillColorClass} ${translatedPillTextColorClass}`}>
                       {translatedPercent}%
                     </span>
                     <span className="px-2.5 py-0.5 text-[11px] sm:text-xs font-semibold bg-slate-800 dark:bg-slate-700 text-white">
