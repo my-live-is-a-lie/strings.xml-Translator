@@ -16,6 +16,7 @@ import {
 import { geminiTranslateDirect } from './geminiDirect';
 import { fetchGoogleGtxRaw, fetchWithTimeout, providerHttpError } from '../shared/translateCore';
 import { directCallProviderWithKey, directTestProviderApiKey } from './directProviders';
+import { findClauseBodyOpens, hasMultilineIcuBlock, validatePlaceholders } from './placeholderCheck';
 
 /** Every engine a suggestion can come from. 'glossary' and 'heuristic' are offline. */
 export type TranslationEngine = 'glossary' | 'heuristic' | ProviderEngineType;
@@ -58,6 +59,9 @@ export function isRetryableError(err: unknown): boolean {
   if (err instanceof TypeError) return true; // network failure ("Failed to fetch")
   if (err instanceof Error) {
     if (err.name === 'AbortError' || err.name === 'TimeoutError') return true;
+    // A structurally damaged reply is a deterministic answer to this prompt: retrying the
+    // same request costs quota and time without a better chance of success.
+    if (err.name === 'StructuralError') return false;
     const http = err.message.match(/HTTP (\d{3})/);
     if (http) {
       const status = Number(http[1]);
@@ -110,6 +114,8 @@ function toArabicIndicDigits(numStr: string): string {
 
 interface ProtectedToken {
   rawToken: string; // Exact original syntax token, e.g. %1$d, \"%1$s\", @string/msg_threads
+  /** True for an ICU clause body (`{He}` in a `select`): text ICU replaces, not syntax. */
+  isClauseText?: boolean;
   surrogateId: string; // e.g. 987100
   surrogateText: string; // What we put into the text sent to API
   position: 'start' | 'end' | 'before_punct' | 'middle';
@@ -136,6 +142,10 @@ function protectSegmentSyntax(segment: string): {
     /(\\"%(?:\d+\$)?[+# 0,-]*\d*(?:\.\d+)?[bcdefgopsx%]\\"|\\'%(?:\d+\$)?[+# 0,-]*\d*(?:\.\d+)?[bcdefgopsx%]\\'|%(?:\d+\$)?[+# 0,-]*\d*(?:\.\d+)?[bcdefgopsx%]\/%(?:\d+\$)?[+# 0,-]*\d*(?:\.\d+)?[bcdefgopsx%]|%(?:\d+\$)?[+# 0,-]*\d*(?:\.\d+)?[bcdefgopsx%]|@(?:string|plurals|array)\/[a-zA-Z0-9_]+|\{[a-zA-Z0-9_-]+\}|<\/?[a-zA-Z][^>]*>)/gi;
 
   const trimmedSeg = segment.trim();
+  // Offsets of ICU clause bodies, so `{He}` inside a `select` is known to be translatable
+  // text while `{count}` is a placeholder. Without this the two are indistinguishable by
+  // their text alone.
+  const clauseBodyOpens = findClauseBodyOpens(segment);
 
   let cleaned = segment.replace(syntaxRegex, (match, _g1, offset) => {
     const idx = tokens.length;
@@ -162,6 +172,7 @@ function protectSegmentSyntax(segment: string): {
 
     tokens.push({
       rawToken: match,
+      isClauseText: clauseBodyOpens.has(offset),
       surrogateId,
       surrogateText,
       position,
@@ -178,6 +189,33 @@ function protectSegmentSyntax(segment: string): {
   void trimmedSeg;
 
   return { cleanText: cleaned, tokens, usesEscapedDoubleQuotes };
+}
+
+/**
+ * True when re-inserting `rawToken` would duplicate structure the reply already carries.
+ *
+ * Shape tokens (`{name:type}`, `offset:`, `=0`, `#`, `%s`, `<b>`, `@string/...`) are pure
+ * syntax: ICU never translates them, so if the reply has the same token it is already in
+ * place and inserting another copy would break the block. Clause bodies (`{He}` inside a
+ * `select`) are the opposite: ICU *replaces* them with the translation, so the absence of
+ * the English text is the expected, correct outcome and must not trigger an insertion.
+ */
+function reinsertedTokenWouldDuplicate(result: string, rawToken: string): boolean {
+  const inner = rawToken.startsWith('{') && rawToken.endsWith('}') ? rawToken.slice(1, -1) : '';
+  // `{name}` (plain placeholder) and `{name, type}` (ICU argument) are syntax;
+  // `{He}` / `{Some words}` are clause text.
+  if (inner && /^[A-Za-z0-9_-]+$/.test(inner)) return result.includes(rawToken);
+  if (inner.includes(',')) return result.includes(rawToken);
+  if (/^\{\s*(?:offset:|=\d)/.test(rawToken)) return result.includes(rawToken);
+  if (rawToken === '#' || rawToken.startsWith('%') || rawToken.startsWith('<') || rawToken.startsWith('@')) {
+    return result.includes(rawToken);
+  }
+  // Quoted printf specifiers ("\%1$s\", \'%s\') are syntax too, not clause text: they start
+  // with a quote, so the checks above miss them, but dropping one would silently lose the
+  // specifier (the old guarantee re-inserted them).
+  if (rawToken.includes('%')) return result.includes(rawToken);
+  // Anything else is translatable clause text: never re-insert it.
+  return true;
 }
 
 // Restore protected syntax tokens into the translated segment and guarantee none are missing
@@ -210,7 +248,13 @@ function restoreSegmentSyntax(
     }
 
     // Guarantee: If the translation engine stripped the surrogate token, insert rawToken in its structural position
-    if (!result.includes(tk.rawToken)) {
+    // A token whose *meaning* survived must not be re-inserted: an ICU clause such as `{He}`
+    // is translatable text, so when the reply already carries that text inside a clause
+    // (`male {أعجبه}`) there is nothing to restore. Comparing only the raw string would append
+    // the English `{He}` a second time, which ICU then reads as a stray placeholder.
+    // Clause text is what ICU replaces, so a translation that no longer contains the
+    // English words inside the clause is the expected result, never a lost token.
+    if (!tk.isClauseText && !result.includes(tk.rawToken) && !reinsertedTokenWouldDuplicate(result, tk.rawToken)) {
       const trimmedRes = result.trim();
       if (tk.position === 'start') {
         result = `${tk.rawToken} ${trimmedRes}`;
@@ -672,6 +716,30 @@ const ENGINE_LABELS: Record<string, string> = {
 // in a row the UI is told so it can suggest an official or self-hosted provider.
 const GTX_FAILURE_THRESHOLD = 3;
 let gtxConsecutiveFailures = 0;
+
+/**
+ * Set when the last suggestion was thrown away because it would have damaged an ICU block.
+ * The caller then receives the unchanged source (engine `heuristic`), which is honest but
+ * confusing on its own — the editor reads this to tell the user why no suggestion appeared
+ * instead of silently filling the box with the English text.
+ */
+let lastSuggestionRejectedForIcu = false;
+
+/** True when the last `suggestTranslation` result was discarded for damaging an ICU block. */
+export function suggestionRejectedForIcu(): boolean {
+  return lastSuggestionRejectedForIcu;
+}
+
+/**
+ * True when a suggestion is worth filling into the editor: a real translation, not the
+ * unchanged source text handed back when every engine failed or broke an ICU block.
+ * The editor uses this in all three Suggest branches so a rejected suggestion leaves the
+ * box — and the item's status — exactly as they were, instead of showing English as
+ * "translated".
+ */
+export function isFillableSuggestion(res: SuggestionResult | undefined | null): res is SuggestionResult {
+  return Boolean(res && res.text && res.source !== 'heuristic');
+}
 export const GTX_STATUS_EVENT = 'gtx-status-change';
 
 function noteGtxResult(ok: boolean): void {
@@ -710,6 +778,9 @@ async function translateSingleSegment(
   const cached = cachedSegmentLookup(key);
   if (cached) return cached;
   const result = await translateSingleSegmentUncached(segment, baseLang, directLang, targetLocaleName, pluralQuantity);
+  // A later engine can succeed after an earlier one broke the block: the suggestion is
+  // good, so the rejection flag must not survive into the editor's alert.
+  if (result.source !== 'heuristic') lastSuggestionRejectedForIcu = false;
   cacheSegmentResult(key, result);
   return result;
 }
@@ -775,6 +846,21 @@ async function translateSingleSegmentUncached(
 
   const { cleanText, tokens, usesEscapedDoubleQuotes } = protectSegmentSyntax(coreText);
 
+  /**
+   * Rejects a reply that would break the ICU block structure (a dropped `other`, a lost
+   * brace, a translated clause keyword). The AI providers check this inside their own
+   * callers; the plain machine-translation engines rewrite braces freely, so the check has
+   * to happen here for every engine. Only strings that actually contain an ICU block are
+   * checked, so the common path pays nothing.
+   */
+  const breaksIcuStructure = (candidate: string): boolean => {
+    if (!coreText.includes('{')) return false;
+    if (validatePlaceholders(coreText, candidate, directLang).valid) return false;
+    // Remembered so the editor can explain why no suggestion is offered.
+    lastSuggestionRejectedForIcu = true;
+    return true;
+  };
+
   // Helper to reject polluted crowdsourced TM entries (e.g. "[ترجمة المصطلح: Install]")
   const isPollutedTranslation = (candidate: string): boolean => {
     const c = candidate.trim();
@@ -837,7 +923,8 @@ async function translateSingleSegmentUncached(
         if (pData && typeof pData.translatedText === 'string' && pData.translatedText.trim()) {
           const cleaned = stripMetadataLabels(pData.translatedText, coreText);
           if (cleaned && !isPollutedTranslation(cleaned)) {
-            return restoreSegmentSyntax(cleaned, tokens, usesEscapedDoubleQuotes);
+            const restored = restoreSegmentSyntax(cleaned, tokens, usesEscapedDoubleQuotes);
+            if (!breaksIcuStructure(restored)) return restored;
           }
         }
       } catch (err) {
@@ -862,7 +949,8 @@ async function translateSingleSegmentUncached(
       if (directResult && directResult.translatedText) {
         const cleaned = stripMetadataLabels(directResult.translatedText, coreText);
         if (cleaned && !isPollutedTranslation(cleaned)) {
-          return restoreSegmentSyntax(cleaned, tokens, usesEscapedDoubleQuotes);
+          const restored = restoreSegmentSyntax(cleaned, tokens, usesEscapedDoubleQuotes);
+          if (!breaksIcuStructure(restored)) return restored;
         }
       }
     } catch (err) {
@@ -888,7 +976,8 @@ async function translateSingleSegmentUncached(
       });
       const cleanedAi = stripMetadataLabels(translated, coreText);
       if (cleanedAi && !isPollutedTranslation(cleanedAi)) {
-        return restoreSegmentSyntax(cleanedAi, tokens, usesEscapedDoubleQuotes);
+        const restored = restoreSegmentSyntax(cleanedAi, tokens, usesEscapedDoubleQuotes);
+        if (!breaksIcuStructure(restored)) return restored;
       }
     } catch (err) {
       logFallback('gemini', err);
@@ -902,8 +991,11 @@ async function translateSingleSegmentUncached(
       const combined = await withRetry(() => fetchGoogleGtxRaw(cleanText, directLang, 5000));
       const decoded = stripMetadataLabels(decodeHtmlEntities(combined), coreText);
       if (decoded && !isPollutedTranslation(decoded)) {
-        noteGtxResult(true);
-        return restoreSegmentSyntax(decoded, tokens, usesEscapedDoubleQuotes);
+        const restored = restoreSegmentSyntax(decoded, tokens, usesEscapedDoubleQuotes);
+        if (!breaksIcuStructure(restored)) {
+          noteGtxResult(true);
+          return restored;
+        }
       }
     } catch (err) {
       logFallback('google', err);
@@ -961,7 +1053,7 @@ async function translateSingleSegmentUncached(
 
         if (!isPollutedTranslation(rawResult)) {
           const finalResult = restoreSegmentSyntax(rawResult, tokens, usesEscapedDoubleQuotes);
-          if (finalResult) {
+          if (finalResult && !breaksIcuStructure(finalResult)) {
             return finalResult;
           }
         }
@@ -1030,6 +1122,10 @@ export async function suggestTranslation(
   targetLocaleName?: string,
   pluralQuantity?: 'zero' | 'one' | 'two' | 'few' | 'many' | 'other'
 ): Promise<SuggestionResult> {
+  // The flag describes this suggestion only. It is reset here — once per suggestion, not
+  // per segment — so a cached success clears a stale rejection (a cache hit never reaches
+  // the uncached path) and a rejection in any part of a split string is still remembered.
+  lastSuggestionRejectedForIcu = false;
   if (!sourceText || !sourceText.trim()) {
     return { text: '', source: 'glossary' };
   }
@@ -1042,6 +1138,13 @@ export async function suggestTranslation(
   const parts = sourceText.split(separatorRegex);
 
   if (parts.length === 1) {
+    return translateSingleSegment(sourceText, baseLang, directLang, targetLocaleName, pluralQuantity);
+  }
+
+  // An ICU block that spans a line break cannot be split: each piece would be an unbalanced
+  // fragment, invisible to the structural check, so a reply that dropped a clause would be
+  // accepted. Such a string is translated whole and checked whole.
+  if (hasMultilineIcuBlock(sourceText)) {
     return translateSingleSegment(sourceText, baseLang, directLang, targetLocaleName, pluralQuantity);
   }
 
@@ -1060,8 +1163,17 @@ export async function suggestTranslation(
     })
   );
 
+  const joined = translatedParts.join('');
+
+  // Safety net for a block that only became unbalanced after the split: verify the
+  // assembled text as a whole, and if the pieces damaged the block, retry without
+  // splitting. A damaged block is never returned.
+  if (sourceText.includes('{') && !validatePlaceholders(sourceText, joined, directLang).valid) {
+    return translateSingleSegment(sourceText, baseLang, directLang, targetLocaleName, pluralQuantity);
+  }
+
   return {
-    text: translatedParts.join(''),
+    text: joined,
     source: overallSource,
   };
 }
@@ -1158,14 +1270,26 @@ export async function bulkTranslateItems(
     if (item.type === 'string') {
       const single = item as SingleStringItem;
       const res = await suggestTranslation(single.source, targetLang, targetLocaleName);
-      const targetText = res?.text || single.target;
-      const hasTranslation = Boolean(targetText.trim());
+      // `heuristic` = no engine produced a usable reply and the source came back untouched.
+      // Keeping it as the target would put English text in a translated file, so the string
+      // keeps its previous target (usually empty) and stays in the "Untranslated" filter.
+      const rejectedForIcu = res?.source === 'heuristic';
+      const targetText = rejectedForIcu ? single.target : res?.text || single.target;
+      // When the engines are rejected, the user's own text is kept and still counts as
+      // translated; only a string that would have been filled with the English source is
+      // left untranslated.
+      const hasTranslation = rejectedForIcu
+        ? Boolean(targetText.trim())
+        : Boolean(targetText.trim()) && res?.source !== undefined;
       return {
         ...single,
         target: targetText,
         status: hasTranslation ? 'translated' : 'untranslated',
-        translationSource: hasTranslation ? 'ai' : undefined,
-        translationEngine: hasTranslation ? res?.source : undefined,
+        // On rejection the kept text is the user's own, so its previous source and engine
+        // stay — recording 'heuristic' as the engine of text no engine produced would be
+        // a lie in the other direction.
+        translationSource: hasTranslation ? (rejectedForIcu ? single.translationSource : 'ai') : undefined,
+        translationEngine: hasTranslation ? (rejectedForIcu ? single.translationEngine : res?.source) : undefined,
       };
     }
 
@@ -1179,7 +1303,9 @@ export async function bulkTranslateItems(
             engineUsed = engineUsed ?? res?.source;
             return {
               ...pi,
-              target: res?.text || pi.target,
+              // A rejected quantity keeps its previous target; the English source must not
+              // land in the field (same rule as the string path above).
+              target: res?.source === 'heuristic' ? pi.target : res?.text || pi.target,
             };
           } catch (err) {
             // One bad quantity keeps its original text; the other quantities still translate.
@@ -1189,13 +1315,18 @@ export async function bulkTranslateItems(
           }
         })
       );
-      const anyFilled = updatedQuantities.some((pi) => pi.target.trim().length > 0);
+      // A glossary translation is a real translation; only 'heuristic' means nothing usable
+      // came back. Targets must also be non-empty, so an empty quantity is not "translated".
+      const anyTranslated =
+        updatedQuantities.some((pi) => pi.target.trim().length > 0) &&
+        engineUsed !== undefined &&
+        engineUsed !== 'heuristic';
       return {
         ...plural,
         items: updatedQuantities,
-        status: anyFilled ? 'translated' : 'untranslated',
-        translationSource: anyFilled ? 'ai' : undefined,
-        translationEngine: anyFilled ? engineUsed : undefined,
+        status: anyTranslated ? 'translated' : 'untranslated',
+        translationSource: anyTranslated ? 'ai' : undefined,
+        translationEngine: anyTranslated ? engineUsed : undefined,
       };
     }
 
@@ -1209,7 +1340,9 @@ export async function bulkTranslateItems(
             engineUsed = engineUsed ?? res?.source;
             return {
               ...ai,
-              target: res?.text || ai.target,
+              // A rejected element keeps its previous target; the English source must not
+              // land in the field (same rule as the string path above).
+              target: res?.source === 'heuristic' ? ai.target : res?.text || ai.target,
             };
           } catch (err) {
             // One bad element keeps its original text; the other elements still translate.
@@ -1219,13 +1352,18 @@ export async function bulkTranslateItems(
           }
         })
       );
-      const anyFilled = updatedElements.some((ai) => ai.target.trim().length > 0);
+      // Same rule as the plural path: a glossary translation counts, 'heuristic' does not,
+      // and empty elements are not "translated".
+      const anyTranslated =
+        updatedElements.some((ai) => ai.target.trim().length > 0) &&
+        engineUsed !== undefined &&
+        engineUsed !== 'heuristic';
       return {
         ...arr,
         items: updatedElements,
-        status: anyFilled ? 'translated' : 'untranslated',
-        translationSource: anyFilled ? 'ai' : undefined,
-        translationEngine: anyFilled ? engineUsed : undefined,
+        status: anyTranslated ? 'translated' : 'untranslated',
+        translationSource: anyTranslated ? 'ai' : undefined,
+        translationEngine: anyTranslated ? engineUsed : undefined,
       };
     }
 

@@ -11,6 +11,7 @@ import {
   buildPrompt,
   buildSegments,
   buildTextRequest,
+  BLOCKING_ISSUES,
   checkReply,
   parseReply,
   requestJson,
@@ -96,7 +97,12 @@ export const ExternalAiModal: React.FC<Props> = ({ items: selectedItems, reviewP
   });
   const problems = rows.filter((r) => r.issues.length > 0);
   const answered = rows.filter((r) => !r.issues.includes('missing')).length;
-  const accepted = rows.filter((r) => r.text.trim() && !excluded.has(r.segment.id));
+  const isBlocked = (r: Checked) => r.issues.some((k) => BLOCKING_ISSUES.includes(k));
+  const blocked = rows.filter(isBlocked);
+  // A row whose ICU block is damaged cannot be applied: it would crash the app at runtime.
+  // The user still sees it (and can fix it in the textarea) — it just cannot be accepted
+  // until the problem is gone.
+  const accepted = rows.filter((r) => r.text.trim() && !excluded.has(r.segment.id) && !isBlocked(r));
 
   const copy = async (text: string, msg: string) => {
     await copyTextToClipboard(text);
@@ -256,8 +262,8 @@ export const ExternalAiModal: React.FC<Props> = ({ items: selectedItems, reviewP
                       <div className="flex items-center gap-2 text-[11px]">
                         <input
                           type="checkbox"
-                          checked={on && !!r.text.trim()}
-                          disabled={!r.text.trim()}
+                          checked={on && !!r.text.trim() && !isBlocked(r)}
+                          disabled={!r.text.trim() || isBlocked(r)}
                           aria-label={t('accept', r.segment.key)}
                           onChange={() =>
                             setExcluded((prev) => {
@@ -289,6 +295,17 @@ export const ExternalAiModal: React.FC<Props> = ({ items: selectedItems, reviewP
                 })}
             </ul>
           </section>
+        )}
+
+        {blocked.length > 0 && (
+          <div
+            role="alert"
+            className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-200"
+          >
+            {isAr
+              ? `${blocked.length} صفًا لا يمكن تطبيقه: بنية ICU أو عنصر نائب تالف. صحّحه في المربع أعلاه ثم أعد المحاولة.`
+              : `${blocked.length} row${blocked.length > 1 ? 's' : ''} cannot be applied: the ICU block or a placeholder is damaged. Fix it in the box above, then accept it.`}
+          </div>
         )}
 
         <div className="flex flex-wrap items-center justify-between gap-2 pt-1">

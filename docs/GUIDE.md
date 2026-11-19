@@ -159,6 +159,25 @@ The **QA Checks** card in the strings list counts problems across the file and l
 
 - **Placeholders** – missing or mismatched format specifiers (`%s`, `%d`, `%1$s`, …).
 - **HTML tags** – invalid or missing tags (`<b>`, `<i>`, `<u>`, `<font …>`, …).
+- **Plural forms** – a missing or unexpected plural category for the target language (for example Arabic needs `zero`, `one`, `two`, `few`, `many` and `other`, while Japanese needs only `other`). This is a *warning*, not an error: ICU falls back to `other`.
+
+### ICU MessageFormat blocks
+
+A string can contain an ICU block, where the text inside each clause is translated and the surrounding syntax is not:
+
+```xml
+<string name="inbox">{count, plural, one {# message} other {# messages}}</string>
+<string name="invite">{gender, select, male {He} female {She} other {They}} liked your post</string>
+```
+
+The app treats these blocks as structure, not as text:
+
+- **Only the words inside a clause are translated.** Variable names, the format type (`plural`, `select`, `selectordinal`, `number`, `date`, `time`), the clause keywords (`zero`, `one`, `two`, `few`, `many`, `other`), `offset:`, `=0`/`=1` selectors and the `#` inside a plural clause are kept exactly as they are.
+- **A reply that breaks the block is rejected.** If a translation drops a clause, loses a brace or changes the format type, it is thrown away and the next engine (or the next AI model) is tried — you never get a string that crashes `String.format` at runtime.
+- **Each clause is checked.** A missing `other`, a changed `select` key or a swapped format type is reported by the QA checks, and a plural category the target language requires is a warning you can ignore.
+- **A block that spans more than one line is translated as one piece**, so the check still sees it whole. Line breaks outside a block are still split off and kept exactly as written.
+
+> **Editing by hand:** keep the braces and the keywords as they are, and translate only the words inside each `{ }`. A quoted literal (`'…'`) is text: keep its quotes and translate the words inside them (`''Hello!''` stays quoted, only `Hello!` is translated). Text that is itself syntax — `'{username}'`, `'#'` — stays as-is.
 
 Tap a counter to filter the list to just those strings. When the card is collapsed, the number of issues is shown next to its arrow. A banner also warns before export if the file contains errors that may break the app.
 
@@ -174,7 +193,9 @@ Tap a counter to filter the list to just those strings. When the card is collaps
 2. **Offline glossary** – an Android UI terminology glossary answers common terms instantly (also Arabic plural forms), with no network.
 3. **Your selected provider** – or the free Google engine by default.
 
-`\n`, `\\n` and tab separators are split off before translating and kept exactly as written, so line breaks are never damaged. Placeholders and tags are protected during translation and checked afterwards.
+`\n`, `\\n` and tab separators are split off before translating and kept exactly as written, so line breaks are never damaged. Placeholders, tags and ICU MessageFormat blocks are protected during translation and checked afterwards: a translation that would damage them is discarded instead of being suggested.
+
+The prompt sent to an AI provider (and the one included in the **AI app** export) spells these rules out, so the block is usually preserved on the first attempt.
 
 > The free Google engine uses an unofficial endpoint that can stop working without notice. If it keeps failing, the app tells you; add a provider with your own key to keep going.
 
@@ -279,6 +300,8 @@ Open **Files** to see your projects with their progress and last-modified time.
 ## 12. Plurals and arrays
 
 `<plurals>` and `<string-array>` are fully supported. Plural items are shown per quantity (`zero`, `one`, `two`, `few`, `many`, `other`), and the forms are adjusted to the target language. For Arabic there is an offline glossary for plural forms.
+
+This is separate from an **ICU plural block inside a single string** (`{count, plural, one {…} other {…}}`), which the translation engines are taught to preserve — see [ICU MessageFormat blocks](#icu-messageformat-blocks). A `<plurals>` element splits the message into one item per quantity; an ICU block keeps every form inside one string.
 
 ## 13. Interface, languages and themes
 

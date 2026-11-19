@@ -1,8 +1,12 @@
+import type { ResourceItem } from '../types';
 import { describe, expect, it } from 'vitest';
 import {
   analyzeProjectQa,
   extractPlaceholders,
   getItemQaIssues,
+  findClauseBodyOpens,
+  getIcuStructureIssues,
+  hasMultilineIcuBlock,
   validatePlaceholders,
 } from './placeholderCheck';
 import { SingleStringItem } from '../types';
@@ -760,5 +764,93 @@ describe('structural comparison - nested blocks and repeated variables', () => {
     expect(result.valid).toBe(true);
     expect(result.extraInTarget).toContain('{n:plural}');
     expect(result.extraInTarget).toContain('plural:one');
+  });
+});
+
+describe('findClauseBodyOpens', () => {
+  it('marks clause bodies in select and plural blocks, not plain placeholders', () => {
+    const src = 'Hi {name}, {gender, select, male {He} other {They}}';
+    const opens = [...findClauseBodyOpens(src)].map((i) => src.slice(i, i + 5));
+    expect(opens).toEqual(['{He} ', '{They']);
+    // `{name}` is an argument, not a clause body.
+    expect([...findClauseBodyOpens(src)].some((i) => src.startsWith('{name}', i))).toBe(false);
+  });
+
+  it('finds clauses nested inside other clauses', () => {
+    // `male {{n, plural, ...}}`: the first `{` opens the clause body, the second starts the
+    // nested argument, so the body's own offset is the outer brace (ICU needs both).
+    const src = '{g, select, male {{n, plural, one {# book} other {# books}}} other {none}}';
+    const bodies = [...findClauseBodyOpens(src)].map((i) => src.slice(i, i + 9));
+    expect(bodies).toContain('{{n, plur');
+    expect(bodies).toContain('{# book} ');
+    expect(bodies).toContain('{# books}');
+    expect(bodies).toContain('{none}}');
+    // Every reported offset really is a `{`.
+    for (const i of findClauseBodyOpens(src)) expect(src[i]).toBe('{');
+  });
+
+  it('ignores braces inside a quoted literal', () => {
+    const src = "{gender, select, male {'{not a clause}'} other {x}}";
+    expect([...findClauseBodyOpens(src)]).toHaveLength(2);
+  });
+
+  it('returns nothing for a string with no ICU block', () => {
+    expect(findClauseBodyOpens('Hi {name}, you have {0} messages').size).toBe(0);
+  });
+});
+
+describe('hasMultilineIcuBlock', () => {
+  it('reports a block whose braces are separated by a line break', () => {
+    expect(hasMultilineIcuBlock('{count, plural,\n one {# a} other {# b}}')).toBe(true);
+    expect(hasMultilineIcuBlock('{count, plural, one {# a}\n other {# b}}')).toBe(true);
+  });
+
+  it('does not report a single-line block, plain text, or braces in a quoted literal', () => {
+    expect(hasMultilineIcuBlock('{count, plural, one {# a} other {# b}}')).toBe(false);
+    expect(hasMultilineIcuBlock('a\nb')).toBe(false);
+    expect(hasMultilineIcuBlock("x '{not\nstructure' y")).toBe(false);
+  });
+});
+
+describe('getIcuStructureIssues (save gate)', () => {
+  const item = (target: string, source = '{count, plural, one {# m} other {# ms}}'): ResourceItem =>
+    ({ id: 'x', name: 'inbox', type: 'string', order: 0, status: 'translated', source, target } as ResourceItem);
+
+  it('reports a hand-typed block that would crash at runtime', () => {
+    const issues = getIcuStructureIssues(item('{count, plural, one {# رسالة}}'), 'ar');
+    expect(issues).toHaveLength(1);
+    expect(issues[0].severity).toBe('error');
+    expect(issues[0].id).toContain('icu_structure');
+  });
+
+  it('accepts a correct block', () => {
+    expect(getIcuStructureIssues(item('{count, plural, one {# رسالة} other {# رسائل}}'), 'ar')).toEqual([]);
+  });
+
+  it('ignores strings without an ICU block, so placeholder repair is untouched', () => {
+    expect(getIcuStructureIssues(item('لا يوجد {name}', 'Hi {name}'), 'ar')).toEqual([]);
+  });
+
+  it('ignores an empty target (nothing typed yet)', () => {
+    expect(getIcuStructureIssues(item(''), 'ar')).toEqual([]);
+  });
+
+  it('catches a translated format type', () => {
+    expect(getIcuStructureIssues(item('{count, ترتيبي, one {#} other {#}}'), 'ar')).toHaveLength(1);
+  });
+
+  it('names the quantity that is broken in a plurals item', () => {
+    const plural: ResourceItem = {
+      id: 'p',
+      name: 'p',
+      type: 'plural',
+      order: 0,
+      status: 'translated',
+      items: [
+        { quantity: 'one', source: '{n, plural, one {# a} other {# as}}', target: '{n, plural, one {# أ}}' },
+        { quantity: 'other', source: '{n, plural, one {# a} other {# as}}', target: '{n, plural, one {# أ} other {# أس}}' },
+      ],
+    } as ResourceItem;
+    expect(getIcuStructureIssues(plural, 'ar').map((i) => i.subKey)).toEqual(['one']);
   });
 });

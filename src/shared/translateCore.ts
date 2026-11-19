@@ -8,9 +8,18 @@ Follow these strict rules for every translation:
    - Printf format specifiers (e.g., %s, %d, %1$s, %2$d, %1$.1f, %%)
    - Escape sequences (e.g., \\n, \\\\n, \\t, \\', \\")
    - Inline HTML/XML tags (e.g., <b>, </b>, <i>, <u>, <xliff:g>)
-   - Resource references (e.g., @string/..., @plurals/...) and ICU placeholders (e.g., {0}, {count})
-3. Use natural, concise mobile UI terminology appropriate for Android applications (for example, translate "Install" to "تثبيت" in Arabic).
-4. Preserve leading or trailing whitespace and outer quotes only if they exist in the source string.`;
+   - Resource references (e.g., @string/..., @plurals/...) and simple ICU placeholders (e.g., {0}, {count})
+3. For ICU MessageFormat blocks, preserve the ENTIRE structure and translate ONLY the human-readable text inside each clause:
+   - Keep the variable name, the format type (plural, select, selectordinal, number, date, time) and every structure token unchanged: never translate plural, select, selectordinal, offset:, the category names (zero, one, two, few, many, other), an explicit =0/=1 selector, or the # that ICU replaces with the formatted number inside a plural/selectordinal clause.
+   - Every clause keyword must be followed by its own { } body, and the message stays a single line: {gender, select, male {He} other {They}} is valid, {gender, select, male He other They} is not. Never leave a clause keyword followed by bare text.
+   - Keep every clause, including the mandatory other clause; do not remove, merge or reorder clauses, and never change a variable's format type (e.g., {amount, number} must stay number, never become date).
+   - For plural and selectordinal blocks, adapt the category set to the target language: Arabic needs zero, one, two, few, many and other, while Japanese needs only other — adding a category the target language requires is allowed and expected (copy the nearest existing form as a placeholder if you must). Never remove other, never change an offset: value or an explicit =0/=1 selector, and never add, remove or change select keys.
+   - A quoted literal '...' is text, and its quote marks are part of the ICU syntax: keep every ' exactly as it appears and translate only the words inside the quotes (''Hello!'' keeps both quotes and only "Hello!" is translated; '{count} new' keeps both quotes and translates "new"). If what is inside the quotes is itself syntax, keep it unchanged (e.g., '{username}' must stay '{username}').
+   - Example: {count, plural, one {# message} other {# messages}} — translate only "message" and "messages"; keep the braces, {count, plural, one, other and # exactly as they are.
+   - Example: {gender, select, male {He} female {She} other {They}} — translate only He, She and They.
+   - Never wrap the whole message in quotes, brackets or a code fence, and never add or drop spaces around the braces.
+4. Use natural, concise mobile UI terminology appropriate for Android applications (for example, translate "Install" to "تثبيت" in Arabic).
+5. Preserve leading or trailing whitespace and outer quotes only if they exist in the source string.`;
 
 /** fetch() with a hard timeout so a slow provider can never freeze a translation. */
 export function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = 10000): Promise<Response> {

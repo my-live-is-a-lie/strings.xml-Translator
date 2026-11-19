@@ -10,14 +10,14 @@ import { DemoBanner } from './DemoBanner';
 import { LanguageSelectorModal } from './LanguageSelectorModal';
 import { HighlightedTextarea } from './HighlightedTextarea';
 import { getArabicLanguageName, getLanguageOption } from '../utils/languages';
-import { suggestTranslation } from '../utils/translator';
+import { isFillableSuggestion, suggestTranslation, suggestionRejectedForIcu } from '../utils/translator';
 import { normalizePluralsForLanguage } from '../utils/xmlParser';
 import { fixItemEndings } from '../utils/endPunctuation';
 import { fixItemSyntax, FixNote } from '../utils/syntaxFix';
 import { debugIgnored } from '../utils/debug';
 import { autoCloseOnDoubleSpace } from '../utils/autoCloseBracket';
 import { usePredictiveWords, PredictField } from '../hooks/usePredictiveWords';
-import { getItemQaIssues, getLineBreakIssues, QaIssue } from '../utils/placeholderCheck';
+import { getIcuStructureIssues, getItemQaIssues, getLineBreakIssues, QaIssue } from '../utils/placeholderCheck';
 import { toEditorItem, toStoredItem, toStoredText, normalizeTypedBreaks } from '../utils/newlines';
 import { getStoredItem, setStoredItem, copyTextToClipboard, readTextFromClipboard } from '../utils/storage';
 import { useT } from '../i18n/i18n';
@@ -1082,6 +1082,16 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     return true;
   }, [draftItem, item.id, targetLang]);
 
+  // A damaged ICU block crashes the app (String.format throws), so it is unsaveable for the
+  // same reason a line-break mismatch is — not a "confirm once and go ahead" warning. The
+  // translation pipeline already refuses to produce such a reply; this gates hand-typed text.
+  const blockIfIcuBroken = React.useCallback((): boolean => {
+    const issues = getIcuStructureIssues(toStoredItem(draftItem), targetLang);
+    if (issues.length === 0) return false;
+    setSaveGuard({ notes: [], remaining: issues, hard: true, itemId: item.id });
+    return true;
+  }, [draftItem, item.id, targetLang]);
+
   // Before saving: repairs placeholders, HTML tags and final punctuation from the source's context.
   // When anything was changed (or unfixable errors remain) the save is blocked once with a message; saving again confirms.
   const blockIfNeedsFix = React.useCallback((): boolean => {
@@ -1118,9 +1128,17 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
 
   // The line-break message follows the text as it is edited and disappears once the counts match
   const liveBreakIssues = React.useMemo(
-    () => (saveGuard?.hard && saveGuard.itemId === item.id ? getLineBreakIssues(toStoredItem(draftItem), targetLang) : []),
+    () => (saveGuard?.hard && saveGuard.itemId === item.id
+      ? [
+          ...getLineBreakIssues(toStoredItem(draftItem), targetLang),
+          ...getIcuStructureIssues(toStoredItem(draftItem), targetLang),
+        ]
+      : []),
     [saveGuard, item.id, draftItem, targetLang]
   );
+  // Set when a suggestion was discarded because it would have damaged an ICU block.
+  const [icuRejected, setIcuRejected] = useState(false);
+
   const liveSaveGuard = saveGuard?.hard ? (liveBreakIssues.length > 0 ? { ...saveGuard, remaining: liveBreakIssues } : null) : saveGuard;
   // counts match again (or another string is open): the message is done
   if (saveGuard?.hard && !liveSaveGuard) setSaveGuard(null);
@@ -1133,7 +1151,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
 
   // Save without continuing (حفظ بدون متابعة / Save & Stay)
   const handleSaveWithoutContinuing = React.useCallback(() => {
-    if (blockIfNothingTyped() || blockIfLineBreaksDiffer() || blockIfNeedsFix()) return;
+    if (blockIfNothingTyped() || blockIfLineBreaksDiffer() || blockIfIcuBroken() || blockIfNeedsFix()) return;
     // Saving settles the string: the old source text (diff) is no longer shown
     const savedItem = { ...buildSavedItemFromDraft(draftItem), previousSources: undefined };
     const undoDeletesText = savedItem.translationSource === 'ai' && item.status === 'untranslated';
@@ -1147,7 +1165,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     onUpdateTranslation(savedItem, undoDeletesText ? { undoDeletesText: true } : undefined);
     setShowSavedFeedback(true);
     setTimeout(() => setShowSavedFeedback(false), 2000);
-  }, [blockIfNothingTyped, blockIfLineBreaksDiffer, blockIfNeedsFix, buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation]);
+  }, [blockIfNothingTyped, blockIfLineBreaksDiffer, blockIfIcuBroken, blockIfNeedsFix, buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation]);
 
   // Save and continue (حفظ ومتابعة / Save & Continue)
   const handleSaveAndContinue = React.useCallback(() => {
@@ -1155,7 +1173,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       onNavigateNext(); // nothing typed: nothing is saved, just continue
       return;
     }
-    if (blockIfLineBreaksDiffer() || blockIfNeedsFix()) return;
+    if (blockIfLineBreaksDiffer() || blockIfIcuBroken() || blockIfNeedsFix()) return;
     // Saving settles the string: the old source text (diff) is no longer shown
     const savedItem = { ...buildSavedItemFromDraft(draftItem), previousSources: undefined };
     const undoDeletesText = savedItem.translationSource === 'ai' && item.status === 'untranslated';
@@ -1168,7 +1186,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     });
     onUpdateTranslation(savedItem, undoDeletesText ? { undoDeletesText: true } : undefined);
     onNavigateNext();
-  }, [isNothingTyped, blockIfLineBreaksDiffer, blockIfNeedsFix, buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation, onNavigateNext]);
+  }, [isNothingTyped, blockIfLineBreaksDiffer, blockIfIcuBroken, blockIfNeedsFix, buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation, onNavigateNext]);
 
   // Editor keyboard shortcuts for Undo/Redo and Ctrl+Enter (Save & Continue)
   useEffect(() => {
@@ -1206,7 +1224,10 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     try {
       if (draftItem.type === 'string') {
         const res = await suggestTranslation(draftItem.source, targetLang, targetLocaleName);
-        if (res && res.text) {
+        setIcuRejected(suggestionRejectedForIcu());
+        // A rejected suggestion hands back the unchanged source text; filling it would
+        // show English as "translated", so leave the box and the status untouched.
+        if (isFillableSuggestion(res)) {
           const isNowEmpty = !res.text.trim();
           const updated: SingleStringItem = {
             ...draftItem,
@@ -1218,40 +1239,46 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
           updateDraftItem(updated, { undoDeletesText: true });
         }
       } else if (draftItem.type === 'plural') {
-        const updated = await Promise.all(
-          normalizedPluralItems.map(async (pi) => {
-            const res = await suggestTranslation(pi.source, targetLang, targetLocaleName, pi.quantity);
-            return {
-              ...pi,
-              target: res?.text || pi.target,
-            };
-          })
+        const results = await Promise.all(
+          normalizedPluralItems.map(async (pi) => ({
+            pi,
+            res: await suggestTranslation(pi.source, targetLang, targetLocaleName, pi.quantity),
+          }))
         );
+        setIcuRejected(suggestionRejectedForIcu());
+        const anyFilled = results.some(({ res }) => isFillableSuggestion(res));
+        const updated = results.map(({ pi, res }) => ({
+          ...pi,
+          target: isFillableSuggestion(res) ? res.text : pi.target,
+        }));
         updateDraftItem(
           {
             ...draftItem,
             items: updated,
-            status: 'translated',
-            translationSource: 'ai',
+            status: anyFilled ? 'translated' : draftItem.status,
+            translationSource: anyFilled ? 'ai' : draftItem.translationSource,
           },
           { undoDeletesText: true }
         );
       } else if (draftItem.type === 'array') {
-        const updated = await Promise.all(
-          draftItem.items.map(async (ai) => {
-            const res = await suggestTranslation(ai.source, targetLang, targetLocaleName);
-            return {
-              ...ai,
-              target: res?.text || ai.target,
-            };
-          })
+        const results = await Promise.all(
+          draftItem.items.map(async (ai) => ({
+            ai,
+            res: await suggestTranslation(ai.source, targetLang, targetLocaleName),
+          }))
         );
+        setIcuRejected(suggestionRejectedForIcu());
+        const anyFilled = results.some(({ res }) => isFillableSuggestion(res));
+        const updated = results.map(({ ai, res }) => ({
+          ...ai,
+          target: isFillableSuggestion(res) ? res.text : ai.target,
+        }));
         updateDraftItem(
           {
             ...draftItem,
             items: updated,
-            status: 'translated',
-            translationSource: 'ai',
+            status: anyFilled ? 'translated' : draftItem.status,
+            translationSource: anyFilled ? 'ai' : draftItem.translationSource,
           },
           { undoDeletesText: true }
         );
@@ -1291,7 +1318,13 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
         if (item.type === 'string') {
           const res = await suggestTranslation(item.source, targetLang, targetLocaleName);
           if (cancelled) return;
-          if (res && res.text && res.text.trim()) {
+          // A `heuristic` result means no engine produced anything usable and the source came
+          // back untouched: filling the box and marking it translated would hide the string
+          // from the "Untranslated" filter with English text in a translated file. The
+          // rejection flag only covers ICU damage, so the fill guard is the same
+          // isFillableSuggestion() check the manual Suggest path uses.
+          setIcuRejected(suggestionRejectedForIcu());
+          if (isFillableSuggestion(res) && res.text.trim()) {
             const updated: SingleStringItem = {
               ...item,
               target: res.text,
@@ -1306,27 +1339,31 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
           const basePlurals = (
             normalizePluralsForLanguage([item], targetLang)[0] as PluralStringItem
           ).items;
-          const updated = await Promise.all(
-            basePlurals.map(async (pi) => {
-              const res = await suggestTranslation(
+          const results = await Promise.all(
+            basePlurals.map(async (pi) => ({
+              pi,
+              res: await suggestTranslation(
                 pi.source,
                 targetLang,
                 targetLocaleName,
                 pi.quantity
-              );
-              return {
-                ...pi,
-                target: res?.text || pi.target,
-              };
-            })
+              ),
+            }))
           );
           if (cancelled) return;
-          if (updated.some((pi) => pi.target.trim().length > 0)) {
+          setIcuRejected(suggestionRejectedForIcu());
+          // Fill per quantity, like the manual Suggest path: a rejected quantity keeps its
+          // original target instead of discarding the quantities that did translate.
+          const anyFilled = results.some(({ res }) => isFillableSuggestion(res));
+          if (anyFilled) {
             completed = true;
             updateDraftItem(
               {
                 ...item,
-                items: updated,
+                items: results.map(({ pi, res }) => ({
+                  ...pi,
+                  target: isFillableSuggestion(res) ? res.text : pi.target,
+                })),
                 status: 'translated',
                 translationSource: 'ai',
               },
@@ -1334,22 +1371,24 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             );
           }
         } else if (item.type === 'array') {
-          const updated = await Promise.all(
-            item.items.map(async (ai) => {
-              const res = await suggestTranslation(ai.source, targetLang, targetLocaleName);
-              return {
-                ...ai,
-                target: res?.text || ai.target,
-              };
-            })
+          const results = await Promise.all(
+            item.items.map(async (ai) => ({
+              ai,
+              res: await suggestTranslation(ai.source, targetLang, targetLocaleName),
+            }))
           );
           if (cancelled) return;
-          if (updated.some((ai) => ai.target.trim().length > 0)) {
+          setIcuRejected(suggestionRejectedForIcu());
+          const anyFilled = results.some(({ res }) => isFillableSuggestion(res));
+          if (anyFilled) {
             completed = true;
             updateDraftItem(
               {
                 ...item,
-                items: updated,
+                items: results.map(({ ai, res }) => ({
+                  ...ai,
+                  target: isFillableSuggestion(res) ? res.text : ai.target,
+                })),
                 status: 'translated',
                 translationSource: 'ai',
               },
@@ -1969,6 +2008,18 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
           </div>
 
           {slot('r2', 'kb-r2 rounded-2xl overflow-hidden bg-white dark:bg-[#151922] border border-slate-200/80 dark:border-transparent', <>
+          {icuRejected && (
+            <div
+              role="alert"
+              className="mx-3 sm:mx-4 mb-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-200"
+            >
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{t('suggestion_rejected_icu')}</span>
+              </div>
+            </div>
+          )}
+
           {liveSaveGuard && (autoCorrect || liveSaveGuard.empty || liveSaveGuard.hard) && (
             <div
               role="alert"

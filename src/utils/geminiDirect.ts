@@ -3,6 +3,7 @@ import { debugIgnored } from './debug';
 // The key goes from this browser to Google only; it never passes through this app's server.
 import type { ProviderTestResult } from './translator';
 import { SYSTEM_INSTRUCTION, fetchWithTimeout } from '../shared/translateCore';
+import { validatePlaceholders } from './placeholderCheck';
 
 const API_ROOT = 'https://generativelanguage.googleapis.com/v1beta';
 // Google retires models for new keys from time to time ("no longer available to new users"), so no single
@@ -20,6 +21,18 @@ class GeminiHttpError extends Error {
     readonly modelUnavailable: boolean
   ) {
     super(message);
+  }
+}
+
+/**
+ * The model answered, but the answer broke the ICU structure of the source string.
+ * The name is what `isRetryableError` looks at: resending the same prompt to the same model
+ * with the same temperature just burns quota (and can trip a rate limit), so it is not retried.
+ */
+class GeminiStructureError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'StructuralError';
   }
 }
 
@@ -59,60 +72,74 @@ export async function geminiTranslateDirect(opts: {
   const { apiKey, sourceText, targetLang = 'ar', targetLocaleName, pluralQuantity } = opts;
   const langLabel = targetLocaleName ? `${targetLocaleName} (${targetLang})` : targetLang;
   const pluralContext = pluralQuantity
-    ? `\nPlural quantity category: "${pluralQuantity}" (CLDR plural form for ${langLabel}).`
+    ? `\nThis value is the "${pluralQuantity}" CLDR plural form for ${langLabel}. Translate only this form; ` +
+      'do not add, drop or renumber any ICU block or clause.'
     : '';
   const prompt = `Translate the following Android strings.xml value from English to ${langLabel}.${pluralContext}
-Return ONLY the translated text without any metadata labels (never output "[ترجمة المصطلح: ...]") and preserve all placeholders (%s, %d, %1$s, %2$d, \\n, HTML tags) exactly as they appear.
+Return ONLY the translated text without any metadata labels (never output "[ترجمة المصطلح: ...]") and preserve all placeholders (%s, %d, %1$s, %2$d, \\n, HTML tags) exactly as they appear; for an ICU MessageFormat block, protect only its syntax (variable names, format types, clause keywords, offset:, =0/=1 selectors, #, and the ' quote marks) and translate the human-readable text inside each clause.
 
 Source string:
 ${sourceText}`;
 
   const callModel = async (model: string): Promise<string> => {
-  const res = await fetchWithTimeout(
-    `${API_ROOT}/models/${model}:generateContent`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey.trim(),
+    const res = await fetchWithTimeout(
+      `${API_ROOT}/models/${model}:generateContent`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey.trim(),
+        },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.1 },
+        }),
       },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.1 },
-      }),
-    },
-    GEMINI_TIMEOUT_MS
-  );
+      GEMINI_TIMEOUT_MS
+    );
 
-  if (!res.ok) {
-    let message =
-      res.status === 401 || res.status === 403
-        ? `Gemini: المفتاح غير صالح أو غير مفعّل / Invalid or disabled key (HTTP ${res.status})`
-        : res.status === 429
-          ? 'Gemini: تجاوزت حد الطلبات، حاول لاحقاً / Rate limit reached (HTTP 429)'
-          : `Gemini: فشل الطلب / Request failed (HTTP ${res.status})`;
-    try {
-      const body = (await res.json()) as { error?: { message?: string } };
-      if (body?.error?.message) message = `Gemini: ${body.error.message}`;
-    } catch (err) {
-      debugIgnored('geminiDirect', err);
+    if (!res.ok) {
+      let message =
+        res.status === 401 || res.status === 403
+          ? `Gemini: المفتاح غير صالح أو غير مفعّل / Invalid or disabled key (HTTP ${res.status})`
+          : res.status === 429
+            ? 'Gemini: تجاوزت حد الطلبات، حاول لاحقاً / Rate limit reached (HTTP 429)'
+            : `Gemini: فشل الطلب / Request failed (HTTP ${res.status})`;
+      try {
+        const body = (await res.json()) as { error?: { message?: string } };
+        if (body?.error?.message) message = `Gemini: ${body.error.message}`;
+      } catch (err) {
+        debugIgnored('geminiDirect', err);
+      }
+      throw new GeminiHttpError(message, res.status, isModelUnavailableMessage(res.status, message));
     }
-    throw new GeminiHttpError(message, res.status, isModelUnavailableMessage(res.status, message));
-  }
 
-  const data = (await res.json()) as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-  };
-  const text = (data.candidates?.[0]?.content?.parts || [])
-    .map((p) => p.text || '')
-    .join('')
-    .trim();
-  if (!text) throw new Error('Gemini: استجابة فارغة / Empty translation response');
-  return text;
+    const data = (await res.json()) as {
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    };
+    const text = (data.candidates?.[0]?.content?.parts || [])
+      .map((p) => p.text || '')
+      .join('')
+      .trim();
+    if (!text) throw new Error('Gemini: استجابة فارغة / Empty translation response');
+
+    // A single missing/extra brace, a translated clause keyword or a dropped `#` makes the
+    // whole string unparseable at runtime (`String.format` throws). The prompt asks for the
+    // structure to be preserved, but a model can still break it, so the reply is checked
+    // structurally before it is accepted: a broken reply fails this model and the next one
+    // is tried, instead of handing damaged ICU syntax to the user.
+    const check = validatePlaceholders(sourceText, text, targetLang);
+    if (!check.valid) {
+      throw new GeminiStructureError(
+        'Gemini: الردّ يخالف بنية ICU / The AI reply damaged the ICU MessageFormat structure'
+      );
+    }
+    return text;
   };
 
   const tried = new Set<string>();
+  let structureError: GeminiStructureError | null = null;
   const attempt = async (model: string): Promise<string | null> => {
     if (tried.has(model)) return null;
     tried.add(model);
@@ -122,6 +149,12 @@ ${sourceText}`;
       return out;
     } catch (err) {
       if (err instanceof GeminiHttpError && err.modelUnavailable) return null; // try the next model
+      // A reply that breaks the ICU structure is worth retrying on another model too,
+      // but the model itself works, so it stays the working model.
+      if (err instanceof GeminiStructureError) {
+        structureError = err;
+        return null;
+      }
       throw err;
     }
   };
@@ -136,6 +169,9 @@ ${sourceText}`;
     if (out !== null) return out;
   }
   workingModel = null;
+  // Reachable only when every model failed; surface the structural problem when that was
+  // the reason, since "no model available" would send the user to check a working key.
+  if (structureError) throw structureError;
   throw new Error(
     'Gemini: لا يوجد نموذج متاح لهذا المفتاح حالياً / No Gemini model is available for this key. Check the key in Google AI Studio.'
   );

@@ -1,7 +1,15 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
 import { parseAndroidXml } from '../src/utils/xmlParser';
-import { applyTranslations, buildSegments, checkReply, parseReply, splitParts } from '../src/utils/externalAi';
+import {
+  BLOCKING_ISSUES,
+  applyTranslations,
+  buildPrompt,
+  buildSegments,
+  checkReply,
+  parseReply,
+  splitParts,
+} from '../src/utils/externalAi';
 
 const items = parseAndroidXml(
   '<resources><string name="a">Hello %s</string><string name="b">Save</string><plurals name="p"><item quantity="one">%d file</item><item quantity="other">%d files</item></plurals></resources>'
@@ -54,5 +62,60 @@ describe('external AI flow', () => {
 
   it('tolerates a trailing comma', () => {
     expect(parseReply('{"translations":[{"id":1,"text":"a"},]}').get(1)).toBe('a');
+  });
+
+  it('carries the ICU rules in the prompt, so the external-AI path is not left untaught', () => {
+    const prompt = buildPrompt('Arabic', 'text');
+    expect(prompt).toContain('ICU MessageFormat block');
+    expect(prompt).toContain('{count, plural, one {# message} other {# messages}}');
+    expect(prompt).toContain("the ' quote marks");
+  });
+
+  it('flags an ICU-damaging reply through the shared placeholder check', () => {
+    const source = '{count, plural, one {# message} other {# messages}}';
+    const segments = [
+      { id: 1, key: 'p', text: source, itemId: 'x', part: { kind: 'string' as const } },
+    ];
+    const good = checkReply(segments, new Map([[1, '{count, plural, one {# رسالة} other {# رسائل}}']]), 'ar');
+    expect(good.rows[0].issues).toEqual([]);
+    const broken = checkReply(segments, new Map([[1, '{count, plural, one {# رسالة}}']]), 'ar');
+    expect(broken.rows[0].issues).toContain('placeholder');
+  });
+});
+
+describe('a damaged ICU reply cannot be applied', () => {
+  // The External AI path is the only one where the user can accept a reply, so a reply that
+  // breaks the block must be visibly blocked rather than merely labelled: applying it would
+  // put a string in the file that throws in String.format.
+  const SOURCE = '{count, plural, one {# message} other {# messages}}';
+  const segment = { id: 1, key: 'p', text: SOURCE, itemId: 'x', part: { kind: 'string' as const } };
+
+  it('marks a reply that dropped the other clause as a placeholder issue', () => {
+    const [row] = checkReply(
+      [segment],
+      new Map([[1, '{count, plural, one {# رسالة}}']]),
+      'ar'
+    ).rows;
+    expect(row.issues).toContain('placeholder');
+    expect(BLOCKING_ISSUES.includes('placeholder')).toBe(true);
+  });
+
+  it('leaves a correct reply unblocked', () => {
+    const [row] = checkReply(
+      [segment],
+      new Map([[1, '{count, plural, one {# رسالة} other {# رسائل}}']]),
+      'ar'
+    ).rows;
+    expect(row.issues).toEqual([]);
+    expect(row.issues.some((k) => BLOCKING_ISSUES.includes(k))).toBe(false);
+  });
+
+  it('treats "same as source" and "empty" as non-blocking remarks', () => {
+    const [same] = checkReply([segment], new Map([[1, SOURCE]]), 'ar').rows;
+    expect(same.issues).toContain('same');
+    expect(same.issues.some((k) => BLOCKING_ISSUES.includes(k))).toBe(false);
+    const [empty] = checkReply([segment], new Map([[1, '   ']]), 'ar').rows;
+    expect(empty.issues).toContain('empty');
+    expect(empty.issues.some((k) => BLOCKING_ISSUES.includes(k))).toBe(false);
   });
 });

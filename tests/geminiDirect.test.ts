@@ -35,4 +35,70 @@ describe('gemini model fallback', () => {
     await expect(geminiTranslateDirect({ apiKey: 'bad', sourceText: 'Hello' })).rejects.toThrow(/API key not valid/);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it('sends the ICU rules in the system instruction and the prompt', async () => {
+    let body = '';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        body = String(init?.body ?? '');
+        return ok('مرحبا');
+      })
+    );
+    expect(await geminiTranslateDirect({ apiKey: 'k', sourceText: 'Hello' })).toBe('مرحبا');
+    const parsed = JSON.parse(body) as {
+      systemInstruction: { parts: Array<{ text: string }> };
+      contents: Array<{ parts: Array<{ text: string }> }>;
+    };
+    const system = parsed.systemInstruction.parts[0].text;
+    expect(system).toContain('ICU MessageFormat');
+    expect(system).toContain('{count, plural, one {# message} other {# messages}}');
+    const userPrompt = parsed.contents[0].parts[0].text;
+    expect(userPrompt).toContain('ICU MessageFormat block');
+    expect(userPrompt).toContain('protect only its syntax');
+    expect(userPrompt).toContain('translate the human-readable text inside each clause');
+  });
+
+  it('does not describe the plural quantity as a CLDR category (upstream sends one form, not a category)', async () => {
+    let body = '';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        body = String(init?.body ?? '');
+        return ok('مرحبا');
+      })
+    );
+    await geminiTranslateDirect({ apiKey: 'k', sourceText: 'Hello', pluralQuantity: 'one' });
+    const userPrompt = (JSON.parse(body) as { contents: Array<{ parts: Array<{ text: string }> }> })
+      .contents[0].parts[0].text;
+    expect(userPrompt).toContain('"one" CLDR plural form');
+    expect(userPrompt).not.toContain('Plural quantity category');
+  });
+
+  it('rejects a reply that damages the ICU structure and tries the next model', async () => {
+    const urls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        urls.push(url);
+        // First model drops the `other` clause; the second answers correctly.
+        return urls.length === 1
+          ? ok('{count, plural, one {# رسالة}}')
+          : ok('{count, plural, one {# رسالة} other {# رسائل}}');
+      })
+    );
+    const source = '{count, plural, one {# message} other {# messages}}';
+    expect(await geminiTranslateDirect({ apiKey: 'k', sourceText: source, targetLang: 'ar' })).toBe(
+      '{count, plural, one {# رسالة} other {# رسائل}}'
+    );
+    expect(urls).toHaveLength(2);
+  });
+
+  it('accepts a structurally sound ICU reply', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ok('{count, plural, one {# رسالة} other {# رسائل}}')));
+    const source = '{count, plural, one {# message} other {# messages}}';
+    expect(await geminiTranslateDirect({ apiKey: 'k', sourceText: source, targetLang: 'ar' })).toBe(
+      '{count, plural, one {# رسالة} other {# رسائل}}'
+    );
+  });
 });

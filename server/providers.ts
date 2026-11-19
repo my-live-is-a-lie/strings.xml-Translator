@@ -10,6 +10,7 @@ import {
   providerHttpError,
   stripMetadataWrappers,
 } from '../src/shared/translateCore';
+import { validatePlaceholders } from '../src/utils/placeholderCheck';
 
 export const PROVIDER_TYPES = [
   'yandex',
@@ -155,7 +156,18 @@ export async function callProviderWithKey(
         result?: { alternatives?: Array<{ message?: { text?: string } }> };
       };
       const yText = yData.result?.alternatives?.[0]?.message?.text;
-      if (yText) return stripMetadataWrappers(yText, sourceText);
+      if (yText) {
+        const cleaned = stripMetadataWrappers(yText, sourceText);
+        // Same guard as the Gemini path: an AI reply that breaks the ICU structure is
+        // unusable (it throws at runtime), so it is rejected instead of returned.
+        if (!validatePlaceholders(sourceText, cleaned, targetLang).valid) {
+          throw Object.assign(
+          new Error('Yandex: الردّ يخالف بنية ICU / The AI reply damaged the ICU MessageFormat structure'),
+          { name: 'StructuralError' }
+        );
+        }
+        return cleaned;
+      }
     }
 
     throw new Error(
@@ -203,7 +215,15 @@ export async function callProviderWithKey(
     const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
     const content = data.choices?.[0]?.message?.content;
     if (!content) throw new Error('OpenAI: استجابة فارغة / Empty response');
-    return stripMetadataWrappers(content, sourceText);
+    const cleaned = stripMetadataWrappers(content, sourceText);
+    // Same guard as the Gemini path: never return a reply that breaks the ICU structure.
+    if (!validatePlaceholders(sourceText, cleaned, targetLang).valid) {
+      throw Object.assign(
+          new Error('OpenAI: الردّ يخالف بنية ICU / The AI reply damaged the ICU MessageFormat structure'),
+          { name: 'StructuralError' }
+        );
+    }
+    return cleaned;
   };
 
   const tryGoogleCloudKey = async (): Promise<string> => {

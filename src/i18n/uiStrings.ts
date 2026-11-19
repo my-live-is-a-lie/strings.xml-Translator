@@ -358,6 +358,10 @@ export const UI_STRINGS: Record<string, { en: string; ar: string }> = {
   "copy_translation_text": { en: "Copy translation text", ar: "نسخ نص الترجمة" },
   "paste_from_clipboard": { en: "Paste from clipboard", ar: "لصق من الحافظة" },
   "nothing_saved_no_translation_has": { en: "Nothing saved: no translation has been typed yet.", ar: "لم يُحفظ شيء: لم تكتب أي ترجمة بعد." },
+  "suggestion_rejected_icu": {
+    en: "No suggestion was offered: every engine broke the ICU MessageFormat block in this string (a dropped clause, a lost brace or a changed keyword). Nothing was changed — translate it by hand, or try again.",
+    ar: "لم يُقترح شيء: كل المحرّكات أفسدت كتلة ICU في هذا النص (فرع محذوف أو قوس مفقود أو كلمة مفتاحية متغيّرة). لم يتغيّر شيء — ترجمه يدوياً أو أعد المحاولة."
+  },
   "not_saved_the_translation_was": { en: "Not saved. The translation was corrected automatically, review it and press Save again:", ar: "لم يُحفظ النص. صحّحتُ الترجمة تلقائياً، راجعها ثم اضغط حفظ مرة أخرى:" },
   "not_saved_some_errors_could": { en: "Not saved. Some errors could not be fixed automatically, press Save again to ignore them:", ar: "لم يُحفظ النص. توجد أخطاء لم أستطع إصلاحها، اضغط حفظ مرة أخرى لتجاهلها:" },
   "not_saved_line_breaks_differ": { en: "Not saved. The translation must have exactly the same number of line breaks as the source:", ar: "لم يُحفظ النص. يجب أن يتطابق عدد الأسطر الجديدة مع الأصل تمامًا:" },
