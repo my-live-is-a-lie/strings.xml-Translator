@@ -147,12 +147,13 @@ function extractBraceTokens(text: string, inPluralClause: boolean): string[] {
         );
 
         if (/^[a-zA-Z0-9_-]+$/.test(argName) && ICU_FORMAT_TYPES.has(formatType)) {
-          tokens.push(`{${argName}}`);
-          // The format type is part of the placeholder: `{amount, number, ...}`
-          // and `{amount, date, ...}` display the value differently, so a
-          // change in the type must be reported, not silently accepted. (The
-          // style itself, e.g. `::currency/USD` vs `short`, is not compared.)
-          tokens.push(formatType);
+          // The variable name and the format type are one token (`{name:type}`),
+          // not two independent ones: swapping the types between two variables
+          // (`{price, number} {when, date}` → `{price, date} {when, number}`)
+          // must be reported, and the flat token sets would otherwise be
+          // identical. (The style itself, e.g. `::currency/USD` vs `short`,
+          // is not compared.)
+          tokens.push(`{${argName}:${formatType}}`);
 
           if (ICU_CLAUSE_FORMAT_TYPES.has(formatType)) {
             const styleAndClauses = nextCommaIdx !== -1 ? rest.slice(nextCommaIdx + 1) : '';
@@ -356,30 +357,20 @@ function getPluralCategoriesForLocale(
 // by `extractBraceTokens` for `plural`/`selectordinal` blocks
 // (`plural:one`, `selectordinal:one`, ...). A `select` key named `one` is
 // emitted as `select:one`, so it is never confused with a plural category.
-/** The bare category (`one`) behind a namespaced plural category token (`plural:one`), or null. */
-function pluralCategoryOf(token: string): string | null {
-  const m = /^(?:plural|selectordinal):(zero|one|two|few|many)$/.exec(token);
-  return m ? m[1] : null;
-}
-
-/** The block type (`plural`/`selectordinal`) behind a namespaced category token, or null. */
-function pluralBlockTypeOf(token: string): string | null {
-  const m = /^(plural|selectordinal):(?:zero|one|two|few|many)$/.exec(token);
-  return m ? m[1] : null;
-}
-
 const NAMESPACED_PLURAL_CATEGORIES = new Set(
   ['plural', 'selectordinal'].flatMap((t) =>
     [...ICU_LOCALE_PLURAL_CATEGORIES].map((c) => `${t}:${c}`)
   )
 );
 
-// A printf specifier (`%s`, `%d`, `%1$s`, ...) without the global flag, so
-// `.test()` is safe to call repeatedly (a global regex keeps `lastIndex`).
-const PRINTF_TOKEN_REGEX = /%(?:\d+\$)?[+-]?\d*(?:\.\d+)?[bcdefgopsx]/i;
-
-function isPrintfToken(token: string): boolean {
-  return PRINTF_TOKEN_REGEX.test(token);
+/** The ICU block types present in a token-count map (from `{name:type}` tokens). */
+function blockTypesIn(counts: Map<string, number>): Set<string> {
+  const types = new Set<string>();
+  for (const token of counts.keys()) {
+    const m = /^\{[^}:]+:([a-z]+)\}$/.exec(token);
+    if (m) types.add(m[1]);
+  }
+  return types;
 }
 
 /**
@@ -394,13 +385,14 @@ function getExpectedPluralCategories(
   sourceCounts: Map<string, number>,
   targetLocale: string
 ): Map<string, Set<string>> | null {
+  const types = blockTypesIn(sourceCounts);
   const expected = new Map<string, Set<string>>();
-  if (sourceCounts.has('plural')) {
+  if (types.has('plural')) {
     const cardinal = getPluralCategoriesForLocale(targetLocale, 'cardinal');
     if (!cardinal) return null;
     expected.set('plural', new Set(cardinal));
   }
-  if (sourceCounts.has('selectordinal')) {
+  if (types.has('selectordinal')) {
     const ordinal = getPluralCategoriesForLocale(targetLocale, 'ordinal');
     if (!ordinal) return null;
     expected.set('selectordinal', new Set(ordinal));
@@ -422,14 +414,17 @@ function getExpectedPluralCategories(
  * `select` keys (including `select:one`), variable names and format types
  * stay strict.
  *
- * In that locale-aware path, ICU tokens are compared by presence, not count:
- * the target legitimately has fewer clauses (fewer categories) than the
- * source, so a token that appears in a dropped clause (e.g. `{name}` in the
- * `one` clause of a Japanese `other`-only translation) is not missing as long
- * as it appears in a kept clause. Printf specifiers (`%s`, `%d`, ...) stay
- * count-based: they are not inside ICU clauses, so a dropped duplicate is
- * always an error. A block that lost its `other` clause is caught separately
- * by the per-block check, since the global `other` count would hide it.
+ * In that locale-aware path, only tokens inside a plural/selectordinal
+ * branch (`branchTokens`) are compared by presence, not count: the target
+ * legitimately has fewer clauses (fewer categories) than the source, so a
+ * token that appears in a dropped clause (e.g. `{name}` or `%s` in the `one`
+ * clause of a Japanese `other`-only translation) is not missing as long as it
+ * appears in a kept clause. Everything outside those branches — plain-text
+ * placeholders, `select` keys in independent blocks, HTML tags, `%%` —
+ * stays count-based, so deleting a second `{name}` or a `select` key is never
+ * hidden by the presence of a plural block elsewhere in the message. A block
+ * that lost its `other` clause is caught separately by the per-block check,
+ * since the global `other` count would hide it.
  *
  * Without a locale, when the target dropped the plural structure entirely,
  * or when the locale is invalid, this falls back to the plain count
@@ -438,12 +433,14 @@ function getExpectedPluralCategories(
 function comparePlaceholderTokens(
   sourceCounts: Map<string, number>,
   targetCounts: Map<string, number>,
-  targetLocale?: string
+  targetLocale?: string,
+  branchTokens: Set<string> = new Set()
 ): { missing: string[]; extra: string[] } {
   const src = new Map(sourceCounts);
   const tgt = new Map(targetCounts);
 
-  const targetHasPluralBlock = tgt.has('plural') || tgt.has('selectordinal');
+  const targetTypes = blockTypesIn(tgt);
+  const targetHasPluralBlock = targetTypes.has('plural') || targetTypes.has('selectordinal');
   const expected =
     targetLocale && targetHasPluralBlock
       ? getExpectedPluralCategories(src, targetLocale)
@@ -471,17 +468,20 @@ function comparePlaceholderTokens(
 
     for (const [token, srcCount] of src.entries()) {
       const tgtCount = tgt.get(token) || 0;
-      if (isPrintfToken(token)) {
-        if (tgtCount < srcCount) missing.push(token);
-      } else if (tgtCount === 0) {
+      if (branchTokens.has(token)) {
+        // Inside a plural/selectordinal branch: presence-only, because a
+        // whole clause (and every token in it) may legitimately be dropped
+        // when the target language needs fewer categories.
+        if (tgtCount === 0) missing.push(token);
+      } else if (tgtCount < srcCount) {
         missing.push(token);
       }
     }
     for (const [token, tgtCount] of tgt.entries()) {
       const srcCount = src.get(token) || 0;
-      if (isPrintfToken(token)) {
-        if (tgtCount > srcCount) extra.push(token);
-      } else if (srcCount === 0) {
+      if (branchTokens.has(token)) {
+        if (srcCount === 0) extra.push(token);
+      } else if (tgtCount > srcCount) {
         extra.push(token);
       }
     }
@@ -507,57 +507,69 @@ const PLURAL_CATEGORY_ORDER = ['zero', 'one', 'two', 'few', 'many', 'other'];
 
 /**
  * Checks the target's plural categories against what its language requires
- * (CLDR), per block type. Only runs when both sides keep a plural/selectordinal
+ * (CLDR), per block. Only runs when both sides keep a plural/selectordinal
  * block; when the target dropped the structure entirely, `comparePlaceholderTokens`
  * already reports the missing tokens.
  *
- * Each block type is checked against its own rules (cardinal for `plural`,
- * ordinal for `selectordinal`), so a correctly complete `plural` block is not
- * flagged for missing ordinal categories. `other` is not checked here: it is
- * required by every locale and stays in the strict comparison (and in the
- * per-block check), so reporting it again would duplicate it.
+ * Each block is checked against its own rules (cardinal for `plural`,
+ * ordinal for `selectordinal`), so a category in one block never hides its
+ * absence in another block of the same type. `other` is not checked here: it
+ * is required by every locale and stays in the strict comparison (and in the
+ * per-block check), so reporting it again would duplicate it. Returns one
+ * entry per block that is missing or has extra categories, with the block's
+ * variable so the warning names the block.
  */
 function checkPluralCategories(
-  sourceCounts: Map<string, number>,
-  targetCounts: Map<string, number>,
+  source: string,
+  target: string,
   targetLocale?: string
-): { missingCategories: string[]; extraCategories: string[] } {
-  const none = { missingCategories: [], extraCategories: [] };
+): {
+  missing: { variable: string; categories: string[] }[];
+  extra: { variable: string; categories: string[] }[];
+} {
+  const none: {
+    missing: { variable: string; categories: string[] }[];
+    extra: { variable: string; categories: string[] }[];
+  } = { missing: [], extra: [] };
   if (!targetLocale) return none;
-  if (!targetCounts.has('plural') && !targetCounts.has('selectordinal')) return none;
+  const targetBlocks = extractIcuBlocks(target).filter(
+    (b) => b.formatType === 'plural' || b.formatType === 'selectordinal'
+  );
+  if (targetBlocks.length === 0) return none;
+  const sourceCounts = extractFormatTokensWithCounts(source);
   const expectedByType = getExpectedPluralCategories(sourceCounts, targetLocale);
   if (!expectedByType) return none;
 
-  // The target's categories, grouped by the block type they came from.
-  const targetByType = new Map<string, Set<string>>();
-  for (const token of targetCounts.keys()) {
-    const category = pluralCategoryOf(token);
-    const blockType = pluralBlockTypeOf(token);
-    if (!category || !blockType) continue;
-    if (!targetByType.has(blockType)) targetByType.set(blockType, new Set());
-    targetByType.get(blockType)?.add(category);
-  }
-
-  const missing: string[] = [];
-  const extra: string[] = [];
-  for (const [blockType, expected] of expectedByType) {
-    const targetCategories = targetByType.get(blockType) || new Set<string>();
-    for (const c of PLURAL_CATEGORY_ORDER) {
-      if (c === 'other') continue;
-      if (expected.has(c) && !targetCategories.has(c)) missing.push(c);
-      if (targetCategories.has(c) && !expected.has(c)) extra.push(c);
+  for (const block of targetBlocks) {
+    const expected = expectedByType.get(block.formatType);
+    if (!expected) continue;
+    const targetCategories = new Set(
+      block.keywords
+        .map((k) => (ICU_LOCALE_PLURAL_CATEGORIES.has(k) ? k : null))
+        .filter((c): c is string => c !== null)
+    );
+    const missingCategories = PLURAL_CATEGORY_ORDER.filter(
+      (c) => c !== 'other' && expected.has(c) && !targetCategories.has(c)
+    );
+    const extraCategories = PLURAL_CATEGORY_ORDER.filter(
+      (c) => targetCategories.has(c) && !expected.has(c)
+    );
+    if (missingCategories.length > 0) {
+      none.missing.push({ variable: block.variable, categories: missingCategories });
+    }
+    if (extraCategories.length > 0) {
+      none.extra.push({ variable: block.variable, categories: extraCategories });
     }
   }
-  // A category can be missing/extra for both block types; report it once.
-  const dedup = (list: string[]) => PLURAL_CATEGORY_ORDER.filter((c) => list.includes(c));
-  return { missingCategories: dedup(missing), extraCategories: dedup(extra) };
+  return none;
 }
 
-/** One ICU clause block (`{var, plural|select|selectordinal, ...}`) with its clause keywords. */
+/** One ICU clause block (`{var, plural|select|selectordinal, ...}`) with its clause keywords and sub-messages. */
 interface IcuBlock {
   variable: string;
   formatType: string;
   keywords: string[];
+  clauses: { selector: string; subMessage: string }[];
 }
 
 /**
@@ -602,6 +614,7 @@ function extractIcuBlocks(text: string): IcuBlock[] {
       if (/^[a-zA-Z0-9_-]+$/.test(argName) && ICU_CLAUSE_FORMAT_TYPES.has(formatType)) {
         const styleAndClauses = nextCommaIdx !== -1 ? rest.slice(nextCommaIdx + 1) : '';
         const keywords: string[] = [];
+        const clauses: { selector: string; subMessage: string }[] = [];
         let j = 0;
         while (j < styleAndClauses.length) {
           while (j < styleAndClauses.length && /\s/.test(styleAndClauses[j])) j++;
@@ -633,11 +646,13 @@ function extractIcuBlocks(text: string): IcuBlock[] {
             const subClose = findMatchingBrace(styleAndClauses, j);
             if (subClose === -1) break;
             keywords.push(keyword);
-            blocks.push(...extractIcuBlocks(styleAndClauses.slice(j + 1, subClose)));
+            const subMessage = styleAndClauses.slice(j + 1, subClose);
+            clauses.push({ selector: keyword, subMessage });
+            blocks.push(...extractIcuBlocks(subMessage));
             j = subClose + 1;
           }
         }
-        blocks.push({ variable: argName, formatType, keywords });
+        blocks.push({ variable: argName, formatType, keywords, clauses });
       }
     }
     i = close + 1;
@@ -647,24 +662,59 @@ function extractIcuBlocks(text: string): IcuBlock[] {
 
 /**
  * The variables of the target's ICU blocks that lack an `other` clause while
- * the source block with the same variable has one. ICU requires `other` in
- * every plural/select/selectordinal block (`U_DEFAULT_KEYWORD_MISSING`), and
- * the flat token count cannot catch it: one block's extra `other` hides
- * another block's missing one. A source block that itself lacks `other` is
- * not flagged — the target faithfully preserving it is not an error.
+ * the corresponding source block has one. ICU requires `other` in every
+ * plural/select/selectordinal block (`U_DEFAULT_KEYWORD_MISSING`), and the
+ * flat token count cannot catch it: one block's extra `other` hides another
+ * block's missing one. Blocks are matched to their source counterpart by
+ * variable name and ordinal position (the n-th target block with a variable
+ * matches the n-th source block with it), so repeated variables and added
+ * blocks are handled: an added block (no source counterpart) that lacks
+ * `other` is an error, while a source block that itself lacks `other` is not
+ * flagged — the target faithfully preserving it is not an error.
  */
 function findBlocksMissingOther(source: string, target: string): string[] {
-  const sourceHasOther = new Map<string, boolean>();
+  const sourceByVariable = new Map<string, boolean[]>();
   for (const block of extractIcuBlocks(source)) {
-    sourceHasOther.set(block.variable, block.keywords.includes('other'));
+    if (!sourceByVariable.has(block.variable)) sourceByVariable.set(block.variable, []);
+    sourceByVariable.get(block.variable)?.push(block.keywords.includes('other'));
   }
+  const seenByVariable = new Map<string, number>();
   const missing: string[] = [];
   for (const block of extractIcuBlocks(target)) {
     if (block.keywords.includes('other')) continue;
-    if (sourceHasOther.get(block.variable) !== true) continue;
+    const ordinal = seenByVariable.get(block.variable) || 0;
+    seenByVariable.set(block.variable, ordinal + 1);
+    const sourceHasOther = sourceByVariable.get(block.variable)?.[ordinal];
+    // No source counterpart (an added block) or a source block that has
+    // `other`: the target block is invalid. Only a source block that itself
+    // lacks `other` excuses the target.
+    if (sourceHasOther === false) continue;
     if (!missing.includes(block.variable)) missing.push(block.variable);
   }
   return missing;
+}
+
+/**
+ * The tokens that appear inside a plural/selectordinal clause's sub-message
+ * (recursing into nested blocks), including printf specifiers. Only these
+ * tokens may legitimately differ in count between source and target: when the
+ * target language needs fewer plural categories, a whole clause — and every
+ * token inside it — is dropped. Tokens outside these branches (plain-text
+ * placeholders, `select` keys in independent blocks, HTML tags) are compared
+ * by count, so a deleted `{name}` or `select` key is never hidden by the
+ * presence of a plural block elsewhere in the message.
+ */
+function collectBranchTokens(text: string): Set<string> {
+  const branchTokens = new Set<string>();
+  for (const block of extractIcuBlocks(text)) {
+    if (block.formatType !== 'plural' && block.formatType !== 'selectordinal') continue;
+    for (const clause of block.clauses) {
+      const subCounts = extractFormatTokensWithCounts(clause.subMessage);
+      for (const token of subCounts.keys()) branchTokens.add(token);
+      for (const nested of collectBranchTokens(clause.subMessage)) branchTokens.add(nested);
+    }
+  }
+  return branchTokens;
 }
 
 /**
@@ -740,10 +790,24 @@ export function validatePlaceholders(
   // does not return but the old check did (see `addHtmlAndPercentCounts`).
   addHtmlAndPercentCounts(sourceCounts, source);
   addHtmlAndPercentCounts(targetCounts, target);
-  const { missing, extra } = comparePlaceholderTokens(sourceCounts, targetCounts, targetLocale);
-  const { missingCategories, extraCategories } = checkPluralCategories(
+  // Tokens inside a plural/selectordinal branch may legitimately differ in
+  // count (a whole clause can be dropped when the target language needs fewer
+  // categories); HTML tags and `%%` are added above, outside any branch, so
+  // they stay count-based. Computed from the original texts, before the tags
+  // are added, so a tag inside a branch is not mistaken for one outside it.
+  const branchTokens = new Set([
+    ...collectBranchTokens(source),
+    ...collectBranchTokens(target),
+  ]);
+  const { missing, extra } = comparePlaceholderTokens(
     sourceCounts,
     targetCounts,
+    targetLocale,
+    branchTokens
+  );
+  const { missing: missingByBlock, extra: extraByBlock } = checkPluralCategories(
+    source,
+    target,
     targetLocale
   );
   // A target block that lost its `other` clause is an error, even when the
@@ -754,13 +818,21 @@ export function validatePlaceholders(
     ...blocksMissingOther.map((v) => `other:{${v}}`),
   ];
   const extraInTarget = [...extra];
-  const warnings = [...missingCategories, ...extraCategories];
+  // Warnings are the flat, deduplicated category lists across blocks, so a
+  // missing category is a warning (not an error) in the AI check, matching QA.
+  const warnings = Array.from(
+    new Set([
+      ...missingByBlock.flatMap((b) => b.categories),
+      ...extraByBlock.flatMap((b) => b.categories),
+    ])
+  );
   // An unbalanced target (when the source is balanced) is an error here too,
   // not just in QA: an appended `{` is malformed ICU (`U_UNMATCHED_BRACES`)
   // even though the token counts are unchanged, so the AI-reply check would
-  // otherwise pass it silently.
+  // otherwise pass it silently. A lone `}` in a target with no `{` at all is
+  // ordinary literal text in a non-ICU message, not a broken block.
   const unbalanced = firstUnbalancedBrace(target);
-  if (unbalanced && !hasUnbalancedBraces(source)) {
+  if (unbalanced && !hasUnbalancedBraces(source) && target.includes('{')) {
     missingInTarget.push(unbalanced);
   }
 
@@ -999,7 +1071,11 @@ function validateSourceTargetPair(
   // Only when the source is balanced: a lone `{`/`}` in the source text
   // (e.g. `:-}`) is ordinary text, so a target that faithfully preserves
   // the same literal braces is not an error.
-  const targetUnbalanced = hasUnbalancedBraces(target) && !hasUnbalancedBraces(source);
+  // A lone `}` in a target with no `{` at all is ordinary literal text in a
+  // non-ICU message, not a broken ICU block — the brace check only applies
+  // when the target contains an opening brace.
+  const targetUnbalanced =
+    hasUnbalancedBraces(target) && !hasUnbalancedBraces(source) && target.includes('{');
   if (targetUnbalanced) {
     issues.push({
       id: `${itemId}_${subKey || 'main'}_unbalanced_braces`,
@@ -1053,8 +1129,12 @@ function validateSourceTargetPair(
       });
     }
   } else {
+    const branchTokens = new Set([
+      ...collectBranchTokens(source),
+      ...collectBranchTokens(target),
+    ]);
     const { missing: missingPlaceholders, extra: extraPlaceholders } =
-      comparePlaceholderTokens(sourceFormatCounts, targetFormatCounts, targetLocale);
+      comparePlaceholderTokens(sourceFormatCounts, targetFormatCounts, targetLocale, branchTokens);
 
     if (missingPlaceholders.length > 0) {
       issues.push({
@@ -1084,18 +1164,26 @@ function validateSourceTargetPair(
       });
     }
 
-    // 1b. Plural categories for the target language (CLDR). A correct
-    // translation needs the categories its own language requires, not the
-    // source language's (e.g. Arabic needs zero/two/few/many, Japanese
+    // 1b. Plural categories for the target language (CLDR), per block. A
+    // correct translation needs the categories its own language requires, not
+    // the source language's (e.g. Arabic needs zero/two/few/many, Japanese
     // needs only `other`). A missing category is a warning, not an error:
     // ICU only mandates `other` (a missing category falls back to it), and
-    // a missing `other` is already an error via the strict check above.
-    const { missingCategories, extraCategories } = checkPluralCategories(
-      sourceFormatCounts,
-      targetFormatCounts,
+    // a missing `other` is already an error via the strict check above. Each
+    // block is checked on its own, so a category in one block never hides its
+    // absence in another block of the same type; the warning names the block.
+    const { missing: missingByBlock, extra: extraByBlock } = checkPluralCategories(
+      source,
+      target,
       targetLocale
     );
-    if (missingCategories.length > 0) {
+    if (missingByBlock.length > 0) {
+      const missingCategories = Array.from(
+        new Set(missingByBlock.flatMap((b) => b.categories))
+      );
+      const blocks = missingByBlock
+        .map((b) => `{${b.variable}}: ${b.categories.join(', ')}`)
+        .join('; ');
       issues.push({
         id: `${itemId}_${subKey || 'main'}_missing_plural_forms`,
         itemId,
@@ -1103,12 +1191,18 @@ function validateSourceTargetPair(
         subKey,
         category: 'placeholder',
         severity: 'warning',
-        messageEn: `${prefix}Missing plural forms for '${targetLocale}': ${missingCategories.join(', ')}`,
-        messageAr: `${prefix}صيغ جمع ناقصة للغة '${targetLocale}': ${missingCategories.join(', ')}`,
+        messageEn: `${prefix}Missing plural forms for '${targetLocale}': ${blocks}`,
+        messageAr: `${prefix}صيغ جمع ناقصة للغة '${targetLocale}': ${blocks}`,
         tokens: missingCategories,
       });
     }
-    if (extraCategories.length > 0) {
+    if (extraByBlock.length > 0) {
+      const extraCategories = Array.from(
+        new Set(extraByBlock.flatMap((b) => b.categories))
+      );
+      const blocks = extraByBlock
+        .map((b) => `{${b.variable}}: ${b.categories.join(', ')}`)
+        .join('; ');
       issues.push({
         id: `${itemId}_${subKey || 'main'}_extra_plural_forms`,
         itemId,
@@ -1116,8 +1210,8 @@ function validateSourceTargetPair(
         subKey,
         category: 'placeholder',
         severity: 'warning',
-        messageEn: `${prefix}Unexpected plural forms for '${targetLocale}': ${extraCategories.join(', ')}`,
-        messageAr: `${prefix}صيغ جمع غير متوقعة للغة '${targetLocale}': ${extraCategories.join(', ')}`,
+        messageEn: `${prefix}Unexpected plural forms for '${targetLocale}': ${blocks}`,
+        messageAr: `${prefix}صيغ جمع غير متوقعة للغة '${targetLocale}': ${blocks}`,
         tokens: extraCategories,
       });
     }

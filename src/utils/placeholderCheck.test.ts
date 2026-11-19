@@ -53,8 +53,7 @@ describe('extractPlaceholders - simple (non-ICU) placeholders', () => {
 describe('extractPlaceholders - ICU MessageFormat', () => {
   it('extracts the variable name, format type and plural keywords from a plural block', () => {
     expect(extractPlaceholders('{count, plural, one {# book} other {# books}}')).toEqual([
-      '{count}',
-      'plural',
+      '{count:plural}',
       'plural:one',
       '#',
       'other',
@@ -63,7 +62,7 @@ describe('extractPlaceholders - ICU MessageFormat', () => {
 
   it('extracts select keywords and does not confuse them with plain text', () => {
     const found = extractPlaceholders('{gender, select, male {He} female {She} other {They}}');
-    expect(found).toEqual(['{gender}', 'select', 'male', 'female', 'other']);
+    expect(found).toEqual(['{gender:select}', 'male', 'female', 'other']);
     // The translatable words inside the sub-messages are not placeholders.
     expect(found).not.toContain('He');
     expect(found).not.toContain('She');
@@ -74,8 +73,7 @@ describe('extractPlaceholders - ICU MessageFormat', () => {
     expect(
       extractPlaceholders('{rank, selectordinal, one {#st} two {#nd} few {#rd} other {#th}}')
     ).toEqual([
-      '{rank}',
-      'selectordinal',
+      '{rank:selectordinal}',
       'selectordinal:one',
       '#',
       'selectordinal:two',
@@ -87,7 +85,7 @@ describe('extractPlaceholders - ICU MessageFormat', () => {
   it('extracts explicit =N matches', () => {
     expect(
       extractPlaceholders('{count, plural, =0 {No items} =1 {One item} other {# items}}')
-    ).toEqual(['{count}', 'plural', '=0', '=1', 'other', '#']);
+    ).toEqual(['{count:plural}', '=0', '=1', 'other', '#']);
   });
 
   it('extracts an offset: clause', () => {
@@ -95,13 +93,13 @@ describe('extractPlaceholders - ICU MessageFormat', () => {
       extractPlaceholders(
         '{count, plural, offset:1 =0 {No one} =1 {Just you} other {# others}}'
       )
-    ).toEqual(['{count}', 'plural', 'offset:1', '=0', '=1', 'other', '#']);
+    ).toEqual(['{count:plural}', 'offset:1', '=0', '=1', 'other', '#']);
   });
 
   it('handles nested placeholders inside a plural sub-message', () => {
     expect(
       extractPlaceholders('{count, plural, one {{name} has # book} other {{name} has # books}}')
-    ).toEqual(['{count}', 'plural', 'plural:one', '{name}', '#', 'other']);
+    ).toEqual(['{count:plural}', 'plural:one', '{name}', '#', 'other']);
   });
 
   it('handles a nested ICU block inside a select clause', () => {
@@ -109,7 +107,7 @@ describe('extractPlaceholders - ICU MessageFormat', () => {
       extractPlaceholders(
         '{gender, select, male {{count, plural, one {# book} other {# books}}} other {no books}}'
       )
-    ).toEqual(['{gender}', 'select', 'male', '{count}', 'plural', 'plural:one', '#', 'other']);
+    ).toEqual(['{gender:select}', 'male', '{count:plural}', 'plural:one', '#', 'other']);
   });
 
   it('handles multiple independent ICU blocks in one string', () => {
@@ -117,7 +115,7 @@ describe('extractPlaceholders - ICU MessageFormat', () => {
       extractPlaceholders(
         '{gender, select, male {He} other {They}} has {count, plural, one {# item} other {# items}}'
       )
-    ).toEqual(['{gender}', 'select', 'male', 'other', '{count}', 'plural', 'plural:one', '#']);
+    ).toEqual(['{gender:select}', 'male', 'other', '{count:plural}', 'plural:one', '#']);
   });
 
   it('does not treat a bare # outside of a plural/selectordinal clause as a placeholder', () => {
@@ -129,10 +127,8 @@ describe('extractPlaceholders - ICU MessageFormat', () => {
     // change in type must be reported — but the style (`::currency/USD`,
     // `short`) is not compared.
     expect(extractPlaceholders('{n, number, ::currency/USD} and {m, date, short}')).toEqual([
-      '{n}',
-      'number',
-      '{m}',
-      'date',
+      '{n:number}',
+      '{m:date}',
     ]);
   });
 
@@ -142,8 +138,7 @@ describe('extractPlaceholders - ICU MessageFormat', () => {
 
   it('accepts a hyphenated ICU variable name, like a simple placeholder does', () => {
     expect(extractPlaceholders('{user-name, plural, one {# item} other {# items}}')).toEqual([
-      '{user-name}',
-      'plural',
+      '{user-name:plural}',
       'plural:one',
       '#',
       'other',
@@ -153,7 +148,7 @@ describe('extractPlaceholders - ICU MessageFormat', () => {
   it('tolerates bidirectional control characters around an ICU variable name', () => {
     expect(
       extractPlaceholders('{\u200Fcount\u200E, plural, one {# book} other {# books}}')
-    ).toEqual(['{count}', 'plural', 'plural:one', '#', 'other']);
+    ).toEqual(['{count:plural}', 'plural:one', '#', 'other']);
   });
 
   it('does not attribute a nested plural offset to the outer block', () => {
@@ -162,7 +157,7 @@ describe('extractPlaceholders - ICU MessageFormat', () => {
       extractPlaceholders(
         '{count, plural, one {{n, plural, offset:2 one {x} other {y}}} other {z}}'
       )
-    ).toEqual(['{count}', 'plural', 'plural:one', '{n}', 'offset:2', 'other']);
+    ).toEqual(['{count:plural}', 'plural:one', '{n:plural}', 'offset:2', 'other']);
   });
 
   it('treats ICU quoted literals as literal text, not placeholders', () => {
@@ -178,7 +173,7 @@ describe('validatePlaceholders', () => {
   it('flags a missing ICU variable/keyword when the target drops the plural structure', () => {
     const result = validatePlaceholders(PLURAL_SRC, 'كتب'); // translator flattened the whole ICU structure away
     expect(result.valid).toBe(false);
-    expect(result.missingInTarget).toEqual(['{count}', 'plural', 'plural:one', '#', 'other']);
+    expect(result.missingInTarget).toEqual(['{count:plural}', 'plural:one', '#', 'other']);
   });
 
   it('passes when the target preserves the ICU structure with translated sub-messages', () => {
@@ -310,7 +305,7 @@ describe('getItemQaIssues - ICU MessageFormat strings', () => {
     const issues = getItemQaIssues(item);
     const placeholderIssue = issues.find((i) => i.category === 'placeholder' && i.severity === 'error');
     expect(placeholderIssue).toBeDefined();
-    expect(placeholderIssue?.tokens).toEqual(['{count}', 'plural', 'plural:one', '#', 'other']);
+    expect(placeholderIssue?.tokens).toEqual(['{count:plural}', 'plural:one', '#', 'other']);
   });
 
   it('reports no placeholder issue when the ICU structure is correctly preserved', () => {
@@ -522,8 +517,8 @@ describe('regression tests - round-3 and round-4 reviews', () => {
 
     const result = validatePlaceholders(src, tgt, 'en');
     expect(result.valid).toBe(false);
-    expect(result.missingInTarget).toContain('number');
-    expect(result.extraInTarget).toContain('date');
+    expect(result.missingInTarget).toContain('{amount:number}');
+    expect(result.extraInTarget).toContain('{amount:date}');
   });
 
   it('flags an appended unbalanced brace in the AI-reply check too', () => {
@@ -546,5 +541,166 @@ describe('regression tests - round-3 and round-4 reviews', () => {
     expect(result.valid).toBe(true);
     expect(result.missingInTarget).toEqual([]);
     expect(result.warnings).toEqual(['many']);
+  });
+});
+
+describe('regression tests - round-5 review', () => {
+  it('flags a type swap between two variables (name and type are one token)', () => {
+    // `{price, number} {when, date}` → `{price, date} {when, number}` has
+    // the same flat token sets, so the variable name and the format type are
+    // compared as one token (`{name:type}`).
+    const src = '{price, number} {when, date}';
+    const tgt = '{price, date} {when, number}';
+    const item = makeItem(src, tgt, 'swap');
+
+    const issues = getItemQaIssues(item, 'en');
+    expect(issues.some((i) => i.category === 'placeholder')).toBe(true);
+
+    const result = validatePlaceholders(src, tgt, 'en');
+    expect(result.valid).toBe(false);
+    expect(result.missingInTarget).toContain('{price:number}');
+    expect(result.missingInTarget).toContain('{when:date}');
+    expect(result.extraInTarget).toContain('{price:date}');
+    expect(result.extraInTarget).toContain('{when:number}');
+  });
+
+  it('flags an added ICU block that lacks an other clause', () => {
+    // Block `b` does not exist in the source at all, so it is not excused by
+    // a source block that itself lacks `other` — ICU requires `other` in
+    // every block.
+    const src = '{a, select, male {A} other {B}}';
+    const tgt = '{a, select, male {A} other {B}} {b, select, male {C}}';
+    const item = makeItem(src, tgt, 'added');
+
+    const issues = getItemQaIssues(item, 'en');
+    const missingOther = issues.find((i) => i.id.endsWith('_missing_other'));
+    expect(missingOther).toBeDefined();
+    expect(missingOther?.severity).toBe('error');
+    expect(missingOther?.tokens).toContain('other:{b}');
+
+    const result = validatePlaceholders(src, tgt, 'en');
+    expect(result.valid).toBe(false);
+    expect(result.missingInTarget).toContain('other:{b}');
+  });
+
+  it('flags a deleted placeholder outside the plural block, even with a locale', () => {
+    // The second `{name}` is plain text, not inside a plural branch, so it
+    // is compared by count — the presence of a plural block elsewhere in the
+    // message must not hide its deletion.
+    const src = 'Hello {name}. {n, plural, one {# item} other {# items}} Bye {name}';
+    const tgt = 'Hello {name}. {n, plural, one {# item} other {# items}} Bye';
+    const item = makeItem(src, tgt, 'name');
+
+    const issues = getItemQaIssues(item, 'en');
+    expect(issues.some((i) => i.id.endsWith('_missing_ph'))).toBe(true);
+
+    const result = validatePlaceholders(src, tgt, 'en');
+    expect(result.valid).toBe(false);
+    expect(result.missingInTarget).toContain('{name}');
+  });
+
+  it('flags a deleted select key in one block, even when another block keeps it', () => {
+    // `male` is deleted from block `a` only; its presence in block `b` must
+    // not cover the deletion, even though the message also has a plural block.
+    const src =
+      '{a, select, male {A} other {B}} {b, select, male {C} other {D}} {n, plural, one {#} other {#}}';
+    const tgt =
+      '{a, select, other {B}} {b, select, male {C} other {D}} {n, plural, one {#} other {#}}';
+    const item = makeItem(src, tgt, 'select');
+
+    const issues = getItemQaIssues(item, 'en');
+    expect(issues.some((i) => i.id.endsWith('_missing_ph'))).toBe(true);
+
+    const result = validatePlaceholders(src, tgt, 'en');
+    expect(result.valid).toBe(false);
+    expect(result.missingInTarget).toContain('male');
+  });
+
+  it('warns about a missing plural category in one block, naming the block', () => {
+    // Block `a` has `one` and `other`; block `b` has only `other`. The
+    // category in `a` must not hide its absence in `b`.
+    const src = '{a, plural, one {#} other {#}} {b, plural, one {#} other {#}}';
+    const tgt = '{a, plural, one {#} other {#}} {b, plural, other {#}}';
+    const item = makeItem(src, tgt, 'blocks');
+
+    const issues = getItemQaIssues(item, 'en');
+    const formsIssue = issues.find((i) => i.id.endsWith('_missing_plural_forms'));
+    expect(formsIssue).toBeDefined();
+    expect(formsIssue?.severity).toBe('warning');
+    expect(formsIssue?.tokens).toContain('one');
+    expect(formsIssue?.messageEn).toContain('{b}');
+  });
+
+  it('does not reject a literal brace in a non-ICU target', () => {
+    // Neither the source nor the target uses ICU, so a lone `}` in the target
+    // is ordinary literal text in an Android resource, not a broken block.
+    const item = makeItem('Hello world', 'Hello world :-}', 'hello');
+    const issues = getItemQaIssues(item, 'en');
+    expect(issues.some((i) => i.id.endsWith('_unbalanced_braces'))).toBe(false);
+    expect(issues.some((i) => i.category === 'placeholder')).toBe(false);
+
+    const result = validatePlaceholders('Hello world', 'Hello world :-}', 'en');
+    expect(result.valid).toBe(true);
+  });
+
+  it('still flags a missing closing brace in a real ICU block', () => {
+    // The restriction above must not let a broken ICU block pass: deleting
+    // the final `}` of a plural block is still an error.
+    const src = '{n, plural, one {#} other {#}}';
+    const tgt = '{n, plural, one {#} other {#}';
+    const item = makeItem(src, tgt, 'brace');
+    const issues = getItemQaIssues(item, 'en');
+    expect(issues.some((i) => i.id.endsWith('_unbalanced_braces'))).toBe(true);
+  });
+
+  it('does not reject a Japanese target that drops a plural clause with %s', () => {
+    // The two `%s` in the source are in mutually exclusive branches; the
+    // Japanese target keeps only the `other` branch, so one `%s` is enough.
+    const src = '{n, plural, one {%s item} other {%s items}}';
+    const tgt = '{n, plural, other {%s items}}';
+    const item = makeItem(src, tgt, 'printf');
+
+    const issues = getItemQaIssues(item, 'ja');
+    expect(issues.some((i) => i.category === 'placeholder')).toBe(false);
+
+    const result = validatePlaceholders(src, tgt, 'ja');
+    expect(result.valid).toBe(true);
+    expect(result.missingInTarget).toEqual([]);
+  });
+
+  it('still flags a %s dropped from the kept plural branch', () => {
+    const src = '{n, plural, one {%s item} other {%s items}}';
+    const tgt = '{n, plural, other {items}}';
+    const result = validatePlaceholders(src, tgt, 'ja');
+    expect(result.valid).toBe(false);
+    expect(result.missingInTarget).toContain('%s');
+  });
+
+  it('flags a dropped repeated HTML tag in the AI check, as QA does', () => {
+    // Tags are compared by count even when a plural block exists: the
+    // leniency for dropped plural clauses must not cover a tag repeated in
+    // plain text.
+    const src = '<b>A</b> <b>B</b> {n, plural, one {#} other {#}}';
+    const tgt = '<b>A B</b> {n, plural, one {#} other {#}}';
+    const item = makeItem(src, tgt, 'tags');
+
+    const issues = getItemQaIssues(item, 'en');
+    expect(issues.some((i) => i.category === 'html')).toBe(true);
+
+    const result = validatePlaceholders(src, tgt, 'en');
+    expect(result.valid).toBe(false);
+    expect(result.missingInTarget).toContain('<b>');
+    expect(result.missingInTarget).toContain('</b>');
+  });
+
+  it('does not flag reordering two sound arguments', () => {
+    // Reordering is allowed; it must not look like a type swap or a missing
+    // placeholder.
+    const src = '{price, number} {when, date}';
+    const tgt = '{when, date} {price, number}';
+    const result = validatePlaceholders(src, tgt, 'en');
+    expect(result.valid).toBe(true);
+    expect(result.missingInTarget).toEqual([]);
+    expect(result.extraInTarget).toEqual([]);
   });
 });
