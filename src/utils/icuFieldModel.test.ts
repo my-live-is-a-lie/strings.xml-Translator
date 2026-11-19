@@ -209,6 +209,27 @@ describe('getIcuFieldModel / assembleIcuFields', () => {
     expect(sentence[0]).toMatchObject({ kind: 'text', value: '' });
   });
 
+
+  it('keeps a clause body that is only punctuation, and still empties one with words', () => {
+    // `{-}` and `{…}` carry no words: leaving them empty lost the dash on save, and there is
+    // nothing to translate in them. A body with words stays empty so English is never pre-filled.
+    const punct = getIcuFieldModel('{n, plural, one {-} other {…}}', '')!;
+    expect((punct[0] as IcuBlockField).clauses.map((c) => c.value)).toEqual(['-', '…']);
+    expect((punct[0] as IcuBlockField).clauses.map((c) => c.sourceValue)).toEqual(['-', '…']);
+    expect(assembleIcuFields(punct)).toBe('{n, plural, one {-} other {…}}');
+
+    // A `#` alone is the ICU placeholder, never English: it is kept too.
+    const hash = getIcuFieldModel('{n, plural, one {#} other {#}}', '')!;
+    expect((hash[0] as IcuBlockField).clauses.map((c) => c.value)).toEqual(['#', '#']);
+
+    const words = getIcuFieldModel('{n, plural, one {# message} other {# messages}}', '')!;
+    expect((words[0] as IcuBlockField).clauses.map((c) => c.value)).toEqual(['', '']);
+
+    // Mixed: the words are emptied, the dash is kept.
+    const mixed = getIcuFieldModel('{g, select, male {He} other {—}}', '')!;
+    expect((mixed[0] as IcuBlockField).clauses.map((c) => c.value)).toEqual(['', '—']);
+  });
+
   it('editing one body only changes that body', () => {
     const t = '{g, select, male {He} female {She} other {They}} wrote';
     const model = getIcuFieldModel(t, t)!;

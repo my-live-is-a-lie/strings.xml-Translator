@@ -628,7 +628,13 @@ export function getIcuFieldModel(source: string, target: string): IcuField[] | n
         const match =
           src?.clauses.find((c) => c.selector === clause.selector) ?? src?.clauses.find((c) => c.selector === 'other');
         const sourceValue = targetIsEmpty ? clause.value : (match?.value ?? '');
-        return { ...clause, value: targetIsEmpty ? '' : clause.value, sourceValue };
+        // A body that carries no words (`{-}`, `{…}`, `{+}`, `{#}`, `{%}`, `{!}`) is punctuation:
+        // it is copied from the source like the structure around it. Leaving it empty lost it on
+        // save, and there is nothing to translate in it.
+        const value = targetIsEmpty
+          ? (STRUCTURAL_TEXT_RUN.test(clause.value) ? clause.value : '')
+          : clause.value;
+        return { ...clause, value, sourceValue };
       }),
     };
   });
