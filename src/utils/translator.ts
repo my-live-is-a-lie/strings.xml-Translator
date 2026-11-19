@@ -14,7 +14,7 @@ import {
   scheduleStoredWrite,
 } from './storage';
 import { geminiTranslateDirect } from './geminiDirect';
-import { fetchGoogleGtxRaw, fetchWithTimeout } from '../shared/translateCore';
+import { fetchGoogleGtxRaw, fetchWithTimeout, providerHttpError } from '../shared/translateCore';
 import { directCallProviderWithKey, directTestProviderApiKey } from './directProviders';
 
 /** Every engine a suggestion can come from. 'glossary' and 'heuristic' are offline. */
@@ -46,6 +46,52 @@ const PROVIDERS_UNAVAILABLE =
 function logFallback(engine: string, err: unknown): void {
   if (import.meta.env?.DEV) {
     console.warn(`[translator] ${engine} failed, trying next engine:`, err);
+  }
+}
+
+/**
+ * True when a failed request is worth retrying: a network failure, a timeout, or a
+ * transient HTTP status (429 rate limit, 408 timeout, 5xx). Auth errors (401/403) and
+ * bad requests (400) are permanent for this call and are never retried.
+ */
+export function isRetryableError(err: unknown): boolean {
+  if (err instanceof TypeError) return true; // network failure ("Failed to fetch")
+  if (err instanceof Error) {
+    if (err.name === 'AbortError' || err.name === 'TimeoutError') return true;
+    const http = err.message.match(/HTTP (\d{3})/);
+    if (http) {
+      const status = Number(http[1]);
+      return status === 408 || status === 429 || (status >= 500 && status < 600);
+    }
+  }
+  return false;
+}
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+export interface RetryOptions {
+  /** Total attempts including the first one. Default 3 (one try + two retries). */
+  maxAttempts?: number;
+  /** Delay before the first retry; doubles after each attempt. Default 500ms. */
+  baseDelayMs?: number;
+}
+
+/**
+ * Runs `fn`, retrying it with exponential backoff when it fails with a retryable error
+ * (see `isRetryableError`). Gives up after `maxAttempts` and rethrows the last error.
+ */
+export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions = {}): Promise<T> {
+  const maxAttempts = options.maxAttempts ?? 3;
+  const baseDelayMs = options.baseDelayMs ?? 500;
+  let attempt = 0;
+  for (;;) {
+    try {
+      return await fn();
+    } catch (err) {
+      attempt++;
+      if (attempt >= maxAttempts || !isRetryableError(err)) throw err;
+      await sleep(baseDelayMs * 2 ** (attempt - 1));
+    }
   }
 }
 
@@ -757,6 +803,8 @@ async function translateSingleSegmentUncached(
     if (!activeProvider.apiKey) {
       return null;
     }
+    // Narrowed once here so the retry closures below keep a string-typed key.
+    const providerApiKey = activeProvider.apiKey;
     // Gemini has its own dedicated direct caller
     if (activeProvider.type === 'gemini') {
       return tryGeminiDirect();
@@ -765,30 +813,31 @@ async function translateSingleSegmentUncached(
     // 1. Server first when reachable
     if (serverProvidersAvailable()) {
       try {
-        const pRes = await fetchWithTimeout(
-          `${API_BASE}/api/providers/translate`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              providerType: activeProvider.type,
-              apiKey: activeProvider.apiKey,
-              folderId: activeProvider.folderId,
-              sourceText: coreText,
-              targetLang: directLang,
-              targetLocaleName,
-              pluralQuantity,
-            }),
-          },
-          25000
+        const pRes = await withRetry(() =>
+          fetchWithTimeout(
+            `${API_BASE}/api/providers/translate`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                providerType: activeProvider.type,
+                apiKey: activeProvider.apiKey,
+                folderId: activeProvider.folderId,
+                sourceText: coreText,
+                targetLang: directLang,
+                targetLocaleName,
+                pluralQuantity,
+              }),
+            },
+            25000
+          )
         );
-        if (pRes.ok) {
-          const pData = (await pRes.json()) as { translatedText?: string };
-          if (pData && typeof pData.translatedText === 'string' && pData.translatedText.trim()) {
-            const cleaned = stripMetadataLabels(pData.translatedText, coreText);
-            if (cleaned && !isPollutedTranslation(cleaned)) {
-              return restoreSegmentSyntax(cleaned, tokens, usesEscapedDoubleQuotes);
-            }
+        if (!pRes.ok) throw providerHttpError('server provider', pRes.status);
+        const pData = (await pRes.json()) as { translatedText?: string };
+        if (pData && typeof pData.translatedText === 'string' && pData.translatedText.trim()) {
+          const cleaned = stripMetadataLabels(pData.translatedText, coreText);
+          if (cleaned && !isPollutedTranslation(cleaned)) {
+            return restoreSegmentSyntax(cleaned, tokens, usesEscapedDoubleQuotes);
           }
         }
       } catch (err) {
@@ -799,14 +848,16 @@ async function translateSingleSegmentUncached(
     // 2. Direct client translation, native app only (CapacitorHttp bypasses CORS)
     if (!directProvidersAvailable()) return null;
     try {
-      const directResult = await directCallProviderWithKey(
-        activeProvider.type,
-        activeProvider.apiKey,
-        coreText,
-        directLang,
-        targetLocaleName,
-        pluralQuantity,
-        activeProvider.folderId
+      const directResult = await withRetry(() =>
+        directCallProviderWithKey(
+          activeProvider.type,
+          providerApiKey,
+          coreText,
+          directLang,
+          targetLocaleName,
+          pluralQuantity,
+          activeProvider.folderId
+        )
       );
       if (directResult && directResult.translatedText) {
         const cleaned = stripMetadataLabels(directResult.translatedText, coreText);
@@ -848,7 +899,7 @@ async function translateSingleSegmentUncached(
   // Helper for Google Translate GTX neural endpoint (unofficial; shared with the server)
   const tryGoogleGtx = async (): Promise<string | null> => {
     try {
-      const combined = await fetchGoogleGtxRaw(cleanText, directLang, 5000);
+      const combined = await withRetry(() => fetchGoogleGtxRaw(cleanText, directLang, 5000));
       const decoded = stripMetadataLabels(decodeHtmlEntities(combined), coreText);
       if (decoded && !isPollutedTranslation(decoded)) {
         noteGtxResult(true);
@@ -867,45 +918,51 @@ async function translateSingleSegmentUncached(
       const langPair = `en|${baseLang}`;
       const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(cleanText)}&langpair=${langPair}`;
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      // One fresh timeout per attempt: a retried fetch must not reuse an already-aborted signal.
+      const fetchOnce = async (): Promise<Response> => {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
+        try {
+          const response = await fetch(url, { signal: controller.signal });
+          if (!response.ok) throw providerHttpError('MyMemory', response.status);
+          return response;
+        } finally {
+          clearTimeout(timeoutId);
+        }
+      };
 
-      const response = await fetch(url, { signal: controller.signal });
-      clearTimeout(timeoutId);
+      const response = await withRetry(fetchOnce);
+      const data = await response.json();
+      if (data && data.responseData && data.responseData.translatedText) {
+        let rawResult = stripMetadataLabels(decodeHtmlEntities(data.responseData.translatedText), coreText);
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data && data.responseData && data.responseData.translatedText) {
-          let rawResult = stripMetadataLabels(decodeHtmlEntities(data.responseData.translatedText), coreText);
+        const hasAllTokens = (textToCheck: string) =>
+          tokens.every(
+            (tk) =>
+              textToCheck.includes(tk.surrogateId) ||
+              textToCheck.includes(toArabicIndicDigits(tk.surrogateId)) ||
+              textToCheck.includes(tk.rawToken)
+          );
 
-          const hasAllTokens = (textToCheck: string) =>
-            tokens.every(
-              (tk) =>
-                textToCheck.includes(tk.surrogateId) ||
-                textToCheck.includes(toArabicIndicDigits(tk.surrogateId)) ||
-                textToCheck.includes(tk.rawToken)
-            );
-
-          if (
-            (isPollutedTranslation(rawResult) || (tokens.length > 0 && !hasAllTokens(rawResult))) &&
-            Array.isArray(data.matches)
-          ) {
-            const betterMatch = data.matches.find((m: { translation?: string }) => {
-              if (!m || typeof m.translation !== 'string') return false;
-              const decoded = stripMetadataLabels(decodeHtmlEntities(m.translation), coreText);
-              if (isPollutedTranslation(decoded)) return false;
-              return tokens.length === 0 || hasAllTokens(decoded);
-            });
-            if (betterMatch && betterMatch.translation) {
-              rawResult = stripMetadataLabels(decodeHtmlEntities(betterMatch.translation), coreText);
-            }
+        if (
+          (isPollutedTranslation(rawResult) || (tokens.length > 0 && !hasAllTokens(rawResult))) &&
+          Array.isArray(data.matches)
+        ) {
+          const betterMatch = data.matches.find((m: { translation?: string }) => {
+            if (!m || typeof m.translation !== 'string') return false;
+            const decoded = stripMetadataLabels(decodeHtmlEntities(m.translation), coreText);
+            if (isPollutedTranslation(decoded)) return false;
+            return tokens.length === 0 || hasAllTokens(decoded);
+          });
+          if (betterMatch && betterMatch.translation) {
+            rawResult = stripMetadataLabels(decodeHtmlEntities(betterMatch.translation), coreText);
           }
+        }
 
-          if (!isPollutedTranslation(rawResult)) {
-            const finalResult = restoreSegmentSyntax(rawResult, tokens, usesEscapedDoubleQuotes);
-            if (finalResult) {
-              return finalResult;
-            }
+        if (!isPollutedTranslation(rawResult)) {
+          const finalResult = restoreSegmentSyntax(rawResult, tokens, usesEscapedDoubleQuotes);
+          if (finalResult) {
+            return finalResult;
           }
         }
       }
@@ -1028,7 +1085,7 @@ export async function prewarmProviderBatch(
   const directLang = targetLang.toLowerCase();
   const pending: string[] = [];
   for (const src of new Set(sources)) {
-    if (!src || src.length > 5000 || src.trim() !== src || BATCH_UNSAFE.test(src)) continue;
+    if (typeof src !== 'string' || !src || src.length > 5000 || src.trim() !== src || BATCH_UNSAFE.test(src)) continue;
     if (cachedSegmentLookup(cacheKeyFor(src, directLang, undefined))) continue;
     pending.push(src);
   }
@@ -1070,13 +1127,16 @@ export async function prewarmProviderBatch(
 
 /**
  * Bulk translates a list of ResourceItems using suggestTranslation with controlled concurrency
- * and live progress reporting.
+ * and live progress reporting. A single item that fails (bad data, an unexpected provider
+ * error) never aborts the batch: it keeps its original text and status, `onItemError` is
+ * called for it, and the remaining items are still translated and returned.
  */
 export async function bulkTranslateItems(
   itemsToTranslate: ResourceItem[],
   targetLang: string,
   targetLocaleName?: string,
-  onProgress?: (completed: number, total: number) => void
+  onProgress?: (completed: number, total: number) => void,
+  onItemError?: (item: ResourceItem, error: unknown) => void
 ): Promise<ResourceItem[]> {
   const total = itemsToTranslate.length;
   if (total === 0) return [];
@@ -1114,12 +1174,19 @@ export async function bulkTranslateItems(
       let engineUsed: TranslationEngine | undefined;
       const updatedQuantities = await Promise.all(
         plural.items.map(async (pi) => {
-          const res = await suggestTranslation(pi.source, targetLang, targetLocaleName, pi.quantity);
-          engineUsed = engineUsed ?? res?.source;
-          return {
-            ...pi,
-            target: res?.text || pi.target,
-          };
+          try {
+            const res = await suggestTranslation(pi.source, targetLang, targetLocaleName, pi.quantity);
+            engineUsed = engineUsed ?? res?.source;
+            return {
+              ...pi,
+              target: res?.text || pi.target,
+            };
+          } catch (err) {
+            // One bad quantity keeps its original text; the other quantities still translate.
+            logFallback('bulk-plural-item', err);
+            onItemError?.(plural, err);
+            return pi;
+          }
         })
       );
       const anyFilled = updatedQuantities.some((pi) => pi.target.trim().length > 0);
@@ -1137,12 +1204,19 @@ export async function bulkTranslateItems(
       let engineUsed: TranslationEngine | undefined;
       const updatedElements = await Promise.all(
         arr.items.map(async (ai) => {
-          const res = await suggestTranslation(ai.source, targetLang, targetLocaleName);
-          engineUsed = engineUsed ?? res?.source;
-          return {
-            ...ai,
-            target: res?.text || ai.target,
-          };
+          try {
+            const res = await suggestTranslation(ai.source, targetLang, targetLocaleName);
+            engineUsed = engineUsed ?? res?.source;
+            return {
+              ...ai,
+              target: res?.text || ai.target,
+            };
+          } catch (err) {
+            // One bad element keeps its original text; the other elements still translate.
+            logFallback('bulk-array-item', err);
+            onItemError?.(arr, err);
+            return ai;
+          }
         })
       );
       const anyFilled = updatedElements.some((ai) => ai.target.trim().length > 0);
@@ -1165,7 +1239,16 @@ export async function bulkTranslateItems(
   const workers = Array.from({ length: Math.min(CONCURRENCY, total) }, async () => {
     while (nextIdx < total) {
       const currentIdx = nextIdx++;
-      results[currentIdx] = await translateOneItem(normalizedInput[currentIdx]);
+      const item = normalizedInput[currentIdx];
+      try {
+        results[currentIdx] = await translateOneItem(item);
+      } catch (err) {
+        // One bad item must never abort the batch or discard the items already done:
+        // it keeps its original text and status, and the batch continues.
+        logFallback('bulk-item', err);
+        onItemError?.(item, err);
+        results[currentIdx] = item;
+      }
       completed++;
       onProgress?.(completed, total);
     }
