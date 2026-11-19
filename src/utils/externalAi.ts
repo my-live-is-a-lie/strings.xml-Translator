@@ -59,9 +59,10 @@ Rules:
 1. Reply with ONLY valid JSON, no explanations, no markdown, in exactly this shape: {"translations":[{"id":1,"text":"..."}]}
 2. Return one entry for EVERY id, with the same id number. Never skip, merge, reorder or invent ids.
 3. Keep placeholders and markup exactly as they are: %s, %d, %1$s, %2$d, {name}, \\n, \\', HTML tags such as <b>…</b>, and any XML entities.
-4. Do not translate the "key" field, brand names, or code. Keep the tone short and natural for an app UI.
-5. Translate the text yourself. Do not write code or use a script to translate.
-6. Do not shorten the list: if the answer is long, still include every id.
+4. If a text contains an ICU MessageFormat block (such as {count, plural, one {# message} other {# messages}}), keep the block syntax exactly — the variable names, the format types (plural, select, selectordinal, number, date, time), the clause keywords (zero, one, two, few, many, other), offset:, =0/=1 selectors, # and the ' quote marks — and translate only the human-readable text inside each clause.
+5. Do not translate the "key" field, brand names, or code. Keep the tone short and natural for an app UI.
+6. Translate the text yourself. Do not write code or use a script to translate.
+7. Do not shorten the list: if the answer is long, still include every id.
 ${terms}
 ${mode === 'file' ? 'The strings are in the attached JSON file. Reply with the translated JSON (as a downloadable .json file if you can, otherwise as plain text).' : 'The strings follow below:'}`;
 }

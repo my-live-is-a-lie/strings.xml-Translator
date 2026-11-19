@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
 import { parseAndroidXml } from '../src/utils/xmlParser';
-import { applyTranslations, buildSegments, checkReply, parseReply, splitParts } from '../src/utils/externalAi';
+import { applyTranslations, buildPrompt, buildSegments, checkReply, parseReply, splitParts } from '../src/utils/externalAi';
 
 const items = parseAndroidXml(
   '<resources><string name="a">Hello %s</string><string name="b">Save</string><plurals name="p"><item quantity="one">%d file</item><item quantity="other">%d files</item></plurals></resources>'
@@ -54,5 +54,23 @@ describe('external AI flow', () => {
 
   it('tolerates a trailing comma', () => {
     expect(parseReply('{"translations":[{"id":1,"text":"a"},]}').get(1)).toBe('a');
+  });
+
+  it('carries the ICU rules in the prompt, so the external-AI path is not left untaught', () => {
+    const prompt = buildPrompt('Arabic', 'text');
+    expect(prompt).toContain('ICU MessageFormat block');
+    expect(prompt).toContain('{count, plural, one {# message} other {# messages}}');
+    expect(prompt).toContain("the ' quote marks");
+  });
+
+  it('flags an ICU-damaging reply through the shared placeholder check', () => {
+    const source = '{count, plural, one {# message} other {# messages}}';
+    const segments = [
+      { id: 1, key: 'p', text: source, itemId: 'x', part: { kind: 'string' as const } },
+    ];
+    const good = checkReply(segments, new Map([[1, '{count, plural, one {# رسالة} other {# رسائل}}']]), 'ar');
+    expect(good.rows[0].issues).toEqual([]);
+    const broken = checkReply(segments, new Map([[1, '{count, plural, one {# رسالة}}']]), 'ar');
+    expect(broken.rows[0].issues).toContain('placeholder');
   });
 });

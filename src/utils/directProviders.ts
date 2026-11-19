@@ -10,6 +10,7 @@ import {
   stripMetadataWrappers,
 } from '../shared/translateCore';
 import { nativeFetch } from './nativeHttp';
+import { validatePlaceholders } from './placeholderCheck';
 
 export const DIRECT_PROVIDER_TYPES = [
   'yandex',
@@ -181,7 +182,12 @@ export async function directCallProviderWithKey(
       },
     });
     if (aiRes.ok && aiRes.data?.result?.alternatives?.[0]?.message?.text) {
-      return stripMetadataWrappers(aiRes.data.result.alternatives[0].message.text, sourceText);
+      const cleaned = stripMetadataWrappers(aiRes.data.result.alternatives[0].message.text, sourceText);
+      // Never return a reply that breaks the ICU structure (it throws at runtime).
+      if (!validatePlaceholders(sourceText, cleaned, targetLang).valid) {
+        throw new Error('Yandex: الردّ يخالف بنية ICU / The AI reply damaged the ICU MessageFormat structure');
+      }
+      return cleaned;
     }
 
     throw new Error('Yandex: فشل التحقق من المفتاح / Authentication failed: check key and folder ID.');
@@ -235,7 +241,12 @@ export async function directCallProviderWithKey(
     if (!res.ok) throw providerHttpError('OpenAI', res.status);
     const content = res.data?.choices?.[0]?.message?.content;
     if (!content) throw new Error('OpenAI: استجابة فارغة / Empty response');
-    return stripMetadataWrappers(content, sourceText);
+    const cleaned = stripMetadataWrappers(content, sourceText);
+    // Never return a reply that breaks the ICU structure (it throws at runtime).
+    if (!validatePlaceholders(sourceText, cleaned, targetLang).valid) {
+      throw new Error('OpenAI: الردّ يخالف بنية ICU / The AI reply damaged the ICU MessageFormat structure');
+    }
+    return cleaned;
   };
 
   const tryGoogleCloudKey = async (): Promise<string> => {
