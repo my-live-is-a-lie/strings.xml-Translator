@@ -1076,11 +1076,11 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
 
   // The translation must have exactly as many line breaks as the source: otherwise it cannot be saved at all
   const blockIfLineBreaksDiffer = React.useCallback((): boolean => {
-    const issues = getLineBreakIssues(toStoredItem(draftItem));
+    const issues = getLineBreakIssues(toStoredItem(draftItem), targetLang);
     if (issues.length === 0) return false;
     setSaveGuard({ notes: [], remaining: issues, hard: true, itemId: item.id });
     return true;
-  }, [draftItem, item.id]);
+  }, [draftItem, item.id, targetLang]);
 
   // Before saving: repairs placeholders, HTML tags and final punctuation from the source's context.
   // When anything was changed (or unfixable errors remain) the save is blocked once with a message; saving again confirms.
@@ -1100,7 +1100,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
         ar: 'صُحّحت نهاية النص (علامة الترقيم أو المسافات الزائدة) لتطابق النص الأصلي',
       });
     }
-    const remaining = getItemQaIssues(pun.item).filter((i) => i.severity === 'error');
+    const remaining = getItemQaIssues(pun.item, targetLang).filter((i) => i.severity === 'error');
     const remKey = `${pun.item.id}|${remaining.map((i) => i.id + i.tokens.join(',')).join(';')}`;
     if (notes.length > 0) {
       updateDraftItem(pun.item);
@@ -1118,8 +1118,8 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
 
   // The line-break message follows the text as it is edited and disappears once the counts match
   const liveBreakIssues = React.useMemo(
-    () => (saveGuard?.hard && saveGuard.itemId === item.id ? getLineBreakIssues(toStoredItem(draftItem)) : []),
-    [saveGuard, item.id, draftItem]
+    () => (saveGuard?.hard && saveGuard.itemId === item.id ? getLineBreakIssues(toStoredItem(draftItem), targetLang) : []),
+    [saveGuard, item.id, draftItem, targetLang]
   );
   const liveSaveGuard = saveGuard?.hard ? (liveBreakIssues.length > 0 ? { ...saveGuard, remaining: liveBreakIssues } : null) : saveGuard;
   // counts match again (or another string is open): the message is done

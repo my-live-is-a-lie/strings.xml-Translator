@@ -126,7 +126,7 @@ const StringListBase: React.FC<StringListProps> = ({
     return () => ro.disconnect();
   }, [placeHeader]);
 
-  const qaSummary = useMemo(() => analyzeProjectQa(items), [items]);
+  const qaSummary = useMemo(() => analyzeProjectQa(items, targetLang), [items, targetLang]);
 
   // The status / source filters are the editor's quick filters (one shared state), so the three screens stay in sync
   const quickFilters = useQuickFilters();

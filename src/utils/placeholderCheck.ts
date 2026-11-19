@@ -8,6 +8,38 @@ import { countLineBreaks } from './newlines';
 const ICU_PLURAL_LIKE_FORMAT_TYPES = new Set(['plural', 'selectordinal']);
 const ICU_CLAUSE_FORMAT_TYPES = new Set(['plural', 'select', 'selectordinal']);
 
+// Every format type ICU MessageFormat accepts. A `{word, word}` pair whose
+// second word is not one of these is not an ICU argument at all (e.g. plain
+// text such as `{red, green}`), so it must not yield a `{word}` placeholder.
+const ICU_FORMAT_TYPES = new Set([
+  'number',
+  'date',
+  'time',
+  'plural',
+  'select',
+  'selectordinal',
+  'ordinal',
+  'duration',
+  'spellout',
+]);
+
+// Plural category keywords. `other` is required by every locale, so it stays
+// in the strict source/target comparison; the rest depend on the target
+// language (CLDR) and are checked against that language instead of against
+// the source language.
+const ICU_LOCALE_PLURAL_CATEGORIES = new Set(['zero', 'one', 'two', 'few', 'many']);
+
+// Bidirectional control characters (U+200E/U+200F and the explicit embedding
+// and isolate marks). Arabic keyboards and editors insert them around
+// identifiers, and `String.trim()` does not remove them, so they would break
+// the identifier checks below. Strip them from identifiers only, never from
+// the translatable sub-message text.
+const BIDI_CONTROL_CHARS = /[\u200E\u200F\u202A-\u202E\u2066-\u2069]/g;
+
+function stripBidiControls(text: string): string {
+  return text.replace(BIDI_CONTROL_CHARS, '');
+}
+
 /**
  * Finds the index of the closing brace that matches the opening brace at
  * `openIndex`, counting nested `{`/`}` pairs so ICU MessageFormat blocks like
@@ -57,21 +89,28 @@ function extractBraceTokens(text: string, inPluralClause: boolean): string[] {
       const inner = text.slice(i + 1, close);
       const commaIdx = inner.indexOf(',');
       if (commaIdx !== -1) {
-        const argName = inner.slice(0, commaIdx).trim();
+        const argName = stripBidiControls(inner.slice(0, commaIdx).trim());
         const rest = inner.slice(commaIdx + 1);
         const nextCommaIdx = rest.indexOf(',');
-        const formatType = (nextCommaIdx !== -1 ? rest.slice(0, nextCommaIdx) : rest).trim();
+        const formatType = stripBidiControls(
+          (nextCommaIdx !== -1 ? rest.slice(0, nextCommaIdx) : rest).trim()
+        );
 
-        if (/^[a-zA-Z0-9_]+$/.test(argName) && formatType) {
+        if (/^[a-zA-Z0-9_-]+$/.test(argName) && ICU_FORMAT_TYPES.has(formatType)) {
           tokens.push(`{${argName}}`);
 
           if (ICU_CLAUSE_FORMAT_TYPES.has(formatType)) {
             tokens.push(formatType);
             const styleAndClauses = nextCommaIdx !== -1 ? rest.slice(nextCommaIdx + 1) : '';
 
-            const offsetMatch = styleAndClauses.match(/offset:\s*-?\d+/);
+            // `offset` is only valid at the very start of the clauses (before
+            // the first selector keyword). Matching it anywhere in the text
+            // would also catch an `offset` inside a nested plural block or
+            // inside a clause's translatable text. ICU offsets are never
+            // negative, so there is no `-?` either.
+            const offsetMatch = /^\s*offset:\s*(\d+)/.exec(styleAndClauses);
             if (offsetMatch) {
-              tokens.push(offsetMatch[0].replace(/\s+/g, ''));
+              tokens.push(`offset:${offsetMatch[1]}`);
             }
 
             const clauseIsPluralLike = ICU_PLURAL_LIKE_FORMAT_TYPES.has(formatType);
@@ -111,10 +150,13 @@ function extractBraceTokens(text: string, inPluralClause: boolean): string[] {
         } else {
           tokens.push(...extractBraceTokens(inner, false));
         }
-      } else if (/^[a-zA-Z0-9_-]+$/.test(inner.trim())) {
-        tokens.push(`{${inner.trim()}}`);
       } else {
-        tokens.push(...extractBraceTokens(inner, false));
+        const simpleName = stripBidiControls(inner.trim());
+        if (/^[a-zA-Z0-9_-]+$/.test(simpleName)) {
+          tokens.push(`{${simpleName}}`);
+        } else {
+          tokens.push(...extractBraceTokens(inner, false));
+        }
       }
       i = close + 1;
     } else if (ch === '#' && inPluralClause) {
@@ -165,19 +207,197 @@ export interface PlaceholderValidation {
 }
 
 /**
- * Checks if target translation preserves all format placeholders present in source
+ * True when `text` has a `{` with no matching `}` (or a stray `}`). A
+ * translator who drops the final `}` of an ICU block should see this as its
+ * own error, not as a confusing "Missing placeholders" list.
+ *
+ * Note: ICU `'...'` quoted literals can contain literal braces; this check
+ * (like the parser) does not handle quoting, so a quoted brace would also
+ * count here. That is a known Phase 1 limitation.
  */
-export function validatePlaceholders(source: string, target: string): PlaceholderValidation {
-  const sourceTokens = extractPlaceholders(source);
-  const targetTokens = extractPlaceholders(target);
+function hasUnbalancedBraces(text: string): boolean {
+  let depth = 0;
+  for (const ch of text) {
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth < 0) return true;
+    }
+  }
+  return depth !== 0;
+}
 
-  // Note: checked against the extracted target tokens rather than a raw substring
-  // search of `target`, since ICU MessageFormat tokens (e.g. the `{count}` token
-  // representing the `count` variable in `{count, plural, ...}`) are synthesized
-  // from the parsed structure and aren't necessarily a literal substring of the
-  // original ICU text.
-  const missingInTarget = sourceTokens.filter((token) => !targetTokens.includes(token));
-  const extraInTarget = targetTokens.filter((token) => !sourceTokens.includes(token));
+/**
+ * The plural categories a locale requires, from CLDR via Intl.PluralRules.
+ * `type` is 'cardinal' for `plural` and 'ordinal' for `selectordinal`.
+ * Returns null when the locale is not a valid BCP 47 tag, so callers can fall
+ * back to the plain source/target comparison instead of guessing.
+ */
+function getPluralCategoriesForLocale(
+  locale: string,
+  type: 'cardinal' | 'ordinal'
+): string[] | null {
+  try {
+    return [...new Intl.PluralRules(locale, { type }).resolvedOptions().pluralCategories];
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The plural categories the target language requires for the ICU blocks in
+ * `sourceCounts`, or null when there is no plural/selectordinal block (or the
+ * locale is invalid). Cardinal rules cover `plural`, ordinal rules cover
+ * `selectordinal`; when both block types are present the union is used.
+ */
+function getExpectedPluralCategories(
+  sourceCounts: Map<string, number>,
+  targetLocale: string
+): Set<string> | null {
+  if (!sourceCounts.has('plural') && !sourceCounts.has('selectordinal')) return null;
+  const expected = new Set<string>();
+  if (sourceCounts.has('plural')) {
+    const cardinal = getPluralCategoriesForLocale(targetLocale, 'cardinal');
+    if (!cardinal) return null;
+    for (const c of cardinal) expected.add(c);
+  }
+  if (sourceCounts.has('selectordinal')) {
+    const ordinal = getPluralCategoriesForLocale(targetLocale, 'ordinal');
+    if (!ordinal) return null;
+    for (const c of ordinal) expected.add(c);
+  }
+  return expected.size > 0 ? expected : null;
+}
+
+/**
+ * Compares the placeholder tokens of a (source, target) pair by count.
+ *
+ * When a target locale is given and both sides keep a plural/selectordinal
+ * block, the locale-dependent plural categories (`zero/one/two/few/many`)
+ * and the `#` count are NOT compared against the source: the categories a
+ * translation needs depend on the target language (CLDR), not on the source
+ * language, and `#` appears once per clause that uses it, so its count
+ * legitimately differs between languages (e.g. 6 Arabic clauses vs 2
+ * English ones). The categories are checked by `checkPluralCategories`
+ * instead, and `#` is checked by presence only. `other`, `=N`, `offset`,
+ * `select` keys, variable names and simple/printf placeholders stay strict.
+ *
+ * Without a locale, when the target dropped the plural structure entirely,
+ * or when the locale is invalid, this falls back to the plain count
+ * comparison (which already reports the dropped structure).
+ */
+function comparePlaceholderTokens(
+  sourceCounts: Map<string, number>,
+  targetCounts: Map<string, number>,
+  targetLocale?: string
+): { missing: string[]; extra: string[] } {
+  const src = new Map(sourceCounts);
+  const tgt = new Map(targetCounts);
+
+  const targetHasPluralBlock = tgt.has('plural') || tgt.has('selectordinal');
+  const expected =
+    targetLocale && targetHasPluralBlock
+      ? getExpectedPluralCategories(src, targetLocale)
+      : null;
+
+  const missing: string[] = [];
+  const extra: string[] = [];
+
+  if (expected) {
+    // `#` is presence-only: it appears once per clause that uses it, so a
+    // correct Arabic translation (6 clauses) legitimately has more `#` than
+    // the English source (2 clauses).
+    const sourceHasHash = src.has('#');
+    const targetHasHash = tgt.has('#');
+    src.delete('#');
+    tgt.delete('#');
+
+    // Locale-dependent categories are checked against the target language,
+    // not against the source.
+    for (const category of ICU_LOCALE_PLURAL_CATEGORIES) {
+      src.delete(category);
+      tgt.delete(category);
+    }
+
+    for (const [token, srcCount] of src.entries()) {
+      if ((tgt.get(token) || 0) < srcCount) missing.push(token);
+    }
+    for (const [token, tgtCount] of tgt.entries()) {
+      if (tgtCount > (src.get(token) || 0)) extra.push(token);
+    }
+    if (sourceHasHash && !targetHasHash) missing.push('#');
+    if (targetHasHash && !sourceHasHash) extra.push('#');
+    return { missing, extra };
+  }
+
+  // Plain count comparison (no locale, no plural block on the target side,
+  // or an invalid locale).
+  for (const [token, srcCount] of src.entries()) {
+    if ((tgt.get(token) || 0) < srcCount) missing.push(token);
+  }
+  for (const [token, tgtCount] of tgt.entries()) {
+    if (tgtCount > (src.get(token) || 0)) extra.push(token);
+  }
+  return { missing, extra };
+}
+
+/**
+ * Checks the target's plural categories against what its language requires
+ * (CLDR). Only runs when both sides keep a plural/selectordinal block; when
+ * the target dropped the structure entirely, `comparePlaceholderTokens`
+ * already reports the missing tokens.
+ *
+ * `other` is not checked here: it is required by every locale and stays in
+ * the strict comparison, so reporting it again would duplicate it.
+ */
+function checkPluralCategories(
+  sourceCounts: Map<string, number>,
+  targetCounts: Map<string, number>,
+  targetLocale?: string
+): { missingCategories: string[]; extraCategories: string[] } {
+  const none = { missingCategories: [], extraCategories: [] };
+  if (!targetLocale) return none;
+  if (!targetCounts.has('plural') && !targetCounts.has('selectordinal')) return none;
+  const expected = getExpectedPluralCategories(sourceCounts, targetLocale);
+  if (!expected) return none;
+
+  const targetCategories = new Set(
+    [...targetCounts.keys()].filter((t) => ICU_LOCALE_PLURAL_CATEGORIES.has(t))
+  );
+  const missingCategories = [...expected].filter(
+    (c) => c !== 'other' && !targetCategories.has(c)
+  );
+  const extraCategories = [...targetCategories].filter((c) => !expected.has(c));
+  return { missingCategories, extraCategories };
+}
+
+/**
+ * Checks if target translation preserves all format placeholders present in source.
+ * Pass the target language (e.g. 'ar') so plural categories are checked
+ * against what that language requires (CLDR) instead of against the source
+ * language; without it, the plain source/target comparison is used.
+ *
+ * Note: checked against the extracted target tokens rather than a raw substring
+ * search of `target`, since ICU MessageFormat tokens (e.g. the `{count}` token
+ * representing the `count` variable in `{count, plural, ...}`) are synthesized
+ * from the parsed structure and aren't necessarily a literal substring of the
+ * original ICU text.
+ */
+export function validatePlaceholders(
+  source: string,
+  target: string,
+  targetLocale?: string
+): PlaceholderValidation {
+  const sourceCounts = extractFormatTokensWithCounts(source);
+  const targetCounts = extractFormatTokensWithCounts(target);
+  const { missing, extra } = comparePlaceholderTokens(sourceCounts, targetCounts, targetLocale);
+  const { missingCategories, extraCategories } = checkPluralCategories(
+    sourceCounts,
+    targetCounts,
+    targetLocale
+  );
+  const missingInTarget = [...missing, ...missingCategories];
+  const extraInTarget = [...extra, ...extraCategories];
 
   return {
     valid: missingInTarget.length === 0,
@@ -367,7 +587,8 @@ function validateSourceTargetPair(
   itemName: string,
   source: string,
   target: string,
-  subKey?: string
+  subKey?: string,
+  targetLocale?: string
 ): QaIssue[] {
   if (!target || !target.trim()) {
     return [];
@@ -376,52 +597,100 @@ function validateSourceTargetPair(
   const issues: QaIssue[] = [];
   const prefix = subKey ? `[${subKey}] ` : '';
 
-  // 1. Placeholder checks (%s, %d, %1$s, {0}, etc.)
-  const sourceFormatCounts = extractFormatTokensWithCounts(source);
-  const targetFormatCounts = extractFormatTokensWithCounts(target);
-
-  const missingPlaceholders: string[] = [];
-  for (const [token, srcCount] of sourceFormatCounts.entries()) {
-    const tgtCount = targetFormatCounts.get(token) || 0;
-    if (tgtCount < srcCount) {
-      missingPlaceholders.push(token);
-    }
-  }
-
-  if (missingPlaceholders.length > 0) {
+  // 0. Unbalanced braces: the placeholder parser cannot reliably extract
+  // tokens from a string with a missing `}`, so report that directly instead
+  // of a misleading "Missing placeholders" list, and skip the placeholder
+  // comparison for this pair (the other checks below still run).
+  const unbalancedSide = hasUnbalancedBraces(source)
+    ? 'source'
+    : hasUnbalancedBraces(target)
+      ? 'target'
+      : null;
+  if (unbalancedSide) {
     issues.push({
-      id: `${itemId}_${subKey || 'main'}_missing_ph`,
+      id: `${itemId}_${subKey || 'main'}_unbalanced_braces`,
       itemId,
       itemName,
       subKey,
       category: 'placeholder',
       severity: 'error',
-      messageEn: `${prefix}Missing placeholder${missingPlaceholders.length > 1 ? 's' : ''}: ${missingPlaceholders.join(', ')}`,
-      messageAr: `${prefix}عنصر نائب مفقود: ${missingPlaceholders.join(', ')}`,
-      tokens: missingPlaceholders,
+      messageEn: `${prefix}Unbalanced braces in the ${unbalancedSide} (a "{" has no matching "}")`,
+      messageAr: `${prefix}أقواس غير متوازنة في النص ${unbalancedSide === 'source' ? 'الأصلي' : 'المترجم'} (يوجد "{" بلا "}" مطابقة)`,
+      tokens: ['{', '}'],
     });
   }
 
-  const extraPlaceholders: string[] = [];
-  for (const [token, tgtCount] of targetFormatCounts.entries()) {
-    const srcCount = sourceFormatCounts.get(token) || 0;
-    if (tgtCount > srcCount) {
-      extraPlaceholders.push(token);
+  // 1. Placeholder checks (%s, %d, %1$s, {0}, etc.)
+  const sourceFormatCounts = extractFormatTokensWithCounts(source);
+  const targetFormatCounts = extractFormatTokensWithCounts(target);
+
+  if (!unbalancedSide) {
+    const { missing: missingPlaceholders, extra: extraPlaceholders } =
+      comparePlaceholderTokens(sourceFormatCounts, targetFormatCounts, targetLocale);
+
+    if (missingPlaceholders.length > 0) {
+      issues.push({
+        id: `${itemId}_${subKey || 'main'}_missing_ph`,
+        itemId,
+        itemName,
+        subKey,
+        category: 'placeholder',
+        severity: 'error',
+        messageEn: `${prefix}Missing placeholder${missingPlaceholders.length > 1 ? 's' : ''}: ${missingPlaceholders.join(', ')}`,
+        messageAr: `${prefix}عنصر نائب مفقود: ${missingPlaceholders.join(', ')}`,
+        tokens: missingPlaceholders,
+      });
     }
-  }
 
-  if (extraPlaceholders.length > 0) {
-    issues.push({
-      id: `${itemId}_${subKey || 'main'}_extra_ph`,
-      itemId,
-      itemName,
-      subKey,
-      category: 'placeholder',
-      severity: 'warning',
-      messageEn: `${prefix}Extra/mismatched placeholder${extraPlaceholders.length > 1 ? 's' : ''}: ${extraPlaceholders.join(', ')}`,
-      messageAr: `${prefix}عنصر نائب إضافي أو غير متطابق: ${extraPlaceholders.join(', ')}`,
-      tokens: extraPlaceholders,
-    });
+    if (extraPlaceholders.length > 0) {
+      issues.push({
+        id: `${itemId}_${subKey || 'main'}_extra_ph`,
+        itemId,
+        itemName,
+        subKey,
+        category: 'placeholder',
+        severity: 'warning',
+        messageEn: `${prefix}Extra/mismatched placeholder${extraPlaceholders.length > 1 ? 's' : ''}: ${extraPlaceholders.join(', ')}`,
+        messageAr: `${prefix}عنصر نائب إضافي أو غير متطابق: ${extraPlaceholders.join(', ')}`,
+        tokens: extraPlaceholders,
+      });
+    }
+
+    // 1b. Plural categories for the target language (CLDR). A correct
+    // translation needs the categories its own language requires, not the
+    // source language's (e.g. Arabic needs zero/two/few/many, Japanese
+    // needs only `other`).
+    const { missingCategories, extraCategories } = checkPluralCategories(
+      sourceFormatCounts,
+      targetFormatCounts,
+      targetLocale
+    );
+    if (missingCategories.length > 0) {
+      issues.push({
+        id: `${itemId}_${subKey || 'main'}_missing_plural_forms`,
+        itemId,
+        itemName,
+        subKey,
+        category: 'placeholder',
+        severity: 'error',
+        messageEn: `${prefix}Missing plural forms for '${targetLocale}': ${missingCategories.join(', ')}`,
+        messageAr: `${prefix}صيغ جمع ناقصة للغة '${targetLocale}': ${missingCategories.join(', ')}`,
+        tokens: missingCategories,
+      });
+    }
+    if (extraCategories.length > 0) {
+      issues.push({
+        id: `${itemId}_${subKey || 'main'}_extra_plural_forms`,
+        itemId,
+        itemName,
+        subKey,
+        category: 'placeholder',
+        severity: 'warning',
+        messageEn: `${prefix}Unexpected plural forms for '${targetLocale}': ${extraCategories.join(', ')}`,
+        messageAr: `${prefix}صيغ جمع غير متوقعة للغة '${targetLocale}': ${extraCategories.join(', ')}`,
+        tokens: extraCategories,
+      });
+    }
   }
 
   // 2. HTML Tag checks (<b>, <i>, <u>, <a href=...>, unclosed tags, etc.)
@@ -485,18 +754,20 @@ function validateSourceTargetPair(
 }
 
 /**
- * Runs QA checks on a single ResourceItem (string, plural, or array)
+ * Runs QA checks on a single ResourceItem (string, plural, or array).
+ * Pass the target language (e.g. 'ar') so ICU plural categories are checked
+ * against what that language requires (CLDR).
  */
-export function getItemQaIssues(item: ResourceItem): QaIssue[] {
+export function getItemQaIssues(item: ResourceItem, targetLocale?: string): QaIssue[] {
   if (!item) return [];
   if (item.type === 'string') {
-    return validateSourceTargetPair(item.id, item.name, item.source || '', item.target || '');
+    return validateSourceTargetPair(item.id, item.name, item.source || '', item.target || '', undefined, targetLocale);
   }
   if (item.type === 'plural') {
     const all: QaIssue[] = [];
     for (const q of item.items || []) {
       all.push(
-        ...validateSourceTargetPair(item.id, item.name, q.source || '', q.target || '', q.quantity)
+        ...validateSourceTargetPair(item.id, item.name, q.source || '', q.target || '', q.quantity, targetLocale)
       );
     }
     return all;
@@ -510,7 +781,8 @@ export function getItemQaIssues(item: ResourceItem): QaIssue[] {
           item.name,
           el.source || '',
           el.target || '',
-          `#${(el.index ?? 0) + 1}`
+          `#${(el.index ?? 0) + 1}`,
+          targetLocale
         )
       );
     }
@@ -520,31 +792,36 @@ export function getItemQaIssues(item: ResourceItem): QaIssue[] {
 }
 
 /** Only the line-break errors of an item: a translation with a different number of line breaks cannot be saved. */
-export function getLineBreakIssues(item: ResourceItem): QaIssue[] {
-  return getItemQaIssues(item).filter((i) => i.id.endsWith('_linebreaks'));
+export function getLineBreakIssues(item: ResourceItem, targetLocale?: string): QaIssue[] {
+  return getItemQaIssues(item, targetLocale).filter((i) => i.id.endsWith('_linebreaks'));
 }
 
 const itemQaCache = new Map<string, ItemQaResult | null>();
 
-function getItemCacheKey(item: ResourceItem): string {
+function getItemCacheKey(item: ResourceItem, targetLocale?: string): string {
+  // The locale is part of the key: plural-category results depend on it, so
+  // a cached result computed for one language must not be reused for another.
+  const localePrefix = targetLocale ? `${targetLocale}|` : '';
   if (item.type === 'string') {
-    return `${item.id}_${item.name}_${item.source || ''}_${item.target || ''}`;
+    return `${localePrefix}${item.id}_${item.name}_${item.source || ''}_${item.target || ''}`;
   }
   if (item.type === 'plural') {
     const sub = (item.items || []).map((q) => `${q.quantity}:${q.source || ''}:${q.target || ''}`).join('|');
-    return `${item.id}_${item.name}_p_${sub}`;
+    return `${localePrefix}${item.id}_${item.name}_p_${sub}`;
   }
   if (item.type === 'array') {
     const sub = (item.items || []).map((el) => `${el.index}:${el.source || ''}:${el.target || ''}`).join('|');
-    return `${item.id}_${item.name}_a_${sub}`;
+    return `${localePrefix}${item.id}_${item.name}_a_${sub}`;
   }
   return '';
 }
 
 /**
- * Runs QA checks across all items in the project and returns a summary + lookup map
+ * Runs QA checks across all items in the project and returns a summary + lookup map.
+ * Pass the target language (e.g. 'ar') so ICU plural categories are checked
+ * against what that language requires (CLDR).
  */
-export function analyzeProjectQa(items: ResourceItem[]): {
+export function analyzeProjectQa(items: ResourceItem[], targetLocale?: string): {
   allIssues: QaIssue[];
   itemResults: ItemQaResult[];
   byItemId: Map<string, ItemQaResult>;
@@ -563,11 +840,11 @@ export function analyzeProjectQa(items: ResourceItem[]): {
   }
 
   for (const item of items || []) {
-    const cacheKey = getItemCacheKey(item);
+    const cacheKey = getItemCacheKey(item, targetLocale);
     let cachedResult = itemQaCache.get(cacheKey);
 
     if (cachedResult === undefined) {
-      const issues = getItemQaIssues(item);
+      const issues = getItemQaIssues(item, targetLocale);
       if (issues.length > 0) {
         const hasPlaceholderIssue = issues.some((i) => i.category === 'placeholder');
         const hasHtmlIssue = issues.some((i) => i.category === 'html');

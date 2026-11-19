@@ -17,7 +17,10 @@ export const QaSection: React.FC<QaSectionProps> = ({ project, isAr, onSelectStr
   const [qaDrawerExpanded, setQaDrawerExpanded] = useState(false);
   const [qaDrawerFilter, setQaDrawerFilter] = useState<'all' | 'placeholder' | 'html'>('all');
 
-  const qaSummary = useMemo(() => analyzeProjectQa(project.items), [project.items]);
+  const qaSummary = useMemo(
+    () => analyzeProjectQa(project.items, project.targetLang),
+    [project.items, project.targetLang]
+  );
   const filteredQaIssues = useMemo(() => {
     return qaSummary.allIssues.filter((iss) => {
       if (qaDrawerFilter === 'placeholder') return iss.category === 'placeholder';

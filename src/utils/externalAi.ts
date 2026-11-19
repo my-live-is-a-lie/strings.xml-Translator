@@ -133,7 +133,11 @@ export interface Checked {
 }
 
 /** Compares the reply with what was asked: missing ids, lost placeholders/tags, untranslated or empty answers. */
-export function checkReply(segments: Segment[], reply: Map<number, string>): { rows: Checked[]; unknownIds: number[] } {
+export function checkReply(
+  segments: Segment[],
+  reply: Map<number, string>,
+  targetLocale?: string
+): { rows: Checked[]; unknownIds: number[] } {
   const known = new Set(segments.map((s) => s.id));
   const rows = segments.map((segment): Checked => {
     if (!reply.has(segment.id)) return { segment, text: '', issues: ['missing'] };
@@ -141,7 +145,7 @@ export function checkReply(segments: Segment[], reply: Map<number, string>): { r
     const issues: IssueKind[] = [];
     if (!text.trim()) issues.push('empty');
     else {
-      if (!validatePlaceholders(segment.text, text).valid) issues.push('placeholder');
+      if (!validatePlaceholders(segment.text, text, targetLocale).valid) issues.push('placeholder');
       if (text.trim() === segment.text.trim() && /[A-Za-z]{3,}/.test(segment.text)) issues.push('same');
     }
     return { segment, text, issues };
