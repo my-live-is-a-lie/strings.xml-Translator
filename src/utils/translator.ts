@@ -16,7 +16,7 @@ import {
 import { geminiTranslateDirect } from './geminiDirect';
 import { fetchGoogleGtxRaw, fetchWithTimeout, providerHttpError } from '../shared/translateCore';
 import { directCallProviderWithKey, directTestProviderApiKey } from './directProviders';
-import { findClauseBodyOpens, hasMultilineIcuBlock, validatePlaceholders } from './placeholderCheck';
+import { findClauseBodyOpens, hasMultilineIcuBlock, splitIcuBlocks, validatePlaceholders } from './placeholderCheck';
 
 /** Every engine a suggestion can come from. 'glossary' and 'heuristic' are offline. */
 export type TranslationEngine = 'glossary' | 'heuristic' | ProviderEngineType;
@@ -785,6 +785,102 @@ async function translateSingleSegment(
   return result;
 }
 
+/** True when a clause body holds human-readable words worth translating, as opposed
+ * to pure syntax (`{count}`, `%s`, `#`, an HTML tag, a quoted literal like `'#'`). */
+function hasTranslatableText(body: string): boolean {
+  const stripped = body
+    .replace(/\{[^{}]*\}/g, '')
+    .replace(/%(?:\d+\$)?[+# 0,-]*\d*(?:\.\d+)?[bcdefgopsx%]/gi, '')
+    .replace(/<\/?[a-zA-Z][^>]*>/g, '')
+    .replace(/#/g, '')
+    .replace(/\\n|\\t/g, ' ');
+  return /[\p{L}\p{N}]/u.test(stripped);
+}
+
+/**
+ * Phase 3: translates a string that contains ICU MessageFormat blocks piece by piece,
+ * for engines that cannot be instructed.
+ *
+ * A machine-translation engine translates the block's keywords (`select` → `حدد`),
+ * so a whole-block reply is always rejected by the structural check; the AI providers
+ * never reach this, because their whole-string reply (they see the original text)
+ * already succeeds. Here the structure — variable name, format type, clause keywords,
+ * `offset:`, `=0`/`=1` selectors, `#` — is copied from the source verbatim, and only
+ * the surrounding text and each clause body are translated, each on its own through
+ * the normal engine chain. A body whose translation is unusable (or would lose a `#`)
+ * keeps its source text instead of failing the whole string. The assembled result is
+ * checked structurally before it is returned, so a damaged block can never slip through.
+ * Returns null when nothing could be translated.
+ */
+async function translateIcuPerClause(
+  coreText: string,
+  baseLang: string,
+  directLang: string,
+  targetLocaleName?: string,
+  pluralQuantity?: 'zero' | 'one' | 'two' | 'few' | 'many' | 'other'
+): Promise<{ text: string; source: TranslationEngine } | null> {
+  const parts = splitIcuBlocks(coreText);
+  if (!parts) return null;
+  // The part translations below go through `translateSingleSegment`, which clears
+  // the rejection flag on every success — but this whole attempt is speculative:
+  // if it fails, the flag must still describe the original rejection, not the
+  // last part that happened to translate. Save and restore it on failure.
+  const rejectedBefore = lastSuggestionRejectedForIcu;
+  let overallSource: TranslationEngine = 'glossary';
+  let translatedAny = false;
+  const out: string[] = [];
+  for (const part of parts) {
+    if (part.kind === 'text') {
+      if (!part.text.trim()) {
+        out.push(part.text);
+        continue;
+      }
+      const res = await translateSingleSegment(part.text, baseLang, directLang, targetLocaleName, pluralQuantity);
+      if (res.source !== 'glossary' && res.source !== 'heuristic') overallSource = res.source;
+      if (res.source !== 'heuristic' && res.text !== part.text) translatedAny = true;
+      out.push(res.source === 'heuristic' ? part.text : res.text);
+      continue;
+    }
+    // Block: rebuild from the source, translating each clause body on its own.
+    const bodies = part.bodies ?? [];
+    let rebuilt = '';
+    let cursor = 0;
+    for (const body of bodies) {
+      const bodyText = part.text.slice(body.start, body.end);
+      rebuilt += part.text.slice(cursor, body.start);
+      let replacement = bodyText;
+      if (hasTranslatableText(bodyText)) {
+        const res = await translateSingleSegment(bodyText, baseLang, directLang, targetLocaleName, pluralQuantity);
+        const hashCount = (s: string) => (s.match(/#/g) || []).length;
+        if (
+          res.source !== 'heuristic' &&
+          res.text &&
+          res.text !== bodyText &&
+          hashCount(res.text) === hashCount(bodyText)
+        ) {
+          replacement = res.text;
+          if (res.source !== 'glossary') overallSource = res.source;
+          translatedAny = true;
+        }
+      }
+      rebuilt += replacement;
+      cursor = body.end;
+    }
+    rebuilt += part.text.slice(cursor);
+    out.push(rebuilt);
+  }
+  if (!translatedAny) {
+    lastSuggestionRejectedForIcu = rejectedBefore;
+    return null;
+  }
+  const assembled = out.join('');
+  if (!validatePlaceholders(coreText, assembled, directLang).valid) {
+    lastSuggestionRejectedForIcu = rejectedBefore;
+    return null;
+  }
+  return { text: assembled, source: overallSource };
+}
+
 async function translateSingleSegmentUncached(
   segment: string,
   baseLang: string,
@@ -1106,6 +1202,16 @@ async function translateSingleSegmentUncached(
     if (match) {
       return { text: wrapResult(match), source: 'glossary' };
     }
+  }
+
+  // 3b. Phase 3: translate an ICU block piece by piece. The machine-translation
+  // engines translate the block's keywords, so a whole-block reply is always
+  // rejected by the structural check above; translating the surrounding text and
+  // each clause body on their own keeps the structure from the source instead.
+  // AI providers never reach this: their whole-string reply already succeeds.
+  if (coreText.includes('{')) {
+    const perClause = await translateIcuPerClause(coreText, baseLang, directLang, targetLocaleName, pluralQuantity);
+    if (perClause) return { text: wrapResult(perClause.text), source: perClause.source };
   }
 
   // 4. Fallback Heuristic

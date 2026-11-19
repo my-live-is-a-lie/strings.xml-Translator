@@ -334,6 +334,114 @@ export function findClauseBodyOpens(text: string): Set<number> {
   return opens;
 }
 
+export interface IcuBlockPart {
+  kind: 'text' | 'block';
+  /** The exact source slice. */
+  text: string;
+  /** For a block: its clause bodies, with spans relative to `text`. */
+  bodies?: { start: number; end: number }[];
+}
+
+/**
+ * Splits `text` into plain runs and top-level ICU blocks (`plural` / `select` /
+ * `selectordinal`), with each block's clause-body spans. The clause walk mirrors
+ * `findClauseBodyOpens` (same quoting rules, same keyword matching), but only the
+ * block's direct bodies are reported: a body that itself contains a block is opaque
+ * here and is split again when that body is translated on its own.
+ *
+ * Phase 3 uses this to translate an ICU string piece by piece: the block's structure
+ * is copied from the source verbatim and only the bodies are translated, so a
+ * machine-translation engine never sees (or translates) the keywords.
+ * Returns null when the text contains no ICU block.
+ */
+export function splitIcuBlocks(text: string): IcuBlockPart[] | null {
+  const parts: IcuBlockPart[] = [];
+  let foundBlock = false;
+  let textStart = 0;
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === "'") {
+      const after = skipQuotedLiteral(text, i);
+      i = after !== -1 ? after : i + 1;
+      continue;
+    }
+    if (ch !== '{') {
+      i++;
+      continue;
+    }
+    const close = findMatchingBrace(text, i);
+    if (close === -1) {
+      i++;
+      continue;
+    }
+    const inner = text.slice(i + 1, close);
+    const commaIdx = inner.indexOf(',');
+    let bodies: { start: number; end: number }[] | null = null;
+    if (commaIdx !== -1) {
+      const argName = stripBidiControls(inner.slice(0, commaIdx).trim());
+      const rest = inner.slice(commaIdx + 1);
+      const nextCommaIdx = rest.indexOf(',');
+      const formatType = stripBidiControls(
+        (nextCommaIdx !== -1 ? rest.slice(0, nextCommaIdx) : rest).trim()
+      );
+      if (
+        /^[a-zA-Z0-9_-]+$/.test(argName) &&
+        ICU_CLAUSE_FORMAT_TYPES.has(formatType) &&
+        nextCommaIdx !== -1
+      ) {
+        bodies = [];
+        const styleAndClauses = rest.slice(nextCommaIdx + 1);
+        // Offsets of the style text inside the block: the block opens at `i`, the
+        // inner content starts at `i + 1`, and the style follows the two commas.
+        const styleStart = i + 1 + commaIdx + 1 + nextCommaIdx + 1;
+        let j = 0;
+        while (j < styleAndClauses.length) {
+          while (j < styleAndClauses.length && /\s/.test(styleAndClauses[j])) j++;
+          if (j >= styleAndClauses.length) break;
+          if (styleAndClauses[j] === "'") {
+            const after = skipQuotedLiteral(styleAndClauses, j);
+            j = after !== -1 ? after : j + 1;
+            continue;
+          }
+          if (styleAndClauses[j] === '{') {
+            const stray = findMatchingBrace(styleAndClauses, j);
+            if (stray === -1) break;
+            j = stray + 1;
+            continue;
+          }
+          const kwMatch = /^[=\w-]+/.exec(styleAndClauses.slice(j));
+          if (!kwMatch) {
+            j++;
+            continue;
+          }
+          j += kwMatch[0].length;
+          while (j < styleAndClauses.length && /\s/.test(styleAndClauses[j])) j++;
+          if (styleAndClauses[j] !== '{') continue;
+          const subClose = findMatchingBrace(styleAndClauses, j);
+          if (subClose === -1) break;
+          // Spans relative to the block text (the block starts at `i`).
+          bodies.push({ start: styleStart + j + 1 - i, end: styleStart + subClose - i });
+          j = subClose + 1;
+        }
+      }
+    }
+    if (!bodies) {
+      // Not a block: step inside it, a block can hide in another brace group.
+      i++;
+      continue;
+    }
+    foundBlock = true;
+    if (i > textStart) parts.push({ kind: 'text', text: text.slice(textStart, i) });
+    parts.push({ kind: 'block', text: text.slice(i, close + 1), bodies });
+    i = close + 1;
+    textStart = i;
+  }
+  if (!foundBlock) return null;
+  if (textStart < text.length) parts.push({ kind: 'text', text: text.slice(textStart) });
+  return parts;
+}
+
 /**
  * True when one ICU block straddles a line break, i.e. a `{` and its matching `}` are
  * separated by `\n`. The translation pipeline splits a source string on its line breaks
@@ -568,6 +676,7 @@ function parseIcuMessage(text: string, inPluralClause = false): IcuElement[] {
         continue;
       }
       const inner = text.slice(i + 1, close);
+      const before = elements.length;
       const commaIdx = inner.indexOf(',');
       if (commaIdx === -1) {
         const name = stripBidiControls(inner.trim());
@@ -597,6 +706,15 @@ function parseIcuMessage(text: string, inPluralClause = false): IcuElement[] {
             elements.push({ kind: 'formatted', name: argName, type: formatType });
           }
         }
+      }
+      // A brace group that is not itself a valid ICU element but hides a brace
+      // inside it (`{{name}}`) is malformed, not empty: record it as an element
+      // named after its content, so it compares as missing the real placeholder
+      // and carrying an extra one instead of silently equalling the source.
+      // (Recursing into the content instead would make `{{name}}` equivalent to
+      // `{name}` and let a doubled brace pass the check.)
+      if (elements.length === before && inner.includes('{')) {
+        elements.push({ kind: 'simple', name: inner });
       }
       i = close + 1;
       continue;
@@ -1007,8 +1125,22 @@ export function validatePlaceholders(
     missingInTarget.push(unbalanced);
   }
 
+  // Extra tokens are errors too when they are structure the app would choke on:
+  // an added placeholder (`{name}`), format (`{amount:date}`) or printf
+  // specifier (`%s`) is a runtime crash, not a harmless addition — and a doubled
+  // brace (`{{name}}`) is malformed ICU. Lenient by design: an added whole block
+  // (`{n:plural}`) is a legitimate translation technique, an added HTML tag or
+  // `%%` is cosmetic, an extra `#` or plural category is legitimate when the
+  // target language needs more forms (Arabic has six), an added `offset:` harms
+  // nothing, and an added `select` key is dead code at worst, never a crash.
+  const structuralExtra = extraInTarget.some((t) => {
+    if (t.startsWith('%')) return t !== '%%';
+    if (!t.startsWith('{')) return false;
+    return !/^\{[A-Za-z0-9_-]+:(plural|select|selectordinal)\}$/.test(t);
+  });
+
   return {
-    valid: missingInTarget.length === 0,
+    valid: missingInTarget.length === 0 && !structuralExtra,
     missingInTarget,
     extraInTarget,
     warnings,

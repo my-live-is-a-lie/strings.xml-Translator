@@ -173,6 +173,7 @@ A string can contain an ICU block, where the text inside each clause is translat
 The app treats these blocks as structure, not as text:
 
 - **Only the words inside a clause are translated.** Variable names, the format type (`plural`, `select`, `selectordinal`, `number`, `date`, `time`), the clause keywords (`zero`, `one`, `two`, `few`, `many`, `other`), `offset:`, `=0`/`=1` selectors and the `#` inside a plural clause are kept exactly as they are.
+- **Machine-translation providers translate each clause on its own.** Google Translate and MyMemory cannot be told to leave the syntax alone — they translate the keywords (`select` → `حدد`), so a whole-block reply is always rejected. For those providers the app keeps the block's structure from the source and translates the surrounding text and each clause separately, then checks the assembled string. AI providers see the whole block and translate it in one go.
 - **A reply that breaks the block is rejected.** If a translation drops a clause, loses a brace or changes the format type, it is thrown away and the next engine (or the next AI model) is tried — you never get a string that crashes `String.format` at runtime.
 - **Each clause is checked.** A missing `other`, a changed `select` key or a swapped format type is reported by the QA checks, and a plural category the target language requires is a warning you can ignore.
 - **A block that spans more than one line is translated as one piece**, so the check still sees it whole. Line breaks outside a block are still split off and kept exactly as written.
