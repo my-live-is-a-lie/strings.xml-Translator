@@ -35,4 +35,25 @@ describe('gemini model fallback', () => {
     await expect(geminiTranslateDirect({ apiKey: 'bad', sourceText: 'Hello' })).rejects.toThrow(/API key not valid/);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it('sends the ICU rules in the system instruction and the prompt', async () => {
+    let body = '';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        body = String(init?.body ?? '');
+        return ok('مرحبا');
+      })
+    );
+    expect(await geminiTranslateDirect({ apiKey: 'k', sourceText: 'Hello' })).toBe('مرحبا');
+    const parsed = JSON.parse(body) as {
+      systemInstruction: { parts: Array<{ text: string }> };
+      contents: Array<{ parts: Array<{ text: string }> }>;
+    };
+    const system = parsed.systemInstruction.parts[0].text;
+    expect(system).toContain('ICU MessageFormat');
+    expect(system).toContain('{count, plural, one {# message} other {# messages}}');
+    const userPrompt = parsed.contents[0].parts[0].text;
+    expect(userPrompt).toContain('ICU MessageFormat blocks');
+  });
 });

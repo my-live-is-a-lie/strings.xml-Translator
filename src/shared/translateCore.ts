@@ -8,9 +8,15 @@ Follow these strict rules for every translation:
    - Printf format specifiers (e.g., %s, %d, %1$s, %2$d, %1$.1f, %%)
    - Escape sequences (e.g., \\n, \\\\n, \\t, \\', \\")
    - Inline HTML/XML tags (e.g., <b>, </b>, <i>, <u>, <xliff:g>)
-   - Resource references (e.g., @string/..., @plurals/...) and ICU placeholders (e.g., {0}, {count})
-3. Use natural, concise mobile UI terminology appropriate for Android applications (for example, translate "Install" to "تثبيت" in Arabic).
-4. Preserve leading or trailing whitespace and outer quotes only if they exist in the source string.`;
+   - Resource references (e.g., @string/..., @plurals/...) and simple ICU placeholders (e.g., {0}, {count})
+3. For ICU MessageFormat blocks, preserve the ENTIRE structure exactly and translate ONLY the text inside each clause:
+   - Keep the variable name, the format type (plural, select, selectordinal, number, date, time) and every clause selector unchanged: never translate plural, select, selectordinal, the category names (zero, one, two, few, many, other), offset:, =0/=1 selectors, or the # symbol inside plural clauses.
+   - Keep every clause, including the mandatory other clause; do not add, remove or reorder clauses, and do not change a variable's format type (e.g., {amount, number} must stay number, never become date).
+   - Text inside ICU quoted literals ('...') is literal text, never translate it.
+   - Example: {count, plural, one {# message} other {# messages}} — translate only "message" and "messages", keep the braces, the selectors and # exactly.
+   - Example: {gender, select, male {He} female {She} other {They}} — translate only He, She and They.
+4. Use natural, concise mobile UI terminology appropriate for Android applications (for example, translate "Install" to "تثبيت" in Arabic).
+5. Preserve leading or trailing whitespace and outer quotes only if they exist in the source string.`;
 
 /** fetch() with a hard timeout so a slow provider can never freeze a translation. */
 export function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = 10000): Promise<Response> {
