@@ -442,6 +442,167 @@ export function splitIcuBlocks(text: string): IcuBlockPart[] | null {
   return parts;
 }
 
+// ---------------------------------------------------------------------------
+// ICU branch editor: a field model that is a *view* over a message string.
+// The string stays the single source of truth; the model only splits it into
+// editable pieces (text runs and clause bodies) and glues it back together.
+// ---------------------------------------------------------------------------
+
+/** A run of plain text outside any top-level ICU block. */
+export interface IcuTextField {
+  kind: 'text';
+  value: string;
+  /** The matching text run of the source, shown as the reference. */
+  sourceValue: string;
+}
+
+/** One clause of a top-level ICU block: its selector (read-only) and its body (editable). */
+export interface IcuClauseField {
+  selector: string;
+  value: string;
+  /** The body of the same selector in the source (the `other` body when the source has no such clause). */
+  sourceValue: string;
+}
+
+/** A top-level ICU block. Only the clause bodies are editable; the structure is `frame`. */
+export interface IcuBlockField {
+  kind: 'block';
+  name: string;
+  type: string;
+  offset?: string;
+  clauses: IcuClauseField[];
+  /**
+   * The exact text around the bodies, `clauses.length + 1` pieces: the header up to the first
+   * body, the text between two bodies (`} other {`) and the closing text. Kept verbatim so an
+   * untouched model reassembles byte for byte and typing in a body can never alter the structure.
+   */
+  frame: string[];
+}
+
+export type IcuField = IcuTextField | IcuBlockField;
+
+const ICU_BLOCK_HEADER = /^\{([^,]*),([^,]*),/;
+
+/** Splits one block part into its frame and clauses, or null when it cannot be read reliably. */
+function parseBlockField(part: IcuBlockPart): IcuBlockField | null {
+  const bodies = part.bodies;
+  if (!bodies || bodies.length === 0) return null;
+  const text = part.text;
+  const frame: string[] = [];
+  const clauses: IcuClauseField[] = [];
+  frame.push(text.slice(0, bodies[0].start));
+  for (let k = 0; k < bodies.length; k++) {
+    const next = k + 1 < bodies.length ? bodies[k + 1].start : text.length;
+    frame.push(text.slice(bodies[k].end, next));
+  }
+  for (let k = 0; k < bodies.length; k++) {
+    const selector = /([=\w-]+)\s*\{$/.exec(frame[k]);
+    if (!selector) return null;
+    clauses.push({ selector: selector[1], value: text.slice(bodies[k].start, bodies[k].end), sourceValue: '' });
+  }
+  const header = ICU_BLOCK_HEADER.exec(frame[0]);
+  if (!header) return null;
+  const offset = /offset:\s*(\d+)/.exec(frame[0]);
+  return {
+    kind: 'block',
+    name: stripBidiControls(header[1].trim()),
+    type: stripBidiControls(header[2].trim()),
+    offset: offset ? offset[1] : undefined,
+    clauses,
+    frame,
+  };
+}
+
+/** Parses a whole message into fields; null when it has no block or its structure is broken. */
+function buildIcuFields(text: string): IcuField[] | null {
+  const parts = splitIcuBlocks(text);
+  if (!parts || hasUnbalancedBraces(text)) return null;
+  const fields: IcuField[] = [];
+  for (const part of parts) {
+    if (part.kind === 'text') {
+      fields.push({ kind: 'text', value: part.text, sourceValue: '' });
+      continue;
+    }
+    const block = parseBlockField(part);
+    if (!block) return null;
+    fields.push(block);
+  }
+  return fields;
+}
+
+/**
+ * Builds the field model of an ICU string for the branch editor, or null when the fields view
+ * is not available (the editor then shows the raw textarea).
+ *
+ * The model comes from the target when it holds at least one top-level block (so a target that
+ * was adapted to the language's plural categories shows those clauses). An empty target gets the
+ * source's structure with every body empty. Anything else (no block, or a broken one) is null.
+ * A clause body that itself contains a block stays one opaque value.
+ */
+export function getIcuFieldModel(source: string, target: string): IcuField[] | null {
+  const sourceFields = buildIcuFields(source);
+  const targetIsEmpty = target.trim() === '';
+  const fields = targetIsEmpty ? sourceFields : buildIcuFields(target);
+  if (!fields) return null;
+
+  const sourceTexts = (sourceFields ?? []).filter((f): f is IcuTextField => f.kind === 'text');
+  const sourceBlocks = (sourceFields ?? []).filter((f): f is IcuBlockField => f.kind === 'block');
+  let textIndex = 0;
+  let blockIndex = 0;
+  return fields.map((field) => {
+    if (field.kind === 'text') {
+      if (targetIsEmpty) {
+        // Whitespace between blocks is structure, so it is kept; real text starts empty.
+        return { kind: 'text', value: field.value.trim() === '' ? field.value : '', sourceValue: field.value };
+      }
+      return { kind: 'text', value: field.value, sourceValue: sourceTexts[textIndex++]?.value ?? '' };
+    }
+    const src = sourceBlocks[blockIndex++];
+    return {
+      ...field,
+      clauses: field.clauses.map((clause) => {
+        const match =
+          src?.clauses.find((c) => c.selector === clause.selector) ?? src?.clauses.find((c) => c.selector === 'other');
+        const sourceValue = targetIsEmpty ? clause.value : (match?.value ?? '');
+        return { ...clause, value: targetIsEmpty ? '' : clause.value, sourceValue };
+      }),
+    };
+  });
+}
+
+/** Glues a field model back into the message string (the inverse of `getIcuFieldModel`). */
+export function assembleIcuFields(fields: IcuField[]): string {
+  return fields
+    .map((field) => {
+      if (field.kind === 'text') return field.value;
+      let out = field.frame[0];
+      field.clauses.forEach((clause, k) => {
+        out += clause.value + field.frame[k + 1];
+      });
+      return out;
+    })
+    .join('');
+}
+
+/** Returns a copy of the model with one text run replaced. */
+export function setIcuTextValue(fields: IcuField[], fieldIndex: number, value: string): IcuField[] {
+  return fields.map((f, i) => (i === fieldIndex && f.kind === 'text' ? { ...f, value } : f));
+}
+
+/** Returns a copy of the model with one clause body replaced. */
+export function setIcuClauseValue(
+  fields: IcuField[],
+  fieldIndex: number,
+  clauseIndex: number,
+  value: string
+): IcuField[] {
+  return fields.map((f, i) =>
+    i === fieldIndex && f.kind === 'block'
+      ? { ...f, clauses: f.clauses.map((c, k) => (k === clauseIndex ? { ...c, value } : c)) }
+      : f
+  );
+}
+
 /**
  * True when one ICU block straddles a line break, i.e. a `{` and its matching `}` are
  * separated by `\n`. The translation pipeline splits a source string on its line breaks

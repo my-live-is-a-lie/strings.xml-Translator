@@ -17,7 +17,16 @@ import { fixItemSyntax, FixNote } from '../utils/syntaxFix';
 import { debugIgnored } from '../utils/debug';
 import { autoCloseOnDoubleSpace } from '../utils/autoCloseBracket';
 import { usePredictiveWords, PredictField } from '../hooks/usePredictiveWords';
-import { getIcuStructureIssues, getItemQaIssues, getLineBreakIssues, QaIssue } from '../utils/placeholderCheck';
+import {
+  assembleIcuFields,
+  getIcuFieldModel,
+  getIcuStructureIssues,
+  getItemQaIssues,
+  getLineBreakIssues,
+  QaIssue,
+  setIcuClauseValue,
+  setIcuTextValue,
+} from '../utils/placeholderCheck';
 import { toEditorItem, toStoredItem, toStoredText, normalizeTypedBreaks } from '../utils/newlines';
 import { getStoredItem, setStoredItem, copyTextToClipboard, readTextFromClipboard } from '../utils/storage';
 import { useT } from '../i18n/i18n';
@@ -96,12 +105,17 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const pluralTextareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const arrayTextareaRefs = useRef<Record<number, HTMLTextAreaElement | null>>({});
+  // ICU branch editor: the textareas by `field:clause` (clause is `t` for a text run) and the view toggle
+  const icuTextareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
+  const [icuRawView, setIcuRawView] = useState(false);
 
   // Track last active input box & cursor (line indicator) position so tapping a syntax token inserts right at the caret
   const lastCursorRef = useRef<{
-    fieldType: 'string' | 'plural' | 'array';
+    fieldType: 'string' | 'plural' | 'array' | 'icu';
     quantity?: string;
     index?: number;
+    /** Set for the ICU branch editor: which field was last focused (`clause` is null for a text run). */
+    icuField?: { field: number; clause: number | null };
     start: number;
     end: number;
   } | null>(null);
@@ -351,7 +365,13 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   }, [item.id, currentTargetText, draftItem.type, direction]);
 
   // Typing a second space after an unclosed bracket closes the bracket (keeps the caret after it)
-  const applyAutoClose = (el: HTMLTextAreaElement, prev: string, key: string, apply: (val: string) => void) => {
+  const applyAutoClose = (
+    el: HTMLTextAreaElement,
+    prev: string,
+    key: string,
+    apply: (val: string) => void,
+    usePrediction = true
+  ) => {
     // a `\n` typed by hand turns into a real line break right away (the caret stays where it was)
     const typed = normalizeTypedBreaks(el.value, el.selectionStart ?? el.value.length);
     if (typed.text !== el.value) {
@@ -364,7 +384,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     }
     const next = el.value;
     // Space accepts a word completion, Backspace rejects it
-    const predicted = predict.handleChange(key, prev, next);
+    const predicted = usePrediction ? predict.handleChange(key, prev, next) : null;
     if (predicted !== null) {
       el.value = predicted;
       apply(predicted);
@@ -403,6 +423,93 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       translationSource: isNowEmpty ? undefined : 'manual',
     };
     updateDraftItem(updated);
+  };
+
+  // ICU branch editor: the fields are a view over draftItem.target (the single source of truth),
+  // so the model is re-derived from the string on every render and never stored.
+  const icuModel = useMemo(
+    () => (draftItem.type === 'string' ? getIcuFieldModel(draftItem.source, draftItem.target) : null),
+    [draftItem]
+  );
+  const icuFieldsActive = draftItem.type === 'string' && icuModel !== null && !icuRawView;
+
+  // Reassembles the whole string from one edited field and hands it to the normal string handler
+  const handleIcuFieldChange = (field: number, clause: number | null, value: string) => {
+    if (!icuModel) return;
+    const next =
+      clause === null ? setIcuTextValue(icuModel, field, value) : setIcuClauseValue(icuModel, field, clause, value);
+    const allEmpty = next.every((f) =>
+      f.kind === 'text' ? f.value.trim() === '' : f.clauses.every((c) => c.value.trim() === '')
+    );
+    // Emptying every field leaves the target empty (untranslated), not a skeleton of empty clauses
+    handleSingleTextChange(allEmpty ? '' : assembleIcuFields(next));
+  };
+
+  // Remembers a branch field's textarea and sizes it to its content (same as the plural fields)
+  const registerIcuField = (key: string, el: HTMLTextAreaElement | null) => {
+    icuTextareaRefs.current[key] = el;
+    if (el) {
+      const currentMin = parseFloat(el.style.minHeight) || 0;
+      el.style.height = 'auto';
+      const borderOffset = el.offsetHeight - el.clientHeight;
+      el.style.height = `${Math.max(el.scrollHeight + borderOffset, currentMin)}px`;
+    }
+  };
+
+  const recordIcuCursor = (el: HTMLTextAreaElement | null, field: number, clause: number | null) => {
+    if (!el) return;
+    lastCursorRef.current = {
+      fieldType: 'icu',
+      icuField: { field, clause },
+      start: typeof el.selectionStart === 'number' ? el.selectionStart : el.value.length,
+      end: typeof el.selectionEnd === 'number' ? el.selectionEnd : el.value.length,
+    };
+  };
+
+  // Inserts text at the caret of the focused (or last focused) branch field; false when there is none
+  const insertIntoIcuField = (charToInsert: string): boolean => {
+    if (!icuModel) return false;
+    const refs = icuTextareaRefs.current;
+    let field: number | null = null;
+    let clause: number | null = null;
+    let caret: { start: number; end: number } | null = null;
+    const focusedKey = Object.keys(refs).find((k) => refs[k] && refs[k] === document.activeElement);
+    if (focusedKey) {
+      const [f, c] = focusedKey.split(':');
+      field = Number(f);
+      clause = c === 't' ? null : Number(c);
+    } else if (lastCursorRef.current?.fieldType === 'icu' && lastCursorRef.current.icuField) {
+      field = lastCursorRef.current.icuField.field;
+      clause = lastCursorRef.current.icuField.clause;
+      caret = lastCursorRef.current;
+    }
+    if (field === null) return false;
+    const el = refs[`${field}:${clause ?? 't'}`];
+    const model = icuModel[field];
+    const text = !model ? null : model.kind === 'text' ? model.value : clause === null ? null : model.clauses[clause]?.value;
+    if (!el || text === null || text === undefined) return false;
+    const start = caret ? Math.min(caret.start, text.length) : el.selectionStart;
+    const end = caret ? Math.min(caret.end, text.length) : el.selectionEnd;
+    let newText: string;
+    let newCursor = start + charToInsert.length;
+    if (charToInsert === '( - )' && start !== end) {
+      const selected = text.substring(start, end);
+      newText = text.substring(0, start) + `(${selected})` + text.substring(end);
+      newCursor = start + selected.length + 2;
+    } else if (charToInsert === '( - )') {
+      newText = text.substring(0, start) + '( - )' + text.substring(end);
+      newCursor = start + 5;
+    } else {
+      newText = text.substring(0, start) + charToInsert + text.substring(end);
+    }
+    lastCursorRef.current = { fieldType: 'icu', icuField: { field, clause }, start: newCursor, end: newCursor };
+    handleIcuFieldChange(field, clause, newText);
+    setTimeout(() => {
+      adjustTextareaHeight(el);
+      el.focus();
+      el.setSelectionRange(newCursor, newCursor);
+    }, 0);
+    return true;
   };
 
   // Ensure plural items always include all CLDR quantities for targetLang (e.g. zero, one, two, few, many, other for Arabic)
@@ -568,6 +675,11 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     charToInsert: string,
     targetField?: { fieldType: 'plural'; quantity: string } | { fieldType: 'array'; index: number }
   ) => {
+    if (draftItem.type === 'string' && icuFieldsActive) {
+      // Fields view: only a focused (or last focused) branch field takes the insert; otherwise nothing happens
+      insertIntoIcuField(charToInsert);
+      return;
+    }
     if (draftItem.type === 'string') {
       const el = textareaRef.current;
       const text = draftItem.target;
@@ -841,6 +953,11 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     isInteractingWithToolbarOrPasteRef.current = false;
 
     if (pastedText === null || pastedText === undefined) return;
+
+    if (draftItem.type === 'string' && icuFieldsActive) {
+      insertIntoIcuField(pastedText);
+      return;
+    }
 
     if (draftItem.type === 'string') {
       const el = textareaRef.current;
@@ -1708,7 +1825,100 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             )}
 
             {/* Translation Textarea (Single String) with Visual Typing Mistake Indicator */}
-            {draftItem.type === 'string' && (
+            {draftItem.type === 'string' && icuModel && (
+              <div className="flex justify-end">
+                <div role="group" className="inline-flex rounded-lg overflow-hidden border border-slate-200/90 dark:border-slate-700 text-[11px] font-semibold">
+                  {([false, true] as const).map((raw) => (
+                    <button
+                      key={String(raw)}
+                      type="button"
+                      data-testid={raw ? 'icu-view-raw' : 'icu-view-fields'}
+                      aria-pressed={icuRawView === raw}
+                      onClick={() => setIcuRawView(raw)}
+                      className={`px-2.5 py-1 transition cursor-pointer ${
+                        icuRawView === raw
+                          ? 'bg-[#1EB996]/15 text-[#1EB996]'
+                          : 'text-slate-500 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      {t(raw ? 'icu_view_raw' : 'icu_view_fields')}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ICU branch editor: one textarea per clause body and per text run outside the blocks */}
+            {draftItem.type === 'string' && icuModel && icuFieldsActive && (
+              <div className="space-y-2" data-testid="icu-fields">
+                {icuModel.map((field, fi) => {
+                  const renderField = (clause: number | null, value: string) => {
+                    const key = `${fi}:${clause ?? 't'}`;
+                    return (
+                      <HighlightedTextarea
+                        rows={1}
+                        dir={direction}
+                        value={value}
+                        resetKey={`${draftItem.id}-icu-${key}`}
+                        data-testid={`icu-field-${key}`}
+                        onValueChange={(val) => handleIcuFieldChange(fi, clause, val)}
+                        ref={(el) => registerIcuField(key, el)}
+                        onFocus={(e) => recordIcuCursor(e.currentTarget, fi, clause)}
+                        onClick={(e) => recordIcuCursor(e.currentTarget, fi, clause)}
+                        onKeyUp={(e) => recordIcuCursor(e.currentTarget, fi, clause)}
+                        onSelect={(e) => recordIcuCursor(e.currentTarget, fi, clause)}
+                        onChange={(e) => {
+                          recordIcuCursor(e.currentTarget, fi, clause);
+                          adjustTextareaHeight(e.currentTarget);
+                          // No ghost word prediction inside branch fields (usePrediction = false)
+                          applyAutoClose(e.currentTarget, value, `icu:${key}`, (v) => handleIcuFieldChange(fi, clause, v), false);
+                        }}
+                        containerClassName="rounded-lg bg-slate-100/90 dark:bg-[#0E121A] border border-slate-200/90 dark:border-transparent"
+                        backdropClassName="border-0 border-b-2 border-transparent px-3.5 pt-1.5 pb-3 text-xs sm:text-sm leading-relaxed"
+                        className="px-3.5 pt-1.5 pb-3 text-xs sm:text-sm leading-relaxed rounded-lg border-0 border-b-2 border-[var(--accent-primary)]/30 focus:border-[var(--accent-primary)] text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none transition-colors duration-300 resize-none overflow-hidden block"
+                      />
+                    );
+                  };
+                  if (field.kind === 'text') {
+                    return (
+                      <div key={fi} className="space-y-1">
+                        <div className="flex items-center justify-between text-xs gap-2">
+                          <span className="text-[11px] text-slate-500 dark:text-slate-300 font-medium">
+                            {t('icu_text_part')}
+                          </span>
+                          <span className="app-source-font text-slate-500 dark:text-slate-300 text-[11px] truncate max-w-xs">
+                            {field.sourceValue}
+                          </span>
+                        </div>
+                        {renderField(null, field.value)}
+                      </div>
+                    );
+                  }
+                  return (
+                    <div key={fi} className="space-y-2 rounded-xl border border-slate-200/90 dark:border-slate-700 p-2">
+                      <div dir="ltr" className="font-mono text-[11px] text-slate-500 dark:text-slate-300">
+                        {`{${field.name}, ${field.type}${field.offset !== undefined ? `, offset:${field.offset}` : ''}}`}
+                      </div>
+                      {field.clauses.map((clause, ci) => (
+                        <div key={ci} className="space-y-1">
+                          <div className="flex items-center justify-between text-xs gap-2">
+                            <span className="font-mono font-semibold text-[#1EB996] px-1.5 py-0.5 rounded bg-[#1EB996]/10 border border-[#1EB996]/30">
+                              {clause.selector}
+                            </span>
+                            <span className="app-source-font text-slate-500 dark:text-slate-300 text-[11px] truncate max-w-xs">
+                              {clause.sourceValue}
+                            </span>
+                          </div>
+                          {renderField(ci, clause.value)}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {draftItem.type === 'string' && !icuFieldsActive && (
               <HighlightedTextarea
                 id="weblate-translation-input"
                 ref={textareaRef}

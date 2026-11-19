@@ -362,6 +362,9 @@ export const UI_STRINGS: Record<string, { en: string; ar: string }> = {
     en: "No suggestion was offered: every engine broke the ICU MessageFormat block in this string (a dropped clause, a lost brace or a changed keyword). Nothing was changed — translate it by hand, or try again.",
     ar: "لم يُقترح شيء: كل المحرّكات أفسدت كتلة ICU في هذا النص (فرع محذوف أو قوس مفقود أو كلمة مفتاحية متغيّرة). لم يتغيّر شيء — ترجمه يدوياً أو أعد المحاولة."
   },
+  "icu_view_fields": { en: "Fields", ar: "حقول" },
+  "icu_view_raw": { en: "Raw text", ar: "نص خام" },
+  "icu_text_part": { en: "Text outside the block", ar: "نص خارج الكتلة" },
   "not_saved_the_translation_was": { en: "Not saved. The translation was corrected automatically, review it and press Save again:", ar: "لم يُحفظ النص. صحّحتُ الترجمة تلقائياً، راجعها ثم اضغط حفظ مرة أخرى:" },
   "not_saved_some_errors_could": { en: "Not saved. Some errors could not be fixed automatically, press Save again to ignore them:", ar: "لم يُحفظ النص. توجد أخطاء لم أستطع إصلاحها، اضغط حفظ مرة أخرى لتجاهلها:" },
   "not_saved_line_breaks_differ": { en: "Not saved. The translation must have exactly the same number of line breaks as the source:", ar: "لم يُحفظ النص. يجب أن يتطابق عدد الأسطر الجديدة مع الأصل تمامًا:" },
