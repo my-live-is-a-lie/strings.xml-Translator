@@ -286,3 +286,73 @@ describe('a suggestion keeps the outer line breaks of a multiline string', () =>
     expect(res.text).toBe('\n  مرحبا بالعالم\n  ');
   });
 });
+
+describe('the suggestion keeps the source surroundings, not the engine\'s', () => {
+  const AR = 'مرحبا بالعالم';
+
+  it('trims the whitespace an engine adds around its reply', async () => {
+    // A reply that comes back padded (a trailing newline, a BOM from a streaming API, a no-break
+    // space) must not add line breaks the source does not have: the source's own surroundings win.
+    for (const reply of [AR + '\n', '\n' + AR, ` ${AR} `, `\u00a0${AR}`, `\ufeff${AR}`]) {
+      routeMock({ 'Hello world': reply }, []);
+      clearTranslationCache();
+      const res = await suggestTranslation('\n  Hello world\n  ', 'ar');
+      expect(res.text).toBe(`\n  ${AR}\n  `);
+    }
+  });
+
+  it('keeps a no-break space and a BOM that belong to the source', async () => {
+    // Regression guard: \\s covers U+00A0 and U+FEFF, so an edge NBSP/BOM of the source is kept.
+    for (const pad of ['\u00a0', '\ufeff', '\u00a0\ufeff']) {
+      routeMock({ 'Hello world': AR }, []);
+      clearTranslationCache();
+      const res = await suggestTranslation(`${pad}Hello world${pad}`, 'ar');
+      expect(res.text).toBe(`${pad}${AR}${pad}`);
+    }
+  });
+
+  it('drops a BOM an engine puts inside its reply', async () => {
+    routeMock({ 'Hello world': 'مرحبا \ufeffبالعالم' }, []);
+    clearTranslationCache();
+    const res = await suggestTranslation('Hello world', 'ar');
+    expect(res.text).toBe(AR);
+  });
+
+  it('judges the reply the user will actually get, not a padded copy of it', async () => {
+    // A reply that is structurally broken is rejected whatever padding it wears; the suggestion
+    // then falls back to the source untouched and says why. (Trimming used to happen after the ICU
+    // gate, so the gate judged one string and the editor received another.)
+    const src = 'You have {count, plural, one {# m} other {# ms}}';
+    for (const reply of ['  لديك {عد، جمع، واحدة {# ر}}  ', 'لديك {عد، جمع، واحدة {# ر}}']) {
+      routeMock({ [src]: reply }, []);
+      clearTranslationCache();
+      const res = await suggestTranslation(src, 'ar');
+      expect(res.icuRejected).toBe(true);
+      expect(res.text).toBe(src);
+    }
+  });
+});
+
+describe('an engine cannot add a line break to a single-line string', () => {
+  const AR = 'مرحبا بالعالم';
+
+  it('turns a stray line break in the reply into a space', async () => {
+    // Source has 0 breaks; the engine answers with a break inside the words. The suggestion must not
+    // carry it (the save gate would refuse it), and the words must survive.
+    for (const reply of ['مرحبا\nبالعالم', 'مرحبا\r\nبالعالم', 'مرحبا\\nبالعالم']) {
+      routeMock({ 'Hello world': reply }, []);
+      clearTranslationCache();
+      const res = await suggestTranslation('Hello world', 'ar');
+      expect(res.text).toBe(AR);
+    }
+  });
+
+  it('still keeps the breaks of a multiline source', async () => {
+    // Each line of a multiline source is translated on its own (split branch), and its break is kept.
+    routeMock({ Hello: 'مرحبا', world: 'بالعالم' }, []);
+    clearTranslationCache();
+    const res = await suggestTranslation('Hello\nworld', 'ar');
+    expect(countLineBreaks(res.text)).toBe(1);
+    expect(res.text).toBe('مرحبا\nبالعالم');
+  });
+});

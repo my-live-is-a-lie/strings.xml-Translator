@@ -1,4 +1,5 @@
 import { debugIgnored } from './debug';
+import { countLineBreaks } from './newlines';
 // Robust translation engine for Android strings with offline glossary, format token protection, and machine translation
 import { ANDROID_LOCALIZATION_DICTIONARY, CASE_INSENSITIVE_GLOSSARY, ARABIC_PLURAL_GLOSSARY } from './glossary';
 import { ResourceItem, SingleStringItem, PluralStringItem, ArrayStringItem } from '../types';
@@ -655,7 +656,14 @@ type SuggestionResult = {
 // Repeated strings (and re-opening a project) do not send the same request again. Keys include a hash
 // of the provider key, so changing a key starts a fresh cache for that provider. Heuristic fallbacks are
 // never cached, so they are retried later.
-const TRANSLATION_CACHE_KEY = 'translation_cache_v1';
+//
+// The version is bumped by any change to what a cached entry looks like. A cache filled by an older
+// build keeps serving its entries (nothing validates the line breaks of a cached suggestion), so an
+// entry saved before a fix would keep the old, wrong output for good: a user who upgraded and pressed
+// "Suggest" on the same string would still get the broken suggestion. Version 2 is the first one whose
+// suggestions keep the outer line breaks of a multiline segment.
+const TRANSLATION_CACHE_VERSION = 2;
+const TRANSLATION_CACHE_KEY = `translation_cache_v${TRANSLATION_CACHE_VERSION}`;
 const TRANSLATION_CACHE_LIMIT = 5000;
 let translationCache: Map<string, SuggestionResult> | null = null;
 
@@ -707,6 +715,12 @@ function cacheSegmentResult(key: string, result: SuggestionResult): void {
   }
   scheduleStoredWrite(TRANSLATION_CACHE_KEY, () => JSON.stringify([...cache.entries()]), 1500);
 }
+
+/** Outer whitespace of a segment and of a reply. `\s` already covers U+00A0 and U+FEFF. */
+const OUTER_WHITESPACE_LEADING = /^\s+/;
+const OUTER_WHITESPACE_TRAILING = /\s+$/;
+/** A byte-order mark inside a translated core is invisible in the editor and breaks the exported XML. */
+const INTERIOR_BOM = /\ufeff/g;
 
 const ENGINE_LABELS: Record<string, string> = {
   google: 'Google',
@@ -779,6 +793,16 @@ export function engineLabel(engine: string | undefined): string {
 export function clearTranslationCache(): void {
   translationCache = new Map();
   scheduleStoredWrite(TRANSLATION_CACHE_KEY, () => '[]', 0);
+  // The older builds wrote their entries under a previous key. They are dead weight now (this
+  // build never reads them) and can be tens of kilobytes of localStorage, so they are removed
+  // rather than left behind forever.
+  for (let version = 1; version < TRANSLATION_CACHE_VERSION; version++) {
+    try {
+      removeStoredItem(`translation_cache_v${version}`);
+    } catch (err) {
+      debugIgnored('translator', err);
+    }
+  }
 }
 
 async function translateSingleSegment(
@@ -909,8 +933,8 @@ async function translateSingleSegmentUncached(
   // tabs: trim() strips them, and a multiline segment (a pretty-printed ICU block) would
   // otherwise come back short on line breaks — the app's own suggestion then failed the
   // line-break save gate (source 6 breaks, suggestion 4).
-  const leadingMatch = segment.match(/^\s+/);
-  const trailingMatch = segment.match(/\s+$/);
+  const leadingMatch = segment.match(OUTER_WHITESPACE_LEADING);
+  const trailingMatch = segment.match(OUTER_WHITESPACE_TRAILING);
   const leadingSpace = leadingMatch ? leadingMatch[0] : '';
   const trailingSpace = trailingMatch ? trailingMatch[0] : '';
 
@@ -933,10 +957,38 @@ async function translateSingleSegmentUncached(
     !trimmed.startsWith('\\"');
   const coreText = hasOuterUnescapedQuotes ? trimmed.slice(1, -1) : trimmed;
 
+  /**
+   * An engine may answer with its own outer whitespace (a trailing newline, a BOM from a streaming
+   * API, a no-break space). The suggestion keeps the SOURCE's surroundings, not the engine's, so the
+   * reply is trimmed here. A BOM in the middle is dropped too: it is invisible in the editor and
+   * breaks the exported XML.
+   *
+   * This is a separate step from `wrapResult` by design: `wrapResult` runs only after
+   * `breaksIcuStructure` has judged the raw reply. Trimming inside `wrapResult` meant the ICU gate
+   * judged a padded candidate while the suggestion returned the trimmed one — two different strings,
+   * and the one that was actually saved had never been checked. Post-processing now happens before
+   * every engine gate, so the text that is judged is the text that is returned.
+   */
+  const postProcess = (translatedCore: string): string => {
+    let out = translatedCore
+      .replace(OUTER_WHITESPACE_LEADING, '')
+      .replace(OUTER_WHITESPACE_TRAILING, '')
+      .replace(INTERIOR_BOM, '');
+    // A single-line source has no line breaks to keep, but an engine sometimes writes one inside its
+    // reply ("Hello world" comes back as two lines). The app's own line-break check would then refuse
+    // the save. The words are kept and the stray break becomes a space. Both forms that
+    // countLineBreaks counts are covered: a real newline and an escaped backslash-n.
+    if (countLineBreaks(coreText) === 0) {
+      out = out.replace(/\s*(?:\r?\n|\\n)\s*/g, ' ');
+    }
+    return out;
+  };
+
   const wrapResult = (translatedCore: string) => {
-    const withQuotes = hasOuterUnescapedQuotes
-      ? `"${translatedCore.replace(/^\\?"|\\?"$/g, '')}"`
+    const core = hasOuterUnescapedQuotes
+      ? translatedCore.replace(/^\\?"|\\?"$/g, '')
       : translatedCore;
+    const withQuotes = hasOuterUnescapedQuotes ? `"${core}"` : core;
     return `${leadingSpace}${withQuotes}${trailingSpace}`;
   };
 
@@ -1044,7 +1096,7 @@ async function translateSingleSegmentUncached(
         if (pData && typeof pData.translatedText === 'string' && pData.translatedText.trim()) {
           const cleaned = stripMetadataLabels(pData.translatedText, coreText);
           if (cleaned && !isPollutedTranslation(cleaned)) {
-            const restored = restoreSegmentSyntax(cleaned, tokens, usesEscapedDoubleQuotes);
+            const restored = postProcess(restoreSegmentSyntax(cleaned, tokens, usesEscapedDoubleQuotes));
             if (!breaksIcuStructure(restored)) return restored;
           }
         }
@@ -1070,7 +1122,7 @@ async function translateSingleSegmentUncached(
       if (directResult && directResult.translatedText) {
         const cleaned = stripMetadataLabels(directResult.translatedText, coreText);
         if (cleaned && !isPollutedTranslation(cleaned)) {
-          const restored = restoreSegmentSyntax(cleaned, tokens, usesEscapedDoubleQuotes);
+          const restored = postProcess(restoreSegmentSyntax(cleaned, tokens, usesEscapedDoubleQuotes));
           if (!breaksIcuStructure(restored)) return restored;
         }
       }
@@ -1097,7 +1149,7 @@ async function translateSingleSegmentUncached(
       });
       const cleanedAi = stripMetadataLabels(translated, coreText);
       if (cleanedAi && !isPollutedTranslation(cleanedAi)) {
-        const restored = restoreSegmentSyntax(cleanedAi, tokens, usesEscapedDoubleQuotes);
+        const restored = postProcess(restoreSegmentSyntax(cleanedAi, tokens, usesEscapedDoubleQuotes));
         if (!breaksIcuStructure(restored)) return restored;
       }
     } catch (err) {
@@ -1112,7 +1164,7 @@ async function translateSingleSegmentUncached(
       const combined = await withRetry(() => fetchGoogleGtxRaw(cleanText, directLang, 5000));
       const decoded = stripMetadataLabels(decodeHtmlEntities(combined), coreText);
       if (decoded && !isPollutedTranslation(decoded)) {
-        const restored = restoreSegmentSyntax(decoded, tokens, usesEscapedDoubleQuotes);
+        const restored = postProcess(restoreSegmentSyntax(decoded, tokens, usesEscapedDoubleQuotes));
         if (!breaksIcuStructure(restored)) {
           noteGtxResult(true);
           return restored;
@@ -1173,7 +1225,7 @@ async function translateSingleSegmentUncached(
         }
 
         if (!isPollutedTranslation(rawResult)) {
-          const finalResult = restoreSegmentSyntax(rawResult, tokens, usesEscapedDoubleQuotes);
+          const finalResult = postProcess(restoreSegmentSyntax(rawResult, tokens, usesEscapedDoubleQuotes));
           if (finalResult && !breaksIcuStructure(finalResult)) {
             return finalResult;
           }
