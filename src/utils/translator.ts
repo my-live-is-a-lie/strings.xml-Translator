@@ -808,7 +808,7 @@ export function engineLabel(engine: string | undefined): string {
   return ENGINE_LABELS[engine] ?? engine;
 }
 
-/** Clears saved suggestions (for example after the user changes the translation provider). */
+/** Clears the in-memory suggestions and the saved entries. Nothing in the app calls this; tests use it to reset the cache between cases. */
 export function clearTranslationCache(): void {
   translationCache = new Map();
   scheduleStoredWrite(TRANSLATION_CACHE_KEY, () => '[]', 0);
