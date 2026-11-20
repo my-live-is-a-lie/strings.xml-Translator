@@ -7,7 +7,9 @@ import {
   findClauseBodyOpens,
   getIcuStructureIssues,
   hasMultilineIcuBlock,
+  itemUsesHashWithoutClauseNumber,
   splitIcuBlocks,
+  usesHashWithoutClauseNumber,
   validatePlaceholders,
 } from './placeholderCheck';
 import { SingleStringItem } from '../types';
@@ -952,5 +954,50 @@ describe('doubled braces do not pass the structural check', () => {
 
   it('rejects a doubled plain placeholder too', () => {
     expect(validatePlaceholders('Hi {name}', 'مرحبا {{name}}', 'ar').valid).toBe(false);
+  });
+});
+
+describe('usesHashWithoutClauseNumber / itemUsesHashWithoutClauseNumber - the # warning line', () => {
+  it('fires when the number vanished from a block that counts something', () => {
+    const noHash = '{count, plural, one {كتاب} other {كتب}}';
+    expect(usesHashWithoutClauseNumber(PLURAL_SRC, noHash, 'ar')).toBe(true);
+    expect(itemUsesHashWithoutClauseNumber(makeItem(PLURAL_SRC, noHash), 'ar')).toBe(true);
+  });
+
+  it('stays quiet for a correct Arabic plural that writes # in fewer forms', () => {
+    // The sentence still shows the number in `few`/`many`/`other`; one/two spell it out.
+    const arFew =
+      '{count, plural, zero {لا كتب} one {كتاب واحد} two {كتابان} few {# كتب} many {# كتابًا} other {# كتاب}}';
+    expect(usesHashWithoutClauseNumber(PLURAL_SRC, arFew, 'ar')).toBe(false);
+    expect(itemUsesHashWithoutClauseNumber(makeItem(PLURAL_SRC, arFew), 'ar')).toBe(false);
+  });
+
+  it('stays quiet when nothing counts anything', () => {
+    expect(usesHashWithoutClauseNumber('Hello', 'مرحبا', 'ar')).toBe(false);
+    expect(usesHashWithoutClauseNumber('Hi {name}', 'مرحبا {name}', 'ar')).toBe(false);
+    // An untranslated string has nothing to warn about yet.
+    expect(usesHashWithoutClauseNumber(PLURAL_SRC, '', 'ar')).toBe(false);
+  });
+
+  it('does not fire for plural-category warnings alone', () => {
+    // Only `one`/`other` where Arabic needs six: a category warning, not a lost number.
+    const partial = '{count, plural, one {# كتاب} other {# كتب}}';
+    expect(validatePlaceholders(PLURAL_SRC, partial, 'ar').warnings.length).toBeGreaterThan(0);
+    expect(usesHashWithoutClauseNumber(PLURAL_SRC, partial, 'ar')).toBe(false);
+  });
+
+  it('checks every part of a plurals/array item', () => {
+    const item = {
+      id: 'p1',
+      name: 'items',
+      type: 'plural' as const,
+      status: 'translated' as const,
+      order: 0,
+      items: [
+        { quantity: 'one' as const, source: '{n, plural, one {# x} other {# xs}}', target: '{n, plural, one {# س} other {# سس}}' },
+        { quantity: 'other' as const, source: '{n, plural, one {# y} other {# ys}}', target: '{n, plural, one {ص} other {صص}}' },
+      ],
+    };
+    expect(itemUsesHashWithoutClauseNumber(item, 'ar')).toBe(true);
   });
 });

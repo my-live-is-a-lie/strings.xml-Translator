@@ -1898,6 +1898,20 @@ export function getItemQaIssues(item: ResourceItem, targetLocale?: string): QaIs
 }
 
 /**
+ * True when a string writes `#` in one of its ICU blocks and the translation lost it from that
+ * block entirely: the reader then sees the sentence with no number in it, while the number is
+ * still being counted. A warning, never an error — some languages spell the number out, and no
+ * check can tell that from a mistake — so it is shown next to the save button and the user saves
+ * anyway. Only `'#'` is surfaced: the plural-category warnings fire on many correct translations
+ * (a language needing six forms where the source writes two) and would be noise.
+ */
+export function usesHashWithoutClauseNumber(source: string, target: string, targetLocale?: string): boolean {
+  if (!source.trim() || !target.trim()) return false;
+  if (!source.includes('#') && !target.includes('#')) return false;
+  return validatePlaceholders(source, target, targetLocale).warnings.includes('#');
+}
+
+/**
  * The ICU structural errors of an item: a translation that breaks an ICU block throws at
  * runtime (`String.format` / `MessageFormat`), the same reason a line-break mismatch is
  * unsaveable. The translation pipeline already refuses to produce such a reply; this is
@@ -1934,6 +1948,21 @@ export function getIcuStructureIssues(item: ResourceItem, targetLocale?: string)
         tokens: [],
       };
     });
+}
+
+/**
+ * Whether any part of an item (`string`, a `plurals` clause, an array element) writes `#` in its
+ * source and lost it from the matching target block. Used for the non-blocking warning line.
+ */
+export function itemUsesHashWithoutClauseNumber(item: ResourceItem, targetLocale?: string): boolean {
+  if (!item) return false;
+  const parts: Array<{ source: string; target: string }> = [];
+  if (item.type === 'string') {
+    parts.push({ source: item.source || '', target: item.target || '' });
+  } else if (item.type === 'plural' || item.type === 'array') {
+    for (const sub of item.items || []) parts.push({ source: sub.source || '', target: sub.target || '' });
+  }
+  return parts.some((p) => usesHashWithoutClauseNumber(p.source, p.target, targetLocale));
 }
 
 /** Only the line-break errors of an item: a translation with a different number of line breaks cannot be saved. */

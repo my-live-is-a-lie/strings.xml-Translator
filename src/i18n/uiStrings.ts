@@ -368,6 +368,10 @@ export const UI_STRINGS: Record<string, { en: string; ar: string }> = {
   "not_saved_the_translation_was": { en: "Not saved. The translation was corrected automatically, review it and press Save again:", ar: "لم يُحفظ النص. صحّحتُ الترجمة تلقائياً، راجعها ثم اضغط حفظ مرة أخرى:" },
   "not_saved_some_errors_could": { en: "Not saved. Some errors could not be fixed automatically, press Save again to ignore them:", ar: "لم يُحفظ النص. توجد أخطاء لم أستطع إصلاحها، اضغط حفظ مرة أخرى لتجاهلها:" },
   "not_saved_line_breaks_differ": { en: "Not saved. The translation must have exactly the same number of line breaks as the source:", ar: "لم يُحفظ النص. يجب أن يتطابق عدد الأسطر الجديدة مع الأصل تمامًا:" },
+  "icu_hash_warning": {
+    en: "Warning, not an error: this string counts something, but the translation no longer shows the number inside the ICU block. Save anyway if the language writes the number in words.",
+    ar: "تحذير لا خطأ: هذا النص يعدّ شيئًا، لكن الترجمة لم تُظهر الرقم داخل كتلة ICU. يمكنك الحفظ على أي حال إن كانت اللغة تكتب الرقم بالكلمات."
+  },
   "translation_statistics": { en: "Translation Statistics", ar: "إحصائيات الترجمة" },
   "translation_history_reset": { en: "Translation History & Reset (%1$s)", ar: "سجل الترجمات وإعادة التعيين (%1$s)" },
   "no_translated_strings_yet": { en: "No translated strings yet", ar: "لا توجد نصوص مترجمة حالياً" },

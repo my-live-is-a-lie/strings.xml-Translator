@@ -23,6 +23,7 @@ import {
   getIcuStructureIssues,
   getItemQaIssues,
   getLineBreakIssues,
+  itemUsesHashWithoutClauseNumber,
   QaIssue,
   setIcuClauseValue,
   setIcuTextValue,
@@ -1274,6 +1275,14 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   const [icuRejected, setIcuRejected] = useState(false);
 
   const liveSaveGuard = saveGuard?.hard ? (liveBreakIssues.length > 0 ? { ...saveGuard, remaining: liveBreakIssues } : null) : saveGuard;
+  // A non-blocking warning, separate from the save guard on purpose: it never becomes `hard`, it
+  // is not part of `saveGuard`, and the save path does not read it. It tells the user the number
+  // the sentence counts is no longer written inside its block — the one ICU finding that can be
+  // a correct translation (some languages spell the number out), so it must not stop the save.
+  const showHashWarning = React.useMemo(
+    () => itemUsesHashWithoutClauseNumber(toStoredItem(draftItem), targetLang),
+    [draftItem, targetLang]
+  );
   // counts match again (or another string is open): the message is done
   if (saveGuard?.hard && !liveSaveGuard) setSaveGuard(null);
 
@@ -2246,6 +2255,19 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               <div className="flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                 <span>{t('suggestion_rejected_icu')}</span>
+              </div>
+            </div>
+          )}
+
+          {showHashWarning && (
+            <div
+              role="status"
+              data-testid="icu-hash-warning"
+              className="mx-3 sm:mx-4 mb-2 rounded-xl border border-sky-300 bg-sky-50 px-3 py-2 text-xs text-sky-900 dark:border-sky-700/60 dark:bg-sky-950/40 dark:text-sky-200"
+            >
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{t('icu_hash_warning')}</span>
               </div>
             </div>
           )}
