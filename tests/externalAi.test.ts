@@ -119,3 +119,12 @@ describe('a damaged ICU reply cannot be applied', () => {
     expect(empty.issues.some((k) => BLOCKING_ISSUES.includes(k))).toBe(false);
   });
 });
+
+describe('accepted rows are stored in stored form', () => {
+  it('a multiline accepted row is stored with \\n escapes, not real breaks', () => {
+    const segs = buildSegments(items, 'en');
+    const rows = [{ segment: segs[0], text: 'مرحبا %s\nسطر ثان', issues: [] }];
+    const applied = applyTranslations(items, 'en', rows);
+    expect(applied[0]).toMatchObject({ target: 'مرحبا %s\\nسطر ثان' });
+  });
+});

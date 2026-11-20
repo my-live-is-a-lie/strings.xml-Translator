@@ -3,13 +3,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   bulkTranslateItems,
   clearTranslationCache,
+  isEchoReply,
   isFillableSuggestion,
   isRetryableError,
   suggestTranslation,
   suggestionRejectedForIcu,
 } from '../src/utils/translator';
 import type { ArrayStringItem, PluralStringItem, ResourceItem, SingleStringItem } from '../src/types';
-import { hasMultilineIcuBlock, validatePlaceholders } from '../src/utils/placeholderCheck';
+import { getLineBreakIssues, hasMultilineIcuBlock, validatePlaceholders } from '../src/utils/placeholderCheck';
 
 /**
  * End-to-end ICU behaviour of the translation pipeline.
@@ -386,5 +387,166 @@ describe('a rejected suggestion is reported honestly', () => {
     expect(res.source).toBe('google');
     expect(res.icuRejected).toBeUndefined();
     expect(suggestionRejectedForIcu(res)).toBe(false);
+  });
+});
+
+const NOTIF_SRC = `
+        {count, plural,
+            =0 {No notifications}
+            one {# notification}
+            other {# notifications}
+        }
+    `;
+
+/** Answers each engine from a per-query map, echoing anything not in it. */
+const replyByQuery = (map: Record<string, string>) =>
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) => {
+      const q = new URL(String(url)).searchParams.get('q') ?? '';
+      const hit = map[q] ?? q;
+      return String(url).includes('translate.googleapis.com') ? gtxOk(hit) : myMemoryOk(hit);
+    })
+  );
+
+describe('an engine echo is not a translation', () => {
+  const QUOTED = "'{username}' said: ''Hello!''";
+
+  it('falls through to the next engine when Google echoes the source', async () => {
+    replyWith(QUOTED, "'{username}' قال: ''مرحبًا!''");
+    const res = await suggestTranslation(QUOTED, 'ar');
+    expect(res.text).toBe("'{username}' قال: ''مرحبًا!''");
+    expect(res.source).toBe('mymemory');
+  });
+
+  it('leaves the string untranslated when every engine echoes it', async () => {
+    const source = 'Zebra stripes everywhere';
+    replyWith(source, source);
+    const res = await suggestTranslation(source, 'ar');
+    expect(res.source).toBe('heuristic');
+    expect(res.text).toBe(source);
+  });
+
+  it('bulk keeps an echoed string untranslated instead of saving English as translated', async () => {
+    const source = 'Zebra stripes everywhere';
+    replyWith(source, source);
+    const item: ResourceItem = {
+      id: 'e',
+      name: 'e',
+      type: 'string',
+      order: 0,
+      status: 'untranslated',
+      source,
+      target: '',
+    } as SingleStringItem;
+    const [out] = (await bulkTranslateItems([item], 'ar')) as SingleStringItem[];
+    expect(out.status).toBe('untranslated');
+    expect(out.target).toBe('');
+    expect(out.translationEngine).toBeUndefined();
+  });
+
+  it('does not treat a number-only segment as an echo', async () => {
+    replyWith('100%', '100%');
+    const res = await suggestTranslation('100%', 'ar');
+    expect(res.source).toBe('google');
+    expect(res.text).toBe('100%');
+  });
+
+  it('accepts an echo when the target is English', async () => {
+    replyWith('Zebra stripes everywhere', 'Zebra stripes everywhere');
+    const res = await suggestTranslation('Zebra stripes everywhere', 'en');
+    expect(res.source).toBe('google');
+    expect(res.text).toBe('Zebra stripes everywhere');
+  });
+
+  it('an echoed ICU block still translates clause by clause', async () => {
+    // Google echoes every query (whole block and each clause body); MyMemory
+    // translates the clause bodies, so the block is rebuilt piece by piece.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const q = new URL(String(url)).searchParams.get('q') ?? '';
+        if (String(url).includes('translate.googleapis.com')) return gtxOk(q);
+        const bodies: Record<string, string> = {
+          'No notifications': 'لا توجد إشعارات',
+          '# notification': '# إشعار',
+          '# notifications': '# إشعارات',
+        };
+        return myMemoryOk(bodies[q] ?? q);
+      })
+    );
+    const res = await suggestTranslation(NOTIF_SRC, 'ar');
+    expect(res.source).toBe('mymemory');
+    expect(validatePlaceholders(NOTIF_SRC, res.text, 'ar').valid).toBe(true);
+    expect(res.text).toContain('=0 {لا توجد إشعارات}');
+    expect(res.text).toContain('one {# إشعار}');
+    expect(res.text).toContain('other {# إشعارات}');
+  });
+});
+
+describe('isEchoReply', () => {
+  it('matches only a real echo with translatable Latin text', () => {
+    expect(isEchoReply('Hello world', 'Hello world', 'ar')).toBe(true);
+    expect(isEchoReply('Hello  world', 'Hello world', 'ar')).toBe(true); // re-flowed whitespace
+    expect(isEchoReply('Hello world', 'مرحبا بالعالم', 'ar')).toBe(false);
+    expect(isEchoReply('100%', '100%', 'ar')).toBe(false);
+    expect(isEchoReply('{count}', '{count}', 'ar')).toBe(false);
+    expect(isEchoReply('Hello world', 'Hello world', 'en')).toBe(false);
+  });
+});
+
+describe('bulk suggestions are stored in stored form', () => {
+  it('a plain multiline string is stored with \\n escapes, not real breaks', async () => {
+    replyByQuery({ 'First line': 'السطر الأول', 'Second line': 'السطر الثاني' });
+    const item: ResourceItem = {
+      id: 'm',
+      name: 'm',
+      type: 'string',
+      order: 0,
+      status: 'untranslated',
+      source: 'First line\nSecond line',
+      target: '',
+    } as SingleStringItem;
+    const [out] = (await bulkTranslateItems([item], 'ar')) as SingleStringItem[];
+    expect(out.status).toBe('translated');
+    expect(out.target).toBe('السطر الأول\\nالسطر الثاني');
+    expect(out.target).not.toContain('\n');
+  });
+
+  it('a multiline ICU block is stored with \\n escapes and keeps its break count', async () => {
+    replyByQuery({
+      'No notifications': 'لا توجد إشعارات',
+      '# notification': '# إشعار',
+      '# notifications': '# إشعارات',
+    });
+    const item: ResourceItem = {
+      id: 'n',
+      name: 'notification_count',
+      type: 'string',
+      order: 0,
+      status: 'untranslated',
+      source: NOTIF_SRC,
+      target: '',
+    } as SingleStringItem;
+    const [out] = (await bulkTranslateItems([item], 'ar')) as SingleStringItem[];
+    expect(out.status).toBe('translated');
+    expect(out.target).not.toContain('\n');
+    expect(out.target).toContain('\\n');
+    expect(getLineBreakIssues(out)).toEqual([]);
+  });
+
+  it('a multiline plural quantity is stored with \\n escapes too', async () => {
+    replyByQuery({ 'First line': 'السطر الأول', 'Second line': 'السطر الثاني' });
+    const plural: ResourceItem = {
+      id: 'p',
+      name: 'p',
+      type: 'plural',
+      order: 0,
+      status: 'untranslated',
+      items: [{ quantity: 'one', source: 'First line\nSecond line', target: '' }],
+    } as unknown as PluralStringItem;
+    const [out] = (await bulkTranslateItems([plural], 'ar')) as PluralStringItem[];
+    expect(out.items.find((i) => i.quantity === 'one')?.target).toBe('السطر الأول\\nالسطر الثاني');
+    expect(out.status).toBe('translated');
   });
 });

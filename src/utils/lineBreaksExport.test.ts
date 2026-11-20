@@ -81,3 +81,34 @@ describe('line breaks through the editor and back out', () => {
     expect(getLineBreakIssues({ ...labels, target: '', status: 'untranslated' } as ResourceItem)).toEqual([]);
   });
 });
+
+describe('a stored-form target exports in the source style', () => {
+  it('stored \\n becomes real breaks when the source uses real breaks only', () => {
+    // A pretty-printed ICU block: the source has real line breaks and no \n tokens.
+    // A target saved through the editor is stored in \n form; the export must write
+    // it back with real breaks, so the file matches the original instead of mixing forms.
+    const source = '\n        {count, plural,\n            =0 {No notifications}\n            one {# notification}\n            other {# notifications}\n        }\n    ';
+    const target = '\\n        {count, plural,\\n            =0 {لا توجد إشعارات}\\n            one {# إشعار}\\n            other {# إشعارات}\\n        }\\n    ';
+    const item = {
+      id: 'n',
+      name: 'notification_count',
+      type: 'string',
+      order: 0,
+      status: 'translated',
+      source,
+      target,
+    } as ResourceItem;
+    const out = generateAndroidXml([item], defaultExportOptions, {
+      rawSourceXml: '',
+      resourcesAttributes: '',
+      indentStyle: '    ',
+      itemIndentStyle: '    ',
+      items: [item],
+    });
+    expect(out).not.toContain('\\n');
+    // Re-importing the export reproduces the target with real breaks (the stored
+    // \n escapes are gone) and the same structure as the source.
+    const back = parseAndroidXml(out).items[0] as { source: string };
+    expect(back.source).toBe(toEditorText(target));
+  });
+});
