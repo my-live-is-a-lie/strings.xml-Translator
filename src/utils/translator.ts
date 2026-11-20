@@ -667,7 +667,26 @@ const TRANSLATION_CACHE_KEY = `translation_cache_v${TRANSLATION_CACHE_VERSION}`;
 const TRANSLATION_CACHE_LIMIT = 5000;
 let translationCache: Map<string, SuggestionResult> | null = null;
 
+/**
+ * Older builds wrote their entries under a previous key. This build never reads them, and they can
+ * be tens of kilobytes, so they are removed. It runs on first use of the cache in a session, not in
+ * `clearTranslationCache` (nothing in the app calls that one).
+ */
+let olderTranslationCachesRemoved = false;
+function removeOlderTranslationCaches(): void {
+  if (olderTranslationCachesRemoved) return;
+  olderTranslationCachesRemoved = true;
+  for (let version = 1; version < TRANSLATION_CACHE_VERSION; version++) {
+    try {
+      removeStoredItem(`translation_cache_v${version}`);
+    } catch (err) {
+      debugIgnored('translator', err);
+    }
+  }
+}
+
 function getTranslationCache(): Map<string, SuggestionResult> {
+  removeOlderTranslationCaches();
   if (!translationCache) {
     translationCache = new Map();
     try {
@@ -793,16 +812,22 @@ export function engineLabel(engine: string | undefined): string {
 export function clearTranslationCache(): void {
   translationCache = new Map();
   scheduleStoredWrite(TRANSLATION_CACHE_KEY, () => '[]', 0);
-  // The older builds wrote their entries under a previous key. They are dead weight now (this
-  // build never reads them) and can be tens of kilobytes of localStorage, so they are removed
-  // rather than left behind forever.
-  for (let version = 1; version < TRANSLATION_CACHE_VERSION; version++) {
-    try {
-      removeStoredItem(`translation_cache_v${version}`);
-    } catch (err) {
-      debugIgnored('translator', err);
-    }
-  }
+}
+
+/**
+ * Some engines answer a source's no-break space (U+00A0, e.g. between a number and its unit) with an
+ * ordinary space. The source's separators are put back, but only when the reply has exactly as many
+ * words: with a different count the position of each separator is a guess, so the reply is kept as
+ * it came.
+ */
+function restoreInteriorNbsp(source: string, reply: string): string {
+  if (!source.includes('\u00a0') || reply.includes('\u00a0')) return reply;
+  const srcTokens = source.split(/(\u00a0| )/);
+  const srcWords = srcTokens.filter((_, i) => i % 2 === 0);
+  const srcSeps = srcTokens.filter((_, i) => i % 2 === 1);
+  const replyWords = reply.split(' ');
+  if (replyWords.length !== srcWords.length || replyWords.some((w) => w === '')) return reply;
+  return replyWords.reduce((acc, w, i) => (i === 0 ? w : acc + srcSeps[i - 1] + w), '');
 }
 
 async function translateSingleSegment(
@@ -981,7 +1006,7 @@ async function translateSingleSegmentUncached(
     if (countLineBreaks(coreText) === 0) {
       out = out.replace(/\s*(?:\r?\n|\\n)\s*/g, ' ');
     }
-    return out;
+    return restoreInteriorNbsp(coreText, out);
   };
 
   const wrapResult = (translatedCore: string) => {

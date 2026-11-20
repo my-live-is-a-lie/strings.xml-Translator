@@ -356,3 +356,32 @@ describe('an engine cannot add a line break to a single-line string', () => {
     expect(res.text).toBe('مرحبا\nبالعالم');
   });
 });
+
+describe('a no-break space of the source survives an engine that drops it', () => {
+  const AR = 'مرحبا بالعالم';
+
+  it('puts the source no-break space back when the word count matches', async () => {
+    routeMock({ 'Hello\u00a0world': AR }, []);
+    clearTranslationCache();
+    const res = await suggestTranslation('Hello\u00a0world', 'ar');
+    expect(res.text).toBe('مرحبا\u00a0بالعالم');
+  });
+
+  it('keeps the reply as it came when the word count differs (no guessing)', async () => {
+    routeMock({ 'a\u00a0b c': 'x y' }, []);
+    clearTranslationCache();
+    const res = await suggestTranslation('a\u00a0b c', 'ar');
+    expect(res.text).toBe('x y');
+  });
+});
+
+describe('versions of the translation cache older than this build are removed', () => {
+  it('removes the v1 entries on first use of the cache', async () => {
+    vi.resetModules();
+    const mod = await import('../src/utils/translator');
+    window.localStorage.setItem('translation_cache_v1', '[["old","x"]]');
+    routeMock({ 'Hello world': 'مرحبا بالعالم' }, []);
+    await mod.suggestTranslation('Hello world', 'ar');
+    expect(window.localStorage.getItem('translation_cache_v1')).toBeNull();
+  });
+});
