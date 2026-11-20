@@ -69,13 +69,16 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   const [editTestResult, setEditTestResult] = useState<ProviderTestResult | null>(null);
   const editNameInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Warn when the free Google engine keeps failing, since it relies on an unofficial endpoint
-  const [gtxDown, setGtxDown] = useState(() => gtxLooksUnavailable());
+  // Warn when the free Google engine keeps failing, since it relies on an unofficial endpoint.
+  // The status is read on every render: it expires with time (no event fires for that), and the
+  // panel re-renders when it opens, so the warning is current whenever it is visible.
+  const [, setGtxStatusTick] = useState(0);
   useEffect(() => {
-    const onChange = () => setGtxDown(gtxLooksUnavailable());
+    const onChange = () => setGtxStatusTick((n) => n + 1);
     window.addEventListener(GTX_STATUS_EVENT, onChange);
     return () => window.removeEventListener(GTX_STATUS_EVENT, onChange);
   }, []);
+  const gtxDown = gtxLooksUnavailable();
 
   const deleteDialogRef = useDialog(providerToDelete !== null, () => setProviderToDelete(null));
 
