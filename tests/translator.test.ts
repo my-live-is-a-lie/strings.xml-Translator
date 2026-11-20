@@ -216,6 +216,36 @@ describe('gtxLooksUnavailable counts only failed requests', () => {
     await suggestTranslation('Fourth failure', 'ar');
     expect(gtxLooksUnavailable()).toBe(false);
   });
+  it('empty replies with a valid shape count as failures, not answers', async () => {
+    // An engine that answers with no text translates nothing: it must not keep resetting the warning.
+    await resetCounter();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (String(url).includes('translate.googleapis.com')) return new Response('[[]]', { status: 200 });
+        return myMemoryOk('بديل');
+      })
+    );
+    for (let i = 0; i < 3; i++) {
+      await suggestTranslation(`Empty reply ${i}`, 'ar');
+    }
+    expect(gtxLooksUnavailable()).toBe(true);
+  });
+
+  it('a non-JSON page with status 200 counts as a failure', async () => {
+    await resetCounter();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (String(url).includes('translate.googleapis.com')) return new Response('<html>sorry</html>', { status: 200 });
+        return myMemoryOk('بديل');
+      })
+    );
+    for (let i = 0; i < 3; i++) {
+      await suggestTranslation(`Html page ${i}`, 'ar');
+    }
+    expect(gtxLooksUnavailable()).toBe(true);
+  });
 });
 
 describe('bulkTranslateItems isolates per-item failures', () => {

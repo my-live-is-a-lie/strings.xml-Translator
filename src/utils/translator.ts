@@ -1225,12 +1225,23 @@ async function translateSingleSegmentUncached(
 
   // Helper for Google Translate GTX neural endpoint (unofficial; shared with the server)
   const tryGoogleGtx = async (): Promise<string | null> => {
+    // Only the request decides whether the engine is reachable. A request that throws (network,
+    // HTTP error, a non-JSON page such as a consent or "sorry" page) is a failure.
+    let combined: string;
     try {
-      const combined = await withRetry(() => fetchGoogleGtxRaw(cleanText, directLang, 5000));
-      // A reply arrived, so the engine is reachable: only a failed request counts towards
-      // the "unavailable" warning. A reply the ICU or line-break gates reject says the
-      // content was unusable, not that the engine is down.
-      noteGtxResult(true);
+      combined = await withRetry(() => fetchGoogleGtxRaw(cleanText, directLang, 5000));
+    } catch (err) {
+      logFallback('google', err);
+      noteGtxResult(false);
+      return null;
+    }
+    // An empty reply is not an answer: a valid response with no text would otherwise reset the
+    // counter forever, and the warning would never show for an engine that translates nothing.
+    // A reply the ICU or line-break gates reject still counts as an answer, since the engine did
+    // produce text.
+    noteGtxResult(combined.trim() !== '');
+    // Processing errors are bugs in this app, not an outage of the engine, so they are not counted.
+    try {
       const decoded = stripMetadataLabels(decodeHtmlEntities(combined), coreText);
       if (decoded && !isPollutedTranslation(decoded)) {
         const restored = postProcess(restoreSegmentSyntax(decoded, tokens, usesEscapedDoubleQuotes));
@@ -1240,7 +1251,6 @@ async function translateSingleSegmentUncached(
       }
     } catch (err) {
       logFallback('google', err);
-      noteGtxResult(false);
     }
     return null;
   };
