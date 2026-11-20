@@ -1,5 +1,5 @@
 import { debugIgnored } from './debug';
-import { countLineBreaks } from './newlines';
+import { countLineBreaks, toStoredText } from './newlines';
 // Robust translation engine for Android strings with offline glossary, format token protection, and machine translation
 import { ANDROID_LOCALIZATION_DICTIONARY, CASE_INSENSITIVE_GLOSSARY, ARABIC_PLURAL_GLOSSARY } from './glossary';
 import { ResourceItem, SingleStringItem, PluralStringItem, ArrayStringItem } from '../types';
@@ -918,16 +918,37 @@ async function translateSingleSegment(
   return result;
 }
 
-/** True when a clause body holds human-readable words worth translating, as opposed
- * to pure syntax (`{count}`, `%s`, `#`, an HTML tag, a quoted literal like `'#'`). */
-function hasTranslatableText(body: string): boolean {
-  const stripped = body
+/** Removes ICU placeholders, format tokens, HTML tags, `#`, and `\n`/`\t` escapes, leaving the human-readable words. */
+function stripNonText(body: string): string {
+  return body
     .replace(/\{[^{}]*\}/g, '')
     .replace(/%(?:\d+\$)?[+# 0,-]*\d*(?:\.\d+)?[bcdefgopsx%]/gi, '')
     .replace(/<\/?[a-zA-Z][^>]*>/g, '')
     .replace(/#/g, '')
     .replace(/\\n|\\t/g, ' ');
-  return /[\p{L}\p{N}]/u.test(stripped);
+}
+
+/** True when a clause body holds human-readable words worth translating, as opposed
+ * to pure syntax (`{count}`, `%s`, `#`, an HTML tag, a quoted literal like `'#'`). */
+function hasTranslatableText(body: string): boolean {
+  return /[\p{L}\p{N}]/u.test(stripNonText(body));
+}
+
+/**
+ * True when an engine reply is the source text handed back unchanged: the engine
+ * did not translate anything. Only Latin letters count as translatable text — a
+ * segment with no Latin letters (a number, a lone placeholder, text already in a
+ * non-Latin script) has nothing an engine could change, so echoing it is correct.
+ * The source language is English (the MyMemory pair is hard-coded en|... and the
+ * GTX call sets sl=en); an English target has nothing to change either, so
+ * echoes are accepted there. Whitespace is collapsed for the comparison, so an
+ * engine that merely re-flows the source still counts as an echo.
+ */
+export function isEchoReply(sourceText: string, candidateText: string, baseLang: string): boolean {
+  if (baseLang === 'en') return false;
+  if (!/[A-Za-z]/.test(stripNonText(sourceText))) return false;
+  const norm = (s: string) => s.replace(/\s+/g, ' ').trim();
+  return norm(candidateText) === norm(sourceText);
 }
 
 /**
@@ -1177,7 +1198,8 @@ async function translateSingleSegmentUncached(
           const cleaned = stripMetadataLabels(pData.translatedText, coreText);
           if (cleaned && !isPollutedTranslation(cleaned)) {
             const restored = postProcess(restoreSegmentSyntax(cleaned, tokens, usesEscapedDoubleQuotes));
-            if (!breaksIcuStructure(restored) && !changesLineBreaks(restored)) return restored;
+            if (!breaksIcuStructure(restored) && !changesLineBreaks(restored) && !isEchoReply(coreText, restored, baseLang))
+              return restored;
           }
         }
       } catch (err) {
@@ -1203,7 +1225,8 @@ async function translateSingleSegmentUncached(
         const cleaned = stripMetadataLabels(directResult.translatedText, coreText);
         if (cleaned && !isPollutedTranslation(cleaned)) {
           const restored = postProcess(restoreSegmentSyntax(cleaned, tokens, usesEscapedDoubleQuotes));
-          if (!breaksIcuStructure(restored) && !changesLineBreaks(restored)) return restored;
+          if (!breaksIcuStructure(restored) && !changesLineBreaks(restored) && !isEchoReply(coreText, restored, baseLang))
+            return restored;
         }
       }
     } catch (err) {
@@ -1230,7 +1253,8 @@ async function translateSingleSegmentUncached(
       const cleanedAi = stripMetadataLabels(translated, coreText);
       if (cleanedAi && !isPollutedTranslation(cleanedAi)) {
         const restored = postProcess(restoreSegmentSyntax(cleanedAi, tokens, usesEscapedDoubleQuotes));
-        if (!breaksIcuStructure(restored) && !changesLineBreaks(restored)) return restored;
+        if (!breaksIcuStructure(restored) && !changesLineBreaks(restored) && !isEchoReply(coreText, restored, baseLang))
+          return restored;
       }
     } catch (err) {
       logFallback('gemini', err);
@@ -1260,7 +1284,8 @@ async function translateSingleSegmentUncached(
       const decoded = stripMetadataLabels(decodeHtmlEntities(combined), coreText);
       if (decoded && !isPollutedTranslation(decoded)) {
         const restored = postProcess(restoreSegmentSyntax(decoded, tokens, usesEscapedDoubleQuotes));
-        if (!breaksIcuStructure(restored) && !changesLineBreaks(restored)) {
+        // An echo still counted as an answer above: the engine replied, it just did not translate.
+        if (!breaksIcuStructure(restored) && !changesLineBreaks(restored) && !isEchoReply(coreText, restored, baseLang)) {
           return restored;
         }
       }
@@ -1319,7 +1344,7 @@ async function translateSingleSegmentUncached(
 
         if (!isPollutedTranslation(rawResult)) {
           const finalResult = postProcess(restoreSegmentSyntax(rawResult, tokens, usesEscapedDoubleQuotes));
-          if (finalResult && !breaksIcuStructure(finalResult) && !changesLineBreaks(finalResult)) {
+          if (finalResult && !breaksIcuStructure(finalResult) && !changesLineBreaks(finalResult) && !isEchoReply(coreText, finalResult, baseLang)) {
             return finalResult;
           }
         }
@@ -1521,6 +1546,8 @@ export async function prewarmProviderBatch(
         if (!raw) return;
         const cleaned = normalizeEngineReply(src, stripMetadataLabels(raw, src));
         if (!cleaned || POLLUTED_BATCH_RESULT.test(cleaned)) return;
+        // An echoed batch reply must not be cached as a translation either.
+        if (isEchoReply(src, cleaned, targetLang.split('-')[0].toLowerCase())) return;
         cacheSegmentResult(cacheKeyFor(src, directLang, undefined), { text: cleaned, source: provider.type });
       });
     } catch (err) {
@@ -1576,7 +1603,9 @@ export async function bulkTranslateItems(
         : Boolean(targetText.trim()) && res?.source !== undefined;
       return {
         ...single,
-        target: targetText,
+        // Suggestions are stored in stored form (\n escapes), like an editor save,
+        // so a bulk-translated string and a hand-saved one never export in mixed forms.
+        target: toStoredText(targetText),
         status: hasTranslation ? 'translated' : 'untranslated',
         // On rejection the kept text is the user's own, so its previous source and engine
         // stay — recording 'heuristic' as the engine of text no engine produced would be
@@ -1598,7 +1627,7 @@ export async function bulkTranslateItems(
               ...pi,
               // A rejected quantity keeps its previous target; the English source must not
               // land in the field (same rule as the string path above).
-              target: res?.source === 'heuristic' ? pi.target : res?.text || pi.target,
+              target: res?.source === 'heuristic' ? pi.target : toStoredText(res?.text || pi.target),
             };
           } catch (err) {
             // One bad quantity keeps its original text; the other quantities still translate.
@@ -1635,7 +1664,7 @@ export async function bulkTranslateItems(
               ...ai,
               // A rejected element keeps its previous target; the English source must not
               // land in the field (same rule as the string path above).
-              target: res?.source === 'heuristic' ? ai.target : res?.text || ai.target,
+              target: res?.source === 'heuristic' ? ai.target : toStoredText(res?.text || ai.target),
             };
           } catch (err) {
             // One bad element keeps its original text; the other elements still translate.

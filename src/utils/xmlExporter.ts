@@ -137,6 +137,13 @@ export function syncTargetStructureWithSource(source: string, target: string): s
       // Source only has single \n (e.g. msg_popup_permission, downloads_storage_ask_summary)
       res = res.replace(/\\n\\n/g, '\\n');
     }
+
+    // 2c. The source uses real line breaks only (no \n tokens at all): a target
+    // stored in \n form (e.g. saved through the editor) is written back with real
+    // breaks, so the export matches the source's style instead of mixing forms.
+    if (!sourceHasSingleN && /\r?\n/.test(source)) {
+      res = res.replace(/(?<!\\)\\n/g, '\n');
+    }
   }
 
   // 3. Preserve leading/trailing single space if present in source (e.g. need_login_hint, app_description_new)

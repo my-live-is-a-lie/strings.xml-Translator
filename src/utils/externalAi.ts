@@ -1,6 +1,7 @@
 import { ArrayStringItem, PluralStringItem, ResourceItem, SingleStringItem } from '../types';
 import { normalizePluralsForLanguage } from './xmlParser';
 import { validatePlaceholders } from './placeholderCheck';
+import { toStoredText } from './newlines';
 
 // "External AI" flow: the strings are exported as JSON (+ a ready prompt), the user runs them through any AI app
 // (ChatGPT, Gemini, Claude...), pastes or uploads the reply, and it is validated before anything is applied.
@@ -175,13 +176,13 @@ export function applyTranslations(items: ResourceItem[], targetLang: string, acc
     if (!rows) continue;
     const meta = { translationSource: 'ai' as const, translationEngine: 'external-ai' };
     if (item.type === 'string') {
-      out.push({ ...(item as SingleStringItem), target: rows[0].text, status: 'translated', ...meta });
+      out.push({ ...(item as SingleStringItem), target: toStoredText(rows[0].text), status: 'translated', ...meta });
     } else if (item.type === 'plural') {
-      const byQ = new Map(rows.map((r) => [(r.segment.part as { quantity: string }).quantity, r.text]));
+      const byQ = new Map(rows.map((r) => [(r.segment.part as { quantity: string }).quantity, toStoredText(r.text)]));
       const next = (item as PluralStringItem).items.map((q) => ({ ...q, target: byQ.get(q.quantity) ?? q.target }));
       out.push({ ...(item as PluralStringItem), items: next, status: next.every((q) => q.target.trim()) ? 'translated' : item.status, ...meta });
     } else {
-      const byI = new Map(rows.map((r) => [(r.segment.part as { index: number }).index, r.text]));
+      const byI = new Map(rows.map((r) => [(r.segment.part as { index: number }).index, toStoredText(r.text)]));
       const next = (item as ArrayStringItem).items.map((e) => ({ ...e, target: byI.get(e.index) ?? e.target }));
       out.push({ ...(item as ArrayStringItem), items: next, status: next.every((e) => e.target.trim()) ? 'translated' : item.status, ...meta });
     }
