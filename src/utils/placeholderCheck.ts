@@ -1121,16 +1121,21 @@ function collectElementTokens(el: IcuElement): string[] {
   return tokens;
 }
 
-/** The number of `#` elements in a parsed message (recursing into clauses). */
-function countHashElements(elements: IcuElement[]): number {
-  let count = 0;
+/**
+ * The blocks that own a `#` in a parsed message (recursing into clauses). The owner matters:
+ * `#` is interpolated only inside its own plural block, so two `#` in two different blocks are
+ * not interchangeable.
+ */
+function collectHashOwners(elements: IcuElement[], owner = ''): string[] {
+  const out: string[] = [];
   for (const el of elements) {
-    if (el.kind === 'hash') count++;
+    if (el.kind === 'hash') out.push(owner);
     if (el.kind === 'block') {
-      for (const clause of el.clauses) count += countHashElements(clause.elements);
+      const blockKey = `${el.name}:${el.type}`;
+      for (const clause of el.clauses) out.push(...collectHashOwners(clause.elements, blockKey));
     }
   }
-  return count;
+  return out;
 }
 
 /**
@@ -1158,20 +1163,21 @@ function compareMessages(
     extraCategories: [],
   };
   compareElementLists(parseIcuMessage(source), parseIcuMessage(target), targetLocale, acc);
-  // `#` appears once per clause that uses it. When the locale-aware check
-  // applies, its count legitimately differs between languages (e.g. 6 Arabic
-  // clauses vs 2 English ones), so it is compared by presence inside matched
-  // clauses only. Otherwise (no locale, or an unsupported one) the total
-  // count is compared, so a different number of `#` is a mismatch.
-  const srcHashCount = countHashElements(parseIcuMessage(source));
-  const tgtHashCount = countHashElements(parseIcuMessage(target));
-  const localeAware =
-    !!targetLocale &&
-    (srcHashCount > 0 || tgtHashCount > 0) &&
-    getPluralCategoriesForLocale(targetLocale, 'cardinal') !== null;
-  if (!localeAware) {
-    if (tgtHashCount < srcHashCount && !acc.missing.includes('#')) acc.missing.push('#');
-    if (tgtHashCount > srcHashCount && !acc.extra.includes('#')) acc.extra.push('#');
+  // How many `#` the source and the target write. The TOTAL is a property of the language, not
+  // of correctness: Arabic has six plural forms and legitimately writes `#` in more of them
+  // than English does, and `كتاب واحد` / `كتابان` (one, two) carry no numeral at all. A
+  // whole-message count refused such a translation as a damaged block, so it could not be
+  // saved at all (the save gate is `validatePlaceholders(...).valid`).
+  //
+  // What a reader would notice — and the only thing checked now — is a block that uses `#`
+  // whose target copy lost it: `#` is interpolated only inside its own block, so two `#` in two
+  // different blocks are not interchangeable. That is a warning, never an error: the numeral is
+  // often ungrammatical in one form (Arabic one/two) and some languages spell the number out,
+  // and no check can tell that from a mistake. Dropping a `#` from one clause is not reported at
+  // all (see `compareElementLists`); adding one never is (the value is already localised).
+  const tgtBlocksWithHash = new Set(collectHashOwners(parseIcuMessage(target)));
+  for (const block of new Set(collectHashOwners(parseIcuMessage(source)))) {
+    if (!tgtBlocksWithHash.has(block) && !acc.warnings.includes('#')) acc.warnings.push('#');
   }
   return {
     missing: Array.from(new Set(acc.missing)),
@@ -1199,6 +1205,11 @@ function compareElementLists(
       }
     }
     if (matchIdx === -1) {
+      // A `#` a clause of a kept block does not write is not a structural error: the numeral is
+      // often ungrammatical in that form (Arabic says `كتاب واحد` / `كتابان` for one and two),
+      // and a spare `#` glued back would print the number twice. `compareMessages` reports the
+      // case that matters — a whole block that lost its `#` — as a warning.
+      if (key === '#') continue;
       // A dropped block takes its contents with it: report them too, so the
       // missing list names what was inside the block, not just the block.
       acc.missing.push(...collectElementTokens(srcEl));

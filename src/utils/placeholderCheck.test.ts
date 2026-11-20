@@ -279,11 +279,39 @@ describe('validatePlaceholders', () => {
     expect(result.valid).toBe(true);
     expect(result.missingInTarget).toEqual([]);
     // The order of the extra tokens is an implementation detail of the
-    // structural comparison (it reports each clause's category, then the
-    // `#` count difference), so compare the set, not the order.
+    // structural comparison, so compare the set, not the order. A different
+    // number of `#` is no longer a token difference: a language with more
+    // plural forms writes more of them, and the numeral is often
+    // ungrammatical in one form (Arabic one/two), so the count is not
+    // compared at all — only a block that lost its `#` entirely, and that is
+    // reported by `compareMessages` as a warning.
     expect([...result.extraInTarget].sort()).toEqual(
-      ['plural:zero', '#', 'plural:two', 'plural:few', 'plural:many'].sort()
+      ['plural:zero', 'plural:two', 'plural:few', 'plural:many'].sort()
     );
+  });
+
+  it('accepts an Arabic plural that writes # in only some of its six forms', () => {
+    // Arabic says `كتاب واحد` / `كتابان` for one and two: the numeral is ungrammatical there,
+    // so a correct translation has FEWER `#` than the English source. The old whole-message
+    // count called this a damaged block, and the save gate refused to save it.
+    const arFew = '{count, plural, zero {لا كتب} one {كتاب واحد} two {كتابان} few {# كتب} many {# كتابًا} other {# كتاب}}';
+    const result = validatePlaceholders(PLURAL_SRC, arFew, 'ar');
+    expect(result.valid).toBe(true);
+    expect(result.missingInTarget).toEqual([]);
+    expect(result.warnings).toEqual([]);
+
+    // More `#` than the source is fine too: Arabic writes six forms where English writes two.
+    const arAll = '{count, plural, zero {# كتاب} one {# كتاب} two {# كتابين} few {# كتب} many {# كتابًا} other {# كتاب}}';
+    expect(validatePlaceholders(PLURAL_SRC, arAll, 'ar').valid).toBe(true);
+  });
+
+  it('does not accept a block that lost its # altogether', () => {
+    // The number silently disappears from the sentence — a real finding, reported as a warning
+    // so the user sees it without the save being blocked (some languages do spell it out).
+    const noHash = '{count, plural, one {كتاب} other {كتب}}';
+    const result = validatePlaceholders(PLURAL_SRC, noHash, 'ar');
+    expect(result.valid).toBe(true);
+    expect(result.warnings).toContain('#');
   });
 
   it('does not double-count a nested offset onto the outer block', () => {
