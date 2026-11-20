@@ -784,8 +784,9 @@ const ENGINE_LABELS: Record<string, string> = {
   heuristic: 'Heuristic',
 };
 
-// The free Google engine uses an unofficial endpoint that can stop working without notice. After a few failures
-// in a row the UI is told so it can suggest an official or self-hosted provider.
+// The free Google engine uses an unofficial endpoint that can stop working without notice. After a few
+// failed requests in a row the UI is told so it can suggest an official or self-hosted provider.
+// A reply that arrives but is rejected for its content does not count: the engine answered.
 const GTX_FAILURE_THRESHOLD = 3;
 let gtxConsecutiveFailures = 0;
 
@@ -817,9 +818,9 @@ export function isFillableSuggestion(res: SuggestionResult | undefined | null): 
 }
 export const GTX_STATUS_EVENT = 'gtx-status-change';
 
-function noteGtxResult(ok: boolean): void {
+function noteGtxResult(answered: boolean): void {
   const wasUnavailable = gtxConsecutiveFailures >= GTX_FAILURE_THRESHOLD;
-  gtxConsecutiveFailures = ok ? 0 : gtxConsecutiveFailures + 1;
+  gtxConsecutiveFailures = answered ? 0 : gtxConsecutiveFailures + 1;
   const isUnavailable = gtxConsecutiveFailures >= GTX_FAILURE_THRESHOLD;
   if (wasUnavailable !== isUnavailable && typeof window !== 'undefined') {
     window.dispatchEvent(new Event(GTX_STATUS_EVENT));
@@ -1226,18 +1227,21 @@ async function translateSingleSegmentUncached(
   const tryGoogleGtx = async (): Promise<string | null> => {
     try {
       const combined = await withRetry(() => fetchGoogleGtxRaw(cleanText, directLang, 5000));
+      // A reply arrived, so the engine is reachable: only a failed request counts towards
+      // the "unavailable" warning. A reply the ICU or line-break gates reject says the
+      // content was unusable, not that the engine is down.
+      noteGtxResult(true);
       const decoded = stripMetadataLabels(decodeHtmlEntities(combined), coreText);
       if (decoded && !isPollutedTranslation(decoded)) {
         const restored = postProcess(restoreSegmentSyntax(decoded, tokens, usesEscapedDoubleQuotes));
         if (!breaksIcuStructure(restored) && !changesLineBreaks(restored)) {
-          noteGtxResult(true);
           return restored;
         }
       }
     } catch (err) {
       logFallback('google', err);
+      noteGtxResult(false);
     }
-    noteGtxResult(false);
     return null;
   };
 

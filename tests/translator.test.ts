@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   bulkTranslateItems,
   clearTranslationCache,
+  gtxLooksUnavailable,
   isRetryableError,
   suggestTranslation,
   withRetry,
@@ -130,6 +131,90 @@ describe('suggestTranslation retries transient failures', () => {
     expect(res.source).toBe('mymemory');
     expect(gtxCalls).toBe(1);
     expect(myMemoryCalls).toBe(1);
+  });
+});
+
+describe('gtxLooksUnavailable counts only failed requests', () => {
+  // A pretty-printed plural block: it cannot be split on its line breaks, so the
+  // whole-string gates judge the reply as one piece.
+  const BLOCK =
+    '{count, plural,\n  =0 {No notifications}\n  one {# notification}\n  other {# notifications}\n}';
+  const BLOCK_AR =
+    '{count, plural,\n  =0 {لا توجد إشعارات}\n  one {# إشعار}\n  other {# إشعارات}\n}';
+  // Keywords translated and the breaks dropped: both gates reject this reply.
+  const BLOCK_MANGLED = '{عد، جمع، =0 {لا توجد إشعارات} one {# إشعار} other {# إشعارات}}';
+
+  // The counter is module state with no reset export, so each case starts with one
+  // successful GTX reply to bring it back to zero.
+  const resetCounter = async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (String(url).includes('translate.googleapis.com')) return gtxOk('إعادة تعيين');
+        return myMemoryOk('إعادة تعيين');
+      })
+    );
+    const res = await suggestTranslation('Reset the counter', 'ar');
+    expect(res.source).toBe('google');
+    expect(gtxLooksUnavailable()).toBe(false);
+  };
+
+  const gtxRejectsBlock = () =>
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (String(url).includes('translate.googleapis.com')) return gtxOk(BLOCK_MANGLED);
+        return myMemoryOk(BLOCK_AR);
+      })
+    );
+
+  // A plain Error is not retryable, so the request fails at once instead of burning
+  // 1.5 s of retry backoff per call; the counter increments once per failed request
+  // either way, and retry behaviour is covered by the tests above.
+  const gtxFails = () =>
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (String(url).includes('translate.googleapis.com')) throw new Error('Network down');
+        return myMemoryOk('بديل');
+      })
+    );
+
+  it('three rejected replies in a row do not mark GTX unavailable', async () => {
+    await resetCounter();
+    gtxRejectsBlock();
+    for (let i = 0; i < 3; i++) {
+      clearTranslationCache();
+      const res = await suggestTranslation(BLOCK, 'ar');
+      expect(res.source).toBe('mymemory');
+    }
+    expect(gtxLooksUnavailable()).toBe(false);
+  });
+
+  it('three failed requests in a row mark GTX unavailable', async () => {
+    await resetCounter();
+    gtxFails();
+    for (let i = 0; i < 3; i++) {
+      await suggestTranslation(`Failing request ${i}`, 'ar');
+    }
+    expect(gtxLooksUnavailable()).toBe(true);
+  });
+
+  it('a rejected reply after failures resets the count', async () => {
+    await resetCounter();
+    gtxFails();
+    await suggestTranslation('First failure', 'ar');
+    await suggestTranslation('Second failure', 'ar');
+    expect(gtxLooksUnavailable()).toBe(false);
+    // A reply arrived — even one the gates reject — so the engine answered.
+    gtxRejectsBlock();
+    const res = await suggestTranslation(BLOCK, 'ar');
+    expect(res.source).toBe('mymemory');
+    // Two more failures still do not reach the threshold: the reply reset the count.
+    gtxFails();
+    await suggestTranslation('Third failure', 'ar');
+    await suggestTranslation('Fourth failure', 'ar');
+    expect(gtxLooksUnavailable()).toBe(false);
   });
 });
 
