@@ -28,6 +28,7 @@ let dbRef: IDBDatabase | null = null;
 let initPromise: Promise<void> | null = null;
 let masterKeyPromise: Promise<CryptoKey | null> | null = null;
 let vaultReady = false;
+let storageInitDone = false;
 
 // ---------- IndexedDB helpers ----------
 
@@ -137,11 +138,20 @@ export function initStorage(): Promise<void> {
         const plain = await decryptSecret(value).catch(() => null);
         if (plain !== null) secretCache.set(key, plain);
       }
-    })().catch((err) => {
-      console.error('Storage initialization failed; using localStorage only:', err);
-    });
+    })()
+      .catch((err) => {
+        console.error('Storage initialization failed; using localStorage only:', err);
+      })
+      .finally(() => {
+        storageInitDone = true;
+      });
   }
   return initPromise;
+}
+
+/** True once `initStorage` has finished (or given up). Before that, removals may not reach IndexedDB. */
+export function isStorageInitialized(): boolean {
+  return storageInitDone;
 }
 
 // ---------- Key/value storage ----------

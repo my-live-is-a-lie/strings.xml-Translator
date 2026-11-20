@@ -12,6 +12,7 @@ import {
   setSecret,
   deleteSecret,
   isSecretVaultReady,
+  isStorageInitialized,
   scheduleStoredWrite,
 } from './storage';
 import { geminiTranslateDirect } from './geminiDirect';
@@ -674,7 +675,10 @@ let translationCache: Map<string, SuggestionResult> | null = null;
  */
 let olderTranslationCachesRemoved = false;
 function removeOlderTranslationCaches(): void {
-  if (olderTranslationCachesRemoved) return;
+  // Before initStorage finishes, removeStoredItem cannot reach IndexedDB (no connection yet) and the
+  // entries are loaded into memory afterwards. main.tsx gives up waiting after 3 s, so the first use
+  // of the cache can come earlier than that: try again on the next use instead of marking it done.
+  if (olderTranslationCachesRemoved || !isStorageInitialized()) return;
   olderTranslationCachesRemoved = true;
   for (let version = 1; version < TRANSLATION_CACHE_VERSION; version++) {
     try {
@@ -817,10 +821,10 @@ export function clearTranslationCache(): void {
 /**
  * Some engines answer a source's no-break space (U+00A0, e.g. between a number and its unit) with an
  * ordinary space. The source's separators are put back only when the reply has exactly as many words
- * AND every word that carries a digit or a format token (`%d`) is at the same index as in the source.
+ * AND at least one word carries a digit or a format token (`%d`) at the same index as in the source.
  * Word order differs between languages (Arabic puts the unit or the adjective first), so a matching
- * word count alone does not say which two words the separator belonged to. When the anchors move, the
- * reply is kept as it came.
+ * word count alone does not say which two words the separator belonged to. Without an anchor the
+ * position is a guess, so the reply is kept as it came.
  */
 const NUMERIC_ANCHOR = /[0-9\u0660-\u0669\u06f0-\u06f9%]/;
 function restoreInteriorNbsp(source: string, reply: string): string {
@@ -830,6 +834,7 @@ function restoreInteriorNbsp(source: string, reply: string): string {
   const srcSeps = srcTokens.filter((_, i) => i % 2 === 1);
   const replyWords = reply.split(' ');
   if (replyWords.length !== srcWords.length || replyWords.some((w) => w === '')) return reply;
+  if (!srcWords.some((w) => NUMERIC_ANCHOR.test(w))) return reply;
   if (srcWords.some((w, i) => NUMERIC_ANCHOR.test(w) !== NUMERIC_ANCHOR.test(replyWords[i]))) return reply;
   return replyWords.reduce((acc, w, i) => (i === 0 ? w : acc + srcSeps[i - 1] + w), '');
 }

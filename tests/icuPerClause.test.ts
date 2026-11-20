@@ -358,13 +358,11 @@ describe('an engine cannot add a line break to a single-line string', () => {
 });
 
 describe('a no-break space of the source survives an engine that drops it', () => {
-  const AR = 'مرحبا بالعالم';
-
   it('puts the source no-break space back when the word count matches', async () => {
-    routeMock({ 'Hello\u00a0world': AR }, []);
+    routeMock({ '10\u00a0MB free': '10 ميغابايت متاح' }, []);
     clearTranslationCache();
-    const res = await suggestTranslation('Hello\u00a0world', 'ar');
-    expect(res.text).toBe('مرحبا\u00a0بالعالم');
+    const res = await suggestTranslation('10\u00a0MB free', 'ar');
+    expect(res.text).toBe('10\u00a0ميغابايت متاح');
   });
 
   it('keeps the reply as it came when the word count differs (no guessing)', async () => {
@@ -376,12 +374,27 @@ describe('a no-break space of the source survives an engine that drops it', () =
 });
 
 describe('versions of the translation cache older than this build are removed', () => {
-  it('removes the v1 entries on first use of the cache', async () => {
+  it('removes the v1 entries on first use of the cache once storage is initialized', async () => {
     vi.resetModules();
     const mod = await import('../src/utils/translator');
+    const storage = await import('../src/utils/storage');
+    await storage.initStorage();
     window.localStorage.setItem('translation_cache_v1', '[["old","x"]]');
     routeMock({ 'Hello world': 'مرحبا بالعالم' }, []);
     await mod.suggestTranslation('Hello world', 'ar');
+    expect(window.localStorage.getItem('translation_cache_v1')).toBeNull();
+  });
+
+  it('does not give up when the cache is used before storage is initialized', async () => {
+    vi.resetModules();
+    const mod = await import('../src/utils/translator');
+    const storage = await import('../src/utils/storage');
+    window.localStorage.setItem('translation_cache_v1', '[["old","x"]]');
+    routeMock({ 'Hello world': 'مرحبا بالعالم', 'Good morning': 'صباح الخير' }, []);
+    await mod.suggestTranslation('Hello world', 'ar'); // storage not ready yet: cleanup deferred
+    expect(window.localStorage.getItem('translation_cache_v1')).not.toBeNull();
+    await storage.initStorage();
+    await mod.suggestTranslation('Good morning', 'ar'); // next use cleans up
     expect(window.localStorage.getItem('translation_cache_v1')).toBeNull();
   });
 });

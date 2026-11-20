@@ -33,10 +33,14 @@ describe('normalizeEngineReply: a break an engine adds to a single-line source',
 });
 
 describe('normalizeEngineReply: a no-break space the engine dropped', () => {
-  it('restores it when no anchored word moved', () => {
-    expect(normalizeEngineReply(`Hello${NB}world`, 'مرحبا بالعالم')).toBe(`مرحبا${NB}بالعالم`);
+  it('restores it when an anchored word did not move', () => {
     expect(normalizeEngineReply(`10${NB}MB free`, '10 ميغابايت متاح')).toBe(`10${NB}ميغابايت متاح`);
     expect(normalizeEngineReply(`10${NB}MB free`, '١٠ ميغابايت متاح')).toBe(`١٠${NB}ميغابايت متاح`);
+  });
+
+  it('keeps the reply when no word carries a number (the position would be a guess)', () => {
+    expect(normalizeEngineReply(`Hello${NB}world`, 'مرحبا بالعالم')).toBe('مرحبا بالعالم');
+    expect(normalizeEngineReply(`Open${NB}settings now`, 'افتح الآن الإعدادات')).toBe('افتح الآن الإعدادات');
   });
 
   it('keeps the reply when the number moved (word order changed)', () => {
