@@ -904,8 +904,13 @@ async function translateSingleSegmentUncached(
   targetLocaleName?: string,
   pluralQuantity?: 'zero' | 'one' | 'two' | 'few' | 'many' | 'other'
 ): Promise<SuggestionResult> {
-  const leadingMatch = segment.match(/^[ \t]+/);
-  const trailingMatch = segment.match(/[ \t]+$/);
+  // The outer whitespace is captured and put back by wrapResult, so a translation keeps
+  // the segment's exact surroundings. It must include line breaks, not just spaces and
+  // tabs: trim() strips them, and a multiline segment (a pretty-printed ICU block) would
+  // otherwise come back short on line breaks — the app's own suggestion then failed the
+  // line-break save gate (source 6 breaks, suggestion 4).
+  const leadingMatch = segment.match(/^\s+/);
+  const trailingMatch = segment.match(/\s+$/);
   const leadingSpace = leadingMatch ? leadingMatch[0] : '';
   const trailingSpace = trailingMatch ? trailingMatch[0] : '';
 

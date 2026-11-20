@@ -9,6 +9,7 @@ import {
   suggestionRejectedForIcu,
 } from '../src/utils/translator';
 import { validatePlaceholders } from '../src/utils/placeholderCheck';
+import { countLineBreaks } from '../src/utils/newlines';
 import type { SingleStringItem } from '../src/types';
 
 /**
@@ -252,5 +253,36 @@ describe('AI providers still translate the whole string', () => {
     const res = await suggestTranslation('You have {count, plural, one {# item} other {# items}}', 'ar');
     expect(res.text).toBe('لديك {count, plural, one {# item} other {# عناصر}}');
     expect(res.source).toBe('google');
+  });
+});
+
+describe('a suggestion keeps the outer line breaks of a multiline string', () => {
+  const MULTILINE_PLURAL =
+    '\n        {count, plural,\n            =0 {No notifications}\n            one {# notification}\n            other {# notifications}\n        }\n    ';
+
+  it('per-clause translation of a pretty-printed block keeps all 6 breaks', async () => {
+    const seen: string[] = [];
+    routeMock(
+      {
+        'No notifications': 'لا توجد إشعارات',
+        '# notification': '# إشعار',
+        '# notifications': '# إشعارات',
+      },
+      seen
+    );
+    const res = await suggestTranslation(MULTILINE_PLURAL, 'ar');
+    expect(res.source).toBe('google');
+    expect(res.text).toBe(
+      '\n        {count, plural,\n            =0 {لا توجد إشعارات}\n            one {# إشعار}\n            other {# إشعارات}\n        }\n    '
+    );
+    expect(countLineBreaks(res.text)).toBe(countLineBreaks(MULTILINE_PLURAL));
+    expect(validatePlaceholders(MULTILINE_PLURAL, res.text, 'ar').valid).toBe(true);
+  });
+
+  it('a plain multiline segment keeps its outer breaks through the engine path', async () => {
+    const seen: string[] = [];
+    routeMock({ 'Hello world': 'مرحبا بالعالم' }, seen);
+    const res = await suggestTranslation('\n  Hello world\n  ', 'ar');
+    expect(res.text).toBe('\n  مرحبا بالعالم\n  ');
   });
 });
