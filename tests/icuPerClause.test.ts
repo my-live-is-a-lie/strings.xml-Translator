@@ -398,3 +398,31 @@ describe('versions of the translation cache older than this build are removed', 
     expect(window.localStorage.getItem('translation_cache_v1')).toBeNull();
   });
 });
+
+describe('the saved translation cache is read once storage is initialized', () => {
+  it('keeps this session\'s entries and the saved ones together', async () => {
+    window.localStorage.removeItem('translation_cache_v2');
+    // Session 1 saves "Good morning".
+    vi.resetModules();
+    let mod = await import('../src/utils/translator');
+    let storage = await import('../src/utils/storage');
+    await storage.initStorage();
+    routeMock({ 'Good morning': 'صباح الخير' }, []);
+    await mod.suggestTranslation('Good morning', 'ar');
+    storage.flushStoredWrites();
+
+    // Session 2 translates "Hello world" BEFORE storage is initialized, then initializes.
+    vi.resetModules();
+    mod = await import('../src/utils/translator');
+    storage = await import('../src/utils/storage');
+    const seen: string[] = [];
+    routeMock({ 'Hello world': 'مرحبا بالعالم', 'Good morning': 'صباح الخير' }, seen);
+    await mod.suggestTranslation('Hello world', 'ar');
+    await storage.initStorage();
+    seen.length = 0;
+    await mod.suggestTranslation('Good morning', 'ar'); // saved entry: no request
+    await mod.suggestTranslation('Hello world', 'ar'); // this session's entry: no request
+    expect(seen).toEqual([]);
+    window.localStorage.removeItem('translation_cache_v2');
+  });
+});

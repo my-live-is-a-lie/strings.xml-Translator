@@ -689,18 +689,33 @@ function removeOlderTranslationCaches(): void {
   }
 }
 
+/**
+ * The saved cache is read once storage is initialized. Before that (main.tsx stops waiting for
+ * `initStorage` after 3 s) the in-memory store is still empty, so a read would start an empty cache
+ * and the next debounced write would replace the saved entries with only this session's. Entries
+ * added before the first real read are kept and win over the saved ones.
+ */
+let translationCacheLoaded = false;
 function getTranslationCache(): Map<string, SuggestionResult> {
   removeOlderTranslationCaches();
-  if (!translationCache) {
-    translationCache = new Map();
+  if (!translationCache) translationCache = new Map();
+  if (!translationCacheLoaded && isStorageInitialized()) {
     try {
       const raw = getStoredItem(TRANSLATION_CACHE_KEY);
       if (raw) {
-        for (const [k, v] of JSON.parse(raw) as Array<[string, SuggestionResult]>) translationCache.set(k, v);
+        const merged = new Map<string, SuggestionResult>(JSON.parse(raw) as Array<[string, SuggestionResult]>);
+        for (const [k, v] of translationCache) {
+          merged.delete(k);
+          merged.set(k, v);
+        }
+        translationCache = merged;
       }
     } catch (err) {
       debugIgnored('translator', err);
     }
+    // Raised only after the read: a pending write's produce reads the live cache through here, so
+    // the flag must not claim the load is done while the read below is still flushing that write.
+    translationCacheLoaded = true;
   }
   return translationCache;
 }
@@ -736,7 +751,9 @@ function cacheSegmentResult(key: string, result: SuggestionResult): void {
   if (cache.size > TRANSLATION_CACHE_LIMIT) {
     cache.delete(cache.keys().next().value as string);
   }
-  scheduleStoredWrite(TRANSLATION_CACHE_KEY, () => JSON.stringify([...cache.entries()]), 1500);
+  // The write is debounced, and the load above can merge saved entries after it is scheduled:
+  // serialize the cache as of flush time, not the map this call happened to hold.
+  scheduleStoredWrite(TRANSLATION_CACHE_KEY, () => JSON.stringify([...getTranslationCache().entries()]), 1500);
 }
 
 /** Outer whitespace of a segment and of a reply. `\s` already covers U+00A0 and U+FEFF. */
