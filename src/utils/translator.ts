@@ -1,4 +1,5 @@
 import { debugIgnored } from './debug';
+import { countLineBreaks } from './newlines';
 // Robust translation engine for Android strings with offline glossary, format token protection, and machine translation
 import { ANDROID_LOCALIZATION_DICTIONARY, CASE_INSENSITIVE_GLOSSARY, ARABIC_PLURAL_GLOSSARY } from './glossary';
 import { ResourceItem, SingleStringItem, PluralStringItem, ArrayStringItem } from '../types';
@@ -11,6 +12,7 @@ import {
   setSecret,
   deleteSecret,
   isSecretVaultReady,
+  isStorageInitialized,
   scheduleStoredWrite,
 } from './storage';
 import { geminiTranslateDirect } from './geminiDirect';
@@ -655,21 +657,72 @@ type SuggestionResult = {
 // Repeated strings (and re-opening a project) do not send the same request again. Keys include a hash
 // of the provider key, so changing a key starts a fresh cache for that provider. Heuristic fallbacks are
 // never cached, so they are retried later.
-const TRANSLATION_CACHE_KEY = 'translation_cache_v1';
+//
+// The version is bumped by any change to what a cached entry looks like. A cache filled by an older
+// build keeps serving its entries (nothing validates the line breaks of a cached suggestion), so an
+// entry saved before a fix would keep the old, wrong output for good: a user who upgraded and pressed
+// "Suggest" on the same string would still get the broken suggestion. Version 2 is the first one whose
+// suggestions keep the outer line breaks of a multiline segment.
+const TRANSLATION_CACHE_VERSION = 2;
+const TRANSLATION_CACHE_KEY = `translation_cache_v${TRANSLATION_CACHE_VERSION}`;
 const TRANSLATION_CACHE_LIMIT = 5000;
 let translationCache: Map<string, SuggestionResult> | null = null;
 
+/**
+ * Older builds wrote their entries under a previous key. This build never reads them, and they can
+ * be tens of kilobytes, so they are removed. It runs on first use of the cache in a session, not in
+ * `clearTranslationCache` (nothing in the app calls that one).
+ */
+let olderTranslationCachesRemoved = false;
+function removeOlderTranslationCaches(): void {
+  // Before initStorage finishes, removeStoredItem cannot reach IndexedDB (no connection yet) and the
+  // entries are loaded into memory afterwards. main.tsx gives up waiting after 3 s, so the first use
+  // of the cache can come earlier than that: try again on the next use instead of marking it done.
+  if (olderTranslationCachesRemoved || !isStorageInitialized()) return;
+  olderTranslationCachesRemoved = true;
+  for (let version = 1; version < TRANSLATION_CACHE_VERSION; version++) {
+    try {
+      removeStoredItem(`translation_cache_v${version}`);
+    } catch (err) {
+      debugIgnored('translator', err);
+    }
+  }
+}
+
+/**
+ * The saved cache is read once storage is initialized. Before that (main.tsx stops waiting for
+ * `initStorage` after 3 s) the in-memory store is still empty, so a read would start an empty cache
+ * and the next debounced write would replace the saved entries with only this session's. Entries
+ * added before the first real read are kept and win over the saved ones.
+ */
+let translationCacheLoaded = false;
 function getTranslationCache(): Map<string, SuggestionResult> {
-  if (!translationCache) {
-    translationCache = new Map();
+  removeOlderTranslationCaches();
+  if (!translationCache) translationCache = new Map();
+  if (!translationCacheLoaded && isStorageInitialized()) {
     try {
       const raw = getStoredItem(TRANSLATION_CACHE_KEY);
       if (raw) {
-        for (const [k, v] of JSON.parse(raw) as Array<[string, SuggestionResult]>) translationCache.set(k, v);
+        // Merge inside the same Map instead of swapping in a new one: a caller that still holds the
+        // earlier reference across an await would otherwise write into an orphaned map.
+        const saved = JSON.parse(raw) as Array<[string, SuggestionResult]>;
+        const live = [...translationCache.entries()];
+        translationCache.clear();
+        for (const [k, v] of saved) translationCache.set(k, v);
+        for (const [k, v] of live) {
+          translationCache.delete(k);
+          translationCache.set(k, v);
+        }
+        while (translationCache.size > TRANSLATION_CACHE_LIMIT) {
+          translationCache.delete(translationCache.keys().next().value as string);
+        }
       }
     } catch (err) {
       debugIgnored('translator', err);
     }
+    // Raised only after the read: a pending write's produce reads the live cache through here, so
+    // the flag must not claim the load is done while the read below is still flushing that write.
+    translationCacheLoaded = true;
   }
   return translationCache;
 }
@@ -705,8 +758,16 @@ function cacheSegmentResult(key: string, result: SuggestionResult): void {
   if (cache.size > TRANSLATION_CACHE_LIMIT) {
     cache.delete(cache.keys().next().value as string);
   }
-  scheduleStoredWrite(TRANSLATION_CACHE_KEY, () => JSON.stringify([...cache.entries()]), 1500);
+  // The write is debounced, and the load above can merge saved entries after it is scheduled:
+  // serialize the cache as of flush time, not the map this call happened to hold.
+  scheduleStoredWrite(TRANSLATION_CACHE_KEY, () => JSON.stringify([...getTranslationCache().entries()]), 1500);
 }
+
+/** Outer whitespace of a segment and of a reply. `\s` already covers U+00A0 and U+FEFF. */
+const OUTER_WHITESPACE_LEADING = /^\s+/;
+const OUTER_WHITESPACE_TRAILING = /\s+$/;
+/** A byte-order mark inside a translated core is invisible in the editor and breaks the exported XML. */
+const INTERIOR_BOM = /\ufeff/g;
 
 const ENGINE_LABELS: Record<string, string> = {
   google: 'Google',
@@ -775,10 +836,55 @@ export function engineLabel(engine: string | undefined): string {
   return ENGINE_LABELS[engine] ?? engine;
 }
 
-/** Clears saved suggestions (for example after the user changes the translation provider). */
+/** Clears the in-memory suggestions and the saved entries. Nothing in the app calls this; tests use it to reset the cache between cases. */
 export function clearTranslationCache(): void {
   translationCache = new Map();
   scheduleStoredWrite(TRANSLATION_CACHE_KEY, () => '[]', 0);
+}
+
+/**
+ * Some engines answer a source's no-break space (U+00A0, e.g. between a number and its unit) with an
+ * ordinary space. The source's separators are put back only when the reply has exactly as many words
+ * AND at least one word carries a digit or a format token (`%d`) at the same index as in the source.
+ * Word order differs between languages (Arabic puts the unit or the adjective first), so a matching
+ * word count alone does not say which two words the separator belonged to. Without an anchor the
+ * position is a guess, so the reply is kept as it came.
+ */
+const NUMERIC_ANCHOR = /[0-9\u0660-\u0669\u06f0-\u06f9%]/;
+function restoreInteriorNbsp(source: string, reply: string): string {
+  if (!source.includes('\u00a0') || reply.includes('\u00a0')) return reply;
+  const srcTokens = source.split(/(\u00a0| )/);
+  const srcWords = srcTokens.filter((_, i) => i % 2 === 0);
+  const srcSeps = srcTokens.filter((_, i) => i % 2 === 1);
+  const replyWords = reply.split(' ');
+  if (replyWords.length !== srcWords.length || replyWords.some((w) => w === '')) return reply;
+  if (!srcWords.some((w) => NUMERIC_ANCHOR.test(w))) return reply;
+  if (srcWords.some((w, i) => NUMERIC_ANCHOR.test(w) !== NUMERIC_ANCHOR.test(replyWords[i]))) return reply;
+  return replyWords.reduce((acc, w, i) => (i === 0 ? w : acc + srcSeps[i - 1] + w), '');
+}
+
+/**
+ * A line break an engine wrote: a real one, or an escaped `\n` that is not itself preceded by an escaped
+ * backslash. The lookbehind and the pair group keep `\\n` (backslash, backslash, n) intact: group 1 holds
+ * the escaped backslashes in front of the `\n`, which are kept.
+ */
+const STRAY_BREAK = /\s*(?:\r?\n|((?<!\\)(?:\\\\)*)\\n)\s*/g;
+
+/**
+ * Brings an engine reply in line with its source: outer whitespace dropped (the caller puts the
+ * SOURCE's own back), a BOM inside the reply dropped, a line break an engine added to a single-line
+ * source turned into a space, and a no-break space the engine dropped restored.
+ * Pure, so every path that stores an engine reply (the batch prewarm included) goes through it.
+ */
+export function normalizeEngineReply(source: string, reply: string): string {
+  let out = reply
+    .replace(OUTER_WHITESPACE_LEADING, '')
+    .replace(OUTER_WHITESPACE_TRAILING, '')
+    .replace(INTERIOR_BOM, '');
+  if (countLineBreaks(source) === 0) {
+    out = out.replace(STRAY_BREAK, (_m: string, escapes?: string) => `${escapes ?? ''} `);
+  }
+  return restoreInteriorNbsp(source, out);
 }
 
 async function translateSingleSegment(
@@ -904,8 +1010,13 @@ async function translateSingleSegmentUncached(
   targetLocaleName?: string,
   pluralQuantity?: 'zero' | 'one' | 'two' | 'few' | 'many' | 'other'
 ): Promise<SuggestionResult> {
-  const leadingMatch = segment.match(/^[ \t]+/);
-  const trailingMatch = segment.match(/[ \t]+$/);
+  // The outer whitespace is captured and put back by wrapResult, so a translation keeps
+  // the segment's exact surroundings. It must include line breaks, not just spaces and
+  // tabs: trim() strips them, and a multiline segment (a pretty-printed ICU block) would
+  // otherwise come back short on line breaks — the app's own suggestion then failed the
+  // line-break save gate (source 6 breaks, suggestion 4).
+  const leadingMatch = segment.match(OUTER_WHITESPACE_LEADING);
+  const trailingMatch = segment.match(OUTER_WHITESPACE_TRAILING);
   const leadingSpace = leadingMatch ? leadingMatch[0] : '';
   const trailingSpace = trailingMatch ? trailingMatch[0] : '';
 
@@ -928,10 +1039,20 @@ async function translateSingleSegmentUncached(
     !trimmed.startsWith('\\"');
   const coreText = hasOuterUnescapedQuotes ? trimmed.slice(1, -1) : trimmed;
 
+  /**
+   * Runs on every engine reply BEFORE the ICU gate, so the text that is judged is the text that is
+   * returned. See `normalizeEngineReply`.
+   */
+  const postProcess = (translatedCore: string): string => normalizeEngineReply(coreText, translatedCore);
+
+  /** A reply must keep the source's number of line breaks, or the app's own save gate refuses it. */
+  const changesLineBreaks = (candidate: string): boolean => countLineBreaks(candidate) !== countLineBreaks(coreText);
+
   const wrapResult = (translatedCore: string) => {
-    const withQuotes = hasOuterUnescapedQuotes
-      ? `"${translatedCore.replace(/^\\?"|\\?"$/g, '')}"`
+    const core = hasOuterUnescapedQuotes
+      ? translatedCore.replace(/^\\?"|\\?"$/g, '')
       : translatedCore;
+    const withQuotes = hasOuterUnescapedQuotes ? `"${core}"` : core;
     return `${leadingSpace}${withQuotes}${trailingSpace}`;
   };
 
@@ -1039,8 +1160,8 @@ async function translateSingleSegmentUncached(
         if (pData && typeof pData.translatedText === 'string' && pData.translatedText.trim()) {
           const cleaned = stripMetadataLabels(pData.translatedText, coreText);
           if (cleaned && !isPollutedTranslation(cleaned)) {
-            const restored = restoreSegmentSyntax(cleaned, tokens, usesEscapedDoubleQuotes);
-            if (!breaksIcuStructure(restored)) return restored;
+            const restored = postProcess(restoreSegmentSyntax(cleaned, tokens, usesEscapedDoubleQuotes));
+            if (!breaksIcuStructure(restored) && !changesLineBreaks(restored)) return restored;
           }
         }
       } catch (err) {
@@ -1065,8 +1186,8 @@ async function translateSingleSegmentUncached(
       if (directResult && directResult.translatedText) {
         const cleaned = stripMetadataLabels(directResult.translatedText, coreText);
         if (cleaned && !isPollutedTranslation(cleaned)) {
-          const restored = restoreSegmentSyntax(cleaned, tokens, usesEscapedDoubleQuotes);
-          if (!breaksIcuStructure(restored)) return restored;
+          const restored = postProcess(restoreSegmentSyntax(cleaned, tokens, usesEscapedDoubleQuotes));
+          if (!breaksIcuStructure(restored) && !changesLineBreaks(restored)) return restored;
         }
       }
     } catch (err) {
@@ -1092,8 +1213,8 @@ async function translateSingleSegmentUncached(
       });
       const cleanedAi = stripMetadataLabels(translated, coreText);
       if (cleanedAi && !isPollutedTranslation(cleanedAi)) {
-        const restored = restoreSegmentSyntax(cleanedAi, tokens, usesEscapedDoubleQuotes);
-        if (!breaksIcuStructure(restored)) return restored;
+        const restored = postProcess(restoreSegmentSyntax(cleanedAi, tokens, usesEscapedDoubleQuotes));
+        if (!breaksIcuStructure(restored) && !changesLineBreaks(restored)) return restored;
       }
     } catch (err) {
       logFallback('gemini', err);
@@ -1107,8 +1228,8 @@ async function translateSingleSegmentUncached(
       const combined = await withRetry(() => fetchGoogleGtxRaw(cleanText, directLang, 5000));
       const decoded = stripMetadataLabels(decodeHtmlEntities(combined), coreText);
       if (decoded && !isPollutedTranslation(decoded)) {
-        const restored = restoreSegmentSyntax(decoded, tokens, usesEscapedDoubleQuotes);
-        if (!breaksIcuStructure(restored)) {
+        const restored = postProcess(restoreSegmentSyntax(decoded, tokens, usesEscapedDoubleQuotes));
+        if (!breaksIcuStructure(restored) && !changesLineBreaks(restored)) {
           noteGtxResult(true);
           return restored;
         }
@@ -1168,8 +1289,8 @@ async function translateSingleSegmentUncached(
         }
 
         if (!isPollutedTranslation(rawResult)) {
-          const finalResult = restoreSegmentSyntax(rawResult, tokens, usesEscapedDoubleQuotes);
-          if (finalResult && !breaksIcuStructure(finalResult)) {
+          const finalResult = postProcess(restoreSegmentSyntax(rawResult, tokens, usesEscapedDoubleQuotes));
+          if (finalResult && !breaksIcuStructure(finalResult) && !changesLineBreaks(finalResult)) {
             return finalResult;
           }
         }
@@ -1369,7 +1490,7 @@ export async function prewarmProviderBatch(
       chunk.forEach((src, idx) => {
         const raw = data.translations?.[idx];
         if (!raw) return;
-        const cleaned = stripMetadataLabels(raw, src).trim();
+        const cleaned = normalizeEngineReply(src, stripMetadataLabels(raw, src));
         if (!cleaned || POLLUTED_BATCH_RESULT.test(cleaned)) return;
         cacheSegmentResult(cacheKeyFor(src, directLang, undefined), { text: cleaned, source: provider.type });
       });

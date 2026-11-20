@@ -9,6 +9,7 @@ import {
   suggestionRejectedForIcu,
 } from '../src/utils/translator';
 import { validatePlaceholders } from '../src/utils/placeholderCheck';
+import { countLineBreaks } from '../src/utils/newlines';
 import type { SingleStringItem } from '../src/types';
 
 /**
@@ -252,5 +253,176 @@ describe('AI providers still translate the whole string', () => {
     const res = await suggestTranslation('You have {count, plural, one {# item} other {# items}}', 'ar');
     expect(res.text).toBe('لديك {count, plural, one {# item} other {# عناصر}}');
     expect(res.source).toBe('google');
+  });
+});
+
+describe('a suggestion keeps the outer line breaks of a multiline string', () => {
+  const MULTILINE_PLURAL =
+    '\n        {count, plural,\n            =0 {No notifications}\n            one {# notification}\n            other {# notifications}\n        }\n    ';
+
+  it('per-clause translation of a pretty-printed block keeps all 6 breaks', async () => {
+    const seen: string[] = [];
+    routeMock(
+      {
+        'No notifications': 'لا توجد إشعارات',
+        '# notification': '# إشعار',
+        '# notifications': '# إشعارات',
+      },
+      seen
+    );
+    const res = await suggestTranslation(MULTILINE_PLURAL, 'ar');
+    expect(res.source).toBe('google');
+    expect(res.text).toBe(
+      '\n        {count, plural,\n            =0 {لا توجد إشعارات}\n            one {# إشعار}\n            other {# إشعارات}\n        }\n    '
+    );
+    expect(countLineBreaks(res.text)).toBe(countLineBreaks(MULTILINE_PLURAL));
+    expect(validatePlaceholders(MULTILINE_PLURAL, res.text, 'ar').valid).toBe(true);
+  });
+
+  it('a plain multiline segment keeps its outer breaks through the engine path', async () => {
+    const seen: string[] = [];
+    routeMock({ 'Hello world': 'مرحبا بالعالم' }, seen);
+    const res = await suggestTranslation('\n  Hello world\n  ', 'ar');
+    expect(res.text).toBe('\n  مرحبا بالعالم\n  ');
+  });
+});
+
+describe('the suggestion keeps the source surroundings, not the engine\'s', () => {
+  const AR = 'مرحبا بالعالم';
+
+  it('trims the whitespace an engine adds around its reply', async () => {
+    // A reply that comes back padded (a trailing newline, a BOM from a streaming API, a no-break
+    // space) must not add line breaks the source does not have: the source's own surroundings win.
+    for (const reply of [AR + '\n', '\n' + AR, ` ${AR} `, `\u00a0${AR}`, `\ufeff${AR}`]) {
+      routeMock({ 'Hello world': reply }, []);
+      clearTranslationCache();
+      const res = await suggestTranslation('\n  Hello world\n  ', 'ar');
+      expect(res.text).toBe(`\n  ${AR}\n  `);
+    }
+  });
+
+  it('keeps a no-break space and a BOM that belong to the source', async () => {
+    // Regression guard: \\s covers U+00A0 and U+FEFF, so an edge NBSP/BOM of the source is kept.
+    for (const pad of ['\u00a0', '\ufeff', '\u00a0\ufeff']) {
+      routeMock({ 'Hello world': AR }, []);
+      clearTranslationCache();
+      const res = await suggestTranslation(`${pad}Hello world${pad}`, 'ar');
+      expect(res.text).toBe(`${pad}${AR}${pad}`);
+    }
+  });
+
+  it('drops a BOM an engine puts inside its reply', async () => {
+    routeMock({ 'Hello world': 'مرحبا \ufeffبالعالم' }, []);
+    clearTranslationCache();
+    const res = await suggestTranslation('Hello world', 'ar');
+    expect(res.text).toBe(AR);
+  });
+
+  it('judges the reply the user will actually get, not a padded copy of it', async () => {
+    // A reply that is structurally broken is rejected whatever padding it wears; the suggestion
+    // then falls back to the source untouched and says why. (Trimming used to happen after the ICU
+    // gate, so the gate judged one string and the editor received another.)
+    const src = 'You have {count, plural, one {# m} other {# ms}}';
+    for (const reply of ['  لديك {عد، جمع، واحدة {# ر}}  ', 'لديك {عد، جمع، واحدة {# ر}}']) {
+      routeMock({ [src]: reply }, []);
+      clearTranslationCache();
+      const res = await suggestTranslation(src, 'ar');
+      expect(res.icuRejected).toBe(true);
+      expect(res.text).toBe(src);
+    }
+  });
+});
+
+describe('an engine cannot add a line break to a single-line string', () => {
+  const AR = 'مرحبا بالعالم';
+
+  it('turns a stray line break in the reply into a space', async () => {
+    // Source has 0 breaks; the engine answers with a break inside the words. The suggestion must not
+    // carry it (the save gate would refuse it), and the words must survive.
+    for (const reply of ['مرحبا\nبالعالم', 'مرحبا\r\nبالعالم', 'مرحبا\\nبالعالم']) {
+      routeMock({ 'Hello world': reply }, []);
+      clearTranslationCache();
+      const res = await suggestTranslation('Hello world', 'ar');
+      expect(res.text).toBe(AR);
+    }
+  });
+
+  it('still keeps the breaks of a multiline source', async () => {
+    // Each line of a multiline source is translated on its own (split branch), and its break is kept.
+    routeMock({ Hello: 'مرحبا', world: 'بالعالم' }, []);
+    clearTranslationCache();
+    const res = await suggestTranslation('Hello\nworld', 'ar');
+    expect(countLineBreaks(res.text)).toBe(1);
+    expect(res.text).toBe('مرحبا\nبالعالم');
+  });
+});
+
+describe('a no-break space of the source survives an engine that drops it', () => {
+  it('puts the source no-break space back when the word count matches', async () => {
+    routeMock({ '10\u00a0MB free': '10 ميغابايت متاح' }, []);
+    clearTranslationCache();
+    const res = await suggestTranslation('10\u00a0MB free', 'ar');
+    expect(res.text).toBe('10\u00a0ميغابايت متاح');
+  });
+
+  it('keeps the reply as it came when the word count differs (no guessing)', async () => {
+    routeMock({ 'a\u00a0b c': 'x y' }, []);
+    clearTranslationCache();
+    const res = await suggestTranslation('a\u00a0b c', 'ar');
+    expect(res.text).toBe('x y');
+  });
+});
+
+describe('versions of the translation cache older than this build are removed', () => {
+  it('removes the v1 entries on first use of the cache once storage is initialized', async () => {
+    vi.resetModules();
+    const mod = await import('../src/utils/translator');
+    const storage = await import('../src/utils/storage');
+    await storage.initStorage();
+    window.localStorage.setItem('translation_cache_v1', '[["old","x"]]');
+    routeMock({ 'Hello world': 'مرحبا بالعالم' }, []);
+    await mod.suggestTranslation('Hello world', 'ar');
+    expect(window.localStorage.getItem('translation_cache_v1')).toBeNull();
+  });
+
+  it('does not give up when the cache is used before storage is initialized', async () => {
+    vi.resetModules();
+    const mod = await import('../src/utils/translator');
+    const storage = await import('../src/utils/storage');
+    window.localStorage.setItem('translation_cache_v1', '[["old","x"]]');
+    routeMock({ 'Hello world': 'مرحبا بالعالم', 'Good morning': 'صباح الخير' }, []);
+    await mod.suggestTranslation('Hello world', 'ar'); // storage not ready yet: cleanup deferred
+    expect(window.localStorage.getItem('translation_cache_v1')).not.toBeNull();
+    await storage.initStorage();
+    await mod.suggestTranslation('Good morning', 'ar'); // next use cleans up
+    expect(window.localStorage.getItem('translation_cache_v1')).toBeNull();
+  });
+});
+
+describe('the saved translation cache is read once storage is initialized', () => {
+  it('keeps this session\'s entries and the saved ones together', async () => {
+    window.localStorage.removeItem('translation_cache_v2');
+    // Session 1 saves "Good morning".
+    vi.resetModules();
+    let mod = await import('../src/utils/translator');
+    let storage = await import('../src/utils/storage');
+    await storage.initStorage();
+    routeMock({ 'Good morning': 'صباح الخير' }, []);
+    await mod.suggestTranslation('Good morning', 'ar');
+    storage.flushStoredWrites();
+
+    // Session 2 translates "Hello world" BEFORE storage is initialized, then initializes.
+    vi.resetModules();
+    mod = await import('../src/utils/translator');
+    storage = await import('../src/utils/storage');
+    const seen: string[] = [];
+    routeMock({ 'Hello world': 'مرحبا بالعالم', 'Good morning': 'صباح الخير' }, seen);
+    await mod.suggestTranslation('Hello world', 'ar');
+    await storage.initStorage();
+    seen.length = 0;
+    await mod.suggestTranslation('Good morning', 'ar'); // saved entry: no request
+    await mod.suggestTranslation('Hello world', 'ar'); // this session's entry: no request
+    expect(seen).toEqual([]);
+    window.localStorage.removeItem('translation_cache_v2');
   });
 });
