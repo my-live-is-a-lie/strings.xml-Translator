@@ -246,6 +246,29 @@ describe('gtxLooksUnavailable counts only failed requests', () => {
     }
     expect(gtxLooksUnavailable()).toBe(true);
   });
+  it('the warning expires after 10 minutes without a new failure', async () => {
+    // Nothing calls GTX while another provider works, so an old streak must not stay on forever.
+    await resetCounter();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2026-01-01T10:00:00Z'));
+      gtxFails();
+      for (let i = 0; i < 3; i++) await suggestTranslation(`Expiring ${i}`, 'ar');
+      expect(gtxLooksUnavailable()).toBe(true);
+
+      vi.setSystemTime(new Date('2026-01-01T10:09:00Z'));
+      expect(gtxLooksUnavailable()).toBe(true);
+
+      vi.setSystemTime(new Date('2026-01-01T10:11:00Z'));
+      expect(gtxLooksUnavailable()).toBe(false);
+
+      // One failure after the old streak ended starts a new streak: it does not re-raise the warning.
+      await suggestTranslation('Late failure', 'ar');
+      expect(gtxLooksUnavailable()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe('bulkTranslateItems isolates per-item failures', () => {

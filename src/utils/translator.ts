@@ -789,6 +789,11 @@ const ENGINE_LABELS: Record<string, string> = {
 // A reply that arrives but is rejected for its content does not count: the engine answered.
 const GTX_FAILURE_THRESHOLD = 3;
 let gtxConsecutiveFailures = 0;
+// The warning describes the engine NOW, not the last time it was used. Nothing calls GTX while the
+// user works with another provider (it is only a fallback), so without an expiry the warning could
+// stay on for the whole session after the engine recovered or was never needed again.
+const GTX_UNAVAILABLE_WINDOW_MS = 10 * 60 * 1000;
+let gtxLastFailureAt = 0;
 
 /**
  * True when a suggestion was thrown away because it would have damaged an ICU block.
@@ -819,16 +824,26 @@ export function isFillableSuggestion(res: SuggestionResult | undefined | null): 
 export const GTX_STATUS_EVENT = 'gtx-status-change';
 
 function noteGtxResult(answered: boolean): void {
-  const wasUnavailable = gtxConsecutiveFailures >= GTX_FAILURE_THRESHOLD;
-  gtxConsecutiveFailures = answered ? 0 : gtxConsecutiveFailures + 1;
-  const isUnavailable = gtxConsecutiveFailures >= GTX_FAILURE_THRESHOLD;
+  const wasUnavailable = gtxLooksUnavailable();
+  if (answered) {
+    gtxConsecutiveFailures = 0;
+  } else {
+    // A streak that ended long ago does not count: the next failure starts a new one.
+    if (Date.now() - gtxLastFailureAt >= GTX_UNAVAILABLE_WINDOW_MS) gtxConsecutiveFailures = 0;
+    gtxConsecutiveFailures += 1;
+    gtxLastFailureAt = Date.now();
+  }
+  const isUnavailable = gtxLooksUnavailable();
   if (wasUnavailable !== isUnavailable && typeof window !== 'undefined') {
     window.dispatchEvent(new Event(GTX_STATUS_EVENT));
   }
 }
 
 export function gtxLooksUnavailable(): boolean {
-  return gtxConsecutiveFailures >= GTX_FAILURE_THRESHOLD;
+  return (
+    gtxConsecutiveFailures >= GTX_FAILURE_THRESHOLD &&
+    Date.now() - gtxLastFailureAt < GTX_UNAVAILABLE_WINDOW_MS
+  );
 }
 
 /** Human-readable name of the engine that produced a suggestion. */
