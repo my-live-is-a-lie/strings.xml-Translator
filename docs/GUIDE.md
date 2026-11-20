@@ -177,6 +177,7 @@ The app treats these blocks as structure, not as text:
 - **A reply that breaks the block is rejected.** If a translation drops a clause, loses a brace or changes the format type, it is thrown away and the next engine (or the next AI model) is tried — you never get a string that crashes `String.format` at runtime.
 - **Each clause is checked.** A missing `other`, a changed `select` key or a swapped format type is reported by the QA checks, and a plural category the target language requires is a warning you can ignore.
 - **A block that spans more than one line is translated as one piece**, so the check still sees it whole. Line breaks outside a block are still split off and kept exactly as written.
+- **Each clause has its own field.** A string with an ICU block opens in a *Fields* view: one box for every clause (with its selector and the source text beside it) and one for each piece of text outside the block, while the structure — variable, format type, selectors, `offset:` — is shown as a label you cannot break by typing. Switch to *Raw text* with the toggle above the fields to add or remove clauses or to edit the whole string; nested blocks stay one plain box inside their clause.
 
 > **Editing by hand:** keep the braces and the keywords as they are, and translate only the words inside each `{ }`. A quoted literal (`'…'`) is text: keep its quotes and translate the words inside them (`''Hello!''` stays quoted, only `Hello!` is translated). Text that is itself syntax — `'{username}'`, `'#'` — stays as-is.
 

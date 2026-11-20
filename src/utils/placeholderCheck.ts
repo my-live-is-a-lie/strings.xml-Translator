@@ -442,6 +442,269 @@ export function splitIcuBlocks(text: string): IcuBlockPart[] | null {
   return parts;
 }
 
+// ---------------------------------------------------------------------------
+// ICU branch editor: a field model that is a *view* over a message string.
+// The string stays the single source of truth; the model only splits it into
+// editable pieces (text runs and clause bodies) and glues it back together.
+// ---------------------------------------------------------------------------
+
+/** A run of plain text outside any top-level ICU block. */
+export interface IcuTextField {
+  kind: 'text';
+  value: string;
+  /** The matching text run of the source, shown as the reference. */
+  sourceValue: string;
+}
+
+/** One clause of a top-level ICU block: its selector (read-only) and its body (editable). */
+export interface IcuClauseField {
+  selector: string;
+  value: string;
+  /** The body of the same selector in the source (the `other` body when the source has no such clause). */
+  sourceValue: string;
+}
+
+/** A top-level ICU block. Only the clause bodies are editable; the structure is `frame`. */
+export interface IcuBlockField {
+  kind: 'block';
+  name: string;
+  type: string;
+  offset?: string;
+  clauses: IcuClauseField[];
+  /**
+   * The exact text around the bodies, `clauses.length + 1` pieces: the header up to the first
+   * body, the text between two bodies (`} other {`) and the closing text. Kept verbatim so an
+   * untouched model reassembles byte for byte and typing in a body can never alter the structure.
+   */
+  frame: string[];
+}
+
+export type IcuField = IcuTextField | IcuBlockField;
+
+const ICU_BLOCK_HEADER = /^\{([^,]*),([^,]*),/;
+
+/**
+ * A text run between two blocks that carries no words: only whitespace and punctuation
+ * (`' · '`, `' / '`, `' — '`). It is structure, so the fields view keeps it instead of
+ * starting it empty — otherwise the separator vanished from the saved string.
+ */
+const STRUCTURAL_TEXT_RUN = /^[\s\p{P}\p{S}]*$/u;
+
+/**
+ * Same question, ignoring bidi controls. Arabic text copied from an app or a chat usually wraps
+ * its punctuation in U+200F/U+061C (`'\u200f·\u200f'`): those marks carry no words either, but
+ * they are category Cf — not punctuation — so the plain regex called such a run "text with
+ * words", left the field empty and dropped the separator on save. The bytes are kept as they
+ * are; only the classification ignores the marks.
+ */
+const isStructuralText = (text: string): boolean => STRUCTURAL_TEXT_RUN.test(stripBidiControls(text));
+
+/** Splits one block part into its frame and clauses, or null when it cannot be read reliably. */
+function parseBlockField(part: IcuBlockPart): IcuBlockField | null {
+  const bodies = part.bodies;
+  if (!bodies || bodies.length === 0) return null;
+  const text = part.text;
+  const frame: string[] = [];
+  const clauses: IcuClauseField[] = [];
+  frame.push(text.slice(0, bodies[0].start));
+  for (let k = 0; k < bodies.length; k++) {
+    const next = k + 1 < bodies.length ? bodies[k + 1].start : text.length;
+    frame.push(text.slice(bodies[k].end, next));
+  }
+  for (let k = 0; k < bodies.length; k++) {
+    const selector = /([=\w-]+)\s*\{$/.exec(frame[k]);
+    if (!selector) return null;
+    clauses.push({ selector: selector[1], value: text.slice(bodies[k].start, bodies[k].end), sourceValue: '' });
+  }
+  const header = ICU_BLOCK_HEADER.exec(frame[0]);
+  if (!header) return null;
+  const offset = /offset:\s*(\d+)/.exec(frame[0]);
+  return {
+    kind: 'block',
+    name: stripBidiControls(header[1].trim()),
+    type: stripBidiControls(header[2].trim()),
+    offset: offset ? offset[1] : undefined,
+    clauses,
+    frame,
+  };
+}
+
+/** Parses a whole message into fields; null when it has no block or its structure is broken. */
+function buildIcuFields(text: string): IcuField[] | null {
+  const parts = splitIcuBlocks(text);
+  if (!parts || hasUnbalancedBraces(text)) return null;
+  const fields: IcuField[] = [];
+  for (const part of parts) {
+    if (part.kind === 'text') {
+      fields.push({ kind: 'text', value: part.text, sourceValue: '' });
+      continue;
+    }
+    const block = parseBlockField(part);
+    if (!block) return null;
+    fields.push(block);
+  }
+  return fields;
+}
+
+/**
+ * Builds the field model of an ICU string for the branch editor, or null when the fields view
+ * is not available (the editor then shows the raw textarea).
+ *
+ * The model comes from the target when it holds at least one top-level block (so a target that
+ * was adapted to the language's plural categories shows those clauses). An empty target gets the
+ * source's structure with every body empty. Anything else (no block, or a broken one) is null.
+ * A clause body that itself contains a block stays one opaque value.
+ */
+export function getIcuFieldModel(source: string, target: string): IcuField[] | null {
+  const sourceFields = buildIcuFields(source);
+  const targetIsEmpty = target.trim() === '';
+  const targetFields = targetIsEmpty ? null : buildIcuFields(target);
+  // A non-empty target that yields no fields has no block or a broken one: no fields view.
+  // (An empty target is the "not translated yet" case and borrows the source's structure.)
+  if (!targetIsEmpty && !targetFields) return null;
+  const fields = targetFields ?? sourceFields;
+  if (!fields) return null;
+
+  const sourceTexts = (sourceFields ?? []).filter((f): f is IcuTextField => f.kind === 'text');
+  const sourceBlocks = (sourceFields ?? []).filter((f): f is IcuBlockField => f.kind === 'block');
+
+  // A target that holds every block but is missing a TEXT RUN (the user typed in one field of
+  // an otherwise empty string, or a translation dropped a run) must not shrink the fields view:
+  // deriving from the target alone made the untouched runs disappear, so they could never be
+  // filled in and the saved string silently lost their text. The source layout is used instead
+  // and whatever the target already provides is overlaid.
+  // A target whose block does not parse, or that has no block at all, keeps its own handling:
+  // the caller shows the raw textarea and the save gate explains why.
+  if (targetFields) {
+    const targetBlockCount = targetFields.filter((f) => f.kind === 'block').length;
+    const targetTextCount = targetFields.filter((f) => f.kind === 'text').length;
+    const fillsInMissingTextRuns =
+      targetBlockCount > 0 && targetBlockCount === sourceBlocks.length && targetTextCount < sourceTexts.length;
+    if (fillsInMissingTextRuns) {
+      const targetBlocks = targetFields.filter((f): f is IcuBlockField => f.kind === 'block');
+      // Group the target's text runs by the segment they sit in (before the first block,
+      // between two blocks, after the last block) and overlay each run onto the source run in
+      // the SAME segment. A purely positional overlay got this wrong: when the user had typed
+      // only in the trailing run, the target's only run was assigned to the source's FIRST run,
+      // so the text silently moved to the front of the string on the next keystroke.
+      const targetSegments: string[][] = [[]];
+      for (const f of targetFields) {
+        if (f.kind === 'block') targetSegments.push([]);
+        else targetSegments[targetSegments.length - 1].push(f.value);
+      }
+      const taken = targetSegments.map(() => 0);
+      let segment = 0;
+      // The frame holds the header, the selectors and the offsets: two blocks with the same frame
+      // are the same function, so it is also what tells a renamed block apart.
+      const blockFrame = (block: IcuBlockField): string => block.frame.join('\u0000');
+      const usedTargetBlocks = new Set<IcuBlockField>();
+      return sourceFields!.map((field) => {
+        if (field.kind === 'text') {
+          // A run the target does not have at all is the source's again when it carries no
+          // words: a translation (or a pasted reply) that dropped `' · '` between two blocks
+          // must not silently glue them together, and there is nothing to translate in a
+          // separator. A run with words stays empty — that is the user's text to write.
+          const value =
+            targetSegments[segment]?.[taken[segment]++] ?? (isStructuralText(field.value) ? field.value : '');
+          return { kind: 'text', value, sourceValue: field.value };
+        }
+        segment++;
+        // Blocks are paired by name and type, not by position: a translation that reorders two
+        // blocks (`{b…} {a…}`) kept `b`'s Arabic in `a`'s clauses under a positional pairing, so
+        // the saved string mixed the two. The frame is compared too (it holds the header, the
+        // selectors and the offsets), so a block that changed its own structure is not matched
+        // to the wrong one. A block the target does not have keeps its source references and
+        // empty bodies: guessing which block the user meant would put another function's text
+        // into it.
+        const nameOf = (candidate: IcuBlockField): string => candidate.name + '|' + candidate.type;
+        const fromTarget =
+          targetBlocks.find(
+            (candidate) =>
+              nameOf(candidate) === nameOf(field) &&
+              !usedTargetBlocks.has(candidate) &&
+              blockFrame(candidate) === blockFrame(field)
+          ) ?? targetBlocks.find((candidate) => nameOf(candidate) === nameOf(field) && !usedTargetBlocks.has(candidate));
+        if (fromTarget) usedTargetBlocks.add(fromTarget);
+        return {
+          ...field,
+          clauses: field.clauses.map((clause) => {
+            const match = fromTarget?.clauses.find((c) => c.selector === clause.selector);
+            return { ...clause, value: match?.value ?? '', sourceValue: clause.value };
+          }),
+        };
+      });
+    }
+  }
+
+  let textIndex = 0;
+  let blockIndex = 0;
+  return fields.map((field) => {
+    if (field.kind === 'text') {
+      if (targetIsEmpty) {
+        // Every text run starts empty (a placeholder for text the user will type) with the
+        // source as the reference. Punctuation used as structure between blocks (`' · '`,
+        // `' '`, `' / '`) is kept verbatim: it carries no words to translate, and dropping it
+        // glued two clauses together — `{a…} · {b…}` saved as `{a…}{b…}` with no warning.
+        return {
+          kind: 'text',
+          value: isStructuralText(field.value) ? field.value : '',
+          sourceValue: field.value,
+        };
+      }
+      return { kind: 'text', value: field.value, sourceValue: sourceTexts[textIndex++]?.value ?? '' };
+    }
+    const src = sourceBlocks[blockIndex++];
+    return {
+      ...field,
+      clauses: field.clauses.map((clause) => {
+        const match =
+          src?.clauses.find((c) => c.selector === clause.selector) ?? src?.clauses.find((c) => c.selector === 'other');
+        const sourceValue = targetIsEmpty ? clause.value : (match?.value ?? '');
+        // A body that carries no words (`{-}`, `{…}`, `{+}`, `{#}`, `{%}`, `{!}`) is punctuation:
+        // it is copied from the source like the structure around it. Leaving it empty lost it on
+        // save, and there is nothing to translate in it.
+        const value = targetIsEmpty
+          ? (isStructuralText(clause.value) ? clause.value : '')
+          : clause.value;
+        return { ...clause, value, sourceValue };
+      }),
+    };
+  });
+}
+
+/** Glues a field model back into the message string (the inverse of `getIcuFieldModel`). */
+export function assembleIcuFields(fields: IcuField[]): string {
+  return fields
+    .map((field) => {
+      if (field.kind === 'text') return field.value;
+      let out = field.frame[0];
+      field.clauses.forEach((clause, k) => {
+        out += clause.value + field.frame[k + 1];
+      });
+      return out;
+    })
+    .join('');
+}
+
+/** Returns a copy of the model with one text run replaced. */
+export function setIcuTextValue(fields: IcuField[], fieldIndex: number, value: string): IcuField[] {
+  return fields.map((f, i) => (i === fieldIndex && f.kind === 'text' ? { ...f, value } : f));
+}
+
+/** Returns a copy of the model with one clause body replaced. */
+export function setIcuClauseValue(
+  fields: IcuField[],
+  fieldIndex: number,
+  clauseIndex: number,
+  value: string
+): IcuField[] {
+  return fields.map((f, i) =>
+    i === fieldIndex && f.kind === 'block'
+      ? { ...f, clauses: f.clauses.map((c, k) => (k === clauseIndex ? { ...c, value } : c)) }
+      : f
+  );
+}
+
 /**
  * True when one ICU block straddles a line break, i.e. a `{` and its matching `}` are
  * separated by `\n`. The translation pipeline splits a source string on its line breaks
@@ -858,16 +1121,21 @@ function collectElementTokens(el: IcuElement): string[] {
   return tokens;
 }
 
-/** The number of `#` elements in a parsed message (recursing into clauses). */
-function countHashElements(elements: IcuElement[]): number {
-  let count = 0;
+/**
+ * The blocks that own a `#` in a parsed message (recursing into clauses). The owner matters:
+ * `#` is interpolated only inside its own plural block, so two `#` in two different blocks are
+ * not interchangeable.
+ */
+function collectHashOwners(elements: IcuElement[], owner = ''): string[] {
+  const out: string[] = [];
   for (const el of elements) {
-    if (el.kind === 'hash') count++;
+    if (el.kind === 'hash') out.push(owner);
     if (el.kind === 'block') {
-      for (const clause of el.clauses) count += countHashElements(clause.elements);
+      const blockKey = `${el.name}:${el.type}`;
+      for (const clause of el.clauses) out.push(...collectHashOwners(clause.elements, blockKey));
     }
   }
-  return count;
+  return out;
 }
 
 /**
@@ -895,20 +1163,21 @@ function compareMessages(
     extraCategories: [],
   };
   compareElementLists(parseIcuMessage(source), parseIcuMessage(target), targetLocale, acc);
-  // `#` appears once per clause that uses it. When the locale-aware check
-  // applies, its count legitimately differs between languages (e.g. 6 Arabic
-  // clauses vs 2 English ones), so it is compared by presence inside matched
-  // clauses only. Otherwise (no locale, or an unsupported one) the total
-  // count is compared, so a different number of `#` is a mismatch.
-  const srcHashCount = countHashElements(parseIcuMessage(source));
-  const tgtHashCount = countHashElements(parseIcuMessage(target));
-  const localeAware =
-    !!targetLocale &&
-    (srcHashCount > 0 || tgtHashCount > 0) &&
-    getPluralCategoriesForLocale(targetLocale, 'cardinal') !== null;
-  if (!localeAware) {
-    if (tgtHashCount < srcHashCount && !acc.missing.includes('#')) acc.missing.push('#');
-    if (tgtHashCount > srcHashCount && !acc.extra.includes('#')) acc.extra.push('#');
+  // How many `#` the source and the target write. The TOTAL is a property of the language, not
+  // of correctness: Arabic has six plural forms and legitimately writes `#` in more of them
+  // than English does, and `كتاب واحد` / `كتابان` (one, two) carry no numeral at all. A
+  // whole-message count refused such a translation as a damaged block, so it could not be
+  // saved at all (the save gate is `validatePlaceholders(...).valid`).
+  //
+  // What a reader would notice — and the only thing checked now — is a block that uses `#`
+  // whose target copy lost it: `#` is interpolated only inside its own block, so two `#` in two
+  // different blocks are not interchangeable. That is a warning, never an error: the numeral is
+  // often ungrammatical in one form (Arabic one/two) and some languages spell the number out,
+  // and no check can tell that from a mistake. Dropping a `#` from one clause is not reported at
+  // all (see `compareElementLists`); adding one never is (the value is already localised).
+  const tgtBlocksWithHash = new Set(collectHashOwners(parseIcuMessage(target)));
+  for (const block of new Set(collectHashOwners(parseIcuMessage(source)))) {
+    if (!tgtBlocksWithHash.has(block) && !acc.warnings.includes('#')) acc.warnings.push('#');
   }
   return {
     missing: Array.from(new Set(acc.missing)),
@@ -936,6 +1205,11 @@ function compareElementLists(
       }
     }
     if (matchIdx === -1) {
+      // A `#` a clause of a kept block does not write is not a structural error: the numeral is
+      // often ungrammatical in that form (Arabic says `كتاب واحد` / `كتابان` for one and two),
+      // and a spare `#` glued back would print the number twice. `compareMessages` reports the
+      // case that matters — a whole block that lost its `#` — as a warning.
+      if (key === '#') continue;
       // A dropped block takes its contents with it: report them too, so the
       // missing list names what was inside the block, not just the block.
       acc.missing.push(...collectElementTokens(srcEl));
@@ -1624,6 +1898,20 @@ export function getItemQaIssues(item: ResourceItem, targetLocale?: string): QaIs
 }
 
 /**
+ * True when a string writes `#` in one of its ICU blocks and the translation lost it from that
+ * block entirely: the reader then sees the sentence with no number in it, while the number is
+ * still being counted. A warning, never an error — some languages spell the number out, and no
+ * check can tell that from a mistake — so it is shown next to the save button and the user saves
+ * anyway. Only `'#'` is surfaced: the plural-category warnings fire on many correct translations
+ * (a language needing six forms where the source writes two) and would be noise.
+ */
+export function usesHashWithoutClauseNumber(source: string, target: string, targetLocale?: string): boolean {
+  if (!source.trim() || !target.trim()) return false;
+  if (!source.includes('#') && !target.includes('#')) return false;
+  return validatePlaceholders(source, target, targetLocale).warnings.includes('#');
+}
+
+/**
  * The ICU structural errors of an item: a translation that breaks an ICU block throws at
  * runtime (`String.format` / `MessageFormat`), the same reason a line-break mismatch is
  * unsaveable. The translation pipeline already refuses to produce such a reply; this is
@@ -1660,6 +1948,21 @@ export function getIcuStructureIssues(item: ResourceItem, targetLocale?: string)
         tokens: [],
       };
     });
+}
+
+/**
+ * Whether any part of an item (`string`, a `plurals` clause, an array element) writes `#` in its
+ * source and lost it from the matching target block. Used for the non-blocking warning line.
+ */
+export function itemUsesHashWithoutClauseNumber(item: ResourceItem, targetLocale?: string): boolean {
+  if (!item) return false;
+  const parts: Array<{ source: string; target: string }> = [];
+  if (item.type === 'string') {
+    parts.push({ source: item.source || '', target: item.target || '' });
+  } else if (item.type === 'plural' || item.type === 'array') {
+    for (const sub of item.items || []) parts.push({ source: sub.source || '', target: sub.target || '' });
+  }
+  return parts.some((p) => usesHashWithoutClauseNumber(p.source, p.target, targetLocale));
 }
 
 /** Only the line-break errors of an item: a translation with a different number of line breaks cannot be saved. */

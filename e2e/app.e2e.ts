@@ -493,3 +493,83 @@ test('line breaks show as ↵, Enter writes them, and a different count cannot b
   await expect(guard).toHaveCount(0);
   await expect(page.getByText(/100%|\(1\/1\)/).first()).toBeVisible();
 });
+
+test('ICU branch editor: fields view edits each clause, raw view shows the same string, a broken block is still refused', async ({ page }) => {
+  const xml = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="msgs">{count, plural, one {# message} other {# messages}}</string>\n</resources>`;
+  await page.goto('/');
+  await page.click('#header-right-drawer-btn');
+  await page.click('#drawer-import-btn');
+  await page.getByRole('button', { name: /لصق نص XML|Paste XML/ }).click();
+  await page.locator('textarea').last().fill(xml);
+  await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
+
+  // an untranslated ICU string opens in the fields view: one field per clause, no raw textarea
+  const fields = page.getByTestId('icu-fields');
+  await expect(fields).toBeVisible();
+  await expect(page.locator('textarea#weblate-translation-input')).toHaveCount(0);
+
+  // typing in the clause fields rebuilds the whole message
+  await page.getByTestId('icu-field-0:0').fill('# رسالة');
+  await page.getByTestId('icu-field-0:1').fill('# رسائل');
+  await page.click('#weblate-save-stay-btn');
+
+  // the raw view shows exactly the reassembled string
+  await page.getByTestId('icu-view-raw').click();
+  const box = page.locator('textarea#weblate-translation-input');
+  await expect(box).toHaveValue('{count, plural, one {# رسالة} other {# رسائل}}');
+
+  // a broken block typed in raw mode is still blocked by the save gate
+  await box.fill('{count, plural, one {# رسالة} other {# رسائل}');
+  await page.click('#weblate-save-stay-btn');
+  await expect(page.locator('[role=alert]')).toBeVisible();
+  // and the fields view is not offered for a broken block
+  await expect(page.getByTestId('icu-view-fields')).toHaveCount(0);
+
+  // the raw view of a repaired block can go back to the fields view
+  await box.fill('{count, plural, one {# رسالة} other {# رسائل}}');
+  await page.getByTestId('icu-view-fields').click();
+  await expect(page.getByTestId('icu-field-0:1')).toHaveValue('# رسائل');
+});
+
+test('the # warning is shown without blocking the save, and never replaces a real refusal', async ({ page }) => {
+  const xml = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="msgs">{count, plural, one {# message} other {# messages}}</string>\n    <string name="plain">Hello {name}</string>\n</resources>`;
+  await page.goto('/');
+  await page.click('#header-right-drawer-btn');
+  await page.click('#drawer-import-btn');
+  await page.getByRole('button', { name: /لصق نص XML|Paste XML/ }).click();
+  await page.locator('textarea').last().fill(xml);
+  await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
+
+  const warning = page.getByTestId('icu-hash-warning');
+  // nothing typed yet: no warning, nothing to say
+  await expect(warning).toHaveCount(0);
+
+  // type an Arabic plural that spells one/two out: the number is still shown in few/many/other
+  await page.getByTestId('icu-field-0:0').fill('# رسالة');
+  await page.getByTestId('icu-field-0:1').fill('# رسائل');
+  await expect(warning).toHaveCount(0);
+
+  // a clause that drops the number entirely: the warning appears, and it is not an error
+  await page.getByTestId('icu-field-0:0').fill('رسالة');
+  await page.getByTestId('icu-field-0:1').fill('رسائل');
+  await expect(warning).toBeVisible();
+  await expect(warning).toHaveAttribute('role', 'status');
+
+  // and the save goes through: the warning never becomes a guard
+  await page.click('#weblate-save-stay-btn');
+  await expect(page.locator('[role=alert]')).toHaveCount(0);
+  await expect(page.getByText(/100%|\(1\/2\)/).first()).toBeVisible();
+
+  // a damaged block still refuses, with the warning next to it rather than instead of it
+  const box = page.locator('textarea#weblate-translation-input');
+  await page.getByTestId('icu-view-raw').click();
+  await box.fill('{count, plural, one {رسالة} other {رسائل}');
+  await page.click('#weblate-save-stay-btn');
+  await expect(page.locator('[role=alert]')).toBeVisible();
+
+  // a string that counts nothing never shows the warning
+  await box.fill('{count, plural, one {# رسالة} other {# رسائل}}');
+  await page.click('#weblate-save-stay-btn');
+  await page.getByRole('button', { name: /التالي|Next/ }).first().click();
+  await expect(warning).toHaveCount(0);
+});
