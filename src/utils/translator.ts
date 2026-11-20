@@ -816,10 +816,13 @@ export function clearTranslationCache(): void {
 
 /**
  * Some engines answer a source's no-break space (U+00A0, e.g. between a number and its unit) with an
- * ordinary space. The source's separators are put back, but only when the reply has exactly as many
- * words: with a different count the position of each separator is a guess, so the reply is kept as
- * it came.
+ * ordinary space. The source's separators are put back only when the reply has exactly as many words
+ * AND every word that carries a digit or a format token (`%d`) is at the same index as in the source.
+ * Word order differs between languages (Arabic puts the unit or the adjective first), so a matching
+ * word count alone does not say which two words the separator belonged to. When the anchors move, the
+ * reply is kept as it came.
  */
+const NUMERIC_ANCHOR = /[0-9\u0660-\u0669\u06f0-\u06f9%]/;
 function restoreInteriorNbsp(source: string, reply: string): string {
   if (!source.includes('\u00a0') || reply.includes('\u00a0')) return reply;
   const srcTokens = source.split(/(\u00a0| )/);
@@ -827,7 +830,32 @@ function restoreInteriorNbsp(source: string, reply: string): string {
   const srcSeps = srcTokens.filter((_, i) => i % 2 === 1);
   const replyWords = reply.split(' ');
   if (replyWords.length !== srcWords.length || replyWords.some((w) => w === '')) return reply;
+  if (srcWords.some((w, i) => NUMERIC_ANCHOR.test(w) !== NUMERIC_ANCHOR.test(replyWords[i]))) return reply;
   return replyWords.reduce((acc, w, i) => (i === 0 ? w : acc + srcSeps[i - 1] + w), '');
+}
+
+/**
+ * A line break an engine wrote: a real one, or an escaped `\n` that is not itself preceded by an escaped
+ * backslash. The lookbehind and the pair group keep `\\n` (backslash, backslash, n) intact: group 1 holds
+ * the escaped backslashes in front of the `\n`, which are kept.
+ */
+const STRAY_BREAK = /\s*(?:\r?\n|((?<!\\)(?:\\\\)*)\\n)\s*/g;
+
+/**
+ * Brings an engine reply in line with its source: outer whitespace dropped (the caller puts the
+ * SOURCE's own back), a BOM inside the reply dropped, a line break an engine added to a single-line
+ * source turned into a space, and a no-break space the engine dropped restored.
+ * Pure, so every path that stores an engine reply (the batch prewarm included) goes through it.
+ */
+export function normalizeEngineReply(source: string, reply: string): string {
+  let out = reply
+    .replace(OUTER_WHITESPACE_LEADING, '')
+    .replace(OUTER_WHITESPACE_TRAILING, '')
+    .replace(INTERIOR_BOM, '');
+  if (countLineBreaks(source) === 0) {
+    out = out.replace(STRAY_BREAK, (_m: string, escapes?: string) => `${escapes ?? ''} `);
+  }
+  return restoreInteriorNbsp(source, out);
 }
 
 async function translateSingleSegment(
@@ -983,31 +1011,13 @@ async function translateSingleSegmentUncached(
   const coreText = hasOuterUnescapedQuotes ? trimmed.slice(1, -1) : trimmed;
 
   /**
-   * An engine may answer with its own outer whitespace (a trailing newline, a BOM from a streaming
-   * API, a no-break space). The suggestion keeps the SOURCE's surroundings, not the engine's, so the
-   * reply is trimmed here. A BOM in the middle is dropped too: it is invisible in the editor and
-   * breaks the exported XML.
-   *
-   * This is a separate step from `wrapResult` by design: `wrapResult` runs only after
-   * `breaksIcuStructure` has judged the raw reply. Trimming inside `wrapResult` meant the ICU gate
-   * judged a padded candidate while the suggestion returned the trimmed one — two different strings,
-   * and the one that was actually saved had never been checked. Post-processing now happens before
-   * every engine gate, so the text that is judged is the text that is returned.
+   * Runs on every engine reply BEFORE the ICU gate, so the text that is judged is the text that is
+   * returned. See `normalizeEngineReply`.
    */
-  const postProcess = (translatedCore: string): string => {
-    let out = translatedCore
-      .replace(OUTER_WHITESPACE_LEADING, '')
-      .replace(OUTER_WHITESPACE_TRAILING, '')
-      .replace(INTERIOR_BOM, '');
-    // A single-line source has no line breaks to keep, but an engine sometimes writes one inside its
-    // reply ("Hello world" comes back as two lines). The app's own line-break check would then refuse
-    // the save. The words are kept and the stray break becomes a space. Both forms that
-    // countLineBreaks counts are covered: a real newline and an escaped backslash-n.
-    if (countLineBreaks(coreText) === 0) {
-      out = out.replace(/\s*(?:\r?\n|\\n)\s*/g, ' ');
-    }
-    return restoreInteriorNbsp(coreText, out);
-  };
+  const postProcess = (translatedCore: string): string => normalizeEngineReply(coreText, translatedCore);
+
+  /** A reply must keep the source's number of line breaks, or the app's own save gate refuses it. */
+  const changesLineBreaks = (candidate: string): boolean => countLineBreaks(candidate) !== countLineBreaks(coreText);
 
   const wrapResult = (translatedCore: string) => {
     const core = hasOuterUnescapedQuotes
@@ -1122,7 +1132,7 @@ async function translateSingleSegmentUncached(
           const cleaned = stripMetadataLabels(pData.translatedText, coreText);
           if (cleaned && !isPollutedTranslation(cleaned)) {
             const restored = postProcess(restoreSegmentSyntax(cleaned, tokens, usesEscapedDoubleQuotes));
-            if (!breaksIcuStructure(restored)) return restored;
+            if (!breaksIcuStructure(restored) && !changesLineBreaks(restored)) return restored;
           }
         }
       } catch (err) {
@@ -1148,7 +1158,7 @@ async function translateSingleSegmentUncached(
         const cleaned = stripMetadataLabels(directResult.translatedText, coreText);
         if (cleaned && !isPollutedTranslation(cleaned)) {
           const restored = postProcess(restoreSegmentSyntax(cleaned, tokens, usesEscapedDoubleQuotes));
-          if (!breaksIcuStructure(restored)) return restored;
+          if (!breaksIcuStructure(restored) && !changesLineBreaks(restored)) return restored;
         }
       }
     } catch (err) {
@@ -1175,7 +1185,7 @@ async function translateSingleSegmentUncached(
       const cleanedAi = stripMetadataLabels(translated, coreText);
       if (cleanedAi && !isPollutedTranslation(cleanedAi)) {
         const restored = postProcess(restoreSegmentSyntax(cleanedAi, tokens, usesEscapedDoubleQuotes));
-        if (!breaksIcuStructure(restored)) return restored;
+        if (!breaksIcuStructure(restored) && !changesLineBreaks(restored)) return restored;
       }
     } catch (err) {
       logFallback('gemini', err);
@@ -1190,7 +1200,7 @@ async function translateSingleSegmentUncached(
       const decoded = stripMetadataLabels(decodeHtmlEntities(combined), coreText);
       if (decoded && !isPollutedTranslation(decoded)) {
         const restored = postProcess(restoreSegmentSyntax(decoded, tokens, usesEscapedDoubleQuotes));
-        if (!breaksIcuStructure(restored)) {
+        if (!breaksIcuStructure(restored) && !changesLineBreaks(restored)) {
           noteGtxResult(true);
           return restored;
         }
@@ -1251,7 +1261,7 @@ async function translateSingleSegmentUncached(
 
         if (!isPollutedTranslation(rawResult)) {
           const finalResult = postProcess(restoreSegmentSyntax(rawResult, tokens, usesEscapedDoubleQuotes));
-          if (finalResult && !breaksIcuStructure(finalResult)) {
+          if (finalResult && !breaksIcuStructure(finalResult) && !changesLineBreaks(finalResult)) {
             return finalResult;
           }
         }
@@ -1451,7 +1461,7 @@ export async function prewarmProviderBatch(
       chunk.forEach((src, idx) => {
         const raw = data.translations?.[idx];
         if (!raw) return;
-        const cleaned = stripMetadataLabels(raw, src).trim();
+        const cleaned = normalizeEngineReply(src, stripMetadataLabels(raw, src));
         if (!cleaned || POLLUTED_BATCH_RESULT.test(cleaned)) return;
         cacheSegmentResult(cacheKeyFor(src, directLang, undefined), { text: cleaned, source: provider.type });
       });
