@@ -703,12 +703,19 @@ function getTranslationCache(): Map<string, SuggestionResult> {
     try {
       const raw = getStoredItem(TRANSLATION_CACHE_KEY);
       if (raw) {
-        const merged = new Map<string, SuggestionResult>(JSON.parse(raw) as Array<[string, SuggestionResult]>);
-        for (const [k, v] of translationCache) {
-          merged.delete(k);
-          merged.set(k, v);
+        // Merge inside the same Map instead of swapping in a new one: a caller that still holds the
+        // earlier reference across an await would otherwise write into an orphaned map.
+        const saved = JSON.parse(raw) as Array<[string, SuggestionResult]>;
+        const live = [...translationCache.entries()];
+        translationCache.clear();
+        for (const [k, v] of saved) translationCache.set(k, v);
+        for (const [k, v] of live) {
+          translationCache.delete(k);
+          translationCache.set(k, v);
         }
-        translationCache = merged;
+        while (translationCache.size > TRANSLATION_CACHE_LIMIT) {
+          translationCache.delete(translationCache.keys().next().value as string);
+        }
       }
     } catch (err) {
       debugIgnored('translator', err);
