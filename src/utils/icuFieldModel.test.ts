@@ -265,6 +265,49 @@ describe('getIcuFieldModel / assembleIcuFields', () => {
     expect(words![2]).toMatchObject({ kind: 'text', value: '' });
   });
 
+  it('pairs a reordered block with its own clauses, not with its position', () => {
+    // A translation that moves `{b…}` in front of `{a…}` used to take the clauses by position, so
+    // `b`'s Arabic ended up inside `a`: the saved string mixed the two functions. Blocks are now
+    // paired by name, type and frame.
+    const source = 'You have {a, plural, one {# f} other {# fs}} and {b, select, m {He} other {They}}';
+    const reordered = '{b, select, m {\u0647\u0648} other {\u0647\u0645}} {a, plural, one {# \u0641} other {# \u0641\u0633}}';
+    const model = getIcuFieldModel(source, reordered)!;
+    const blocks = model.filter((f): f is IcuBlockField => f.kind === 'block');
+    expect(blocks.map((b) => [b.name, b.clauses.map((c) => c.value)])).toEqual([
+      ['a', ['# \u0641', '# \u0641\u0633']],
+      ['b', ['\u0647\u0648', '\u0647\u0645']],
+    ]);
+    // The string the fields view saves keeps each function with its own text.
+    expect(assembleIcuFields(model)).toBe(
+      '{a, plural, one {# \u0641} other {# \u0641\u0633}} {b, select, m {\u0647\u0648} other {\u0647\u0645}}'
+    );
+  });
+
+  it('never puts one block\'s text into another, even when a block is renamed away', () => {
+    // A block the target does not have keeps its source references and empty bodies: borrowing
+    // the leftover target block would move `b`'s text into `a`.
+    const source = 'You have {a, plural, one {# f} other {# fs}} and {b, select, m {He} other {They}}';
+    const renamed = '{a, plural, one {# \u0641} other {# \u0641\u0633}}{z, select, m {\u0647\u0648} other {\u0647\u0645}}';
+    const model = getIcuFieldModel(source, renamed)!;
+    const blocks = model.filter((f): f is IcuBlockField => f.kind === 'block');
+    expect(blocks.map((b) => [b.name, b.clauses.map((c) => c.value)])).toEqual([
+      ['a', ['# \u0641', '# \u0641\u0633']],
+      ['b', ['', '']],
+    ]);
+
+    // Three blocks, reordered: each still keeps its own text.
+    const three = '{a, plural, one {#1} other {#1s}} {b, select, m {B} other {BB}} {c, select, m {C} other {CC}}';
+    const moved = '{c, select, m {\u062c} other {\u062c\u062c}} {a, plural, one {#1} other {#1s}} {b, select, m {\u0628} other {\u0628\u0628}}';
+    const m3 = getIcuFieldModel(three, moved)!;
+    // The target keeps its own order here (both sides have every text run, so the source layout
+    // is not imposed) — what matters is that no block carries another one's text.
+    expect(m3.filter((f): f is IcuBlockField => f.kind === 'block').map((b) => [b.name, b.clauses[0].value])).toEqual([
+      ['c', '\u062c'],
+      ['a', '#1'],
+      ['b', '\u0628'],
+    ]);
+  });
+
   it('editing one body only changes that body', () => {
     const t = '{g, select, male {He} female {She} other {They}} wrote';
     const model = getIcuFieldModel(t, t)!;

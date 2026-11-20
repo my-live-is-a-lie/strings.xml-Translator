@@ -593,8 +593,11 @@ export function getIcuFieldModel(source: string, target: string): IcuField[] | n
         else targetSegments[targetSegments.length - 1].push(f.value);
       }
       const taken = targetSegments.map(() => 0);
-      let b = 0;
       let segment = 0;
+      // The frame holds the header, the selectors and the offsets: two blocks with the same frame
+      // are the same function, so it is also what tells a renamed block apart.
+      const blockFrame = (block: IcuBlockField): string => block.frame.join('\u0000');
+      const usedTargetBlocks = new Set<IcuBlockField>();
       return sourceFields!.map((field) => {
         if (field.kind === 'text') {
           // A run the target does not have at all is the source's again when it carries no
@@ -606,7 +609,22 @@ export function getIcuFieldModel(source: string, target: string): IcuField[] | n
           return { kind: 'text', value, sourceValue: field.value };
         }
         segment++;
-        const fromTarget = targetBlocks[b++];
+        // Blocks are paired by name and type, not by position: a translation that reorders two
+        // blocks (`{b…} {a…}`) kept `b`'s Arabic in `a`'s clauses under a positional pairing, so
+        // the saved string mixed the two. The frame is compared too (it holds the header, the
+        // selectors and the offsets), so a block that changed its own structure is not matched
+        // to the wrong one. A block the target does not have keeps its source references and
+        // empty bodies: guessing which block the user meant would put another function's text
+        // into it.
+        const nameOf = (candidate: IcuBlockField): string => candidate.name + '|' + candidate.type;
+        const fromTarget =
+          targetBlocks.find(
+            (candidate) =>
+              nameOf(candidate) === nameOf(field) &&
+              !usedTargetBlocks.has(candidate) &&
+              blockFrame(candidate) === blockFrame(field)
+          ) ?? targetBlocks.find((candidate) => nameOf(candidate) === nameOf(field) && !usedTargetBlocks.has(candidate));
+        if (fromTarget) usedTargetBlocks.add(fromTarget);
         return {
           ...field,
           clauses: field.clauses.map((clause) => {
