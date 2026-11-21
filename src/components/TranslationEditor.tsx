@@ -28,7 +28,14 @@ import {
   setIcuClauseValue,
   setIcuTextValue,
 } from '../utils/placeholderCheck';
-import { toEditorItem, toStoredItem, toStoredText, normalizeTypedBreaks } from '../utils/newlines';
+import {
+  toEditorItem,
+  toStoredItem,
+  toStoredText,
+  normalizeTypedBreaks,
+  hasMidLineDoubleSpaces,
+  collapseMidLineDoubleSpaces,
+} from '../utils/newlines';
 import { getStoredItem, setStoredItem, copyTextToClipboard, readTextFromClipboard } from '../utils/storage';
 import { useT } from '../i18n/i18n';
 
@@ -1581,16 +1588,18 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     }
   };
 
-  // Check if target text currently contains multiple consecutive spaces (typing mistake)
+  // Check if target text currently contains multiple consecutive spaces (typing mistake).
+  // Start-of-line indentation copied from the raw XML (e.g. around an ICU block) is
+  // formatting, not a typo, so it does not count; a real double space mid-line still does.
   const hasMultipleSpaces = React.useMemo(() => {
     if (draftItem.type === 'string') {
-      return / {2,}/.test(draftItem.target || '');
+      return hasMidLineDoubleSpaces(draftItem.target || '');
     }
     if (draftItem.type === 'plural') {
-      return normalizedPluralItems.some((pi) => / {2,}/.test(pi.target || ''));
+      return normalizedPluralItems.some((pi) => hasMidLineDoubleSpaces(pi.target || ''));
     }
     if (draftItem.type === 'array') {
-      return draftItem.items.some((ai) => / {2,}/.test(ai.target || ''));
+      return draftItem.items.some((ai) => hasMidLineDoubleSpaces(ai.target || ''));
     }
     return false;
   }, [draftItem, normalizedPluralItems]);
@@ -1598,12 +1607,12 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   // Fix typing mistake: replace multiple consecutive spaces with a single space
   const handleFixMultipleSpaces = () => {
     if (draftItem.type === 'string') {
-      const fixed = (draftItem.target || '').replace(/ {2,}/g, ' ');
+      const fixed = collapseMidLineDoubleSpaces(draftItem.target || '');
       handleSingleTextChange(fixed);
     } else if (draftItem.type === 'plural') {
       const fixedPlurals = normalizedPluralItems.map((pi) => ({
         ...pi,
-        target: (pi.target || '').replace(/ {2,}/g, ' '),
+        target: collapseMidLineDoubleSpaces(pi.target || ''),
       }));
       updateDraftItem({
         ...draftItem,
@@ -1612,7 +1621,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     } else if (draftItem.type === 'array') {
       const fixedItems = draftItem.items.map((ai) => ({
         ...ai,
-        target: (ai.target || '').replace(/ {2,}/g, ' '),
+        target: collapseMidLineDoubleSpaces(ai.target || ''),
       }));
       updateDraftItem({
         ...draftItem,
@@ -1907,6 +1916,14 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                     );
                   };
                   if (field.kind === 'text') {
+                    // A run of plain text outside the ICU block whose source is pure formatting
+                    // (the newline/indentation copied from the raw XML, with no real word in it)
+                    // has nothing a translator could usefully type, and its whitespace falsely
+                    // trips the "multiple consecutive spaces" QA warning. Hide it; the exporter
+                    // reconstructs this whitespace from the source regardless of what the
+                    // (hidden) field would have held. A run that holds real text, like " ago" in
+                    // "{minutes, plural, ...} ago", still needs to be shown and translated.
+                    if (!/\S/.test(field.sourceValue)) return null;
                     return (
                       <div key={fi} className="space-y-1">
                         <div className="flex items-center justify-between text-xs gap-2">

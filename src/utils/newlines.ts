@@ -65,6 +65,32 @@ export function lineBreakDifference(source: string, target: string): number {
   return countLineBreaks(source) - countLineBreaks(target);
 }
 
+/**
+ * True when `text` has a run of two or more spaces that is NOT just the start-of-line
+ * indentation copied from raw XML (the space run right after a line break, or at the very
+ * start of the text). That indentation is formatting, not a typo a translator made; a double
+ * space in the middle of a sentence still is. Accepts either stored or editor form.
+ */
+export function hasMidLineDoubleSpaces(text: string): boolean {
+  if (!text) return false;
+  const editorText = toEditorText(text);
+  for (const m of editorText.matchAll(/ {2,}/g)) {
+    if (m.index !== 0 && editorText[m.index - 1] !== '\n') return true;
+  }
+  return false;
+}
+
+/**
+ * Collapses only mid-line double spaces (see `hasMidLineDoubleSpaces`) down to a single space;
+ * start-of-line indentation is left untouched. Expects and returns editor-form text.
+ */
+export function collapseMidLineDoubleSpaces(editorText: string): string {
+  if (!editorText) return editorText;
+  return editorText.replace(/ {2,}/g, (match, offset: number, full: string) =>
+    offset === 0 || full[offset - 1] === '\n' ? match : ' '
+  );
+}
+
 const mapTargets = (item: ResourceItem, fn: (t: string) => string): ResourceItem => {
   if (item.type === 'string') {
     const target = fn(item.target || '');
