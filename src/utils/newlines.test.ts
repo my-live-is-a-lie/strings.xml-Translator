@@ -224,4 +224,32 @@ describe('interior pretty-print indentation', () => {
     expect(mergeFormattingIndents(null, arriving)).toEqual(arriving);
     expect(mergeFormattingIndents(kept, null)).toEqual(kept);
   });
+
+  // The source panel shows and copies the source the same way the target editor shows a
+  // target: edges off, line-start indentation off, stored text untouched.
+  describe('source display composition', () => {
+    const sourceDisplay = (src: string) => {
+      const core = splitFormattingEdges(src, src).core;
+      return splitInteriorIndents(core, core).display;
+    };
+
+    it('strips the formatting edges off a single-line source', () => {
+      expect(sourceDisplay('\n        Price: {amount, number, ::currency/USD}\n    ')).toBe(
+        'Price: {amount, number, ::currency/USD}'
+      );
+    });
+
+    it('dedents a multi-line source for display', () => {
+      expect(
+        sourceDisplay('{gender, select,\n        male {He}\n        other {They}\n    }')
+      ).toBe('{gender, select,\nmale {He}\nother {They}\n}');
+    });
+
+    it('leaves a source with no formatting whitespace untouched', () => {
+      expect(sourceDisplay('Save Changes')).toBe('Save Changes');
+      expect(sourceDisplay('{count, plural, one {# day} other {# days}}')).toBe(
+        '{count, plural, one {# day} other {# days}}'
+      );
+    });
+  });
 });
