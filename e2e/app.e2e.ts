@@ -336,6 +336,8 @@ test('the top area slides away only when the keyboard leaves too little room, an
   await page.waitForTimeout(500);
   await expect(top).toBeVisible();
   await box.blur();
+  // a long text genuinely leaves too little room once the keyboard is up
+  await box.fill('سطر طويل للاختبار\n'.repeat(25));
   // keyboard-sized viewport: the content no longer fits, so the top area collapses
   await page.setViewportSize({ width: 390, height: 380 });
   await box.focus();

@@ -154,6 +154,7 @@ export function useKeyboardCollapse(enabled: boolean): boolean {
       const el = document.activeElement as HTMLElement | null;
       const scroller = document.querySelector<HTMLElement>('[data-editor-scroll]');
       if (!el || !scroller || el.tagName !== 'TEXTAREA' || !scroller.contains(el)) {
+        console.log('[kc] reset', JSON.stringify({ tag: el?.tagName }));
         setCollapsed(false);
         return;
       }
@@ -162,8 +163,16 @@ export function useKeyboardCollapse(enabled: boolean): boolean {
       const area = scroller.getBoundingClientRect();
       const top = area.top;
       const bottom = Math.min(area.bottom, window.visualViewport ? window.visualViewport.offsetTop + window.visualViewport.height : window.innerHeight);
-      const covered = (r: DOMRect) => r.top < top - 2 || r.bottom > bottom + 2;
-      if (!(src && covered(src.getBoundingClientRect())) && !covered(el.getBoundingClientRect())) return;
+      // Judge by natural content height, not the current box height: the source window caps the
+      // source and the box with maxHeight so they fit, and whichever of us runs first would otherwise
+      // decide whether the other sees anything covered - a race that made the collapse flaky.
+      const covered = (n: HTMLElement) => {
+        const r = n.getBoundingClientRect();
+        return r.top < top - 2 || r.top + Math.max(r.height, n.scrollHeight) > bottom + 2;
+      };
+      console.log('[kc] eval', JSON.stringify({ sc: src ? covered(src) : null, ec: covered(el), et: Math.round(el.getBoundingClientRect().top), eh: Math.round(el.getBoundingClientRect().height), esh: el.scrollHeight, b: bottom }));
+      if (!(src && covered(src)) && !covered(el)) return;
+      console.log('[kc] COLLAPSE');
       setCollapsed((prev) => {
         if (!prev) {
           // once the area has slid away, bring the source and the caret line into view
