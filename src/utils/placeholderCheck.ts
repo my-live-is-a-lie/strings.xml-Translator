@@ -462,6 +462,13 @@ export interface IcuClauseField {
   value: string;
   /** The body of the same selector in the source (the `other` body when the source has no such clause). */
   sourceValue: string;
+  /**
+   * When the body itself holds an ICU block (a plural inside a select, say): the body as its own
+   * field model, so the branch editor shows the nested clauses as sub-fields instead of one opaque
+   * raw-text field. `value` stays the assembled body string — the model remains a view over the
+   * message, `children` is only its editable decomposition.
+   */
+  children?: IcuField[];
 }
 
 /** A top-level ICU block. Only the clause bodies are editable; the structure is `frame`. */
@@ -629,7 +636,7 @@ export function getIcuFieldModel(source: string, target: string): IcuField[] | n
           ...field,
           clauses: field.clauses.map((clause) => {
             const match = fromTarget?.clauses.find((c) => c.selector === clause.selector);
-            return { ...clause, value: match?.value ?? '', sourceValue: clause.value };
+            return attachChildren({ ...clause, value: match?.value ?? '', sourceValue: clause.value });
           }),
         };
       });
@@ -666,10 +673,126 @@ export function getIcuFieldModel(source: string, target: string): IcuField[] | n
         const value = targetIsEmpty
           ? (isStructuralText(clause.value) ? clause.value : '')
           : clause.value;
-        return { ...clause, value, sourceValue };
+        return attachChildren({ ...clause, value, sourceValue });
       }),
     };
   });
+}
+
+/**
+ * Decomposes a clause body that itself holds an ICU block (a plural inside a select, say) into
+ * its own field model, so the branch editor shows the nested clauses as sub-fields instead of
+ * one opaque raw-text field. Undefined when the body holds no block or does not parse as one —
+ * the clause then stays a single text field, exactly as before.
+ */
+function nestedFieldsOf(sourceBody: string, targetBody: string): IcuField[] | undefined {
+  if (!sourceBody.includes('{') && !targetBody.includes('{')) return undefined;
+  const model = getIcuFieldModel(sourceBody, targetBody);
+  return model && model.some((f) => f.kind === 'block') ? model : undefined;
+}
+
+/** Attaches `children` to a clause whose body decomposes into sub-fields. */
+function attachChildren(clause: IcuClauseField): IcuClauseField {
+  const children = nestedFieldsOf(clause.sourceValue, clause.value);
+  return children ? { ...clause, children } : clause;
+}
+
+/**
+ * Addresses one editable leaf of the model. A clause body is `[blockIndex, clauseIndex]`, a text
+ * run `[fieldIndex, null]` (the trailing null marks a text run), and each nesting level adds two
+ * entries: `[0, 1, 0, 0]` is the first clause of the block inside clause 1 of block 0, and
+ * `[0, 1, 0, null]` is a text run at that depth.
+ */
+export type IcuFieldPath = (number | null)[];
+
+/** True when the path addresses a text run rather than a clause body. */
+const isTextRunPath = (path: IcuFieldPath): boolean => path[path.length - 1] === null;
+
+/** The field list a path step resolves against: walks into clause children for deeper paths. */
+function resolvePath(fields: IcuField[], path: IcuFieldPath): { fields: IcuField[]; leaf: IcuFieldPath } | null {
+  let current = fields;
+  let i = 0;
+  while (i < path.length - 2) {
+    const field = current[path[i] as number];
+    if (!field || field.kind !== 'block') return null;
+    const clause = field.clauses[path[i + 1] as number];
+    if (!clause?.children) return null;
+    current = clause.children;
+    i += 2;
+  }
+  return { fields: current, leaf: path.slice(i) };
+}
+
+/** The current value of the leaf a path addresses, or null when the path does not resolve. */
+export function getIcuLeafValue(fields: IcuField[], path: IcuFieldPath): string | null {
+  const resolved = resolvePath(fields, path);
+  if (!resolved) return null;
+  const [head, clauseIndex] = resolved.leaf;
+  const field = resolved.fields[head as number];
+  if (!field) return null;
+  if (isTextRunPath(resolved.leaf)) return field.kind === 'text' ? field.value : null;
+  if (field.kind !== 'block') return null;
+  return field.clauses[clauseIndex as number]?.value ?? null;
+}
+
+/** The text run a path addresses (for the formatting-edge handling), or null when it is not one. */
+export function getIcuTextRunAtPath(fields: IcuField[], path: IcuFieldPath): IcuTextField | null {
+  if (!isTextRunPath(path)) return null;
+  const resolved = resolvePath(fields, path);
+  if (!resolved || !isTextRunPath(resolved.leaf)) return null;
+  const leaf = resolved.fields[resolved.leaf[0] as number];
+  return leaf && leaf.kind === 'text' ? leaf : null;
+}
+
+/** Descends one block+clause pair and re-applies `edit` to the clause's children. */
+function mapClauseChildren(
+  fields: IcuField[],
+  fieldIndex: number,
+  clauseIndex: number,
+  edit: (children: IcuField[]) => IcuField[]
+): IcuField[] {
+  return fields.map((f, i) => {
+    if (i !== fieldIndex || f.kind !== 'block') return f;
+    return {
+      ...f,
+      clauses: f.clauses.map((c, k) => {
+        if (k !== clauseIndex || !c.children) return c;
+        const children = edit(c.children);
+        return { ...c, children, value: assembleIcuFields(children) };
+      }),
+    };
+  });
+}
+
+/**
+ * Returns a copy of the model with one leaf replaced. For a nested leaf the enclosing clause
+ * value is re-assembled from its children, so `value` always stays the assembled body string.
+ */
+export function setIcuLeafValue(fields: IcuField[], path: IcuFieldPath, value: string): IcuField[] {
+  if (isTextRunPath(path)) {
+    if (path.length === 2) return setIcuTextValue(fields, path[0] as number, value);
+    return mapClauseChildren(fields, path[0] as number, path[1] as number, (children) =>
+      setIcuLeafValue(children, path.slice(2), value)
+    );
+  }
+  if (path.length === 2) return setIcuClauseValue(fields, path[0] as number, path[1] as number, value);
+  return mapClauseChildren(fields, path[0] as number, path[1] as number, (children) =>
+    setIcuLeafValue(children, path.slice(2), value)
+  );
+}
+
+/**
+ * True when every editable leaf is empty. A clause with children is empty when its sub-fields
+ * are — its assembled skeleton of empty bodies does not count as content.
+ */
+export function icuFieldsAreEmpty(fields: IcuField[]): boolean {
+  return fields.every((field) =>
+    field.kind === 'text'
+      ? field.value.trim() === ''
+      : field.clauses.every((clause) =>
+          clause.children ? icuFieldsAreEmpty(clause.children) : clause.value.trim() === ''
+        )
+  );
 }
 
 /** Glues a field model back into the message string (the inverse of `getIcuFieldModel`). */

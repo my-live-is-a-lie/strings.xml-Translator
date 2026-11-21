@@ -83,7 +83,7 @@ test('updating the source file keeps translations and reports what changed', asy
     '#update-source-text',
     '<resources><string name="app_name">OmniTask 2</string><string name="action_save">Save Changes</string><string name="brand_new">Brand new text</string></resources>'
   );
-  await expect(page.getByText(/1 جديد · 1 متغيّر · 15 محذوف · 1 دون تغيير/)).toBeVisible();
+  await expect(page.getByText(/1 جديد · 1 متغيّر · 16 محذوف · 1 دون تغيير/)).toBeVisible();
   await page.click('#update-source-apply');
   await expect(page.locator('#string-item-brand_new')).toBeVisible();
   await expect(page.locator('#string-item-action_cancel')).toHaveCount(0);
@@ -117,13 +117,13 @@ test('the editor buttons move through the strings', async ({ page }) => {
   await loadSample(page);
   const counter = page.locator('text=/^\\d+ \\/ \\d+$/').first();
   // The Arabic sample pre-merges 6 translated strings, which sort first, so the editor
-  // opens on the first untranslated string at position 7 of 17.
-  await expect(counter).toHaveText('7 / 17');
+  // opens on the first untranslated string at position 7 of 18.
+  await expect(counter).toHaveText('7 / 18');
   await page.locator('textarea').first().fill('نص تجريبي');
   await page.getByText('حفظ ومتابعة').click();
-  await expect(counter).toHaveText('8 / 17');
+  await expect(counter).toHaveText('8 / 18');
   await page.locator('#weblate-skip-btn').click();
-  await expect(counter).toHaveText('9 / 17');
+  await expect(counter).toHaveText('9 / 18');
 });
 
 test('server health endpoint answers and metrics stay hidden without a token', async ({ request }) => {
@@ -167,8 +167,8 @@ test('the strings list and the table open on the string being translated', async
   await page.setViewportSize({ width: 390, height: 520 });
   await page.reload();
   await expect(counter).toBeVisible();
-  for (let i = 0; i < 20 && (await counter.textContent()) !== '15 / 17'; i++) await page.locator('#weblate-skip-btn').click();
-  await expect(counter).toHaveText('15 / 17');
+  for (let i = 0; i < 20 && (await counter.textContent()) !== '15 / 18'; i++) await page.locator('#weblate-skip-btn').click();
+  await expect(counter).toHaveText('15 / 18');
 
   const inView = async (sel: string) =>
     page.evaluate((s) => {
@@ -204,12 +204,12 @@ test('quick filters drive the editor and hide filters that have no strings', asy
   const counter = page.locator('text=/^\\d+ \\/ \\d+$/').first();
   // The editor opens on the first untranslated string, which sorts at position 7
   // (the 6 pre-merged Arabic translations sort first).
-  await expect(counter).toHaveText('7 / 17');
+  await expect(counter).toHaveText('7 / 18');
   await page.locator('[data-filter="translated"]:visible').click();
   const total = Number((await counter.innerText()).split('/')[1]);
-  expect(total).toBeLessThan(17);
+  expect(total).toBeLessThan(18);
   await page.locator('[data-filter="translated"]:visible').click();
-  await expect(counter).toHaveText(/\/ 17$/);
+  await expect(counter).toHaveText(/\/ 18$/);
 });
 
 test('a string saved under the "untranslated" filter stays reachable', async ({ page }) => {
