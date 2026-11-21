@@ -1,5 +1,5 @@
 import { ResourceItem } from '../types';
-import { countLineBreaks } from './newlines';
+import { countLineBreaks, hasMidLineDoubleSpaces } from './newlines';
 
 // ICU MessageFormat argument types that carry sub-message clauses in braces
 // (e.g. `{count, plural, one {...} other {...}}`). Other ICU types such as
@@ -1841,8 +1841,10 @@ function validateSourceTargetPair(
     });
   }
 
-  // 4. Multiple consecutive spaces check (مسافات متعددة متتالية)
-  if (/ {2,}/.test(target)) {
+  // 4. Multiple consecutive spaces check (مسافات متعددة متتالية). Start-of-line indentation
+  // copied from the raw XML (e.g. around an ICU block) is formatting, not a typo, so it is
+  // excluded; a real double space in the middle of a line still counts.
+  if (hasMidLineDoubleSpaces(target)) {
     issues.push({
       id: `${itemId}_${subKey || 'main'}_multiple_spaces`,
       itemId,

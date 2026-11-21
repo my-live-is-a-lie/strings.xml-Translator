@@ -1,5 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { toEditorText, toStoredText, normalizeTypedBreaks, countLineBreaks, lineBreakDifference, toEditorItem, toStoredItem } from './newlines';
+import {
+  toEditorText,
+  toStoredText,
+  normalizeTypedBreaks,
+  countLineBreaks,
+  lineBreakDifference,
+  toEditorItem,
+  toStoredItem,
+  hasMidLineDoubleSpaces,
+  collapseMidLineDoubleSpaces,
+} from './newlines';
 import type { ResourceItem } from '../types';
 
 describe('line breaks', () => {
@@ -45,5 +55,41 @@ describe('line breaks', () => {
     expect((toStoredItem(toEditorItem(str)) as { target: string }).target).toBe('x\\ny');
     expect((toEditorItem(plural) as { items: { target: string; source: string }[] }).items[0].target).toBe('c\nd');
     expect((toEditorItem(plural) as { items: { source: string }[] }).items[0].source).toBe('a\\nb'); // sources are never changed
+  });
+});
+
+describe('mid-line double spaces', () => {
+  it('ignores start-of-line indentation copied from the raw XML', () => {
+    const indented = '\n        {count, plural,\n            one {# msg}\n            other {# msgs}\n        }\n    ';
+    expect(hasMidLineDoubleSpaces(indented)).toBe(false);
+    expect(collapseMidLineDoubleSpaces(indented)).toBe(indented);
+  });
+
+  it('flags and fixes a real double space in the middle of a line', () => {
+    const typo = 'Hello  world';
+    expect(hasMidLineDoubleSpaces(typo)).toBe(true);
+    expect(collapseMidLineDoubleSpaces(typo)).toBe('Hello world');
+  });
+
+  it('flags a mid-line double space even alongside clean indentation', () => {
+    const mixed = '\n    Hello  world\n    second  line\n    ';
+    expect(hasMidLineDoubleSpaces(mixed)).toBe(true);
+    expect(collapseMidLineDoubleSpaces(mixed)).toBe('\n    Hello world\n    second line\n    ');
+  });
+
+  it('leaves a double space right at the very start of the text alone', () => {
+    const leading = '  Hello world';
+    expect(hasMidLineDoubleSpaces(leading)).toBe(false);
+    expect(collapseMidLineDoubleSpaces(leading)).toBe(leading);
+  });
+
+  it('accepts stored form (literal \\n) the same way as editor form', () => {
+    expect(hasMidLineDoubleSpaces('line one\\n    line  two')).toBe(true);
+    expect(hasMidLineDoubleSpaces('line one\\n    indented only')).toBe(false);
+  });
+
+  it('collapses stored-form input correctly instead of treating its literal \\n as plain characters', () => {
+    expect(collapseMidLineDoubleSpaces('line one\\n    line  two')).toBe('line one\n    line two');
+    expect(collapseMidLineDoubleSpaces('line one\\n    indented only')).toBe('line one\n    indented only');
   });
 });
