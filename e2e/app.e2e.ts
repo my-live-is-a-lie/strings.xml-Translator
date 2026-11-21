@@ -319,7 +319,7 @@ test('external AI request can also include the strings that need review', async 
   await page.locator('input[data-provider-id="__external_ai__"]').check();
   await page.click('#bulk-provider-start');
   const dialog = page.getByRole('dialog', { name: /الترجمة عبر تطبيق ذكاء اصطناعي/ });
-  const count = async () => Number(((await dialog.locator('h2').innerText()).match(/\((\d+) نص/) || [])[1]);
+  const count = async () => Number(((await dialog.locator('[data-ext="part-count"]').first().innerText()).match(/\d+/) || [])[0]);
   const before = await count();
   await dialog.locator('#ext-include-review').check();
   expect(await count()).toBeGreaterThan(before);
