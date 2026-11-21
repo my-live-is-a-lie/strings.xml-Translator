@@ -37,6 +37,22 @@ export const SAMPLE_ANDROID_STRINGS_XML = `<?xml version="1.0" encoding="utf-8"?
         <item quantity="other">%d files selected</item>
     </plurals>
 
+    <!-- Nested ICU message: a select whose clauses each contain a plural -->
+    <string name="task_completion_notice">{assignee_gender, select,
+        male {{count, plural,
+            one {He completed one task}
+            other {He completed # tasks}
+        }}
+        female {{count, plural,
+            one {She completed one task}
+            other {She completed # tasks}
+        }}
+        other {{count, plural,
+            one {They completed one task}
+            other {They completed # tasks}
+        }}
+    }</string>
+
     <!-- Task priority filters -->
     <string-array name="priority_levels">
         <item>Urgent</item>

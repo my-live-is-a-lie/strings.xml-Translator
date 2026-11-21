@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   assembleIcuFields,
   getIcuFieldModel,
+  getIcuLeafValue,
+  getIcuTextRunAtPath,
+  icuFieldsAreEmpty,
   setIcuClauseValue,
+  setIcuLeafValue,
   setIcuTextValue,
   validatePlaceholders,
   type IcuBlockField,
@@ -329,5 +333,109 @@ describe('getIcuFieldModel / assembleIcuFields', () => {
     expect(leadingText.sourceValue.trim()).toBe(''); // the source side is pure formatting
     expect(leadingText.value.trim()).toBe('مقدمة'); // but the target carries a real word
     expect(assembleIcuFields(model)).toBe(target);
+  });
+});
+
+describe('nested ICU sub-fields', () => {
+  // A plural nested inside each select clause (the shape that used to render as one opaque
+  // raw-text field per outer clause).
+  const GENDER =
+    '{gender, select, male {{count, plural, one {He sent one message} other {He sent # messages}}} female {{count, plural, one {She sent one message} other {She sent # messages}}} other {{count, plural, one {They sent one message} other {They sent # messages}}}}';
+
+  const nestedBlock = (source: string, target: string, clauseIndex: number): IcuBlockField => {
+    const outer = firstBlock(source, target);
+    const children = outer.clauses[clauseIndex].children;
+    expect(children).toBeDefined();
+    const nested = children!.find((f): f is IcuBlockField => f.kind === 'block');
+    expect(nested).toBeDefined();
+    return nested!;
+  };
+
+  it('decomposes a plural nested in a select clause into sub-fields', () => {
+    const outer = firstBlock(GENDER, GENDER);
+    const male = outer.clauses[0];
+    // The body itself is untouched: the sub-fields are only an editable view of it.
+    expect(male.value).toBe('{count, plural, one {He sent one message} other {He sent # messages}}');
+    const nested = nestedBlock(GENDER, GENDER, 0);
+    expect(nested.name).toBe('count');
+    expect(nested.type).toBe('plural');
+    expect(nested.clauses.map((c) => [c.selector, c.value])).toEqual([
+      ['one', 'He sent one message'],
+      ['other', 'He sent # messages'],
+    ]);
+    // The full string still round-trips byte for byte.
+    expect(roundTrip(GENDER, GENDER)).toBe(GENDER);
+  });
+
+  it('keeps a clause without a nested block a plain body', () => {
+    const t = '{g, select, male {Boys} other {People}}';
+    expect(firstBlock(t, t).clauses[0].children).toBeUndefined();
+  });
+
+  it('borrows the nested structure for an empty target, with empty sub-field bodies', () => {
+    const model = getIcuFieldModel(GENDER, '')!;
+    const outer = model.find((f): f is IcuBlockField => f.kind === 'block')!;
+    const nested = outer.clauses[0].children!.find((f): f is IcuBlockField => f.kind === 'block')!;
+    expect(nested.clauses.map((c) => c.value)).toEqual(['', '']);
+    expect(nested.clauses.map((c) => c.sourceValue)).toEqual(['He sent one message', 'He sent # messages']);
+    // The skeleton of empty bodies is not content.
+    expect(icuFieldsAreEmpty(model)).toBe(true);
+  });
+
+  it('reassembles a deep edit through the enclosing clause and block', () => {
+    const model = getIcuFieldModel(GENDER, '')!;
+    // [outer block 0, clause 0 (male), nested field 0 (the plural), nested clause 1 (other)]
+    const edited = setIcuLeafValue(model, [0, 0, 0, 1], 'أرسل # رسائل');
+    expect(assembleIcuFields(edited)).toBe(
+      '{gender, select, male {{count, plural, one {} other {أرسل # رسائل}}} female {} other {}}'
+    );
+    expect(icuFieldsAreEmpty(edited)).toBe(false);
+    // A clause the edit did not touch keeps its empty body: no skeleton is materialized for it.
+    const outer = edited.find((f): f is IcuBlockField => f.kind === 'block')!;
+    expect(outer.clauses[1].value).toBe('');
+  });
+
+  it('reads leaf values at depth', () => {
+    const model = getIcuFieldModel(GENDER, GENDER)!;
+    expect(getIcuLeafValue(model, [0, 1, 0, 0])).toBe('She sent one message');
+    expect(getIcuLeafValue(model, [0, 1])).toBe(
+      '{count, plural, one {She sent one message} other {She sent # messages}}'
+    );
+    expect(getIcuTextRunAtPath(model, [0, 1, 0, 0])).toBeNull();
+    expect(getIcuLeafValue(model, [9, 9])).toBeNull();
+  });
+
+  it('addresses a text run between two nested blocks with a trailing-null path', () => {
+    const t = '{g, select, male {{n, plural, one {# boy} other {# boys}} and {m, plural, one {# toy} other {# toys}}} other {People}}';
+    const model = getIcuFieldModel(t, t)!;
+    expect(roundTrip(t, t)).toBe(t);
+    expect(getIcuLeafValue(model, [0, 0, 1, null])).toBe(' and ');
+    expect(getIcuTextRunAtPath(model, [0, 0, 1, null])?.value).toBe(' and ');
+    const edited = setIcuLeafValue(model, [0, 0, 1, null], ' و ');
+    expect(assembleIcuFields(edited)).toBe(
+      '{g, select, male {{n, plural, one {# boy} other {# boys}} و {m, plural, one {# toy} other {# toys}}} other {People}}'
+    );
+  });
+
+  it('round-trips a multiline nested message byte for byte', () => {
+    const t =
+      '{gender, select,\n            male {{count, plural,\n                one {He sent one message}\n                other {He sent # messages}\n            }}\n            other {They wrote}\n        }';
+    expect(roundTrip(t, t)).toBe(t);
+    // The nested model survives the line breaks and indents of the raw-XML layout.
+    const nested = nestedBlock(t, t, 0);
+    expect(nested.clauses.map((c) => c.value)).toEqual(['He sent one message', 'He sent # messages']);
+  });
+
+  it('decomposes nesting two levels deep', () => {
+    const t =
+      '{a, select, x {{b, plural, one {{c, select, y {deep} other {deeper}}} other {many}}} other {none}}';
+    expect(roundTrip(t, t)).toBe(t);
+    const model = getIcuFieldModel(t, t)!;
+    expect(getIcuLeafValue(model, [0, 0, 0, 0, 0, 0])).toBe('deep');
+    const edited = setIcuLeafValue(model, [0, 0, 0, 0, 0, 1], 'أعمق');
+    expect(getIcuLeafValue(edited, [0, 0, 0, 0, 0, 1])).toBe('أعمق');
+    expect(assembleIcuFields(edited)).toBe(
+      '{a, select, x {{b, plural, one {{c, select, y {deep} other {أعمق}}} other {many}}} other {none}}'
+    );
   });
 });
