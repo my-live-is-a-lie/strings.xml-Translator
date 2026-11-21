@@ -1,4 +1,5 @@
 import type { ResourceItem } from '../types';
+import { toEditorText, toStoredText } from './newlines';
 
 const END_RUN = /[.!?؟…。۔]+$/;
 
@@ -28,6 +29,7 @@ function splitEnding(text: string): [string, string, string] {
 /**
  * Makes the target end like the source: same final mark (replaced or appended when different/missing)
  * and the same spacing before it (a space before "؟" is removed when the source has none, and vice versa).
+ * Both arguments must be in the same form (editor or stored); fixItemEndings normalizes them.
  */
 export function fixTargetEnding(source: string, rawTarget: string): { text: string; changed: boolean } {
   if (!rawTarget.trim()) return { text: rawTarget, changed: false };
@@ -50,21 +52,28 @@ export function fixTargetEnding(source: string, rawTarget: string): { text: stri
 
 /** Fixes the final punctuation to every translated entry of an item. */
 export function fixItemEndings(item: ResourceItem): { item: ResourceItem; changed: boolean } {
+  // The save pipeline holds targets in stored form (a line break is the two characters `\n`)
+  // and sources in editor form (real line breaks). The ending analysis must see both sides in
+  // the same form: a stored `!\n` tail reads as "no final mark", so a second "!" was appended.
+  const fix = (source: string, target: string): { text: string; changed: boolean } => {
+    const r = fixTargetEnding(toEditorText(source), toEditorText(target));
+    return r.changed ? { text: toStoredText(r.text), changed: true } : { text: target, changed: false };
+  };
   if (item.type === 'string') {
-    const r = fixTargetEnding(item.source, item.target);
+    const r = fix(item.source, item.target);
     return { item: r.changed ? { ...item, target: r.text } : item, changed: r.changed };
   }
   let changed = false;
   if (item.type === 'plural') {
     const items = item.items.map((pi) => {
-      const r = fixTargetEnding(pi.source, pi.target);
+      const r = fix(pi.source, pi.target);
       if (r.changed) changed = true;
       return r.changed ? { ...pi, target: r.text } : pi;
     });
     return { item: changed ? { ...item, items } : item, changed };
   }
   const items = item.items.map((ai) => {
-    const r = fixTargetEnding(ai.source, ai.target);
+    const r = fix(ai.source, ai.target);
     if (r.changed) changed = true;
     return r.changed ? { ...ai, target: r.text } : ai;
   });
