@@ -87,4 +87,9 @@ describe('mid-line double spaces', () => {
     expect(hasMidLineDoubleSpaces('line one\\n    line  two')).toBe(true);
     expect(hasMidLineDoubleSpaces('line one\\n    indented only')).toBe(false);
   });
+
+  it('collapses stored-form input correctly instead of treating its literal \\n as plain characters', () => {
+    expect(collapseMidLineDoubleSpaces('line one\\n    line  two')).toBe('line one\n    line two');
+    expect(collapseMidLineDoubleSpaces('line one\\n    indented only')).toBe('line one\n    indented only');
+  });
 });

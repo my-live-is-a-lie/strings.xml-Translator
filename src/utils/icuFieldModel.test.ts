@@ -314,4 +314,20 @@ describe('getIcuFieldModel / assembleIcuFields', () => {
     const edited = setIcuClauseValue(model, 0, 1, 'هي');
     expect(assembleIcuFields(edited)).toBe('{g, select, male {He} female {هي} other {They}} wrote');
   });
+
+  it('a text run whose source is pure formatting can still carry real target text', () => {
+    // The source's leading run is just the raw-XML indentation (no words at all), but the target
+    // already has a real word there. A UI that hides this field whenever the SOURCE alone is
+    // whitespace-only would strand that text out of view and out of reach to edit, even though
+    // assembleIcuFields still includes it. The field must stay (both the value and the
+    // sourceValue need checking, not the source alone) whenever either side has real content.
+    const source = '\n    {count, plural, one {# msg} other {# msgs}}';
+    const target = 'مقدمة\n    {count, plural, one {# رسالة} other {# رسائل}}';
+    const model = getIcuFieldModel(source, target)!;
+    const leadingText = model[0];
+    if (leadingText.kind !== 'text') throw new Error('expected the first field to be a text run');
+    expect(leadingText.sourceValue.trim()).toBe(''); // the source side is pure formatting
+    expect(leadingText.value.trim()).toBe('مقدمة'); // but the target carries a real word
+    expect(assembleIcuFields(model)).toBe(target);
+  });
 });

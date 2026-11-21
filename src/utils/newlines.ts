@@ -82,10 +82,14 @@ export function hasMidLineDoubleSpaces(text: string): boolean {
 
 /**
  * Collapses only mid-line double spaces (see `hasMidLineDoubleSpaces`) down to a single space;
- * start-of-line indentation is left untouched. Expects and returns editor-form text.
+ * start-of-line indentation is left untouched. Accepts either stored or editor form (like its
+ * sibling) but always returns editor form, since every current caller already holds and expects
+ * editor-form text; normalizing here just keeps a future stored-form caller from misreading a
+ * literal `\n` as ordinary characters instead of a line start.
  */
-export function collapseMidLineDoubleSpaces(editorText: string): string {
-  if (!editorText) return editorText;
+export function collapseMidLineDoubleSpaces(text: string): string {
+  if (!text) return text;
+  const editorText = toEditorText(text);
   return editorText.replace(/ {2,}/g, (match, offset: number, full: string) =>
     offset === 0 || full[offset - 1] === '\n' ? match : ' '
   );

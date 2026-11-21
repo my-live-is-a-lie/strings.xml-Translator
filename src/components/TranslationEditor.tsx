@@ -1922,8 +1922,13 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                     // trips the "multiple consecutive spaces" QA warning. Hide it; the exporter
                     // reconstructs this whitespace from the source regardless of what the
                     // (hidden) field would have held. A run that holds real text, like " ago" in
-                    // "{minutes, plural, ...} ago", still needs to be shown and translated.
-                    if (!/\S/.test(field.sourceValue)) return null;
+                    // "{minutes, plural, ...} ago", still needs to be shown and translated — and
+                    // so does one where the SOURCE is pure formatting but the target already has
+                    // real text in it (e.g. typed in before this field existed, or carried over
+                    // from a target whose own layout doesn't line up with the source's): hiding
+                    // it would strand that text out of view and out of reach to edit, even though
+                    // it is still saved. Only hide when both sides are empty of real words.
+                    if (!/\S/.test(field.sourceValue) && !/\S/.test(field.value)) return null;
                     return (
                       <div key={fi} className="space-y-1">
                         <div className="flex items-center justify-between text-xs gap-2">
