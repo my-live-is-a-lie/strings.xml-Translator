@@ -725,3 +725,4 @@ export const HighlightedTextarea = forwardRef<HTMLTextAreaElement, HighlightedTe
 );
 
 HighlightedTextarea.displayName = 'HighlightedTextarea';
+
