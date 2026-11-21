@@ -451,6 +451,16 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   const sourceText = getSourceText();
   const currentTargetText = getTargetText();
 
+  // The source shown (and copied) is the text itself, without the raw-XML formatting
+  // whitespace: its surrounding edges (the "\n        " a pretty-printed string carries) and
+  // the line-start indentation inside a multi-line message. The stored source is never
+  // touched, so export keeps the file's original formatting byte for byte - same rule as the
+  // target editor.
+  const sourceDisplayText = splitInteriorIndents(
+    splitFormattingEdges(sourceText, sourceText).core,
+    splitFormattingEdges(sourceText, sourceText).core
+  ).display;
+
   // Auto-adjust textarea height to match exact size of typed text
   const adjustTextareaHeight = (targetEl?: HTMLTextAreaElement | null) => {
     const el = targetEl || textareaRef.current;
@@ -1041,7 +1051,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   // Copy link / XML key
   // Copy English source
   const handleCopySource = () => {
-    void copyTextToClipboard(sourceText);
+    void copyTextToClipboard(sourceDisplayText);
     setCopiedSource(true);
     setTimeout(() => setCopiedSource(false), 2000);
   };
@@ -1827,7 +1837,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                       <Copy className="w-4 h-4" />
                     )}
                   </button>
-                  {renderSourceWithSyntaxHighlights(sourceText)}
+                  {renderSourceWithSyntaxHighlights(sourceDisplayText)}
                 </span>
               </div>
             </div>
