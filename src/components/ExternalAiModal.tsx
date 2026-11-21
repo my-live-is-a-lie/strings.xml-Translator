@@ -1,3 +1,4 @@
+import { ChevronDown } from 'lucide-react';
 import { saveFile } from '../utils/saveFile';
 import React, { useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -47,6 +48,8 @@ export const ExternalAiModal: React.FC<Props> = ({ items: selectedItems, reviewP
   const isAr = appLang === 'ar';
   const dialogRef = useDialog<HTMLDivElement>(true, onClose);
   const label = targetLocaleName ? `${targetLocaleName} (${targetLang})` : targetLang;
+  // Arabic's preposition ل joins the definite article: العربية becomes للعربية.
+  const subtitleLabel = isAr && label.startsWith('ال') ? label.slice(1) : label;
 
   const reviewExtra = useMemo(() => {
     const have = new Set(selectedItems.map((i) => i.id));
@@ -128,7 +131,8 @@ export const ExternalAiModal: React.FC<Props> = ({ items: selectedItems, reviewP
       >
         <div className="flex items-start justify-between gap-3">
           <h2 data-i18n id="external-ai-title" className="font-semibold">
-            {t('translate_with_an_ai_app', segments.length, label)}
+            <span className="block">{t('translate_with_an_ai_app')}</span>
+            <span className="block mt-1">{t('external_ai_target_language', subtitleLabel)}</span>
           </h2>
           <button type="button" onClick={onClose} className="px-2 text-slate-500 cursor-pointer" aria-label={t('close')}>✕</button>
         </div>
@@ -162,16 +166,19 @@ export const ExternalAiModal: React.FC<Props> = ({ items: selectedItems, reviewP
           )}
           <label className="flex items-center gap-2 text-xs">
             <span data-i18n>{t('split')}</span>
-            <select
-              id="ext-part-size"
-              value={partSize}
-              onChange={(e) => setPartSize(Number(e.target.value))}
-              className="px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-[#1E1F20]"
-            >
-              <option value={0}>{t('one_file')}</option>
-              <option value={150}>{t('parts_of_150')}</option>
-              <option value={80}>{t('parts_of_80')}</option>
-            </select>
+            <span className="relative inline-flex">
+              <select
+                id="ext-part-size"
+                value={partSize}
+                onChange={(e) => setPartSize(Number(e.target.value))}
+                className="appearance-none ps-2 pe-8 py-1 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-[#1E1F20]"
+              >
+                <option value={0}>{t('one_file')}</option>
+                <option value={150}>{t('parts_of_150')}</option>
+                <option value={80}>{t('parts_of_80')}</option>
+              </select>
+              <ChevronDown aria-hidden="true" className="pointer-events-none absolute end-2 top-1/2 -translate-y-1/2 size-3.5" />
+            </span>
           </label>
           <ul className="space-y-1.5">
             {parts.map((part, i) => {
@@ -179,8 +186,10 @@ export const ExternalAiModal: React.FC<Props> = ({ items: selectedItems, reviewP
               const suffix = parts.length > 1 ? `-part${i + 1}` : '';
               return (
                 <li key={i} className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2">
-                  <span className="text-xs flex-1 min-w-24">
-                    {parts.length > 1 ? (t('part_of', i + 1, parts.length)) : t('all_strings_2')} · {part.length}
+                  <span data-ext="part-count" className="text-xs flex-1 min-w-24">
+                    {parts.length > 1
+                      ? t('external_ai_part_count', t('part_of', i + 1, parts.length), part.length)
+                      : t('external_ai_string_count', part.length)}
                   </span>
                   <button type="button" data-ext="copy-text" className="btn-ext" onClick={() => copy(buildTextRequest(buildPrompt(label, 'text'), json), t('request_copied'))}>
                     {tb('copy_as_text')}
@@ -206,8 +215,8 @@ export const ExternalAiModal: React.FC<Props> = ({ items: selectedItems, reviewP
             onChange={(e) => setPasted(e.target.value)}
             rows={4}
             placeholder={t('paste_the_ai_reply_here')}
-            className="w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-[#151922] p-2 text-xs font-mono"
-            dir="auto"
+            className={`w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-[#151922] p-2 text-xs font-mono ${isAr ? 'text-right' : 'text-left'}`}
+            dir={isAr ? 'rtl' : 'ltr'}
           />
           <div className="flex flex-wrap gap-2">
             <button type="button" id="ext-check" className="btn-ext" disabled={!pasted.trim()} onClick={() => absorb(pasted)}>
@@ -308,8 +317,8 @@ export const ExternalAiModal: React.FC<Props> = ({ items: selectedItems, reviewP
           </div>
         )}
 
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-          <span className="text-xs text-emerald-600 dark:text-emerald-400" aria-live="polite">{notice}</span>
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          <span className="order-last basis-full text-xs text-emerald-600 dark:text-emerald-400 empty:hidden" aria-live="polite">{notice}</span>
           <div className="flex gap-2">
             <button type="button" onClick={onClose} className="btn-ext">{tb('cancel')}</button>
             <button
