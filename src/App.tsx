@@ -872,8 +872,16 @@ export default function App() {
   useSourceWindow(!splitActive && activeView === 'editor', kbCollapsed);
   const slideAway = (node: React.ReactNode) => (
     <div
-      className="grid transition-[grid-template-rows] duration-200 ease-out"
-      style={{ gridTemplateRows: kbCollapsed ? '0fr' : '1fr' }}
+      className="grid"
+      style={{
+        gridTemplateRows: kbCollapsed ? '0fr' : '1fr',
+        // grid 0fr alone only clips the box: the children keep their boxes and stay visible to
+        // assistive tech and element queries. Hide for real, but only after the slide finishes.
+        transition: kbCollapsed
+          ? 'grid-template-rows 0.2s ease-out, visibility 0s linear 0.2s'
+          : 'grid-template-rows 0.2s ease-out',
+        visibility: kbCollapsed ? 'hidden' : undefined,
+      }}
       inert={kbCollapsed}
     >
       <div className={`min-h-0 ${kbCollapsed ? 'overflow-hidden' : ''}`}>{node}</div>
