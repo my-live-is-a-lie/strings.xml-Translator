@@ -35,6 +35,14 @@ import {
   normalizeTypedBreaks,
   hasMidLineDoubleSpaces,
   collapseMidLineDoubleSpaces,
+  splitFormattingEdges,
+  sourceFormattingEdges,
+  restoreFormattingEdges,
+  splitInteriorIndents,
+  restoreInteriorIndents,
+  mergeFormattingIndents,
+  FormattingEdges,
+  FormattingIndents,
 } from '../utils/newlines';
 import { getStoredItem, setStoredItem, copyTextToClipboard, readTextFromClipboard } from '../utils/storage';
 import { useT } from '../i18n/i18n';
@@ -55,6 +63,68 @@ const PLURAL_QUANTITY_LABELS_EN: Record<string, string> = {
   few: 'Few (3–10)',
   many: 'Many (11–99)',
   other: 'Other (100+)',
+};
+
+interface DraftState {
+  baseItem: ResourceItem;
+  draftItem: ResourceItem;
+  past: ResourceItem[];
+  future: ResourceItem[];
+  // Raw-XML formatting whitespace hidden from the plain editor (see splitFormattingEdges);
+  // re-attached on save and before every QA check, so the stored file keeps its exact formatting.
+  hiddenEdges: FormattingEdges | null;
+  // The interior twin: pretty-print indentation at line starts (see splitInteriorIndents),
+  // hidden from the raw text view and re-attached the same way.
+  hiddenIndents: FormattingIndents | null;
+}
+
+/**
+ * A fresh draft for an item. The editor hides the raw-XML formatting whitespace at the edges of
+ * the target (blank lines, indentation and their space markers) and keeps it in hiddenEdges, so
+ * the translator sees and edits only the text that needs translating — in the plain textarea,
+ * in the ICU fields view and in the raw text view alike — and cannot corrupt the file's
+ * original formatting. The whitespace is re-attached on save and before every QA check. The ICU
+ * branch editor is unaffected: its model restores structural whitespace runs from the source.
+ */
+const freshDraftState = (it: ResourceItem): DraftState => {
+  const editorItem = toEditorItem(it);
+  if (editorItem.type === 'string') {
+    // The source's own core lines up line-by-line with the target's core for indent pairing.
+    const sourceCore = splitFormattingEdges(editorItem.source, editorItem.source).core;
+    const { core, edges } = splitFormattingEdges(editorItem.source, editorItem.target);
+    const { display, indents } = splitInteriorIndents(sourceCore, core);
+    if (edges || indents) {
+      return {
+        baseItem: it,
+        draftItem: { ...editorItem, target: display },
+        past: [],
+        future: [],
+        hiddenEdges: edges,
+        hiddenIndents: indents,
+      };
+    }
+    // Nothing of its own to hide: an untranslated string still borrows the source's formatting
+    // edges and interior indentation, so a fresh translation saves with the file's formatting
+    // (and its line-break count) instead of tripping the line-break save gate. Indentation is
+    // borrowed only for a truly empty target: an existing translation keeps its own layout
+    // byte-identically.
+    const borrowed = sourceFormattingEdges(editorItem.source);
+    const borrowedIndents =
+      !editorItem.target.trim() && editorItem.source
+        ? splitInteriorIndents(sourceCore, sourceCore).indents
+        : null;
+    if (borrowed || borrowedIndents) {
+      return {
+        baseItem: it,
+        draftItem: editorItem,
+        past: [],
+        future: [],
+        hiddenEdges: borrowed,
+        hiddenIndents: borrowedIndents,
+      };
+    }
+  }
+  return { baseItem: it, draftItem: editorItem, past: [], future: [], hiddenEdges: null, hiddenIndents: null };
 };
 
 interface TranslationEditorProps {
@@ -175,40 +245,65 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   const [isSuggesting, setIsSuggesting] = useState(false);
 
   // Local draft state so typing/pasting/suggesting in the input box is only saved when clicking Save & Continue or Save & Stay
-  const [draftState, setDraftState] = useState<{
-    baseItem: ResourceItem;
-    draftItem: ResourceItem;
-    past: ResourceItem[];
-    future: ResourceItem[];
-  }>(() => ({
-    baseItem: item,
-    draftItem: toEditorItem(item),
-    past: [],
-    future: [],
-  }));
+  const [draftState, setDraftState] = useState<DraftState>(() => freshDraftState(item));
   const lastDraftEditRef = useRef<{ timestamp: number }>({ timestamp: 0 });
 
   let currentDraftState = draftState;
   if (draftState.baseItem !== item) {
-    currentDraftState = {
-      baseItem: item,
-      draftItem: toEditorItem(item),
-      past: [],
-      future: [],
-    };
+    currentDraftState = freshDraftState(item);
     setDraftState(currentDraftState);
   }
 
   const draftItem = currentDraftState.draftItem;
   const draftPast = currentDraftState.past;
   const draftFuture = currentDraftState.future;
+  const hiddenEdges = currentDraftState.hiddenEdges;
+  const hiddenIndents = currentDraftState.hiddenIndents;
+
+  // The draft of a plain string holds only the translatable core: put the hidden formatting
+  // whitespace back for anything that looks at the real string (saving, and every QA check
+  // that compares against the source's line breaks).
+  const withHiddenEdges = React.useCallback(
+    (it: ResourceItem): ResourceItem => {
+      if (it.type !== 'string' || (!hiddenEdges && !hiddenIndents)) return it;
+      const target = restoreFormattingEdges(restoreInteriorIndents(it.target, hiddenIndents), hiddenEdges);
+      return target === it.target ? it : { ...it, target };
+    },
+    [hiddenEdges, hiddenIndents]
+  );
 
   const updateDraftItem = React.useCallback(
     (incomingItem: ResourceItem, options?: { undoDeletesText?: boolean }) => {
       const now = Date.now();
       // the editor works with real line breaks: any `\n` that arrives (suggestion, paste, reset) becomes one
-      const updatedItem = toEditorItem(incomingItem, false);
+      const arrivingItem = toEditorItem(incomingItem, false);
       setDraftState((curr) => {
+        // Arriving text (suggestion, paste, an auto-fix, an ICU reassembly) can carry the
+        // raw-XML formatting whitespace again: hide it like a fresh draft does, so no editor
+        // view ever shows it.
+        let updatedItem = arrivingItem;
+        let nextHiddenEdges = curr.hiddenEdges;
+        let nextHiddenIndents = curr.hiddenIndents;
+        if (arrivingItem.type === 'string') {
+          const sourceCore = splitFormattingEdges(arrivingItem.source, arrivingItem.source).core;
+          const { core, edges } = splitFormattingEdges(arrivingItem.source, arrivingItem.target);
+          const { display, indents } = splitInteriorIndents(sourceCore, core);
+          if (edges || indents) {
+            updatedItem = { ...arrivingItem, target: display };
+            // Merge, don't replace: text reassembled from the ICU fields view only carries the
+            // structural runs the model happens to hold, so a slot missing from it keeps its
+            // previously hidden whitespace instead of dropping it from the saved file. The kept
+            // (original) run wins its slot: it is the file's own formatting, so whitespace that
+            // arrives later at a hidden slot never rewrites the original layout.
+            if (edges) {
+              nextHiddenEdges = {
+                leading: curr.hiddenEdges?.leading || edges.leading || '',
+                trailing: curr.hiddenEdges?.trailing || edges.trailing || '',
+              };
+            }
+            nextHiddenIndents = mergeFormattingIndents(curr.hiddenIndents, indents);
+          }
+        }
         const oldItem = curr.draftItem;
         if (!options?.undoDeletesText && JSON.stringify(oldItem) === JSON.stringify(updatedItem)) {
           return curr;
@@ -266,6 +361,8 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
         return {
           ...curr,
           draftItem: updatedItem,
+          hiddenEdges: nextHiddenEdges,
+          hiddenIndents: nextHiddenIndents,
           past: nextPast,
           future: [],
         };
@@ -313,12 +410,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   const discardDraftAndNavigate = React.useCallback(
     (navigateFn: () => void) => {
       lastDraftEditRef.current = { timestamp: 0 };
-      setDraftState({
-        baseItem: item,
-        draftItem: toEditorItem(item),
-        past: [],
-        future: [],
-      });
+      setDraftState(freshDraftState(item));
       navigateFn();
     },
     [item]
@@ -376,7 +468,10 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     const handleResize = () => adjustTextareaHeight();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [item.id, currentTargetText, draftItem.type, direction]);
+    // icuRawView: toggling between the ICU fields view and the raw text view mounts a fresh
+    // textarea without any of the other inputs changing — size it to its content, or the raw
+    // text stays squeezed into one line.
+  }, [item.id, currentTargetText, draftItem.type, direction, icuRawView]);
 
   // Typing a second space after an unclosed bracket closes the bracket (keeps the caret after it)
   const applyAutoClose = (
@@ -460,7 +555,19 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
 
   const handleIcuFieldChange = (field: number, clause: number | null, typedValue: string) => {
     if (!icuModel) return;
-    const value = stripIcuStructureChars(typedValue);
+    let value = stripIcuStructureChars(typedValue);
+    if (clause === null) {
+      // A text-outside-block field shows only its real text (the formatting whitespace at its
+      // edges is hidden): re-attach that whitespace so the reassembled string keeps it. Clearing
+      // the field removes the text, not the formatting.
+      const edited = icuModel[field];
+      if (edited?.kind === 'text') {
+        const { edges } = splitFormattingEdges(edited.sourceValue || (draftItem.type === 'string' ? draftItem.source : ''), edited.value);
+        if (edges) {
+          value = value.trim() === '' ? edges.leading + edges.trailing : restoreFormattingEdges(value, edges);
+        }
+      }
+    }
     const next =
       clause === null ? setIcuTextValue(icuModel, field, value) : setIcuClauseValue(icuModel, field, clause, value);
     const allEmpty = next.every((f) =>
@@ -1157,7 +1264,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   const buildSavedItemFromDraft = React.useCallback(
     (draftToSave: ResourceItem): ResourceItem => {
       // the stored text writes every line break as `\n`
-      const currentDraft = toStoredItem(draftToSave);
+      const currentDraft = toStoredItem(withHiddenEdges(draftToSave));
       if (currentDraft.type === 'string') {
         const isNowEmpty = !currentDraft.target.trim();
         return {
@@ -1200,7 +1307,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       }
       return currentDraft;
     },
-    [targetLang]
+    [targetLang, withHiddenEdges]
   );
 
   // Nothing typed: saving an untouched empty translation does nothing (no status change, no navigation)
@@ -1218,27 +1325,27 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
 
   // The translation must have exactly as many line breaks as the source: otherwise it cannot be saved at all
   const blockIfLineBreaksDiffer = React.useCallback((): boolean => {
-    const issues = getLineBreakIssues(toStoredItem(draftItem), targetLang);
+    const issues = getLineBreakIssues(toStoredItem(withHiddenEdges(draftItem)), targetLang);
     if (issues.length === 0) return false;
     setSaveGuard({ notes: [], remaining: issues, hard: true, itemId: item.id });
     return true;
-  }, [draftItem, item.id, targetLang]);
+  }, [draftItem, item.id, targetLang, withHiddenEdges]);
 
   // A damaged ICU block crashes the app (String.format throws), so it is unsaveable for the
   // same reason a line-break mismatch is — not a "confirm once and go ahead" warning. The
   // translation pipeline already refuses to produce such a reply; this gates hand-typed text.
   const blockIfIcuBroken = React.useCallback((): boolean => {
-    const issues = getIcuStructureIssues(toStoredItem(draftItem), targetLang);
+    const issues = getIcuStructureIssues(toStoredItem(withHiddenEdges(draftItem)), targetLang);
     if (issues.length === 0) return false;
     setSaveGuard({ notes: [], remaining: issues, hard: true, itemId: item.id });
     return true;
-  }, [draftItem, item.id, targetLang]);
+  }, [draftItem, item.id, targetLang, withHiddenEdges]);
 
   // Before saving: repairs placeholders, HTML tags and final punctuation from the source's context.
   // When anything was changed (or unfixable errors remain) the save is blocked once with a message; saving again confirms.
   const blockIfNeedsFix = React.useCallback((): boolean => {
     if (!autoCorrect) return false; // the user turned auto-correction off: save exactly what was typed
-    const storedDraft = toStoredItem(draftItem);
+    const storedDraft = toStoredItem(withHiddenEdges(draftItem));
     const base =
       storedDraft.type === 'plural'
         ? ({ ...storedDraft, items: (normalizePluralsForLanguage([storedDraft], targetLang)[0] as PluralStringItem).items } as ResourceItem)
@@ -1266,17 +1373,17 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       return true;
     }
     return false;
-  }, [autoCorrect, draftItem, targetLang, updateDraftItem]);
+  }, [autoCorrect, draftItem, targetLang, updateDraftItem, withHiddenEdges]);
 
   // The line-break message follows the text as it is edited and disappears once the counts match
   const liveBreakIssues = React.useMemo(
     () => (saveGuard?.hard && saveGuard.itemId === item.id
       ? [
-          ...getLineBreakIssues(toStoredItem(draftItem), targetLang),
-          ...getIcuStructureIssues(toStoredItem(draftItem), targetLang),
+          ...getLineBreakIssues(toStoredItem(withHiddenEdges(draftItem)), targetLang),
+          ...getIcuStructureIssues(toStoredItem(withHiddenEdges(draftItem)), targetLang),
         ]
       : []),
-    [saveGuard, item.id, draftItem, targetLang]
+    [saveGuard, item.id, draftItem, targetLang, withHiddenEdges]
   );
   // Set when a suggestion was discarded because it would have damaged an ICU block.
   const [icuRejected, setIcuRejected] = useState(false);
@@ -1287,8 +1394,8 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   // the sentence counts is no longer written inside its block — the one ICU finding that can be
   // a correct translation (some languages spell the number out), so it must not stop the save.
   const showHashWarning = React.useMemo(
-    () => itemUsesHashWithoutClauseNumber(toStoredItem(draftItem), targetLang),
-    [draftItem, targetLang]
+    () => itemUsesHashWithoutClauseNumber(toStoredItem(withHiddenEdges(draftItem)), targetLang),
+    [draftItem, targetLang, withHiddenEdges]
   );
   // counts match again (or another string is open): the message is done
   if (saveGuard?.hard && !liveSaveGuard) setSaveGuard(null);
@@ -1306,12 +1413,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     const savedItem = { ...buildSavedItemFromDraft(draftItem), previousSources: undefined };
     const undoDeletesText = savedItem.translationSource === 'ai' && item.status === 'untranslated';
     lastDraftEditRef.current = { timestamp: 0 };
-    setDraftState({
-      baseItem: savedItem,
-      draftItem: toEditorItem(savedItem),
-      past: [],
-      future: [],
-    });
+    setDraftState(freshDraftState(savedItem));
     onUpdateTranslation(savedItem, undoDeletesText ? { undoDeletesText: true } : undefined);
     setShowSavedFeedback(true);
     setTimeout(() => setShowSavedFeedback(false), 2000);
@@ -1328,12 +1430,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     const savedItem = { ...buildSavedItemFromDraft(draftItem), previousSources: undefined };
     const undoDeletesText = savedItem.translationSource === 'ai' && item.status === 'untranslated';
     lastDraftEditRef.current = { timestamp: 0 };
-    setDraftState({
-      baseItem: savedItem,
-      draftItem: toEditorItem(savedItem),
-      past: [],
-      future: [],
-    });
+    setDraftState(freshDraftState(savedItem));
     onUpdateTranslation(savedItem, undoDeletesText ? { undoDeletesText: true } : undefined);
     onNavigateNext();
   }, [isNothingTyped, blockIfLineBreaksDiffer, blockIfIcuBroken, blockIfNeedsFix, buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation, onNavigateNext]);
@@ -1929,8 +2026,18 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                     // it would strand that text out of view and out of reach to edit, even though
                     // it is still saved. Only hide when both sides are empty of real words.
                     if (!/\S/.test(field.sourceValue) && !/\S/.test(field.value)) return null;
+                    // A visible run can still carry the raw-XML formatting whitespace at its
+                    // edges (the "\n    " after "ago"): show and edit only the real text —
+                    // handleIcuFieldChange re-attaches the whitespace, so the original
+                    // formatting cannot be edited or lost. Same rule as the plain editor: an
+                    // edge is formatting only when the source has it too (a run the source
+                    // does not have falls back to the whole source string's edges).
+                    const { core: fieldDisplayValue } = splitFormattingEdges(
+                      field.sourceValue || draftItem.source,
+                      field.value
+                    );
                     return (
-                      <div key={fi} className="space-y-1">
+                      <div key={fi} className="space-y-2 rounded-xl border border-slate-200/90 dark:border-slate-700 p-2">
                         <div className="flex items-center justify-between text-xs gap-2">
                           <span className="text-[11px] text-slate-500 dark:text-slate-300 font-medium">
                             {t('icu_text_part')}
@@ -1939,7 +2046,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                             {field.sourceValue}
                           </span>
                         </div>
-                        {renderField(null, field.value)}
+                        {renderField(null, fieldDisplayValue)}
                       </div>
                     );
                   }
@@ -1973,6 +2080,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                 ref={textareaRef}
                 dir={direction}
                 value={draftItem.target}
+                suppressLineBreakIndicators={icuModel !== null}
                 ghostText={predict.ghostFor('string', draftItem.target)}
                 resetKey={draftItem.id}
                 onValueChange={(val) => {

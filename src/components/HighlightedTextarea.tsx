@@ -26,6 +26,12 @@ export interface HighlightedTextareaProps
    * user could not explain.
    */
   enableEmptySpaceTap?: boolean;
+  /**
+   * Hide the ↵ line-break indicators. Used by the ICU raw view: there the line breaks are the
+   * XML pretty-print formatting, which we hide so the original formatting can't be seen as
+   * editable content. Real line breaks (plain editor, clause fields) keep their ↵ mark.
+   */
+  suppressLineBreakIndicators?: boolean;
 }
 
 import {
@@ -50,6 +56,7 @@ export const HighlightedTextarea = forwardRef<HTMLTextAreaElement, HighlightedTe
       onValueChange,
       ghostText,
       enableEmptySpaceTap = true,
+      suppressLineBreakIndicators = false,
       onScroll,
       style,
       ...props
@@ -671,7 +678,7 @@ export const HighlightedTextarea = forwardRef<HTMLTextAreaElement, HighlightedTe
           }}
         >
           <div className="w-full inline-block">
-            {renderContentWithWhitespaceIndicators(value)}
+            {renderContentWithWhitespaceIndicators(value, suppressLineBreakIndicators)}
             {ghostText && (
               <span className="select-none whitespace-pre-wrap text-slate-400 dark:text-slate-500">{ghostText}</span>
             )}

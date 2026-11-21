@@ -6,7 +6,7 @@ import React from 'react';
  * Renders text with high-visibility typing mistake indicators for consecutive spaces (2 or more spaces in a row),
  * matching Weblate's red dotted box with middle dots (····) around multiple spaces between words.
  */
-export function renderContentWithWhitespaceIndicators(text: string) {
+export function renderContentWithWhitespaceIndicators(text: string, suppressLineBreakIndicators = false) {
   if (!text) return null;
 
   // Split text by 2 or more consecutive spaces and by line breaks
@@ -16,6 +16,14 @@ export function renderContentWithWhitespaceIndicators(text: string) {
     if (!part) return null;
 
     if (part === '\n' || part === '\r\n') {
+      if (suppressLineBreakIndicators) {
+        // Formatting line break (e.g. ICU raw view): keep the break for layout, draw no ↵ mark.
+        return (
+          <span key={idx} className="opacity-0 select-none whitespace-pre-wrap">
+            {'\n'}
+          </span>
+        );
+      }
       // Line break: a ↵ mark at the end of the line, like Weblate. It takes no width (so the text underneath never
       // shifts), then the break itself is kept so the lines wrap exactly as in the textarea.
       return (
@@ -49,6 +57,20 @@ export function renderContentWithWhitespaceIndicators(text: string) {
     }
 
     if (/^ {2,}$/.test(part)) {
+      // Start-of-line indentation (right after a line break, or at the very start) is raw-XML
+      // formatting, not a typing mistake — the QA side already ignores it
+      // (hasMidLineDoubleSpaces), so the markers do too. Only a mid-line run gets the warning box.
+      // Note: the split inserts empty strings between adjacent separators ("\n" then spaces),
+      // so look back to the last non-empty part, not just parts[idx - 1].
+      const prev = parts.slice(0, idx).filter(Boolean).pop();
+      const isLineStartIndent = prev === undefined || prev === '\n' || prev === '\r\n';
+      if (isLineStartIndent) {
+        return (
+          <span key={idx} className="opacity-0 select-none whitespace-pre-wrap">
+            {part}
+          </span>
+        );
+      }
       const spaceCount = part.length;
       // The marker must take exactly the width of the spaces (no border/padding/margin), otherwise the text after it
       // drifts away from the real text in the textarea underneath. The dotted frame is an outline, which takes no space.
