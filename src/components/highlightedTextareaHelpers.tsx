@@ -185,4 +185,4 @@ export function computeRearrangeStates(text: string): string[] {
 export interface RearrangeHistory {
   states: string[];
   currentIndex: number;
-    }
+}
