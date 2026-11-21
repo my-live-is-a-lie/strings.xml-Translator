@@ -50,6 +50,14 @@ const PLURAL_QUANTITY_LABELS_EN: Record<string, string> = {
   other: 'Other (100+)',
 };
 
+/**
+ * A text run around an ICU block whose SOURCE has no non-whitespace character is pure formatting
+ * (a newline + the raw XML indentation). Nobody can usefully translate it, so the fields view
+ * does not show it and the "multiple spaces" check ignores it. Runs with real text (e.g. " ago")
+ * are unaffected.
+ */
+const isFormattingOnlyRun = (sourceValue: string): boolean => !/\S/.test(sourceValue);
+
 interface TranslationEditorProps {
   item: ResourceItem;
   currentIndex: number;
@@ -1581,9 +1589,18 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     }
   };
 
-  // Check if target text currently contains multiple consecutive spaces (typing mistake)
+  // Check if target text currently contains multiple consecutive spaces (typing mistake).
+  // In the ICU fields view only the fields the user can actually see are checked: a hidden
+  // formatting-only text run (newline + XML indentation) must not raise a false warning.
   const hasMultipleSpaces = React.useMemo(() => {
     if (draftItem.type === 'string') {
+      if (icuFieldsActive && icuModel) {
+        return icuModel.some((f) =>
+          f.kind === 'text'
+            ? !isFormattingOnlyRun(f.sourceValue) && / {2,}/.test(f.value)
+            : f.clauses.some((c) => / {2,}/.test(c.value))
+        );
+      }
       return / {2,}/.test(draftItem.target || '');
     }
     if (draftItem.type === 'plural') {
@@ -1593,11 +1610,28 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       return draftItem.items.some((ai) => / {2,}/.test(ai.target || ''));
     }
     return false;
-  }, [draftItem, normalizedPluralItems]);
+  }, [draftItem, normalizedPluralItems, icuFieldsActive, icuModel]);
 
   // Fix typing mistake: replace multiple consecutive spaces with a single space
   const handleFixMultipleSpaces = () => {
     if (draftItem.type === 'string') {
+      if (icuFieldsActive && icuModel) {
+        // Fields view: fix only the visible fields and leave hidden formatting runs untouched
+        let next = icuModel;
+        icuModel.forEach((f, fi) => {
+          if (f.kind === 'text') {
+            if (!isFormattingOnlyRun(f.sourceValue)) {
+              next = setIcuTextValue(next, fi, f.value.replace(/ {2,}/g, ' '));
+            }
+          } else {
+            f.clauses.forEach((c, ci) => {
+              next = setIcuClauseValue(next, fi, ci, c.value.replace(/ {2,}/g, ' '));
+            });
+          }
+        });
+        handleSingleTextChange(assembleIcuFields(next));
+        return;
+      }
       const fixed = (draftItem.target || '').replace(/ {2,}/g, ' ');
       handleSingleTextChange(fixed);
     } else if (draftItem.type === 'plural') {
@@ -1878,6 +1912,8 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             {draftItem.type === 'string' && icuModel && icuFieldsActive && (
               <div className="space-y-2" data-testid="icu-fields">
                 {icuModel.map((field, fi) => {
+                  // Pure formatting (newline + XML indentation): nothing to translate, so no field
+                  if (field.kind === 'text' && isFormattingOnlyRun(field.sourceValue)) return null;
                   const renderField = (clause: number | null, value: string) => {
                     const key = `${fi}:${clause ?? 't'}`;
                     return (
