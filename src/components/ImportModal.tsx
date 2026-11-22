@@ -1,35 +1,43 @@
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { X, Upload, FileCode, AlertCircle, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { useDialog } from '../utils/useDialog';
-import { parseAndroidXml, mergeTargetXml, normalizePluralsForLanguage } from '../utils/xmlParser';
-import { repairAndroidXml, RepairIssue, RepairResult } from '../utils/xmlRepair';
+import { mergeTargetXml, normalizePluralsForLanguage, ParsedXmlResult } from '../utils/xmlParser';
+import { applySilentFixes, repairAndroidXml, RepairIssue, RepairResult } from '../utils/xmlRepair';
 import { TranslationProject } from '../types';
 import { getArabicLanguageName } from '../utils/languages';
 import { useT, tg } from '../i18n/i18n';
 
+type Translate = (key: string, ...args: unknown[]) => string;
+
 // Localizes a RepairIssue's description by its `category` + `params` instead of showing the
-// English `message` xmlRepair.ts built for itself — see issue #25. Falls back to that English
-// message only for a category this UI doesn't know how to phrase yet.
-function localizeRepairIssue(issue: RepairIssue, t: (key: string) => string): string {
-  const fill = (template: string): string =>
-    template
-      .replace('{count}', String(issue.params?.count ?? ''))
-      .replace('{name}', String(issue.stringName ?? issue.params?.name ?? ''));
+// English `message` xmlRepair.ts built for itself — see issue #25. Uses the app's existing
+// positional `%1$s` placeholders (handled by `t`) rather than a second, hand-rolled `{name}` syntax.
+// Falls back to that English message only for a category this UI doesn't know how to phrase yet
+// (in practice: raw parser errors, which have no stable wording to translate).
+function localizeRepairIssue(issue: RepairIssue, t: Translate): string {
+  const count = issue.params?.count ?? '';
+  const name = issue.stringName ?? issue.params?.name ?? '';
 
   switch (issue.category) {
     case 'bom':
       return t('repair_bom');
     case 'zero-width-chars':
-      return fill(t('repair_zero_width'));
+      return t('repair_zero_width', count);
     case 'line-endings':
-      return fill(t('repair_line_endings'));
+      return t('repair_line_endings', count);
     case 'bare-ampersand':
-      return fill(t('repair_bare_ampersand'));
+      return t('repair_bare_ampersand', count);
+    case 'html-entity':
+      return t('repair_html_entity', count);
     case 'unescaped-apostrophe':
-      return fill(t('repair_unescaped_apostrophe'));
+      return t('repair_unescaped_apostrophe', name, count);
     case 'duplicate-name':
-      return fill(t('repair_duplicate_name'));
+      return t('repair_duplicate_name', name, count);
+    case 'undefined-entity':
+      return t('repair_undefined_entity', issue.params?.names ?? '');
+    case 'no-strings':
+      return t('could_not_parse_any_strings');
     default:
       return issue.message;
   }
@@ -68,6 +76,24 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   const [projectName, setProjectName] = useState('XML Translator');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [pendingReport, setPendingReport] = useState<{ result: RepairResult; fileName: string } | null>(null);
+  const continueButtonRef = useRef<HTMLButtonElement>(null);
+
+  // The component stays mounted while closed, so without this a report left open (closed via X/Escape)
+  // would reappear — with a stale file — the next time the dialog opens. Reset during render (not in an
+  // effect) so react-hooks/set-state-in-effect stays happy.
+  const [wasOpen, setWasOpen] = useState(isOpen);
+  if (wasOpen !== isOpen) {
+    setWasOpen(isOpen);
+    if (!isOpen) {
+      setPendingReport(null);
+      setErrorMsg(null);
+    }
+  }
+
+  // The "Start translating" button that had focus unmounts when the report appears; keep keyboard focus in place.
+  useEffect(() => {
+    if (pendingReport) continueButtonRef.current?.focus();
+  }, [pendingReport]);
 
   if (!isOpen) return null;
 
@@ -104,10 +130,12 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     reader.readAsText(file);
   };
 
-  // Finishes the import using `xmlToParse` as-is (already repaired, when repairAndroidXml ran first).
-  const finalizeImport = (xmlToParse: string, fileName: string) => {
-    const { items, errors, resourcesAttributes, indentStyle, itemIndentStyle } = parseAndroidXml(xmlToParse);
+  // Finishes the import from the result repairAndroidXml already parsed, so the file isn't parsed twice.
+  const finalizeImport = (parsed: ParsedXmlResult, xmlToParse: string, fileName: string) => {
+    const { items, errors, resourcesAttributes, indentStyle, itemIndentStyle } = parsed;
     if (errors.length > 0 || items.length === 0) {
+      // The error box lives in the form view, not the report view — leave the report or the message is invisible.
+      setPendingReport(null);
       setErrorMsg(
         errors.join('\n') ||
           (t('could_not_parse_any_strings'))
@@ -119,7 +147,9 @@ export const ImportModal: React.FC<ImportModalProps> = ({
 
     // If an existing target translation file was also supplied, merge it!
     if (targetFile?.content) {
-      const { updatedItems } = mergeTargetXml(finalItems, targetFile.content, targetLang);
+      // Same mechanical clean-up as the source file; otherwise a BOM or a bare "&" in the target file makes
+      // it fail to parse and the merge silently matches nothing.
+      const { updatedItems } = mergeTargetXml(finalItems, applySilentFixes(targetFile.content).text, targetLang);
       finalItems = updatedItems;
     }
 
@@ -167,7 +197,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
 
     if (result.blockingIssues.length > 0) {
       setErrorMsg(
-        [t('import_report_blocking_header'), ...result.blockingIssues.map((i) => `• ${i.message}`)].join('\n')
+        [t('import_report_blocking_header'), ...result.blockingIssues.map((i) => `• ${localizeRepairIssue(i, t)}`)].join('\n')
       );
       return;
     }
@@ -177,7 +207,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
       return;
     }
 
-    finalizeImport(result.fixedXml, fileName);
+    finalizeImport(result.parsed, result.fixedXml, fileName);
   };
 
   return (
@@ -375,7 +405,10 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                 {t('import_report_back')}
               </button>
               <button
-                onClick={() => finalizeImport(pendingReport.result.fixedXml, pendingReport.fileName)}
+                ref={continueButtonRef}
+                onClick={() =>
+                  finalizeImport(pendingReport.result.parsed, pendingReport.result.fixedXml, pendingReport.fileName)
+                }
                 className="ms-auto px-5 py-2 rounded-full bg-[#0B57D0] hover:bg-[#0842A0] dark:bg-[#A8C7FA] dark:hover:bg-[#82AAFA] text-white dark:text-[#062E6F] text-xs font-semibold shadow-xs transition cursor-pointer m3-state-layer"
               >
                 {t('import_report_continue')}
@@ -432,7 +465,7 @@ function getLocaleName(code: string): string {
 
 // Phase 1 of issue #25: a read-only report of what repairAndroidXml found before the file is
 // actually imported — nothing here is interactive yet (accept/reject per item is Phase 2).
-function ImportReportView({ report, t }: { report: RepairResult; t: (key: string) => string }) {
+function ImportReportView({ report, t }: { report: RepairResult; t: Translate }) {
   return (
     <div className="pt-1 space-y-4">
       <div>

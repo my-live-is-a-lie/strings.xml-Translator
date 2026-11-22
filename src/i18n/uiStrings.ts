@@ -411,23 +411,31 @@ export const UI_STRINGS: Record<string, { en: string; ar: string }> = {
     ar: "تمت إزالة علامة غير مرئية في بداية الملف (byte-order-mark).",
   },
   "repair_zero_width": {
-    en: "Removed {count} invisible character(s) (likely pasted in by accident).",
-    ar: "تمت إزالة {count} حرف غير مرئي (على الأرجح تم لصقه عن طريق الخطأ).",
+    en: "Removed %1$s invisible zero-width space character(s) (likely pasted in by accident).",
+    ar: "تمت إزالة %1$s من رموز المسافة الصفرية غير المرئية (على الأرجح لُصقت عن طريق الخطأ).",
   },
   "repair_line_endings": {
-    en: "Normalized {count} Windows/old-Mac line ending(s) to the standard form.",
-    ar: "تم توحيد {count} من نهايات الأسطر (Windows/Mac القديم) إلى الصيغة القياسية.",
+    en: "Normalized %1$s Windows/old-Mac line ending(s) to the standard form.",
+    ar: "تم توحيد %1$s من نهايات الأسطر (Windows/Mac القديم) إلى الصيغة القياسية.",
   },
   "repair_bare_ampersand": {
-    en: "Escaped {count} raw \"&\" character(s) so the file stays valid XML.",
-    ar: "تمت معالجة {count} من علامات \"&\" الخام حتى يبقى الملف XML صالحًا.",
+    en: "Escaped %1$s raw \"&\" character(s) so the file stays valid XML.",
+    ar: "تمت معالجة %1$s من علامات \"&\" الخام حتى يبقى الملف XML صالحًا.",
+  },
+  "repair_html_entity": {
+    en: "Rewrote %1$s HTML entity reference(s) such as \"&nbsp;\" in a form XML understands — the text looks exactly the same.",
+    ar: "تمت إعادة كتابة %1$s من مراجع HTML مثل \"&nbsp;\" بصيغة يفهمها XML — يبقى النص كما هو تمامًا.",
   },
   "repair_unescaped_apostrophe": {
-    en: "\"{name}\" has {count} raw apostrophe(s) that aren't escaped — this can be valid ICU quoting, but it can also silently hide a placeholder as plain text.",
-    ar: "يحتوي \"{name}\" على {count} علامة اقتباس أحادية (') غير مُهرَّبة — قد تكون صيغة ICU صحيحة، لكنها قد تُخفي عنصرًا نائبًا كنص عادي دون قصد.",
+    en: "\"%1$s\" has %2$s raw apostrophe(s) that aren't escaped — this can be valid ICU quoting, but it can also silently hide a placeholder as plain text.",
+    ar: "يحتوي \"%1$s\" على %2$s علامة اقتباس أحادية (') غير مُهرَّبة — قد تكون صيغة ICU صحيحة، لكنها قد تُخفي عنصرًا نائبًا كنص عادي دون قصد.",
   },
   "repair_duplicate_name": {
-    en: "\"{name}\" is used by {count} different entries — this can make the wrong one show up when the app looks it up.",
-    ar: "الاسم \"{name}\" مستخدم في {count} عناصر مختلفة — قد يؤدي هذا إلى ظهور العنصر الخاطئ عند استخدامه في التطبيق.",
+    en: "\"%1$s\" is used by %2$s different entries — this can make the wrong one show up when the app looks it up.",
+    ar: "الاسم \"%1$s\" مستخدم في %2$s عناصر مختلفة — قد يؤدي هذا إلى ظهور العنصر الخاطئ عند استخدامه في التطبيق.",
+  },
+  "repair_undefined_entity": {
+    en: "The file uses entity references that XML doesn't define: %1$s. Replace them with the actual character or escape the \"&\" as \"&amp;\".",
+    ar: "يستخدم الملف مراجع كيانات غير معرّفة في XML: %1$s. استبدلها بالحرف نفسه أو اكتب \"&\" بصيغة \"&amp;\".",
   },
 };

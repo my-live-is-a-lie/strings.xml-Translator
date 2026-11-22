@@ -24,8 +24,11 @@ export interface ParsedXmlResult {
 function extractRawStringMap(xmlContent: string): Map<string, string> {
   const map = new Map<string, string>();
   const regex = /<string\s+[^>]*?\bname\s*=\s*["']([^"']+)["'][^>]*(?<!\/)>([\s\S]*?)<\/string>/g;
+  // A commented-out `<!-- <string name="x">old</string> -->` is not a resource; without this it can
+  // overwrite the real entry's raw text in the map (last match wins).
+  const withoutComments = xmlContent.replace(/<!--[\s\S]*?-->/g, '');
   let match: RegExpExecArray | null;
-  while ((match = regex.exec(xmlContent)) !== null) {
+  while ((match = regex.exec(withoutComments)) !== null) {
     map.set(match[1], match[2]);
   }
   return map;
