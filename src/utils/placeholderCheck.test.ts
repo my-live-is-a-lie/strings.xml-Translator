@@ -1154,7 +1154,6 @@ describe('getIcuStructureIssues missing closing quotes (save gate)', () => {
 });
 
 describe('fixUnpairedQuoteMarks in stored form (literal \\n edges)', () => {
-  const source = "'{username}' said: ''Hello!''";
   const storedSource = String.raw`\n        '{username}' said: ''Hello!''\n    `;
 
   it('inserts the missing mark before the stored-form trailing edge', () => {
