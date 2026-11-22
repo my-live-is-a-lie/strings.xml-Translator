@@ -118,6 +118,11 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
 
   // Track last active input box & cursor (line indicator) position so tapping a syntax token inserts right at the caret
   const [barField, setBarField] = useState<string | null>(null);
+  const [barItemId, setBarItemId] = useState(item.id);
+  if (barItemId !== item.id) {
+    setBarItemId(item.id);
+    setBarField(null);
+  }
   const lastCursorRef = useRef<{
     fieldType: 'string' | 'plural' | 'array' | 'icu';
     quantity?: string;
@@ -327,9 +332,8 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     setDirection(expectedDirection);
   }
 
-  // Reset tools menu state and cursor ref when item changes
+  // Reset cursor refs when item changes
   useEffect(() => {
-    setBarField(null);
     lastCursorRef.current = null;
     activeLineMarkerRef.current = null;
     lastDraftEditRef.current = { timestamp: 0 };
@@ -1634,7 +1638,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
 
   // In landscape split mode the writing area goes into the other half of the screen
   // Symbols/shortcut bar. For plural and array items it docks above the focused field.
-  const renderShortcutBar = () => (
+  const shortcutBar = (
     <div className="kb-tools space-y-1 select-none">
               {/* Toolbar Row 1: Punctuation & Typography */}
               <div className="flex items-center bg-slate-100 dark:bg-[#171D27] border border-slate-200/90 dark:border-[#283242] rounded-lg overflow-x-auto divide-x divide-slate-200 dark:divide-[#283242] rtl:divide-x-reverse no-scrollbar">
@@ -1836,7 +1840,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               </span>
             </div>, 'flex items-center justify-between gap-2')}
 
-            {draftItem.type !== 'plural' && draftItem.type !== 'array' && renderShortcutBar()}
+            {draftItem.type !== 'plural' && draftItem.type !== 'array' && shortcutBar}
 
             {slot('r1', 'kb-r1 space-y-2.5 rounded-2xl bg-white dark:bg-[#151922] border border-slate-200/80 dark:border-transparent p-3', <>
             {/* Single Multiple Consecutive Spaces Typing Mistake Warning Banner */}
@@ -1987,7 +1991,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               <div className="space-y-2">
                 {normalizedPluralItems.map((pi, pIdx) => (
                   <div key={pi.quantity} className="space-y-1">
-                    {(barField ? barField === `plural:${pi.quantity}` : pIdx === 0) && renderShortcutBar()}
+                    {(barField ? barField === `plural:${pi.quantity}` : pIdx === 0) && shortcutBar}
                     <div className="flex items-center justify-between text-xs gap-2">
                       <div className="flex items-center gap-1.5">
                         <span className="font-mono font-semibold text-[#1EB996] uppercase px-1.5 py-0.5 rounded bg-[#1EB996]/10 border border-[#1EB996]/30">
@@ -2063,7 +2067,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               <div className="space-y-2">
                 {draftItem.items.map((ai, aIdx) => (
                   <div key={ai.index} className="space-y-1">
-                    {(barField ? barField === `array:${ai.index}` : aIdx === 0) && renderShortcutBar()}
+                    {(barField ? barField === `array:${ai.index}` : aIdx === 0) && shortcutBar}
                     <div className="flex items-center justify-between text-xs">
                       <span data-i18n className="font-mono font-semibold text-[#1EB996]">
                         {t('item', ai.index)}
