@@ -20,7 +20,7 @@ export const EditorNavFooter: React.FC<EditorNavFooterProps> = ({
 }) => {
   const { t, tb } = useT();
   return (
-    <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 px-2 py-0.5">
+    <div className="flex items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400 px-4 py-0.5">
       <div className="flex items-center gap-1.5">
         <button
           onClick={() => onPrevious()}
@@ -46,7 +46,7 @@ export const EditorNavFooter: React.FC<EditorNavFooterProps> = ({
 
       <button
         onClick={onNextUntranslated}
-        className="text-[#1EB996] hover:underline cursor-pointer"
+        className="ms-auto text-[#1EB996] hover:underline cursor-pointer"
       >
         {tb('next_untranslated')}
       </button>

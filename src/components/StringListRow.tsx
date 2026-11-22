@@ -144,9 +144,16 @@ const StringListRowBase: React.FC<StringListRowProps> = ({
               <SourceChangeBadge item={item} isAr={isAr} />
             </div>
 
-            {/* Right: QA Badge, Source Badge (AI vs Manual), Individual Reset Button & Type indicator */}
-            <div className="flex items-center gap-1 shrink-0">
-              {(() => {
+            {/* Right: Type indicator on its own line above the controls; QA Badge, Source Badge (AI vs Manual) & Individual Reset Button pinned at the inline-end edge */}
+            <div className="flex flex-col items-end gap-0.5 shrink-0">
+              {/* Clean unboxed type indicator, above the controls instead of inline */}
+              {item.type !== 'string' && (
+                <span className="text-[10px] font-mono text-slate-600 dark:text-slate-400">
+                  {isAr ? (item.type === 'plural' ? 'جمع' : 'مصفوفة') : item.type}
+                </span>
+              )}
+              <div className="flex items-center gap-1 shrink-0">
+                {(() => {
                 const itemQa = qa;
                 if (!itemQa) return null;
                 const tooltip = itemQa.issues
@@ -210,13 +217,7 @@ const StringListRowBase: React.FC<StringListRowProps> = ({
                   )}
                 </>
               )}
-
-              {/* Clean unboxed type indicator */}
-              {item.type !== 'string' && (
-                <span className="text-[10px] font-mono text-slate-600 dark:text-slate-400 shrink-0">
-                  {isAr ? (item.type === 'plural' ? 'جمع' : 'مصفوفة') : item.type}
-                </span>
-              )}
+              </div>
             </div>
           </div>
 

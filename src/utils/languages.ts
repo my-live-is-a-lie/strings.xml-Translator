@@ -1,3 +1,4 @@
+import { getStoredItem, setStoredItem } from './storage';
 export interface LanguageOption {
   code: string; // Android locale code (e.g., 'es', 'pt-rBR', 'zh-rCN')
   name: string; // English name (e.g., 'Spanish', 'Portuguese (Brazil)')
@@ -93,10 +94,10 @@ export function getArabicLanguageName(code: string, fallbackName?: string): stri
 }
 
 export function getLanguageOption(code: string): LanguageOption {
-  const found = SUPPORTED_LANGUAGES.find(
+  const found = [...SUPPORTED_LANGUAGES, ...getCustomTargetLocales()].find(
     (l) => l.code.toLowerCase() === code.toLowerCase()
   );
-  if (found) return found;
+  if (found) return { ...found };
 
   return {
     code,
@@ -105,4 +106,36 @@ export function getLanguageOption(code: string): LanguageOption {
     androidDir: `values-${code}`,
     isRtl: ['ar', 'fa', 'he', 'ur'].includes(code.toLowerCase()),
   };
+}
+
+
+const KEY = 'translator_custom_target_locales_v1';
+
+export function normalizeLocaleCode(value: string): string {
+  const code = value.trim().replace(/^values-/i, '');
+  if (/^b\+[a-z]{2,3}(?:\+[a-z0-9]{2,8})*$/i.test(code)) return code;
+  const match = /^([a-z]{2,3})(?:-(?:r)?([a-z]{2}|\d{3}))?$/i.exec(code);
+  return match ? match[1].toLowerCase() + (match[2] ? `-r${match[2].toUpperCase()}` : '') : '';
+}
+
+export function getCustomTargetLocales(): LanguageOption[] {
+  try {
+    const raw: unknown = JSON.parse(getStoredItem(KEY) ?? '[]');
+    if (!Array.isArray(raw)) return [];
+    const seen = new Set(SUPPORTED_LANGUAGES.map((l) => l.code.toLowerCase()));
+    return raw.flatMap((entry) => {
+      if (!entry || typeof entry.code !== 'string' || typeof entry.name !== 'string') return [];
+      const code = normalizeLocaleCode(entry.code);
+      const name = entry.name.trim();
+      if (!code || !name || seen.has(code.toLowerCase())) return [];
+      seen.add(code.toLowerCase());
+      return [{ code, name, nativeName: name, androidDir: `values-${code}`, isRtl: /^(ar|fa|he|ur)(?:-|$)|^b\+(ar|fa|he|ur)(?:\+|$)/i.test(code) }];
+    });
+  } catch {
+    return [];
+  }
+}
+
+export function saveCustomTargetLocales(locales: LanguageOption[]): void {
+  setStoredItem(KEY, JSON.stringify(locales));
 }
