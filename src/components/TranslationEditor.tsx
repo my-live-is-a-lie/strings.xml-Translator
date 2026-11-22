@@ -117,6 +117,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   }
 
   // Track last active input box & cursor (line indicator) position so tapping a syntax token inserts right at the caret
+  const [barField, setBarField] = useState<string | null>(null);
   const lastCursorRef = useRef<{
     fieldType: 'string' | 'plural' | 'array' | 'icu';
     quantity?: string;
@@ -328,6 +329,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
 
   // Reset tools menu state and cursor ref when item changes
   useEffect(() => {
+    setBarField(null);
     lastCursorRef.current = null;
     activeLineMarkerRef.current = null;
     lastDraftEditRef.current = { timestamp: 0 };
@@ -625,6 +627,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     extra?: { quantity?: string; index?: number }
   ) => {
     if (!el) return;
+    setBarField(fieldType === 'string' ? null : fieldType === 'plural' ? `plural:${extra?.quantity}` : `array:${extra?.index}`);
     predict.noteCursor(
       fieldType === 'string' ? 'string' : fieldType === 'plural' ? `plural:${extra?.quantity}` : `array:${extra?.index}`,
       el
@@ -651,6 +654,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     fieldType: 'string' | 'plural' | 'array',
     extra?: { quantity?: string; index?: number }
   ) => {
+    setBarField(null); // focus left the field: bar returns to the first field
     predict.clearCursor();
     setTimeout(() => {
       if (isInteractingWithToolbarOrPasteRef.current) return;
@@ -1629,6 +1633,69 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   // Max recommended character threshold
 
   // In landscape split mode the writing area goes into the other half of the screen
+  // Symbols/shortcut bar. For plural and array items it docks above the focused field.
+  const renderShortcutBar = () => (
+    <div className="kb-tools space-y-1 select-none">
+              {/* Toolbar Row 1: Punctuation & Typography */}
+              <div className="flex items-center bg-slate-100 dark:bg-[#171D27] border border-slate-200/90 dark:border-[#283242] rounded-lg overflow-x-auto divide-x divide-slate-200 dark:divide-[#283242] rtl:divide-x-reverse no-scrollbar">
+                {sortByUsage([
+                  { label: '-', value: '-', title: t('hyphen') },
+                  { label: '_', value: '_', title: t('underscore') },
+                  { label: '( - )', value: '( - )', title: t('parentheses') },
+                  { label: "'", value: "'", title: t('single_quote') },
+                  { label: '‘', value: '‘', title: t('arabic_quote_comma') },
+                  { label: '"', value: '"', title: t('double_quote') },
+                  { label: '“', value: '“', title: t('curly_quote') },
+                  { label: '...', value: '…', title: t('horizontal_ellipsis') },
+                  { label: 'NBS', value: '\u00A0', title: t('non_breaking_space_u_00a0') },
+                  { label: '↵', value: '\\n', title: t('newline_n') },
+                  { label: '⇄', value: '\\t', title: t('tabulation_t') },
+                ]).map((btn) => (
+                  <button
+                    key={btn.label}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      insertAtCursor(btn.value);
+                      bumpShortcut(btn.label);
+                    }}
+                    title={btn.title}
+                    className="flex-1 min-w-[30px] sm:min-w-[38px] h-7 sm:h-7.5 whitespace-nowrap px-1 flex items-center justify-center text-xs font-mono font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-[#232C3A] active:bg-slate-300 dark:active:bg-[#2C3748] transition cursor-pointer"
+                  >
+                    {btn.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Toolbar Row 2: BiDi Unicode Directional Controls */}
+              <div className="flex items-center bg-slate-100 dark:bg-[#171D27] border border-slate-200/90 dark:border-[#283242] rounded-lg overflow-x-auto divide-x divide-slate-200 dark:divide-[#283242] rtl:divide-x-reverse no-scrollbar">
+                {sortByUsage([
+                  { label: 'PDF', value: '\u202C', title: t('pop_directional_formatting_u_202c') },
+                  { label: 'RLE', value: '\u202B', title: t('right_to_left_embedding_u') },
+                  { label: 'LRE', value: '\u202A', title: t('left_to_right_embedding_u') },
+                  { label: 'RLM', value: '\u200F', title: t('right_to_left_mark_u') },
+                  { label: 'LRM', value: '\u200E', title: t('left_to_right_mark_u') },
+                  { label: 'ZWJ', value: '\u200D', title: t('zero_width_joiner_u_200d') },
+                  { label: 'ZWNJ', value: '\u200C', title: t('zero_width_non_joiner_u') },
+                ]).map((btn) => (
+                  <button
+                    key={btn.label}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      insertAtCursor(btn.value);
+                      bumpShortcut(btn.label);
+                    }}
+                    title={btn.title}
+                    className="flex-1 min-w-[40px] sm:min-w-[48px] h-7 sm:h-7.5 flex items-center justify-center text-[10px] sm:text-[11px] font-mono font-semibold text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-[#232C3A] active:bg-slate-300 dark:active:bg-[#2C3748] transition cursor-pointer tracking-wider"
+                  >
+                    {btn.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+  );
+
   const slot = (key: string, className: string, children: React.ReactNode, plainClass?: string) =>
     bottomPortal ? (
       createPortal(<div className={`shrink-0 ${className}`}>{children}</div>, bottomPortal, key)
@@ -1769,66 +1836,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               </span>
             </div>, 'flex items-center justify-between gap-2')}
 
-            {/* Two Connected Typographic / Formatting Toolbars */}
-            <div className="kb-tools space-y-1 select-none">
-              {/* Toolbar Row 1: Punctuation & Typography */}
-              <div className="flex items-center bg-slate-100 dark:bg-[#171D27] border border-slate-200/90 dark:border-[#283242] rounded-lg overflow-x-auto divide-x divide-slate-200 dark:divide-[#283242] rtl:divide-x-reverse no-scrollbar">
-                {sortByUsage([
-                  { label: '-', value: '-', title: t('hyphen') },
-                  { label: '_', value: '_', title: t('underscore') },
-                  { label: '( - )', value: '( - )', title: t('parentheses') },
-                  { label: "'", value: "'", title: t('single_quote') },
-                  { label: '‘', value: '‘', title: t('arabic_quote_comma') },
-                  { label: '"', value: '"', title: t('double_quote') },
-                  { label: '“', value: '“', title: t('curly_quote') },
-                  { label: '...', value: '…', title: t('horizontal_ellipsis') },
-                  { label: 'NBS', value: '\u00A0', title: t('non_breaking_space_u_00a0') },
-                  { label: '↵', value: '\\n', title: t('newline_n') },
-                  { label: '⇄', value: '\\t', title: t('tabulation_t') },
-                ]).map((btn) => (
-                  <button
-                    key={btn.label}
-                    type="button"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => {
-                      insertAtCursor(btn.value);
-                      bumpShortcut(btn.label);
-                    }}
-                    title={btn.title}
-                    className="flex-1 min-w-[30px] sm:min-w-[38px] h-7 sm:h-7.5 whitespace-nowrap px-1 flex items-center justify-center text-xs font-mono font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-[#232C3A] active:bg-slate-300 dark:active:bg-[#2C3748] transition cursor-pointer"
-                  >
-                    {btn.label}
-                  </button>
-                ))}
-              </div>
-
-              {/* Toolbar Row 2: BiDi Unicode Directional Controls */}
-              <div className="flex items-center bg-slate-100 dark:bg-[#171D27] border border-slate-200/90 dark:border-[#283242] rounded-lg overflow-x-auto divide-x divide-slate-200 dark:divide-[#283242] rtl:divide-x-reverse no-scrollbar">
-                {sortByUsage([
-                  { label: 'PDF', value: '\u202C', title: t('pop_directional_formatting_u_202c') },
-                  { label: 'RLE', value: '\u202B', title: t('right_to_left_embedding_u') },
-                  { label: 'LRE', value: '\u202A', title: t('left_to_right_embedding_u') },
-                  { label: 'RLM', value: '\u200F', title: t('right_to_left_mark_u') },
-                  { label: 'LRM', value: '\u200E', title: t('left_to_right_mark_u') },
-                  { label: 'ZWJ', value: '\u200D', title: t('zero_width_joiner_u_200d') },
-                  { label: 'ZWNJ', value: '\u200C', title: t('zero_width_non_joiner_u') },
-                ]).map((btn) => (
-                  <button
-                    key={btn.label}
-                    type="button"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => {
-                      insertAtCursor(btn.value);
-                      bumpShortcut(btn.label);
-                    }}
-                    title={btn.title}
-                    className="flex-1 min-w-[40px] sm:min-w-[48px] h-7 sm:h-7.5 flex items-center justify-center text-[10px] sm:text-[11px] font-mono font-semibold text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-[#232C3A] active:bg-slate-300 dark:active:bg-[#2C3748] transition cursor-pointer tracking-wider"
-                  >
-                    {btn.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+            {draftItem.type !== 'plural' && draftItem.type !== 'array' && renderShortcutBar()}
 
             {slot('r1', 'kb-r1 space-y-2.5 rounded-2xl bg-white dark:bg-[#151922] border border-slate-200/80 dark:border-transparent p-3', <>
             {/* Single Multiple Consecutive Spaces Typing Mistake Warning Banner */}
@@ -1977,8 +1985,9 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             {/* Plural Support (if plural string) with Visual Typing Mistake Indicator */}
             {draftItem.type === 'plural' && (
               <div className="space-y-2">
-                {normalizedPluralItems.map((pi) => (
+                {normalizedPluralItems.map((pi, pIdx) => (
                   <div key={pi.quantity} className="space-y-1">
+                    {(barField ? barField === `plural:${pi.quantity}` : pIdx === 0) && renderShortcutBar()}
                     <div className="flex items-center justify-between text-xs gap-2">
                       <div className="flex items-center gap-1.5">
                         <span className="font-mono font-semibold text-[#1EB996] uppercase px-1.5 py-0.5 rounded bg-[#1EB996]/10 border border-[#1EB996]/30">
@@ -2052,8 +2061,9 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             {/* Array Support (if array string) with Visual Typing Mistake Indicator */}
             {draftItem.type === 'array' && (
               <div className="space-y-2">
-                {draftItem.items.map((ai) => (
+                {draftItem.items.map((ai, aIdx) => (
                   <div key={ai.index} className="space-y-1">
+                    {(barField ? barField === `array:${ai.index}` : aIdx === 0) && renderShortcutBar()}
                     <div className="flex items-center justify-between text-xs">
                       <span data-i18n className="font-mono font-semibold text-[#1EB996]">
                         {t('item', ai.index)}
