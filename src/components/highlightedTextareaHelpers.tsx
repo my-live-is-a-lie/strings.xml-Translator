@@ -6,7 +6,92 @@ import React from 'react';
  * Renders text with high-visibility typing mistake indicators for consecutive spaces (2 or more spaces in a row),
  * matching Weblate's red dotted box with middle dots (····) around multiple spaces between words.
  */
-export function renderContentWithWhitespaceIndicators(text: string, suppressLineBreakIndicators = false) {
+/**
+ * Placeholder tokens protected inside the translation box: printf-style format specifiers
+ * (same shape placeholderCheck.ts uses) and simple ICU variable references like {count}.
+ */
+export const PRINTF_TOKEN_SOURCE = String.raw`%(?:\d+\$)?[+-]?\d*(?:\.\d+)?[bcdefgopsx%]`;
+// Simple refs ({count}) and full single-level arguments ({date, date, medium}).
+// The style segment excludes braces, so a block with nested clauses (plural/select bodies)
+// never matches: those stay editable structure, not a chip.
+export const ICU_VAR_TOKEN_SOURCE = String.raw`\{[A-Za-z0-9_-]+(?:\s*,\s*[a-zA-Z]+(?:\s*,\s*[^{}]+?)?)?\}`;
+
+/** Ranges [start, end) of every atomic token in the text. */
+export function findAtomicTokens(text: string, tokenRe: RegExp): Array<[number, number]> {
+  const re = new RegExp(tokenRe.source, tokenRe.flags.includes('g') ? tokenRe.flags : tokenRe.flags + 'g');
+  const out: Array<[number, number]> = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    if (m[0].length === 0) { re.lastIndex++; continue; }
+    out.push([m.index, m.index + m[0].length]);
+  }
+  return out;
+}
+
+/**
+ * Atomic editing for protected placeholder tokens.
+ * - Backspace right after a token (or Delete right before one) removes the whole token as one unit.
+ * - A selection that partially overlaps tokens expands to cover them fully before deleting.
+ * - Typing while the caret sits strictly inside a token snaps the caret past the token first,
+ *   so the token itself can never be edited.
+ * Returns true when the key was handled here.
+ */
+export function handleAtomicTokenKeyDown(
+  e: React.KeyboardEvent<HTMLTextAreaElement>,
+  tokenRe: RegExp
+): boolean {
+  const ta = e.currentTarget;
+  const { selectionStart: s, selectionEnd: en, value: v } = ta;
+  if (s === null || en === null) return false;
+  const tokens = findAtomicTokens(v, tokenRe);
+  if (!tokens.length) return false;
+  const inside = s === en ? tokens.find(([a, b]) => s > a && s < b) : undefined;
+
+  const commit = (start: number, end: number) => {
+    e.preventDefault();
+    // Route through the native value setter so React's value tracker notices the change,
+    // then dispatch a real input event so the normal onChange pipeline runs (auto-grow, auto-close...).
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;
+    setter.call(ta, v.slice(0, start) + v.slice(end));
+    ta.setSelectionRange(start, start);
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+
+  if (s !== en && (e.key === 'Backspace' || e.key === 'Delete')) {
+    const overlapping = tokens.filter(([a, b]) => a < en && b > s);
+    if (overlapping.length) {
+      commit(Math.min(s, overlapping[0][0]), Math.max(en, overlapping[overlapping.length - 1][1]));
+      return true;
+    }
+    return false;
+  }
+
+  if (s === en) {
+    if (e.key === 'Backspace') {
+      const t = tokens.find(([, b]) => b === s) ?? inside;
+      if (t) { commit(t[0], t[1]); return true; }
+    }
+    if (e.key === 'Delete') {
+      const t = tokens.find(([a]) => a === s) ?? inside;
+      if (t) { commit(t[0], t[1]); return true; }
+    }
+    if ((e.key.length === 1 && !e.ctrlKey && !e.metaKey) || e.key === 'Enter') {
+      if (inside) {
+        e.preventDefault();
+        ta.setSelectionRange(inside[1], inside[1]);
+        document.execCommand('insertText', false, e.key === 'Enter' ? '\n' : e.key);
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+export function renderContentWithWhitespaceIndicators(
+  text: string,
+  suppressLineBreakIndicators = false,
+  tokenRe?: RegExp | null
+) {
   if (!text) return null;
 
   // Split text by 2 or more consecutive spaces and by line breaks
@@ -98,7 +183,37 @@ export function renderContentWithWhitespaceIndicators(text: string, suppressLine
       );
     }
 
-    // Normal text part: render invisible text so layout matches the textarea exactly
+    // Normal text part: render invisible text so layout matches the textarea exactly.
+    // Protected placeholder tokens are the exception: they render as visible solid chips that
+    // sit exactly on top of the textarea's own glyphs (same text, same font metrics, no width change).
+    if (tokenRe) {
+      const matches = part.match(tokenRe);
+      if (matches && matches.length) {
+        const pieces = part.split(tokenRe);
+        const out: React.ReactNode[] = [];
+        pieces.forEach((piece, i) => {
+          if (piece) {
+            out.push(
+              <span key={`p${i}`} className="opacity-0 select-none whitespace-pre-wrap">
+                {piece}
+              </span>
+            );
+          }
+          if (i < matches.length) {
+            out.push(
+              <span
+                key={`t${i}`}
+                className="select-none whitespace-pre-wrap protected-token-chip"
+                title="Protected placeholder"
+              >
+                {matches[i]}
+              </span>
+            );
+          }
+        });
+        return <React.Fragment key={idx}>{out}</React.Fragment>;
+      }
+    }
     return (
       <span key={idx} className="opacity-0 select-none whitespace-pre-wrap">
         {part}

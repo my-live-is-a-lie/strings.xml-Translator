@@ -900,7 +900,38 @@ export function normalizeEngineReply(source: string, reply: string): string {
   if (countLineBreaks(source) === 0) {
     out = out.replace(STRAY_BREAK, (_m: string, escapes?: string) => `${escapes ?? ''} `);
   }
-  return restoreInteriorNbsp(source, out);
+  return restoreQuotedPlaceholders(source, restoreInteriorNbsp(source, out));
+}
+
+// A placeholder the source wraps in apostrophes (`'{name}'`, a literal at runtime) must stay
+// quoted in the translation. Engines freely drop or normalize the apostrophes, which turns the
+// literal into live ICU syntax; wrap the bare token back so the suggestion keeps the source's form.
+function restoreQuotedPlaceholders(source: string, reply: string): string {
+  let out = reply;
+  const quoted = source.match(/'\{[A-Za-z0-9_-]+\}'/g);
+  if (quoted) {
+    for (const form of new Set(quoted)) {
+      const token = form.slice(1, -1); // {name}
+      // Unwrap double quotes the engine put around the quoted placeholder.
+      out = out.replace(new RegExp(`"${form.replace(/[{}']/g, (m) => `\\${m}`)}"`, 'g'), form);
+      // Re-wrap the bare token in the source's apostrophes (it may sit inside
+      // engine-added double quotes, which the next unwrap pass then removes).
+      if (!out.includes(form)) {
+        out = out.replace(
+          new RegExp(`(?<!')${token.replace(/[{}]/g, (m) => `\\${m}`)}(?!')`, 'g'),
+          form
+        );
+        out = out.replace(new RegExp(`"${form.replace(/[{}']/g, (m) => `\\${m}`)}"`, 'g'), form);
+      }
+    }
+  }
+  // Any double-quote marks left over were added by the engine; when the source has
+  // none, convert each pair to the source's own '' doubled-apostrophe style, or
+  // drop them entirely when the source does not quote with apostrophes either.
+  if (!source.includes('"')) {
+    out = source.includes("''") ? out.replace(/"([^"]*)"/g, "''$1''").replace(/"/g, '') : out.replace(/"/g, '');
+  }
+  return out;
 }
 
 async function translateSingleSegment(

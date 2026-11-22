@@ -720,8 +720,21 @@ export default function App() {
 
   const handleNavigateNext = useCallback(() => {
     const next = navItems.find((i) => navIndexOf(i.id) > orderPos);
-    if (next) setSelectedId(next.id);
-  }, [navItems, navIndexOf, orderPos, setSelectedId]);
+    if (next) {
+      setSelectedId(next.id);
+      return;
+    }
+    // At the end of the list: wrap to the first untranslated string, else the first one
+    // that needs review, else the first string in the list. The current item is skipped
+    // so skipping at the last string never lands back on itself.
+    const rest = navItems.filter((i) => i.id !== selectedId);
+    const wrap =
+      rest.find((i) => i.status === 'untranslated') ??
+      rest.find((i) => i.status === 'needs_review') ??
+      rest[0] ??
+      navItems[0];
+    if (wrap) setSelectedId(wrap.id);
+  }, [navItems, navIndexOf, orderPos, selectedId, setSelectedId]);
 
   const handleNavigateNextUntranslated = useCallback(() => {
     const untranslated = navItems.filter((i) => i.status === 'untranslated');

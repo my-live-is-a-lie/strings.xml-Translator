@@ -5,6 +5,9 @@ import {
   extractPlaceholders,
   getItemQaIssues,
   findClauseBodyOpens,
+  findUnpairedQuoteMark,
+  fixUnpairedQuoteMarks,
+  repairItemQuoteMarks,
   getIcuStructureIssues,
   hasMultilineIcuBlock,
   itemUsesHashWithoutClauseNumber,
@@ -999,5 +1002,171 @@ describe('usesHashWithoutClauseNumber / itemUsesHashWithoutClauseNumber - the # 
       ],
     };
     expect(itemUsesHashWithoutClauseNumber(item, 'ar')).toBe(true);
+  });
+});
+
+describe('findUnpairedQuoteMark', () => {
+  it('accepts balanced quote pairs', () => {
+    expect(findUnpairedQuoteMark("'{username}' said: ''Hello!''")).toBeNull();
+    expect(findUnpairedQuoteMark('said "Hello!" loudly')).toBeNull();
+    expect(findUnpairedQuoteMark('لا علامات هنا')).toBeNull();
+  });
+  it('flags a deleted half of a doubled apostrophe pair', () => {
+    expect(findUnpairedQuoteMark("''Hello!'")).toBe('apostrophe');
+  });
+  it('flags an unpaired straight double quote', () => {
+    expect(findUnpairedQuoteMark('said "Hello!')).toBe('double_quote');
+  });
+  it('ignores contractions between letters', () => {
+    expect(findUnpairedQuoteMark("it's fine")).toBeNull();
+  });
+  it('treats a balanced pair of quoting apostrophes as paired', () => {
+    expect(findUnpairedQuoteMark("قال 'مرحبا'")).toBeNull();
+    expect(findUnpairedQuoteMark("قال 'مرحبا")).toBe('apostrophe');
+  });
+  it('ignores an apostrophe with no quote characters at all', () => {
+    expect(findUnpairedQuoteMark('plain text')).toBeNull();
+    expect(findUnpairedQuoteMark('')).toBeNull();
+  });
+});
+
+describe('getIcuStructureIssues quote pairs (save gate)', () => {
+  const item = (target: string, source = "'{username}' said: ''Hello!''"): ResourceItem =>
+    ({ id: 'x', name: 'quoted_message', type: 'string', order: 0, status: 'translated', source, target } as ResourceItem);
+
+  it('blocks a target with a broken doubled-apostrophe pair', () => {
+    const issues = getIcuStructureIssues(item("'{username}' قال: ''مرحبا!'"), 'ar');
+    expect(issues).toHaveLength(1);
+    expect(issues[0].id).toContain('quote_pair');
+  });
+
+  it('blocks a target with an unpaired double quote', () => {
+    const issues = getIcuStructureIssues(item('"{username}" قال: "مرحبا!'), 'ar');
+    expect(issues).toHaveLength(1);
+    expect(issues[0].id).toContain('quote_pair');
+  });
+
+  it('accepts the correctly quoted form', () => {
+    expect(getIcuStructureIssues(item("'{username}' قال: ''مرحبا!''"), 'ar')).toEqual([]);
+  });
+
+  it('still catches an unterminated ICU quote first', () => {
+    const issues = getIcuStructureIssues(item("'{username} قال: ''مرحبا!''"), 'ar');
+    expect(issues).toHaveLength(1);
+    expect(issues[0].id).toContain('icu_quote');
+  });
+});
+
+describe('validatePlaceholders with apostrophe-quoted placeholders', () => {
+  const source = "'{username}' said: ''Hello!''";
+
+  it('accepts a reply that keeps the quoting', () => {
+    expect(validatePlaceholders(source, "قال '{username}': ''مرحبا!''", 'ar').valid).toBe(true);
+  });
+
+  it('accepts a reply that dropped the apostrophe quoting but kept the placeholder', () => {
+    expect(validatePlaceholders(source, 'قال {username}: مرحبا!', 'ar').valid).toBe(true);
+  });
+
+  it('still requires the quoted placeholder to be present', () => {
+    const r = validatePlaceholders(source, 'قال: مرحبا!', 'ar');
+    expect(r.valid).toBe(false);
+    expect(r.missingInTarget).toContain('{username}');
+  });
+});
+
+describe('fixUnpairedQuoteMarks', () => {
+  it('completes a broken doubled-apostrophe pair', () => {
+    expect(fixUnpairedQuoteMarks("'{username}' قال: ''مرحبا!'")).toBe("'{username}' قال: ''مرحبا!''");
+  });
+  it('completes an unpaired double quote', () => {
+    expect(fixUnpairedQuoteMarks('قال "مرحبا!')).toBe('قال "مرحبا!"');
+  });
+  it('closes an unterminated ICU quote', () => {
+    expect(fixUnpairedQuoteMarks("'{username} said")).toBe("'{username} said'");
+  });
+  it('leaves balanced text untouched', () => {
+    expect(fixUnpairedQuoteMarks("'{username}' said: ''Hello!''")).toBe("'{username}' said: ''Hello!''");
+    expect(fixUnpairedQuoteMarks("it's fine")).toBe("it's fine");
+  });
+});
+
+describe('repairItemQuoteMarks', () => {
+  it('repairs the target of a string item', () => {
+    const item = { id: 'x', name: 'n', type: 'string', order: 0, status: 'translated', source: 'a', target: 'قال "مرحبا!' } as ResourceItem;
+    const r = repairItemQuoteMarks(item);
+    expect(r.changed).toBe(true);
+    expect((r.item as { target: string }).target).toBe('قال "مرحبا!"');
+  });
+  it('reports unchanged when nothing is broken', () => {
+    const item = { id: 'x', name: 'n', type: 'string', order: 0, status: 'translated', source: 'a', target: 'مرحبا' } as ResourceItem;
+    expect(repairItemQuoteMarks(item).changed).toBe(false);
+  });
+});
+
+describe('fixUnpairedQuoteMarks with trailing whitespace and source context', () => {
+  const source = "'{username}' said: ''Hello!''";
+
+  it('inserts the missing mark before trailing formatting whitespace', () => {
+    expect(fixUnpairedQuoteMarks("قال '{username}': ''مرحبًا!'\n    ", source)).toBe(
+      "قال '{username}': ''مرحبًا!''\n    "
+    );
+  });
+
+  it('restores a deleted closing pair using the source ending', () => {
+    expect(fixUnpairedQuoteMarks("قال '{username}': ''مرحبًا!", source)).toBe(
+      "قال '{username}': ''مرحبًا!''"
+    );
+  });
+
+  it('does not touch a target that kept all quote marks, even reordered', () => {
+    expect(fixUnpairedQuoteMarks("''مرحبًا!'' قال '{username}'", source)).toBe(
+      "''مرحبًا!'' قال '{username}'"
+    );
+  });
+
+  it('does not force quotes on a quote-free translation', () => {
+    expect(fixUnpairedQuoteMarks('قال مرحبا', source)).toBe('قال مرحبا');
+  });
+
+  it('still repairs without a source argument', () => {
+    expect(fixUnpairedQuoteMarks('قال "مرحبا!')).toBe('قال "مرحبا!"');
+  });
+});
+
+describe('getIcuStructureIssues missing closing quotes (save gate)', () => {
+  const item = (target: string): ResourceItem =>
+    ({ id: 'x', name: 'quoted_message', type: 'string', order: 0, status: 'translated', source: "'{username}' said: ''Hello!''", target } as ResourceItem);
+
+  it('flags a deleted closing pair', () => {
+    const issues = getIcuStructureIssues(item("قال '{username}': ''مرحبًا!"), 'ar');
+    expect(issues).toHaveLength(1);
+    expect(issues[0].id).toContain('quote_pair');
+  });
+
+  it('accepts a reordered translation that kept every mark', () => {
+    expect(getIcuStructureIssues(item("''مرحبًا!'' قال '{username}'"), 'ar')).toEqual([]);
+  });
+
+  it('accepts a quote-free translation', () => {
+    expect(getIcuStructureIssues(item('قال مرحبا'), 'ar')).toEqual([]);
+  });
+});
+
+describe('fixUnpairedQuoteMarks in stored form (literal \\n edges)', () => {
+  const storedSource = String.raw`\n        '{username}' said: ''Hello!''\n    `;
+
+  it('inserts the missing mark before the stored-form trailing edge', () => {
+    const broken = String.raw`\n        قال '{username}': ''مرحبًا!'\n    `;
+    expect(fixUnpairedQuoteMarks(broken, storedSource)).toBe(
+      String.raw`\n        قال '{username}': ''مرحبًا!''\n    `
+    );
+  });
+
+  it('restores a deleted closing pair in stored form', () => {
+    const broken = String.raw`\n        قال '{username}': ''مرحبًا!\n    `;
+    expect(fixUnpairedQuoteMarks(broken, storedSource)).toBe(
+      String.raw`\n        قال '{username}': ''مرحبًا!''\n    `
+    );
   });
 });

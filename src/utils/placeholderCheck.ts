@@ -1049,6 +1049,18 @@ function parseIcuMessage(text: string, inPluralClause = false): IcuElement[] {
     if (ch === "'") {
       const after = skipQuotedLiteral(text, i);
       if (after !== -1) {
+        // A quoted placeholder (`'{name}'`) is literal text at runtime, but a
+        // translation still has to carry the same placeholder token. Count it as
+        // structure so a reply or translation that drops the apostrophe quoting is
+        // accepted instead of rejected as an "extra" token, and one that drops the
+        // placeholder entirely is still reported as missing.
+        const inner = text.slice(i + 1, after - 1);
+        if (inner.startsWith('{') && inner.endsWith('}')) {
+          const quoted = parseIcuMessage(inner, false);
+          if (quoted.length === 1 && (quoted[0].kind === 'simple' || quoted[0].kind === 'formatted')) {
+            elements.push(quoted[0]);
+          }
+        }
         i = after;
         continue;
       }
@@ -2044,6 +2056,187 @@ export function usesHashWithoutClauseNumber(source: string, target: string, targ
  * it will not save either. Only strings whose source actually contains an ICU block are
  * reported, so ordinary placeholder repair is unaffected.
  */
+/**
+ * ICU apostrophe quoting: '' is a literal apostrophe, and a single ' right before { or } opens
+ * quoted literal text that must be closed by another single '. An unterminated quote makes
+ * MessageFormat throw at runtime, so the save gate blocks it. A ' before any other character
+ * is just a literal apostrophe (ICU's lenient rule), so normal contractions never flag.
+ */
+export function hasUnterminatedIcuQuote(text: string): boolean {
+  if (!text || text.indexOf("'") === -1) return false;
+  const n = text.length;
+  const opensQuote = (ch: string | undefined) => ch === '{' || ch === '}';
+  let i = 0;
+  while (i < n) {
+    if (text[i] !== "'") { i++; continue; }
+    if (text[i + 1] === "'") { i += 2; continue; } // '': literal apostrophe
+    if (opensQuote(text[i + 1])) {
+      // quoted literal: find the closing single apostrophe ('' inside stays quoted)
+      i += 2;
+      let closed = false;
+      while (i < n) {
+        if (text[i] === "'") {
+          if (text[i + 1] === "'") { i += 2; continue; }
+          closed = true;
+          i++;
+          break;
+        }
+        i++;
+      }
+      if (!closed) return true;
+      continue;
+    }
+    i++; // literal apostrophe before a non-syntax character
+  }
+  return false;
+}
+
+/**
+ * Finds an unpaired quote mark: an odd number of straight double quotes, or an
+ * odd number of "structural" apostrophes. An apostrophe strictly between two
+ * letters (`it's`) is a contraction and never counts; every other apostrophe
+ * (quote pairs `''`, quoting apostrophes around ICU literals, `'quoted text'`)
+ * must have a partner, so deleting one half of a pair is caught. Returns the
+ * kind of broken pair, or null when every mark is paired.
+ */
+export function findUnpairedQuoteMark(text: string): 'double_quote' | 'apostrophe' | null {
+  if (!text) return null;
+  let doubles = 0;
+  let structuralApostrophes = 0;
+  const n = text.length;
+  for (let i = 0; i < n; i++) {
+    const ch = text[i];
+    if (ch === '"') {
+      doubles++;
+    } else if (ch === "'") {
+      const before = i > 0 ? text[i - 1] : '';
+      const after = i + 1 < n ? text[i + 1] : '';
+      const contraction = /[\p{L}]/u.test(before) && /[\p{L}]/u.test(after);
+      if (!contraction) structuralApostrophes++;
+    }
+  }
+  if (doubles % 2 === 1) return 'double_quote';
+  if (structuralApostrophes % 2 === 1) return 'apostrophe';
+  return null;
+}
+
+/**
+ * Completes unpaired quote marks by appending the missing partner at the end of
+ * the text: an unterminated ICU quote gets its closing apostrophe, an odd
+ * double quote gets its pair, a broken \`\` pair is completed. Appending is the
+ * safe repair: it never invents a position inside the text, and for the common
+ * case (the trailing mark of a pair was deleted) it restores the original.
+ */
+/* Trailing formatting at the content end: real whitespace AND the stored-form
+ * newline/tab escapes (`\n` as the two characters backslash+n). The save pipeline
+ * holds targets in stored form, so a plain `/\s+$/` stops at the `n` of the escape
+ * and an appended mark lands between the escape and the spaces, making the hidden
+ * edge visible. */
+const TRAILING_FORMATTING = /(?:\\[nt]|\s)+$/;
+
+/** Inserts a mark after the last non-whitespace character, so trailing formatting
+ * whitespace (the hidden XML pretty-print edges) stays trailing and hidden. */
+function insertAtContentEnd(text: string, mark: string): string {
+  const trailing = TRAILING_FORMATTING.exec(text);
+  const cut = trailing ? text.length - trailing[0].length : text.length;
+  return text.slice(0, cut) + mark + text.slice(cut);
+}
+
+/** Count of quote marks that structure quoting: every `"`, plus apostrophes that
+ * are not contractions between two letters. */
+function countStructuralQuoteMarks(text: string): number {
+  let count = 0;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"') {
+      count++;
+    } else if (ch === "'") {
+      const before = i > 0 ? text[i - 1] : '';
+      const after = i + 1 < text.length ? text[i + 1] : '';
+      if (!(/[\p{L}]/u.test(before) && /[\p{L}]/u.test(after))) count++;
+    }
+  }
+  return count;
+}
+
+/**
+ * The trailing-quote rule shared by detection and repair: the source ends with a
+ * quote run (`''`, `'`, `"`), the target kept quoting (it has quote marks) but lost
+ * some (fewer than the source) and no longer ends with a quote mark. Reordering is
+ * not flagged: a target that kept all of the source's marks passes wherever they sit.
+ */
+function missingClosingQuoteRun(source: string, target: string): string | null {
+  const srcCore = source.replace(TRAILING_FORMATTING, '');
+  const tgtCore = target.replace(TRAILING_FORMATTING, '');
+  const srcRun = /('+|")$/.exec(srcCore)?.[0];
+  if (!srcRun || !tgtCore || /['"]$/.test(tgtCore)) return null;
+  const tgtCount = countStructuralQuoteMarks(tgtCore);
+  if (tgtCount === 0 || tgtCount >= countStructuralQuoteMarks(srcCore)) return null;
+  return srcRun;
+}
+
+export function fixUnpairedQuoteMarks(text: string, source?: string): string {
+  let out = text;
+  for (let guard = 0; guard < 3; guard++) {
+    if (hasUnterminatedIcuQuote(out)) {
+      out = insertAtContentEnd(out, "'");
+      continue;
+    }
+    const broken = findUnpairedQuoteMark(out);
+    if (broken === 'double_quote') {
+      out = insertAtContentEnd(out, '"');
+      continue;
+    }
+    if (broken === 'apostrophe') {
+      out = insertAtContentEnd(out, "'");
+      continue;
+    }
+    if (source !== undefined) {
+      const run = missingClosingQuoteRun(source, out);
+      if (run) {
+        out = insertAtContentEnd(out, run);
+        continue;
+      }
+    }
+    break;
+  }
+  return out;
+}
+
+/**
+ * Runs \`fixUnpairedQuoteMarks\` over every target part of an item (string,
+ * plural clauses, array elements). Returns the repaired item and whether any
+ * part changed; used by the save gate to auto-repair quote marks instead of
+ * only warning about them.
+ */
+export function repairItemQuoteMarks(item: ResourceItem): { item: ResourceItem; changed: boolean } {
+  if (item.type === 'string') {
+    const fixed = fixUnpairedQuoteMarks(item.target || '', item.source || '');
+    return fixed === (item.target || '')
+      ? { item, changed: false }
+      : { item: { ...item, target: fixed }, changed: true };
+  }
+  if (item.type === 'plural') {
+    let changed = false;
+    const items = (item.items || []).map((q) => {
+      const fixed = fixUnpairedQuoteMarks(q.target || '', q.source || '');
+      if (fixed !== (q.target || '')) changed = true;
+      return fixed === (q.target || '') ? q : { ...q, target: fixed };
+    });
+    return changed ? { item: { ...item, items }, changed: true } : { item, changed: false };
+  }
+  if (item.type === 'array') {
+    let changed = false;
+    const items = (item.items || []).map((el) => {
+      const fixed = fixUnpairedQuoteMarks(el.target || '', el.source || '');
+      if (fixed !== (el.target || '')) changed = true;
+      return fixed === (el.target || '') ? el : { ...el, target: fixed };
+    });
+    return changed ? { item: { ...item, items }, changed: true } : { item, changed: false };
+  }
+  return { item, changed: false };
+}
+
 export function getIcuStructureIssues(item: ResourceItem, targetLocale?: string): QaIssue[] {
   const parts: Array<{ source: string; target: string; subKey?: string }> = [];
   if (item.type === 'string') {
@@ -2056,7 +2249,70 @@ export function getIcuStructureIssues(item: ResourceItem, targetLocale?: string)
     }
   }
 
-  return parts
+  const quoteIssues = parts
+    .filter((p) => p.target.trim())
+    .map((p) => {
+      const prefix = p.subKey ? `${p.subKey}: ` : '';
+      // Quoted ICU literals only matter when the string is an ICU message.
+      if ((p.source || '').includes('{') && hasUnterminatedIcuQuote(p.target)) {
+        return {
+          id: `${item.id}_${p.subKey || 'main'}_icu_quote`,
+          itemId: item.id,
+          itemName: item.name,
+          subKey: p.subKey,
+          category: 'placeholder' as QaIssueCategory,
+          severity: 'error' as const,
+          messageEn: `${prefix}An apostrophe opens quoted ICU text that is never closed, so this string would crash at runtime.`,
+          messageAr: `${prefix}علامة اقتباس فتحت نص ICU مقتبس ولم تُغلق، وهذا النص سيتعطّل وقت التشغيل.`,
+          tokens: [],
+        };
+      }
+      const missingRun = missingClosingQuoteRun(p.source || '', p.target);
+      if (missingRun) {
+        return {
+          id: `${item.id}_${p.subKey || 'main'}_quote_pair`,
+          itemId: item.id,
+          itemName: item.name,
+          subKey: p.subKey,
+          category: 'placeholder' as QaIssueCategory,
+          severity: 'error' as const,
+          messageEn: `${prefix}The closing quote marks from the source (${missingRun}) are missing at the end.`,
+          messageAr: `${prefix}علامات الاقتباس الختامية الموجودة في الأصل (${missingRun}) مفقودة في النهاية.`,
+          tokens: [],
+        };
+      }
+      const broken = findUnpairedQuoteMark(p.target);
+      if (broken === 'double_quote') {
+        return {
+          id: `${item.id}_${p.subKey || 'main'}_quote_pair`,
+          itemId: item.id,
+          itemName: item.name,
+          subKey: p.subKey,
+          category: 'placeholder' as QaIssueCategory,
+          severity: 'error' as const,
+          messageEn: `${prefix}A double quote mark is missing its pair, so a quotation is left open.`,
+          messageAr: `${prefix}علامة التنصيص المزدوجة بدون زوجها، فيوجد اقتباس مفتوح في النص.`,
+          tokens: [],
+        };
+      }
+      if (broken === 'apostrophe') {
+        return {
+          id: `${item.id}_${p.subKey || 'main'}_quote_pair`,
+          itemId: item.id,
+          itemName: item.name,
+          subKey: p.subKey,
+          category: 'placeholder' as QaIssueCategory,
+          severity: 'error' as const,
+          messageEn: `${prefix}An apostrophe is missing its pair (''), so a quote is left open or broken.`,
+          messageAr: `${prefix}علامة اقتباس مفردة بدون زوجها ('')، فيبدو أن هناك اقتباسًا مفتوحًا أو مكسورًا.`,
+          tokens: [],
+        };
+      }
+      return null;
+    })
+    .filter((i): i is NonNullable<typeof i> => i !== null);
+
+  const structureIssues = parts
     .filter((p) => findClauseBodyOpens(p.source).size > 0 && p.target.trim())
     .filter((p) => !validatePlaceholders(p.source, p.target, targetLocale).valid)
     .map((p) => {
@@ -2073,6 +2329,8 @@ export function getIcuStructureIssues(item: ResourceItem, targetLocale?: string)
         tokens: [],
       };
     });
+
+  return [...structureIssues, ...quoteIssues];
 }
 
 /**

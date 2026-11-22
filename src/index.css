@@ -879,3 +879,21 @@ html.dark .tv-bg { box-shadow: none; }
   outline: none;
   box-shadow: none;
 }
+
+/* Protected placeholder chip in the translation box: the visual style of the source panel's
+   tokens (bg-slate-200 / dark #2B2E35, rounded 2px, 2px vertical padding). Vertical padding
+   on an inline element does not change line height, and the chip takes exactly the width of
+   its text, so the caret never drifts from the textarea's glyphs. No horizontal extension:
+   any painted overhang would cover part of the neighbouring character (a ' next to a chip
+   lost a slice to it). */
+.protected-token-chip {
+  padding-top: 2px;
+  padding-bottom: 2px;
+  border-radius: 2px;
+  background-color: rgb(226 232 240); /* slate-200 */
+  color: rgb(30 41 59); /* slate-800 */
+}
+.dark .protected-token-chip {
+  background-color: #2b2e35;
+  color: rgb(241 245 249); /* slate-100 */
+}

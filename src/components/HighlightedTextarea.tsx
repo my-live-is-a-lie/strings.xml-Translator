@@ -4,6 +4,7 @@ import React, {
   useImperativeHandle,
   forwardRef,
   useEffect,
+  useMemo,
   useState,
   useCallback,
 } from 'react';
@@ -32,12 +33,23 @@ export interface HighlightedTextareaProps
    * editable content. Real line breaks (plain editor, clause fields) keep their ↵ mark.
    */
   suppressLineBreakIndicators?: boolean;
+  /**
+   * Protect printf-style placeholders (%1$s, %.2f, ...) and simple ICU variable references
+   * ({count}) as atomic chips: shown as solid tokens, not editable, and Backspace/Delete
+   * removes the whole token as one unit.
+   */
+  protectPlaceholders?: boolean;
+  /** Also protect a bare # (the quantity marker inside plural clause bodies). */
+  protectHash?: boolean;
 }
 
 import {
   RearrangeHistory,
   computeRearrangeStates,
   getTextContentHeight,
+  handleAtomicTokenKeyDown,
+  PRINTF_TOKEN_SOURCE,
+  ICU_VAR_TOKEN_SOURCE,
   renderContentWithWhitespaceIndicators,
 } from './highlightedTextareaHelpers';
 
@@ -57,6 +69,8 @@ export const HighlightedTextarea = forwardRef<HTMLTextAreaElement, HighlightedTe
       ghostText,
       enableEmptySpaceTap = true,
       suppressLineBreakIndicators = false,
+      protectPlaceholders = false,
+      protectHash = false,
       onScroll,
       style,
       ...props
@@ -68,6 +82,15 @@ export const HighlightedTextarea = forwardRef<HTMLTextAreaElement, HighlightedTe
     const backdropRef = useRef<HTMLDivElement | null>(null);
     const lastDragEndTimeRef = useRef<number>(0);
     const lastHandledTapTimeRef = useRef<number>(0);
+
+    // Combined atomic-token pattern for placeholder protection (chips + atomic delete).
+    const tokenRe = useMemo<RegExp | null>(() => {
+      if (!protectPlaceholders && !protectHash) return null;
+      const parts: string[] = [];
+      if (protectPlaceholders) parts.push(PRINTF_TOKEN_SOURCE, ICU_VAR_TOKEN_SOURCE);
+      if (protectHash) parts.push('#');
+      return new RegExp(`(?:${parts.join('|')})`, 'g');
+    }, [protectPlaceholders, protectHash]);
 
     const [isExpanded, setIsExpanded] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
@@ -646,6 +669,7 @@ export const HighlightedTextarea = forwardRef<HTMLTextAreaElement, HighlightedTe
             props.onChange?.(e);
           }}
           onKeyDown={(e) => {
+            if (tokenRe && handleAtomicTokenKeyDown(e, tokenRe)) return;
             if (!isRearrangeDraggingRef.current) {
               if (
                 e.key === 'Backspace' ||
@@ -678,7 +702,7 @@ export const HighlightedTextarea = forwardRef<HTMLTextAreaElement, HighlightedTe
           }}
         >
           <div className="w-full inline-block">
-            {renderContentWithWhitespaceIndicators(value, suppressLineBreakIndicators)}
+            {renderContentWithWhitespaceIndicators(value, suppressLineBreakIndicators, tokenRe)}
             {ghostText && (
               <span className="select-none whitespace-pre-wrap text-slate-400 dark:text-slate-500">{ghostText}</span>
             )}
