@@ -387,4 +387,47 @@ export const UI_STRINGS: Record<string, { en: string; ar: string }> = {
   "source_changed_needs_review": { en: "Source changed (needs review)", ar: "نصوص تغيّر مصدرها (تحتاج مراجعة)" },
   "removed_from_source_will_be": { en: "Removed from source (will be deleted)", ar: "نصوص محذوفة من المصدر (ستُحذف)" },
   "apply_update": { en: "Apply update", ar: "تطبيق التحديث" },
+
+  // Import Report (silent/review/blocking file-repair system, see issue #25)
+  "import_report_title": { en: "Import Report", ar: "تقرير الاستيراد" },
+  "import_report_subtitle": {
+    en: "Review what was fixed automatically and what needs your attention before importing.",
+    ar: "راجع ما تم إصلاحه تلقائيًا وما يحتاج انتباهك قبل الاستيراد.",
+  },
+  "import_report_auto_fixed": { en: "Fixed automatically", ar: "تم إصلاحه تلقائيًا" },
+  "import_report_needs_review": { en: "Needs your attention", ar: "يحتاج انتباهك" },
+  "import_report_review_note": {
+    en: "These won't stop the import, but it's worth checking them after importing.",
+    ar: "هذه لن توقف الاستيراد، لكن يُستحسن مراجعتها بعد الاستيراد.",
+  },
+  "import_report_blocking_header": {
+    en: "This file could not be imported:",
+    ar: "تعذر استيراد هذا الملف:",
+  },
+  "import_report_continue": { en: "Continue Import", ar: "متابعة الاستيراد" },
+  "import_report_back": { en: "Back", ar: "رجوع" },
+  "repair_bom": {
+    en: "Removed an invisible marker at the start of the file (byte-order-mark).",
+    ar: "تمت إزالة علامة غير مرئية في بداية الملف (byte-order-mark).",
+  },
+  "repair_zero_width": {
+    en: "Removed {count} invisible character(s) (likely pasted in by accident).",
+    ar: "تمت إزالة {count} حرف غير مرئي (على الأرجح تم لصقه عن طريق الخطأ).",
+  },
+  "repair_line_endings": {
+    en: "Normalized {count} Windows/old-Mac line ending(s) to the standard form.",
+    ar: "تم توحيد {count} من نهايات الأسطر (Windows/Mac القديم) إلى الصيغة القياسية.",
+  },
+  "repair_bare_ampersand": {
+    en: "Escaped {count} raw \"&\" character(s) so the file stays valid XML.",
+    ar: "تمت معالجة {count} من علامات \"&\" الخام حتى يبقى الملف XML صالحًا.",
+  },
+  "repair_unescaped_apostrophe": {
+    en: "\"{name}\" has {count} raw apostrophe(s) that aren't escaped — this can be valid ICU quoting, but it can also silently hide a placeholder as plain text.",
+    ar: "يحتوي \"{name}\" على {count} علامة اقتباس أحادية (') غير مُهرَّبة — قد تكون صيغة ICU صحيحة، لكنها قد تُخفي عنصرًا نائبًا كنص عادي دون قصد.",
+  },
+  "repair_duplicate_name": {
+    en: "\"{name}\" is used by {count} different entries — this can make the wrong one show up when the app looks it up.",
+    ar: "الاسم \"{name}\" مستخدم في {count} عناصر مختلفة — قد يؤدي هذا إلى ظهور العنصر الخاطئ عند استخدامه في التطبيق.",
+  },
 };

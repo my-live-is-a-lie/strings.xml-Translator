@@ -1,11 +1,39 @@
 
 import React, { useState } from 'react';
-import { X, Upload, FileCode, AlertCircle } from 'lucide-react';
+import { X, Upload, FileCode, AlertCircle, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { useDialog } from '../utils/useDialog';
 import { parseAndroidXml, mergeTargetXml, normalizePluralsForLanguage } from '../utils/xmlParser';
+import { repairAndroidXml, RepairIssue, RepairResult } from '../utils/xmlRepair';
 import { TranslationProject } from '../types';
 import { getArabicLanguageName } from '../utils/languages';
 import { useT, tg } from '../i18n/i18n';
+
+// Localizes a RepairIssue's description by its `category` + `params` instead of showing the
+// English `message` xmlRepair.ts built for itself — see issue #25. Falls back to that English
+// message only for a category this UI doesn't know how to phrase yet.
+function localizeRepairIssue(issue: RepairIssue, t: (key: string) => string): string {
+  const fill = (template: string): string =>
+    template
+      .replace('{count}', String(issue.params?.count ?? ''))
+      .replace('{name}', String(issue.stringName ?? issue.params?.name ?? ''));
+
+  switch (issue.category) {
+    case 'bom':
+      return t('repair_bom');
+    case 'zero-width-chars':
+      return fill(t('repair_zero_width'));
+    case 'line-endings':
+      return fill(t('repair_line_endings'));
+    case 'bare-ampersand':
+      return fill(t('repair_bare_ampersand'));
+    case 'unescaped-apostrophe':
+      return fill(t('repair_unescaped_apostrophe'));
+    case 'duplicate-name':
+      return fill(t('repair_duplicate_name'));
+    default:
+      return issue.message;
+  }
+}
 
 // Larger files freeze the page while parsing; real strings.xml files are far smaller than this.
 const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
@@ -39,6 +67,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   const [targetLang, setTargetLang] = useState('ar');
   const [projectName, setProjectName] = useState('XML Translator');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [pendingReport, setPendingReport] = useState<{ result: RepairResult; fileName: string } | null>(null);
 
   if (!isOpen) return null;
 
@@ -75,23 +104,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     reader.readAsText(file);
   };
 
-  const handleProcessImport = () => {
-    setErrorMsg(null);
-    const xmlToParse = activeTab === 'upload' ? sourceFile?.content : pastedXml;
-    const fileName = activeTab === 'upload' ? sourceFile?.name || 'strings.xml' : 'strings.xml';
-
-    if (xmlToParse && xmlToParse.length > MAX_IMPORT_BYTES) {
-      setErrorMsg(importTooLargeMessage(isAr));
-      return;
-    }
-
-    if (!xmlToParse || !xmlToParse.trim()) {
-      setErrorMsg(
-        t('please_select_or_paste_an')
-      );
-      return;
-    }
-
+  // Finishes the import using `xmlToParse` as-is (already repaired, when repairAndroidXml ran first).
+  const finalizeImport = (xmlToParse: string, fileName: string) => {
     const { items, errors, resourcesAttributes, indentStyle, itemIndentStyle } = parseAndroidXml(xmlToParse);
     if (errors.length > 0 || items.length === 0) {
       setErrorMsg(
@@ -128,6 +142,44 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     onClose();
   };
 
+  const handleProcessImport = () => {
+    setErrorMsg(null);
+    setPendingReport(null);
+    const xmlToParse = activeTab === 'upload' ? sourceFile?.content : pastedXml;
+    const fileName = activeTab === 'upload' ? sourceFile?.name || 'strings.xml' : 'strings.xml';
+
+    if (xmlToParse && xmlToParse.length > MAX_IMPORT_BYTES) {
+      setErrorMsg(importTooLargeMessage(isAr));
+      return;
+    }
+
+    if (!xmlToParse || !xmlToParse.trim()) {
+      setErrorMsg(
+        t('please_select_or_paste_an')
+      );
+      return;
+    }
+
+    // Phase 1 of issue #25: a pre-pass that silently fixes what's purely mechanical, flags
+    // anything needing a human decision, and reports anything it can't safely import — instead
+    // of today's all-or-nothing behavior, where one malformed tag fails the whole import.
+    const result = repairAndroidXml(xmlToParse);
+
+    if (result.blockingIssues.length > 0) {
+      setErrorMsg(
+        [t('import_report_blocking_header'), ...result.blockingIssues.map((i) => `• ${i.message}`)].join('\n')
+      );
+      return;
+    }
+
+    if (result.silentFixes.length > 0 || result.reviewIssues.length > 0) {
+      setPendingReport({ result, fileName });
+      return;
+    }
+
+    finalizeImport(result.fixedXml, fileName);
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 overflow-y-auto">
       {/* Material 3 Dialog Container */}
@@ -156,6 +208,10 @@ export const ImportModal: React.FC<ImportModalProps> = ({
 
         {/* Modal Body */}
         <div className="px-6 py-2 space-y-4 flex-1 overflow-y-auto">
+          {pendingReport ? (
+            <ImportReportView report={pendingReport.result} t={t} />
+          ) : (
+            <>
           {/* M3 Segmented Button for Tabs */}
           <div className="flex items-center bg-slate-100 dark:bg-slate-800/80 rounded-full p-1 border border-slate-200/60 dark:border-slate-700/60">
             <button
@@ -304,31 +360,52 @@ export const ImportModal: React.FC<ImportModalProps> = ({
               <div className="whitespace-pre-wrap">{errorMsg}</div>
             </div>
           )}
+            </>
+          )}
         </div>
 
         {/* Modal Footer */}
         <div className="p-6 pt-4 flex items-center gap-5">
-          <button
-            onClick={onClose}
-            className="py-2 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition cursor-pointer"
-          >
-            {tb('cancel')}
-          </button>
-          <button
-            onClick={() => {
-              onLoadSample();
-              onClose();
-            }}
-            className="py-2 text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white font-medium cursor-pointer"
-          >
-            <span data-i18n>{t('load_sample_app')}</span>
-          </button>
-          <button
-            onClick={handleProcessImport}
-            className="ms-auto px-5 py-2 rounded-full bg-[#0B57D0] hover:bg-[#0842A0] dark:bg-[#A8C7FA] dark:hover:bg-[#82AAFA] text-white dark:text-[#062E6F] text-xs font-semibold shadow-xs transition cursor-pointer m3-state-layer"
-          >
-            {tb('start_translating')}
-          </button>
+          {pendingReport ? (
+            <>
+              <button
+                onClick={() => setPendingReport(null)}
+                className="py-2 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition cursor-pointer"
+              >
+                {t('import_report_back')}
+              </button>
+              <button
+                onClick={() => finalizeImport(pendingReport.result.fixedXml, pendingReport.fileName)}
+                className="ms-auto px-5 py-2 rounded-full bg-[#0B57D0] hover:bg-[#0842A0] dark:bg-[#A8C7FA] dark:hover:bg-[#82AAFA] text-white dark:text-[#062E6F] text-xs font-semibold shadow-xs transition cursor-pointer m3-state-layer"
+              >
+                {t('import_report_continue')}
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={onClose}
+                className="py-2 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition cursor-pointer"
+              >
+                {tb('cancel')}
+              </button>
+              <button
+                onClick={() => {
+                  onLoadSample();
+                  onClose();
+                }}
+                className="py-2 text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white font-medium cursor-pointer"
+              >
+                <span data-i18n>{t('load_sample_app')}</span>
+              </button>
+              <button
+                onClick={handleProcessImport}
+                className="ms-auto px-5 py-2 rounded-full bg-[#0B57D0] hover:bg-[#0842A0] dark:bg-[#A8C7FA] dark:hover:bg-[#82AAFA] text-white dark:text-[#062E6F] text-xs font-semibold shadow-xs transition cursor-pointer m3-state-layer"
+              >
+                {tb('start_translating')}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -351,4 +428,56 @@ function getLocaleName(code: string): string {
     pl: 'Polish',
   };
   return map[code] || code;
+}
+
+// Phase 1 of issue #25: a read-only report of what repairAndroidXml found before the file is
+// actually imported — nothing here is interactive yet (accept/reject per item is Phase 2).
+function ImportReportView({ report, t }: { report: RepairResult; t: (key: string) => string }) {
+  return (
+    <div className="pt-1 space-y-4">
+      <div>
+        <h3 className="text-sm font-semibold text-slate-900 dark:text-white">{t('import_report_title')}</h3>
+        <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">{t('import_report_subtitle')}</p>
+      </div>
+
+      {report.silentFixes.length > 0 && (
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+            <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />
+            {t('import_report_auto_fixed')}
+          </div>
+          <ul className="space-y-1">
+            {report.silentFixes.map((issue) => (
+              <li
+                key={issue.id}
+                className="text-xs text-slate-700 dark:text-slate-300 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900 rounded-xl p-2.5"
+              >
+                {localizeRepairIssue(issue, t)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {report.reviewIssues.length > 0 && (
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-400">
+            <AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" />
+            {t('import_report_needs_review')}
+          </div>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">{t('import_report_review_note')}</p>
+          <ul className="space-y-1">
+            {report.reviewIssues.map((issue) => (
+              <li
+                key={issue.id}
+                className="text-xs text-slate-700 dark:text-slate-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-xl p-2.5"
+              >
+                {localizeRepairIssue(issue, t)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
 }
