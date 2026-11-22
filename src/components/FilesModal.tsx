@@ -223,7 +223,7 @@ export const FilesModal: React.FC<FilesModalProps> = ({
                     className={`relative rounded-xl border transition px-3 sm:px-3.5 pt-2.5 pb-2.5 overflow-hidden group ${
                       isActive
                         ? 'border-[#0B57D0] dark:border-[#1EB996] border-b-[0.5px] bg-[#0B57D0]/5 dark:bg-[#1EB996]/5 ring-1 ring-[#0B57D0]/30 dark:ring-[#1EB996]/30'
-                        : 'border-slate-200 dark:border-[#263143] bg-slate-50/70 dark:bg-[#1B2230] hover:border-[#0B57D0]/60 dark:hover:border-[#1EB996]/60 hover:bg-slate-100/80 dark:hover:bg-[#1F2737] cursor-pointer'
+                        : 'border-transparent border-t-slate-200 dark:border-t-[#263143] bg-slate-50/70 dark:bg-[#1B2230] hover:border-t-[#0B57D0]/60 dark:hover:border-t-[#1EB996]/60 hover:bg-slate-100/80 dark:hover:bg-[#1F2737] cursor-pointer'
                     }`}
                   >
                     {/* Top Row: File Name & Quick Icon Actions */}
