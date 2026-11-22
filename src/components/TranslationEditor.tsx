@@ -27,6 +27,7 @@ import {
   type IcuField,
   type IcuFieldPath,
   getIcuStructureIssues,
+  repairItemQuoteMarks,
   getItemQaIssues,
   getLineBreakIssues,
   itemUsesHashWithoutClauseNumber,
@@ -980,7 +981,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       return <span data-i18n className="italic text-slate-500">{t('empty_string')}</span>;
     }
 
-    const tokenRegex = /(%(?:\d+\$)?[+# 0,-]*\d*(?:\.\d+)?[bcdefgopsx%]|\\\\[nt]|\\[nt]|\{[a-zA-Z0-9_-]+\}|<\/?[a-zA-Z][^>]*>)/gi;
+    const tokenRegex = /(%(?:\d+\$)?[+# 0,-]*\d*(?:\.\d+)?[bcdefgopsx%]|\\\\[nt]|\\[nt]|\{[a-zA-Z0-9_-]+(?:\s*,\s*[a-zA-Z]+(?:\s*,\s*[^{}]+?)?)?\}|<\/?[a-zA-Z][^>]*>)/gi;
     // a real line break right before a `\n` in the raw XML is only formatting
     const parts = text.replace(/\r?\n(?=\\n)/g, '').split(tokenRegex);
 
@@ -1345,11 +1346,30 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   // same reason a line-break mismatch is — not a "confirm once and go ahead" warning. The
   // translation pipeline already refuses to produce such a reply; this gates hand-typed text.
   const blockIfIcuBroken = React.useCallback((): boolean => {
-    const issues = getIcuStructureIssues(toStoredItem(withHiddenEdges(draftItem)), targetLang);
+    const storedDraft = toStoredItem(withHiddenEdges(draftItem));
+    const issues = getIcuStructureIssues(storedDraft, targetLang);
     if (issues.length === 0) return false;
+    // Quote-mark problems (an unterminated ICU quote, a broken '' or " pair) are
+    // repaired automatically instead of only warned about: complete the missing
+    // mark, show the correction, and save on the confirming press. Structural ICU
+    // damage stays a hard block.
+    const repaired = repairItemQuoteMarks(storedDraft);
+    if (repaired.changed && getIcuStructureIssues(repaired.item, targetLang).length === 0) {
+      updateDraftItem(repaired.item);
+      setSaveGuard({
+        notes: [
+          {
+            en: 'A missing quote mark was completed automatically.',
+            ar: 'أُكملت علامة الاقتباس الناقصة تلقائياً.',
+          },
+        ],
+        remaining: [],
+      });
+      return true;
+    }
     setSaveGuard({ notes: [], remaining: issues, hard: true, itemId: item.id });
     return true;
-  }, [draftItem, item.id, targetLang, withHiddenEdges]);
+  }, [draftItem, item.id, targetLang, updateDraftItem, withHiddenEdges]);
 
   // Before saving: repairs placeholders, HTML tags and final punctuation from the source's context.
   // When anything was changed (or unfixable errors remain) the save is blocked once with a message; saving again confirms.
@@ -1994,13 +2014,15 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             {draftItem.type === 'string' && icuModel && icuFieldsActive && (
               <div className="space-y-2" data-testid="icu-fields">
                 {(() => {
-                  const renderLeafField = (leafPath: IcuFieldPath, value: string) => {
+                  const renderLeafField = (leafPath: IcuFieldPath, value: string, inPlural: boolean) => {
                     const key = icuPathKey(leafPath);
                     return (
                       <HighlightedTextarea
                         rows={1}
                         dir={direction}
                         value={value}
+                        protectPlaceholders
+                        protectHash={inPlural}
                         resetKey={`${draftItem.id}-icu-${key}`}
                         data-testid={`icu-field-${key}`}
                         enableEmptySpaceTap={false}
@@ -2063,7 +2085,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                                 {field.sourceValue}
                               </span>
                             </div>
-                            {renderLeafField([...fieldPath, null], fieldDisplayValue)}
+                            {renderLeafField([...fieldPath, null], fieldDisplayValue, false)}
                           </div>
                         );
                       }
@@ -2100,7 +2122,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                                   sub-fields of its own; a plain body stays one text field. */}
                               {clause.children
                                 ? renderIcuFields(clause.children, [...fieldPath, ci], depth + 1)
-                                : renderLeafField([...fieldPath, ci], clause.value)}
+                                : renderLeafField([...fieldPath, ci], clause.value, field.type === 'plural' || field.type === 'selectordinal') }
                             </div>
                           ))}
                         </div>
@@ -2117,6 +2139,9 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                 ref={textareaRef}
                 dir={direction}
                 value={draftItem.target}
+                // Raw ICU view (icuModel set) must stay fully editable, so no atomic chips there;
+                // the branch fields protect their own placeholders instead.
+                protectPlaceholders={icuModel === null}
                 suppressLineBreakIndicators={icuModel !== null}
                 ghostText={predict.ghostFor('string', draftItem.target)}
                 resetKey={draftItem.id}
@@ -2168,6 +2193,8 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                       rows={1}
                       dir={direction}
                       value={pi.target}
+                      protectPlaceholders
+                      protectHash
                       ghostText={predict.ghostFor(`plural:${pi.quantity}`, pi.target)}
                       resetKey={`${draftItem.id}-${pi.quantity}`}
                       onValueChange={(val) => {
@@ -2235,6 +2262,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                     <HighlightedTextarea
                       rows={1}
                       dir={direction}
+                      protectPlaceholders
                       value={ai.target}
                       ghostText={predict.ghostFor(`array:${ai.index}`, ai.target)}
                       resetKey={`${draftItem.id}-${ai.index}`}
@@ -2450,7 +2478,9 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                   {liveSaveGuard.empty
                     ? t('nothing_saved_no_translation_has')
                     : liveSaveGuard.hard
-                    ? t('not_saved_line_breaks_differ')
+                    ? liveSaveGuard.remaining.some((i) => i.id.endsWith('_linebreaks'))
+                      ? t('not_saved_line_breaks_differ')
+                      : t('not_saved_fix_problems')
                     : liveSaveGuard.notes.length > 0
                     ? t('not_saved_the_translation_was')
                     : t('not_saved_some_errors_could')}
