@@ -4,6 +4,7 @@ import { marked } from 'marked';
 
 const REPO = 'https://github.com/my-live-is-a-lie/strings.xml-translator';
 const SITE = 'https://xml-translator.is-a.dev/';
+const GUIDE_RAW = REPO.replace('github.com', 'raw.githubusercontent.com') + '/main/docs/GUIDE.md';
 const md = readFileSync('docs/GUIDE.md', 'utf8');
 const body = md.slice(md.indexOf('## 1. What it is'));
 const css = readFileSync('scripts/docs.css', 'utf8');
@@ -98,25 +99,25 @@ const nav = sections
 
 // ---- feature gallery (every card links to a real section)
 const gallery = [
-  { t: 'Smart auto-correct', d: 'Restores broken placeholders and tags and matches the source punctuation.', img: 'img/save-guard.png', href: '#auto-correct' },
-  { t: 'Double-space closing', d: 'Press Space twice to close the nearest open quote or bracket.', img: 'img/double-space-after.png', href: '#double-space-closes-open-symbols', fit: 'contain' },
-  { t: 'Quality checks', d: 'Counters and a list for placeholder and HTML-tag problems.', img: 'img/qa-checks.png', href: '#6-quality-checks' },
-  { t: 'Quick-insert bars', d: 'Punctuation and direction marks that learn your habits.', img: 'img/quick-insert.png', href: '#quick-insert-bars', fit: 'contain' },
-  { t: 'Translation providers', d: 'Gemini, OpenAI, DeepL, Azure, Yandex and more with your own key.', img: 'img/providers.png', href: '#providers' },
-  { t: 'Powerful filters', d: 'Combine status and AI / manual origin to review what matters.', img: 'img/filters.png', href: '#filters', fit: 'contain' },
-  { t: 'Strings list', d: 'Collapsed one-line rows that expand on tap.', img: 'img/row-expanded.png', href: '#strings-list-drawer' },
-  { t: 'Table view', d: 'Every string as an editable row, even in huge files.', img: 'img/table-view.png', href: '#table-view' },
-  { t: 'Multi-language ZIP', d: 'Translate several languages in one run and export a ZIP.', img: 'screenshots/multi-language-zip.jpg', href: '#multi-language-zip' },
-  { t: 'Projects', d: 'Switch files without losing work; everything stays on your device.', img: 'screenshots/projects.png', href: '#10-projects-and-saved-work' },
-  { t: 'Clean export', d: 'A production-ready strings.xml that keeps your file structure.', img: 'img/export.png', href: '#11-exporting' },
-  { t: 'Your own UI language', d: 'Download, translate and upload the app text to add a language.', img: 'img/add-language.png', href: '#13-interface-languages-and-themes' },
+  { t: 'Smart auto-correct', d: 'Restores broken placeholders and tags and matches the source punctuation.', img: 'img/save-guard.jpg', alt: 'Save dialog listing the placeholders and punctuation that were auto-corrected', href: '#auto-correct' },
+  { t: 'Double-space closing', d: 'Press Space twice to close the nearest open quote or bracket.', img: 'img/double-space-after.jpg', alt: 'A quote closed automatically after pressing Space twice', href: '#double-space-closes-open-symbols', fit: 'contain' },
+  { t: 'Quality checks', d: 'Counters and a list for placeholder and HTML-tag problems.', img: 'img/qa-checks.jpg', alt: 'QA Checks card with counters per problem type and a list of detected issues', href: '#6-quality-checks' },
+  { t: 'Quick-insert bars', d: 'Punctuation and direction marks that learn your habits.', img: 'img/quick-insert.jpg', alt: 'Quick-insert bars: a punctuation row above Unicode direction marks', href: '#quick-insert-bars', fit: 'contain' },
+  { t: 'Translation providers', d: 'Gemini, OpenAI, DeepL, Azure, Yandex and more with your own key.', img: 'img/providers.jpg', alt: 'Translate Providers screen with key verification and the active engine', href: '#providers' },
+  { t: 'Powerful filters', d: 'Combine status and AI / manual origin to review what matters.', img: 'img/filters.jpg', alt: 'Quick filter pills under the Strings List and Filters buttons', href: '#filters', fit: 'contain' },
+  { t: 'Strings list', d: 'Collapsed one-line rows that expand on tap.', img: 'img/row-expanded.jpg', alt: 'An expanded strings-list row showing the full key, source and translation', href: '#strings-list-drawer' },
+  { t: 'Table view', d: 'Every string as an editable row, even in huge files.', img: 'img/table-view.jpg', alt: 'Table view with every string as an editable row', href: '#table-view' },
+  { t: 'Multi-language ZIP', d: 'Translate several languages in one run and export a ZIP.', img: 'screenshots/multi-language-zip.jpg', alt: 'Multi-language ZIP screen to translate several languages in one run', href: '#multi-language-zip' },
+  { t: 'Projects', d: 'Switch files without losing work; everything stays on your device.', img: 'screenshots/projects.jpg', alt: 'Projects list with progress and last-modified time', href: '#10-projects-and-saved-work' },
+  { t: 'Clean export', d: 'A production-ready strings.xml that keeps your file structure.', img: 'img/export.jpg', alt: 'Export dialog showing how many strings are translated', href: '#11-exporting' },
+  { t: 'Your own UI language', d: 'Download, translate and upload the app text to add a language.', img: 'img/add-language.jpg', alt: 'Adding your own interface language: download the text file, translate it, upload it', href: '#13-interface-languages-and-themes' },
 ];
 const ids = new Set([...html.matchAll(/ id="([^"]+)"/g)].map((m) => m[1]));
 for (const g of gallery) if (!ids.has(g.href.slice(1))) throw new Error('gallery link has no target: ' + g.href);
 const cards = gallery
   .map(
     (g) =>
-      `<a class="card reveal" href="${g.href}"><div class="thumb${g.fit === 'contain' ? ' contain' : ''}"><img src="${g.img}" alt="" loading="lazy" /></div><div class="t"><b>${g.t}</b><span>${g.d}</span><i>Read more →</i></div></a>`,
+      `<a class="card reveal" href="${g.href}"><div class="thumb${g.fit === 'contain' ? ' contain' : ''}"><img src="${g.img}" alt="${esc(g.alt)}" loading="lazy" /></div><div class="t"><b>${g.t}</b><span>${g.d}</span><i>Read more →</i></div></a>`,
   )
   .join('\n');
 
@@ -135,13 +136,15 @@ const page = `<!doctype html>
 <meta property="og:site_name" content="XML Translator" />
 <meta property="og:title" content="XML Translator – Android strings.xml Translator App" />
 <meta property="og:description" content="Translate Android strings.xml localization files on your phone, with placeholder protection and quality checks." />
-<meta property="og:image" content="${SITE}screenshots/editor.jpg" />
+<meta property="og:image" content="${SITE}og.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
 <meta property="og:image:alt" content="XML Translator editing an Android strings.xml file" />
 <meta property="og:url" content="${SITE}" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="XML Translator – Android strings.xml Translator App" />
 <meta name="twitter:description" content="Translate Android strings.xml localization files on your phone, with placeholder protection and quality checks." />
-<meta name="twitter:image" content="${SITE}screenshots/editor.jpg" />
+<meta name="twitter:image" content="${SITE}og.png" />
 <script type="application/ld+json">${JSON.stringify({
   '@context': 'https://schema.org',
   '@type': 'SoftwareApplication',
@@ -152,7 +155,7 @@ const page = `<!doctype html>
   operatingSystem: 'Android',
   url: SITE,
   downloadUrl: REPO + '/releases/latest',
-  image: SITE + 'screenshots/editor.jpg',
+  image: SITE + 'og.png',
   license: 'https://www.gnu.org/licenses/gpl-3.0.html',
   offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
 })}</script>
@@ -195,7 +198,7 @@ ${nav}
         <img src="screenshots/editor.jpg" alt="Translation editor" data-zoom />
         <img src="screenshots/strings-list.jpg" alt="Strings list with QA checks" data-zoom />
         <img src="screenshots/table.jpg" alt="Table view" data-zoom />
-        <img src="screenshots/providers.png" alt="Translation providers" data-zoom />
+        <img src="screenshots/providers.jpg" alt="Translation providers" data-zoom />
         <img src="screenshots/multi-language-zip.jpg" alt="Multi-language ZIP" data-zoom />
       </div>
     </section>
@@ -222,6 +225,11 @@ writeFileSync('docs/.nojekyll', '');
 writeFileSync('docs/robots.txt', `User-agent: *\nAllow: /\n\nSitemap: ${SITE}sitemap.xml\n`);
 writeFileSync(
   'docs/sitemap.xml',
-  `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url><loc>${SITE}</loc><changefreq>monthly</changefreq></url>\n</urlset>\n`,
+  `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url><loc>${SITE}</loc><changefreq>monthly</changefreq></url>\n  <url><loc>${SITE}demo/</loc><changefreq>monthly</changefreq></url>\n</urlset>\n`,
+);
+// llms.txt: a short summary of the site for AI tools, pointing at the Markdown source of the guide.
+writeFileSync(
+  'docs/llms.txt',
+  `# XML Translator\n\n> XML Translator is an Android app for translating strings.xml localization files on your phone. Keeps placeholders and plurals intact, adds quality checks, and exports values-xx folders.\n\n## Docs\n\n- [Full guide (Markdown)](${GUIDE_RAW}): every feature, step by step\n- [Guide (web page)](${SITE}): the same guide with screenshots\n\n## Try it\n\n- [Live demo](${SITE}demo/)\n- [Download the app](${REPO}/releases/latest)\n- [Source code](${REPO})\n`,
 );
 console.log('docs/index.html', page.length, 'bytes,', sections.length, 'sections,', gallery.length, 'cards');

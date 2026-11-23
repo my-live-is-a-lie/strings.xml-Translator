@@ -69,12 +69,12 @@ It was built for translators who work from a phone as comfortably as from a desk
 <table>
   <tr>
     <td align="center" width="33%"><img src="docs/screenshots/settings.jpg" width="100%" /><br /><sub><b>Settings & export</b></sub></td>
-    <td align="center" width="33%"><img src="docs/screenshots/providers.png" width="100%" /><br /><sub><b>Translation providers</b></sub></td>
+    <td align="center" width="33%"><img src="docs/screenshots/providers.jpg" width="100%" /><br /><sub><b>Translation providers</b></sub></td>
     <td align="center" width="33%"><img src="docs/screenshots/target-language.jpg" width="100%" /><br /><sub><b>Target language</b></sub></td>
   </tr>
   <tr>
     <td align="center" width="33%"><img src="docs/screenshots/multi-language-zip.jpg" width="100%" /><br /><sub><b>Multi-language ZIP</b></sub></td>
-    <td align="center" width="33%"><img src="docs/screenshots/projects.png" width="100%" /><br /><sub><b>Projects</b></sub></td>
+    <td align="center" width="33%"><img src="docs/screenshots/projects.jpg" width="100%" /><br /><sub><b>Projects</b></sub></td>
     <td align="center" width="33%"><img src="docs/screenshots/strings-list.jpg" width="100%" /><br /><sub><b>Strings list & QA</b></sub></td>
   </tr>
 </table>

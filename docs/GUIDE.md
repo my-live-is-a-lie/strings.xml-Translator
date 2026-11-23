@@ -61,13 +61,13 @@ Imported files are saved automatically as soon as you edit them, so you can clos
 
 The strings list **remembers where you left it**: closing and reopening it returns to the same position.
 
-![The settings drawer](img/settings.png "The settings drawer: auto-correct, word prediction, auto translate, providers, themes and more.")
+![The settings drawer](img/settings.jpg "The settings drawer: auto-correct, word prediction, auto translate, providers, themes and more.")
 
 ## 4. The translation editor
 
 The editor shows the string's **key** and a *New* badge when the string is new after a source update, then the **source text** and the **translation box**.
 
-![The translation editor](img/editor.png "The editor: key, source text, quick-insert bars, translation box and action buttons.")
+![The translation editor](img/editor.jpg "The editor: key, source text, quick-insert bars, translation box and action buttons.")
 
 ### Buttons
 
@@ -108,13 +108,13 @@ If anything was changed, **the save is blocked once** and a message lists what w
 
 With auto-correct **off**, the text is saved exactly as typed.
 
-![Save blocked once with a list of corrections](img/save-guard.png "The first Save is blocked: missing placeholders were restored and the ending was matched to the source. Review, then press Save again.")
+![Save blocked once with a list of corrections](img/save-guard.jpg "The first Save is blocked: missing placeholders were restored and the ending was matched to the source. Review, then press Save again.")
 
 ### Double space closes open symbols
 
 If you leave a bracket or quote open and press the **space bar twice**, the app closes it for you and keeps the caret after it. It closes the **nearest unclosed** symbol before the caret.
 
-![Before: the quote is still open](img/double-space-before.png "Before — the quote is still open.") ![After: closed with a double space](img/double-space-after.png "After — two spaces closed it.")
+![Before: the quote is still open](img/double-space-before.jpg "Before — the quote is still open.") ![After: closed with a double space](img/double-space-after.jpg "After — two spaces closed it.")
 
 <!-- demo:double-space -->
 
@@ -151,7 +151,7 @@ Two bars above the box insert characters at the caret with one tap:
 
 The bars **learn from you**: every button you use moves toward the start of its row, following the page direction, so your most-used symbols are always closest. The usage counts are kept on your device.
 
-![Quick-insert bars](img/quick-insert.png "Punctuation row on top, Unicode direction marks below.")
+![Quick-insert bars](img/quick-insert.jpg "Punctuation row on top, Unicode direction marks below.")
 
 ## 6. Quality checks
 
@@ -183,7 +183,7 @@ The app treats these blocks as structure, not as text:
 
 Tap a counter to filter the list to just those strings. When the card is collapsed, the number of issues is shown next to its arrow. A banner also warns before export if the file contains errors that may break the app.
 
-![QA Checks card](img/qa-checks.png "QA Checks: counters per problem type and a list of detected issues.")
+![QA Checks card](img/qa-checks.jpg "QA Checks: counters per problem type and a list of detected issues.")
 
 ## 7. Getting translations
 
@@ -216,7 +216,7 @@ Open **Translate Providers** in the settings drawer. Supported: **Gemini, OpenAI
 - Key providers are called **directly from the device**.
 - The active provider is shown on the card. Edit or remove providers with the pencil and trash buttons.
 
-![Translate Providers](img/providers.png "Translate Providers: add a key, verify it, pick the active engine. Scroll the screenshot or tap it to zoom.")
+![Translate Providers](img/providers.jpg "Translate Providers: add a key, verify it, pick the active engine. Scroll the screenshot or tap it to zoom.")
 
 ### Translate many strings at once
 
@@ -254,7 +254,7 @@ Quick filters: **New**, **Review**, **Untranslated**, **Translated**, **AI**, **
 - A filter with no matching strings cannot be switched on.
 - The list is **frozen at the moment you apply a filter**: a string you just saved stays visible instead of disappearing, so you do not lose your place.
 
-![Filter pills](img/filters.png "Quick filters under the Strings List and Filters buttons.")
+![Filter pills](img/filters.jpg "Quick filters under the Strings List and Filters buttons.")
 
 ### Search, sort and selection
 
@@ -268,13 +268,13 @@ Quick filters: **New**, **Review**, **Untranslated**, **Translated**, **AI**, **
 - Tap its **text** to expand it (source, translation and the full key); tap again to collapse. Long keys and texts are clipped to one line until expanded.
 - The header collapses as you scroll down and returns as you scroll up.
 
-![A collapsed row and an expanded row](img/row-collapsed.png "Collapsed: the key, a one-line source and a one-line translation.") ![An expanded row](img/row-expanded.png "Expanded: full key, source and translation.")
+![A collapsed row and an expanded row](img/row-collapsed.jpg "Collapsed: the key, a one-line source and a one-line translation.") ![An expanded row](img/row-expanded.jpg "Expanded: full key, source and translation.")
 
 ### Table view
 
 Shows all strings as rows for quick scanning and editing. It loads strings in chunks as you scroll and unloads the ones far behind you, so very large files stay smooth.
 
-![Table view](img/table-view.png "Table view: every string as an editable row.")
+![Table view](img/table-view.jpg "Table view: every string as an editable row.")
 
 ## 9. Updating the source file
 
@@ -288,7 +288,7 @@ Open **Files** to see your projects with their progress and last-modified time.
 - **Rename** with the pencil, **reset** with the circular arrow, or **delete** with the trash can.
 - Everything is saved automatically on your device.
 
-![Projects](screenshots/projects.png "Your projects with progress and last-modified time.")
+![Projects](screenshots/projects.jpg "Your projects with progress and last-modified time.")
 
 ## 11. Exporting
 
@@ -297,7 +297,7 @@ Open **Files** to see your projects with their progress and last-modified time.
 - A warning appears if placeholder or tag errors remain.
 - **Multi-language ZIP** exports several languages together.
 
-![Export dialog](img/export.png "The export dialog shows how many strings are translated.")
+![Export dialog](img/export.jpg "The export dialog shows how many strings are translated.")
 
 ## 12. Plurals and arrays
 
@@ -316,7 +316,7 @@ This is separate from an **ICU plural block inside a single string** (`{count, p
   - A text that is too long widens its control when possible and is clipped when there is no room.
 - **Themes** – *Day*, *Night* and *Black Hole*, from the theme button in the settings drawer.
 
-![Language tabs and the add button](img/language-tabs.png "The + button at the end of the language tabs adds your own interface language.") ![Add a language](img/add-language.png "Download the text file, translate it, upload it, name the language.")
+![Language tabs and the add button](img/language-tabs.jpg "The + button at the end of the language tabs adds your own interface language.") ![Add a language](img/add-language.jpg "Download the text file, translate it, upload it, name the language.")
 
 ## 14. Privacy and offline use
 

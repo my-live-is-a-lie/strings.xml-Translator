@@ -1,0 +1,14 @@
+# XML Translator
+
+> XML Translator is an Android app for translating strings.xml localization files on your phone. Keeps placeholders and plurals intact, adds quality checks, and exports values-xx folders.
+
+## Docs
+
+- [Full guide (Markdown)](https://raw.githubusercontent.com/my-live-is-a-lie/strings.xml-translator/main/docs/GUIDE.md): every feature, step by step
+- [Guide (web page)](https://xml-translator.is-a.dev/): the same guide with screenshots
+
+## Try it
+
+- [Live demo](https://xml-translator.is-a.dev/demo/)
+- [Download the app](https://github.com/my-live-is-a-lie/strings.xml-translator/releases/latest)
+- [Source code](https://github.com/my-live-is-a-lie/strings.xml-translator)
