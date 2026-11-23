@@ -65,14 +65,22 @@ export interface RepairIssue {
 
 /**
  * The single source linking each resource tag (`<string>`, `<plurals>`, `<string-array>`) to its
- * resource kind. `excludeMalformedEntries` reads it directly; `ImportModal` derives the inverse
- * (kind → tag word) from it for its localized messages, so the two directions can never drift apart.
+ * resource kind. `excludeMalformedEntries` reads it directly, and `RESOURCE_TAG_BY_TYPE` below is
+ * derived from it, so the two directions can never drift apart.
+ *
+ * Adding a kind here is not enough on its own: the tag-scanning regexes (`RESOURCE_TAG_START` and
+ * `SIBLING_RESOURCE_TAG_START`) and the per-kind body/block patterns still name the tags by hand.
  */
 export const RESOURCE_TYPE_BY_TAG: Record<string, NonNullable<RepairIssue['resourceType']>> = {
   string: 'string',
   plurals: 'plural',
   'string-array': 'array',
 };
+
+/** The inverse of `RESOURCE_TYPE_BY_TAG` (resource kind → tag word), used for localized messages. */
+export const RESOURCE_TAG_BY_TYPE: Record<string, string> = Object.fromEntries(
+  Object.entries(RESOURCE_TYPE_BY_TAG).map(([tag, resourceType]) => [resourceType, tag])
+);
 
 export interface RepairResult {
   /** The text to hand to `parseAndroidXml` — with every silent fix already applied. */

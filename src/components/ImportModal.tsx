@@ -11,7 +11,7 @@ import {
   repairAndroidXml,
   RepairIssue,
   RepairResult,
-  RESOURCE_TYPE_BY_TAG,
+  RESOURCE_TAG_BY_TYPE,
 } from '../utils/xmlRepair';
 import { TranslationProject } from '../types';
 import { getArabicLanguageName } from '../utils/languages';
@@ -24,16 +24,11 @@ type Translate = (key: string, ...args: unknown[]) => string;
 // positional `%1$s` placeholders (handled by `t`) rather than a second, hand-rolled `{name}` syntax.
 // Falls back to that English message only for a category this UI doesn't know how to phrase yet
 // (in practice: raw parser errors, which have no stable wording to translate).
-// Inverse of xmlRepair's RESOURCE_TYPE_BY_TAG (resource kind → tag word), derived from that single
-// source so a new kind can't silently produce a wrong message here.
-const RESOURCE_TAG_WORD: Record<string, string> = Object.fromEntries(
-  Object.entries(RESOURCE_TYPE_BY_TAG).map(([tag, resourceType]) => [resourceType, tag])
-);
 
 function localizeRepairIssue(issue: RepairIssue, t: Translate): string {
   const count = issue.params?.count ?? '';
   const name = issue.stringName ?? issue.params?.name ?? '';
-  const tagWord = (issue.resourceType && RESOURCE_TAG_WORD[issue.resourceType]) || 'string';
+  const tagWord = (issue.resourceType && RESOURCE_TAG_BY_TYPE[issue.resourceType]) || 'string';
 
   switch (issue.category) {
     case 'bom':
