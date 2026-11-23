@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
-import { repairAndroidXml, applyReviewDecisions } from './xmlRepair';
+import { repairAndroidXml, applyReviewDecisions, RESOURCE_TYPE_BY_TAG } from './xmlRepair';
 
 function wrap(body: string): string {
   return `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n${body}\n</resources>\n`;
@@ -475,5 +475,23 @@ describe('repairAndroidXml / commented-out content', () => {
     const found = repairAndroidXml(xml).reviewIssues[0];
     expect(found.params?.count).toBe(1);
     expect(found.suggestedFix).toBe("it\\'s <!-- don't touch --> ok");
+  });
+});
+
+describe('RESOURCE_TYPE_BY_TAG', () => {
+  it('covers every resource tag with a unique kind, so the tag-word map ImportModal derives stays in sync', () => {
+    expect(RESOURCE_TYPE_BY_TAG).toEqual({
+      string: 'string',
+      plurals: 'plural',
+      'string-array': 'array',
+    });
+    const kinds = Object.values(RESOURCE_TYPE_BY_TAG);
+    expect(new Set(kinds).size).toBe(kinds.length);
+    // The derivation ImportModal performs; a change on either side fails here instead of shipping a
+    // wrong localized message.
+    const tagWordByKind = Object.fromEntries(
+      Object.entries(RESOURCE_TYPE_BY_TAG).map(([tag, kind]) => [kind, tag])
+    );
+    expect(tagWordByKind).toEqual({ string: 'string', plural: 'plurals', array: 'string-array' });
   });
 });
