@@ -183,6 +183,38 @@ describe('repairAndroidXml / plurals and string-array resources', () => {
     const result = repairAndroidXml(xml);
     expect(result.reviewIssues.some((i) => i.category === 'duplicate-name')).toBe(false);
   });
+
+  it('a self-closed <plurals/> does not swallow the block that follows it', () => {
+    const xml = wrap(
+      '<plurals name="empty"/>\n' +
+        '<plurals name="apples">\n' +
+        "  <item quantity=\"other\">%d apples, that's plenty</item>\n" +
+        '</plurals>\n' +
+        '<plurals name="apples">\n' +
+        '  <item quantity="other">%d more apples</item>\n' +
+        '</plurals>'
+    );
+    const result = repairAndroidXml(xml);
+    // The apostrophe belongs to the real "apples" block, not to the self-closed "empty" one.
+    const apostrophe = result.reviewIssues.find((i) => i.category === 'unescaped-apostrophe');
+    expect(apostrophe?.stringName).toBe('apples');
+    // And both real "apples" blocks are counted, so the duplicate is still reported.
+    const duplicate = result.reviewIssues.find((i) => i.category === 'duplicate-name' && i.resourceType === 'plural');
+    expect(duplicate?.stringName).toBe('apples');
+  });
+
+  it('a self-closed <string-array/> does not swallow the block that follows it', () => {
+    const xml = wrap(
+      '<string-array name="empty"/>\n' +
+        '<string-array name="flavors">\n' +
+        "  <item>rocky road's special</item>\n" +
+        '</string-array>'
+    );
+    const result = repairAndroidXml(xml);
+    const apostrophe = result.reviewIssues.find((i) => i.category === 'unescaped-apostrophe');
+    expect(apostrophe?.stringName).toBe('flavors');
+    expect(apostrophe?.resourceType).toBe('array');
+  });
 });
 
 describe('repairAndroidXml / blocking issues', () => {

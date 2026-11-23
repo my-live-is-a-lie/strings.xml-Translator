@@ -118,12 +118,20 @@ const HTML_ENTITY_CODEPOINTS: Record<string, number> = {
 // The 'd' flag (match.indices) lets a caller locate group 2 (or 1) in the original text precisely, instead
 // of re-deriving it from match.index + surrounding tag lengths — needed so a later, user-approved fix can
 // replace exactly that span even if the same text happens to appear elsewhere in the file.
+// The `(?<!\/)` guard keeps a self-closed tag (`<string name="a"/>`, `<plurals name="a"/>`) from matching
+// as an opening tag: without it the block would run on to the *next* close tag, attributing that resource's
+// items to the self-closed name and hiding the real resource from duplicate counting.
 const STRING_BODY = /<string\s+[^>]*?\bname\s*=\s*["']([^"']+)["'][^>]*(?<!\/)>([\s\S]*?)<\/string>/gd;
-const PLURALS_BLOCK = /<plurals\s+[^>]*?\bname\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/plurals>/gd;
-const STRING_ARRAY_BLOCK = /<string-array\s+[^>]*?\bname\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/string-array>/gd;
+const PLURALS_BLOCK = /<plurals\s+[^>]*?\bname\s*=\s*["']([^"']+)["'][^>]*(?<!\/)>([\s\S]*?)<\/plurals>/gd;
+const STRING_ARRAY_BLOCK = /<string-array\s+[^>]*?\bname\s*=\s*["']([^"']+)["'][^>]*(?<!\/)>([\s\S]*?)<\/string-array>/gd;
 const PLURAL_ITEM = /<item\s+[^>]*?\bquantity\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/item>/gd;
 const ARRAY_ITEM = /<item\b[^>]*>([\s\S]*?)<\/item>/gd;
 const XML_COMMENT = /<!--[\s\S]*?-->/g;
+// Known edge case: a CDATA section also matches this pattern, since `<![CDATA[` looks like the start of a
+// tag. An apostrophe inside CDATA is therefore checked only when the CDATA content itself contains a `>`
+// (which ends the "tag" early), and then only the part after that `>`. CDATA is rare in strings.xml and
+// the scanner only ever *adds* a review note, never rewrites on its own, so this is documented rather than
+// special-cased.
 const INLINE_TAG = /<[^>]*>/g;
 
 /** Runs `fn` on every part of `text` that isn't a comment, CDATA section or DOCTYPE. */

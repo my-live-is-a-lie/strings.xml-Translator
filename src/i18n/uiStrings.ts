@@ -454,7 +454,7 @@ export const UI_STRINGS: Record<string, { en: string; ar: string }> = {
   "import_report_apply_all": { en: "Apply all suggested fixes", ar: "تطبيق كل الإصلاحات المقترحة" },
   "import_report_keep_all": { en: "Keep all as-is", ar: "الإبقاء على الكل كما هو" },
   "import_report_keep_original": { en: "Keep as-is", ar: "الإبقاء كما هو" },
-  "import_report_escape_it": { en: "Escape it", ar: "تهريبها (Escape)" },
+  "import_report_escape_it": { en: "Escape it", ar: "إضافة ⁦\\⁩ قبل الفاصلة" },
   "import_report_before": { en: "Before:", ar: "قبل:" },
   "import_report_after": { en: "After:", ar: "بعد:" },
 };
