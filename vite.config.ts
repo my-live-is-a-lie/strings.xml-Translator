@@ -26,23 +26,17 @@ const cspPlugin = {
   },
 };
 
-// Web demo build (published under /demo/ of the docs site): hidden from search engines so it does not
-// compete with the docs page. It still gets its own installable PWA manifest/service worker, scoped to
-// /demo/ (via --base), so it can't reach outside that path and never touches the docs site's own scope.
+// Web demo build (published under /demo/ of the docs site): it is a public,
+// indexable page of the site, like the docs page. It still gets its own
+// installable PWA manifest/service worker, scoped to /demo/ (via --base),
+// so it can't reach outside that path and never touches the docs site's own scope.
 const isDemo = process.env.VITE_DEMO === '1';
 const demoBase = '/demo/';
-const demoPlugin = {
-  name: 'demo-plugin',
-  transformIndexHtml(html: string) {
-    return isDemo ? html.replace('</head>', '    <meta name="robots" content="noindex, nofollow" />\n  </head>') : html;
-  },
-};
 
 export default defineConfig(() => {
   return {
     plugins: [
       cspPlugin,
-      demoPlugin,
       react(),
       tailwindcss(),
       VitePWA({
