@@ -274,6 +274,39 @@ describe('repairAndroidXml / blocking issues', () => {
     expect(result.parsed.items.map((i) => i.name)).toEqual(['b']);
   });
 
+  it('labels an unclosed <string-array> as an array, not a <string>', () => {
+    const xml = wrap('<string-array name="arr">\n  <item>x</item>\n<string name="b">fine</string>');
+    const result = repairAndroidXml(xml);
+    const malformed = result.blockingIssues.find((i) => i.category === 'malformed-entry');
+    expect(malformed?.stringName).toBe('arr');
+    expect(malformed?.resourceType).toBe('array');
+    expect(result.parsed.items.map((i) => i.name)).toEqual(['b']);
+  });
+
+  it('reports nothing for a valid file whose CDATA contains literal <string> markup', () => {
+    const xml = wrap(
+      '<string name="html"><![CDATA[<p>Use <string> tags</p>]]></string>\n<string name="b">fine</string>'
+    );
+    const result = repairAndroidXml(xml);
+    expect(result.blockingIssues).toEqual([]);
+    expect(result.parsed.items.map((i) => i.name)).toEqual(['html', 'b']);
+  });
+
+  it('keeps a comment on its own line between an excluded entry and the next one', () => {
+    const xml = wrap('<string name="a">oops\n    <!-- Settings screen -->\n    <string name="b">fine</string>');
+    const result = repairAndroidXml(xml);
+    expect(result.fixedXml).toContain('<!-- Settings screen -->');
+    expect(result.parsed.items.map((i) => i.name)).toEqual(['b']);
+    expect(result.parsed.items[0].comment).toBe('Settings screen');
+  });
+
+  it('does not report an undefined entity that was only inside the excluded entry', () => {
+    const xml = wrap('<string name="a">&foo; oops\n<string name="b">fine</string>');
+    const result = repairAndroidXml(xml);
+    expect(result.blockingIssues.map((i) => i.category)).toEqual(['malformed-entry']);
+    expect(result.parsed.items.map((i) => i.name)).toEqual(['b']);
+  });
+
   it('blocks an entity reference XML does not define, naming it', () => {
     const result = repairAndroidXml(wrap('<string name="a">&foo; bar</string>'));
     const found = result.blockingIssues.find((i) => i.category === 'undefined-entity');

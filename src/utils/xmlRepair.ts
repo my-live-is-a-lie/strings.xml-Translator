@@ -132,19 +132,30 @@ const XML_COMMENT = /<!--[\s\S]*?-->/g;
 
 // Phase 3 (partial import): a resource tag that's self-closed (`<string name="a"/>`) is complete and valid
 // on its own (an empty value), regardless of whether it has a `name`.
-const SELF_CLOSED_RESOURCE = /<(?:string|plurals|string-array)\b[^>]*\/>/gd;
+//
+// Every Phase 3 pattern below ends the tag name with `(?![\w-])` instead of `\b`: there *is* a word boundary
+// between `g` and `-`, so `<string\b` also matches the start of `<string-array`, and `(string|…)\b` captures
+// `string` for a `<string-array>` tag. The `-` must count as part of the tag name.
+const SELF_CLOSED_RESOURCE = /<(?:string-array|string|plurals)(?![\w-])[^>]*\/>/gd;
 // The same three resource blocks as above, but for a tag whose opening tag has *no* `name` attribute at all
 // (Android silently drops these — see parseDomTree's `if (!name) continue`). The tempered-greedy group
 // `(?:(?!\bname\s*=)[^>])*` consumes attribute characters one at a time, refusing to advance past any
 // position where `name\s*=` would start — so the overall match fails outright if a `name=` appears anywhere
 // before the tag's `>`, exactly mirroring how STRING_BODY etc. require one.
-const NAMELESS_STRING_BODY = /<string((?:(?!\bname\s*=)[^>])*)(?<!\/)>([\s\S]*?)<\/string>/gd;
-const NAMELESS_PLURALS_BLOCK = /<plurals((?:(?!\bname\s*=)[^>])*)(?<!\/)>([\s\S]*?)<\/plurals>/gd;
-const NAMELESS_STRING_ARRAY_BLOCK = /<string-array((?:(?!\bname\s*=)[^>])*)(?<!\/)>([\s\S]*?)<\/string-array>/gd;
+const NAMELESS_STRING_BODY = /<string(?![\w-])((?:(?!\bname\s*=)[^>])*)(?<!\/)>([\s\S]*?)<\/string>/gd;
+const NAMELESS_PLURALS_BLOCK = /<plurals(?![\w-])((?:(?!\bname\s*=)[^>])*)(?<!\/)>([\s\S]*?)<\/plurals>/gd;
+const NAMELESS_STRING_ARRAY_BLOCK = /<string-array(?![\w-])((?:(?!\bname\s*=)[^>])*)(?<!\/)>([\s\S]*?)<\/string-array>/gd;
 // Any top-level resource opening tag, named or not, self-closed or not — used to find every candidate and
-// to locate "the next one" as an excision boundary for a dangling (unclosed/mismatched) tag.
-const RESOURCE_TAG_START = /<(string|plurals|string-array)\b/gd;
+// to locate "the next one" as an excision boundary for a dangling (unclosed/mismatched) tag. `string-array`
+// is listed first so the capture group names the real tag (see the `(?![\w-])` note above).
+const RESOURCE_TAG_START = /<(string-array|string|plurals)(?![\w-])/gd;
 const RESOURCES_CLOSE = /<\/resources>/;
+// Comments and CDATA sections, whichever starts first. Their content is never structure: CDATA in particular
+// can legally hold literal markup such as `<string>` (common for HTML-formatted values).
+const STRUCTURALLY_INERT = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>/g;
+// A comment that starts its own line (only indentation before it). Used as an excision boundary: such a
+// comment almost always describes the *next* resource (parseDomTree attaches it as that item's `comment`).
+const LINE_START_COMMENT = /^[ \t]*<!--/gm;
 // A loose, best-effort scrape of a `name="..."` attribute from an excised chunk of text, just to label a
 // blocking issue with the resource's name when one is present — not used for anything structural.
 const LOOSE_NAME_ATTR = /\bname\s*=\s*["']([^"']+)["']/;
@@ -313,6 +324,13 @@ function blankComments(text: string): string {
   return text.replace(XML_COMMENT, (comment) => comment.replace(/[^\n]/g, ' '));
 }
 
+/** Like `blankComments`, but also blanks CDATA sections, in a single pass so whichever of the two starts
+ *  first wins (a `<!--` inside CDATA is text, not a comment). Only used by `excludeMalformedEntries`: a
+ *  `<string>` written literally inside CDATA must never be mistaken for a nameless or unclosed resource. */
+function blankStructurallyInert(text: string): string {
+  return text.replace(STRUCTURALLY_INERT, (region) => region.replace(/[^\n]/g, ' '));
+}
+
 const SIBLING_RESOURCE_TAG_START = /<(?:string|plurals|string-array)\b/;
 
 /**
@@ -358,12 +376,15 @@ function validBodyMatches(scannable: string, re: RegExp): RegExpExecArray[] {
  * guess that didn't demonstrably work. (b) is never excised (it was never what broke parsing — Android just
  * silently drops it), so it's only ever reported, and only once the rest of the file is confirmed to import
  * (see `repairAndroidXml`), so it's never shown alongside a "nothing imported" error.
+ *
+ * A file that already parses is never touched: there, anything that looks "dangling" is by definition a
+ * false positive of these text-level heuristics, and excising it could only lose a valid entry.
  */
 function excludeMalformedEntries(
   text: string,
   issue: IssueFactory
 ): { text: string; malformedEntryIssues: RepairIssue[]; missingNameIssues: RepairIssue[] } {
-  const scannable = blankComments(text);
+  const scannable = blankStructurallyInert(text);
 
   const coveredRanges: Array<[number, number]> = [];
   const missingNameIssues: RepairIssue[] = [];
@@ -412,33 +433,61 @@ function excludeMalformedEntries(
     }
   }
 
-  const isCovered = (pos: number) => coveredRanges.some(([s, e]) => pos >= s && pos < e);
-
+  // `matchAll` already yields tag starts in document order, so tag starts, covered ranges and comment starts
+  // are each walked exactly once below. The previous `coveredRanges.some(...)` per tag plus
+  // `allTagStarts.find(...)` per dangling tag was O(n²) — noticeable on a real file with thousands of entries.
+  coveredRanges.sort((a, b) => a[0] - b[0]);
   const allTagStarts = Array.from(scannable.matchAll(RESOURCE_TAG_START), (m) => ({
     start: m.index!,
     tag: m[1],
-  })).sort((a, b) => a.start - b.start);
+  }));
+  const commentStarts = Array.from(text.matchAll(LINE_START_COMMENT), (m) => m.index! + m[0].length - '<!--'.length);
 
   const resourcesCloseMatch = scannable.match(RESOURCES_CLOSE);
   const resourcesCloseIndex = resourcesCloseMatch?.index ?? text.length;
 
-  function endBoundaryAfter(start: number): number {
-    const next = allTagStarts.find((t) => t.start > start);
-    return Math.min(next?.start ?? Infinity, resourcesCloseIndex, text.length);
-  }
+  const dangling: Array<{ start: number; tag: string; end: number }> = [];
+  let rangeIdx = 0;
+  let coveredUntil = -1;
+  let commentIdx = 0;
+  for (let i = 0; i < allTagStarts.length; i++) {
+    const t = allTagStarts[i];
+    while (rangeIdx < coveredRanges.length && coveredRanges[rangeIdx][0] <= t.start) {
+      coveredUntil = Math.max(coveredUntil, coveredRanges[rangeIdx][1]);
+      rangeIdx += 1;
+    }
+    if (t.start < coveredUntil) continue;
 
-  const dangling = allTagStarts
-    .filter((t) => !isCovered(t.start))
-    .map((t) => ({ ...t, end: endBoundaryAfter(t.start) }));
+    while (commentIdx < commentStarts.length && commentStarts[commentIdx] <= t.start) commentIdx += 1;
+    // Stop at the next resource, at a comment on its own line (it belongs to the next resource and must
+    // survive), or at `</resources>`, whichever comes first.
+    const end = Math.min(
+      allTagStarts[i + 1]?.start ?? Infinity,
+      commentStarts[commentIdx] ?? Infinity,
+      resourcesCloseIndex,
+      text.length
+    );
+    // E.g. a dangling tag after `</resources>`: slicing with end <= start would *duplicate* text instead of
+    // removing it. There's no safe span to excise, so leave the file to the whole-file error path.
+    if (end <= t.start) return { text, malformedEntryIssues: [], missingNameIssues };
+    dangling.push({ ...t, end });
+  }
 
   if (dangling.length === 0) {
     return { text, malformedEntryIssues: [], missingNameIssues };
   }
 
-  // Excise every dangling span (descending, so each splice leaves earlier offsets valid) and verify by
+  // Nothing is malformed in a file that already parses — see the note on this function. Costs one extra
+  // parse, but only in the rare case where the heuristic flagged something at all.
+  if (parseAndroidXml(text).errors.length === 0) {
+    return { text, malformedEntryIssues: [], missingNameIssues };
+  }
+
+  // Excise every dangling span (back to front, so each splice leaves earlier offsets valid) and verify by
   // actually re-parsing — only keep the result if it demonstrably fixed the file.
   let candidate = text;
-  for (const d of [...dangling].sort((a, b) => b.start - a.start)) {
+  for (let i = dangling.length - 1; i >= 0; i--) {
+    const d = dangling[i];
     candidate = candidate.slice(0, d.start) + candidate.slice(d.end);
   }
   const verifyParsed = parseAndroidXml(candidate);
@@ -466,14 +515,30 @@ function excludeMalformedEntries(
   return { text: candidate, malformedEntryIssues, missingNameIssues };
 }
 
+/** Blocking categories that describe one excluded entry rather than the whole file. The Import Report shows
+ *  these as its read-only "Not imported" section and still lets the import continue; any *other* blocking
+ *  issue keeps rejecting the whole file. Defined next to where they're produced so the two can't drift. */
+const ENTRY_EXCLUSION_CATEGORIES: ReadonlySet<string> = new Set(['malformed-entry', 'missing-name']);
+
+export function isEntryExclusion(issue: RepairIssue): boolean {
+  return issue.tier === 'blocking' && ENTRY_EXCLUSION_CATEGORIES.has(issue.category);
+}
+
 export function repairAndroidXml(raw: string): RepairResult {
   const issue = createIssueFactory();
-  const { text: afterSilentFixes, silentFixes, undefinedEntities } = applySilentFixes(raw, issue);
+  const {
+    text: afterSilentFixes,
+    silentFixes,
+    undefinedEntities: undefinedBeforeExclusion,
+  } = applySilentFixes(raw, issue);
 
   const reviewIssues: RepairIssue[] = [];
   const blockingIssues: RepairIssue[] = [];
 
   const { text, malformedEntryIssues, missingNameIssues } = excludeMalformedEntries(afterSilentFixes, issue);
+  // An undefined entity that only appeared inside an excluded entry is gone along with it; reporting it
+  // anyway would list, under "Not imported", a problem that no longer exists in the imported file.
+  const undefinedEntities = undefinedBeforeExclusion.filter((name) => text.includes(`&${name};`));
 
   // Review: an Android resource value with a raw apostrophe that isn't backslash-escaped and isn't a whole
   // value wrapped in double quotes. This can be perfectly valid ICU (a balanced quote span), so it isn't
