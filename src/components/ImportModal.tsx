@@ -93,6 +93,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   // user explicitly chooses it.
   const [acceptedFixIds, setAcceptedFixIds] = useState<Set<string>>(new Set());
   const continueButtonRef = useRef<HTMLButtonElement>(null);
+  const startButtonRef = useRef<HTMLButtonElement>(null);
 
   // Escape, while the Import Report is showing, steps back to the form instead of closing the whole
   // dialog — the report is a step inside the import flow, not a separate thing to dismiss outright.
@@ -118,9 +119,19 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     }
   }
 
-  // The "Start translating" button that had focus unmounts when the report appears; keep keyboard focus in place.
+  // Focus follows the screen: when the report appears its Continue button takes focus (the "Start
+  // translating" button that had focus unmounts), and going back via the Back button or Escape returns
+  // focus to "Start translating". Without that second half the focused Continue button unmounts and
+  // keyboard focus falls back to <body>.
+  const hadReportRef = useRef(false);
   useEffect(() => {
-    if (pendingReport) continueButtonRef.current?.focus();
+    if (pendingReport) {
+      hadReportRef.current = true;
+      continueButtonRef.current?.focus();
+    } else if (hadReportRef.current) {
+      hadReportRef.current = false;
+      startButtonRef.current?.focus();
+    }
   }, [pendingReport]);
 
   if (!isOpen) return null;
@@ -491,7 +502,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
               >
                 <span data-i18n>{t('load_sample_app')}</span>
               </button>
-              <button onClick={handleProcessImport} className={`ms-auto ${FOOTER_PRIMARY_BTN}`}>
+              <button ref={startButtonRef} onClick={handleProcessImport} className={`ms-auto ${FOOTER_PRIMARY_BTN}`}>
                 {tb('start_translating')}
               </button>
             </>
