@@ -273,8 +273,50 @@ describe('applyReviewDecisions', () => {
     const result = repairAndroidXml(xml);
     const ids = new Set(result.reviewIssues.map((i) => i.id));
     const applied = applyReviewDecisions(result.fixedXml, result.reviewIssues, ids);
+    // The title promises order-independence, so actually check it: same result with the issue list reversed.
+    expect(applyReviewDecisions(result.fixedXml, [...result.reviewIssues].reverse(), ids)).toBe(applied);
     expect(applied).toContain("it\\'s fine");
     expect(applied).toContain("that\\'s ok");
     expect(repairAndroidXml(applied).reviewIssues).toEqual([]);
+  });
+
+  it('skips an out-of-bounds or overlapping range instead of corrupting the text', () => {
+    const xml = wrap(`<string name="a">it's fine</string>`);
+    const result = repairAndroidXml(xml);
+    const real = result.reviewIssues[0];
+    const outOfBounds = { ...real, id: 'oob', range: { start: 0, end: result.fixedXml.length + 10 } };
+    expect(applyReviewDecisions(result.fixedXml, [outOfBounds], new Set(['oob']))).toBe(result.fixedXml);
+
+    const overlapping = { ...real, id: 'overlap', range: { start: real.range!.start + 1, end: real.range!.end + 1 } };
+    const both = applyReviewDecisions(result.fixedXml, [real, overlapping], new Set([real.id, 'overlap']));
+    // Only one of the two overlapping fixes may land; never both spliced on top of each other.
+    expect(both).toBe(applyReviewDecisions(result.fixedXml, [overlapping], new Set(['overlap'])));
+  });
+});
+
+describe('repairAndroidXml / commented-out content', () => {
+  it('skips a commented-out <item> inside a live <plurals>', () => {
+    const xml = wrap(
+      '<plurals name="price">\n' +
+        "  <!-- <item quantity=\"few\">that's old</item> -->\n" +
+        '  <item quantity="other">%d dollars</item>\n' +
+        '</plurals>'
+    );
+    expect(repairAndroidXml(xml).reviewIssues).toEqual([]);
+  });
+
+  it('still scans a real <string> that follows a comment holding an unclosed <string> tag', () => {
+    const xml = wrap('<!-- <string name="old">legacy value -->\n' + `<string name="greeting">it's here</string>`);
+    const result = repairAndroidXml(xml);
+    const found = result.reviewIssues.find((i) => i.category === 'unescaped-apostrophe');
+    expect(found?.stringName).toBe('greeting');
+    expect(result.fixedXml.slice(found!.range!.start, found!.range!.end)).toBe("it's here");
+  });
+
+  it('keeps a comment inside a value byte-for-byte in suggestedFix', () => {
+    const xml = wrap(`<string name="a">it's <!-- don't touch --> ok</string>`);
+    const found = repairAndroidXml(xml).reviewIssues[0];
+    expect(found.params?.count).toBe(1);
+    expect(found.suggestedFix).toBe("it\\'s <!-- don't touch --> ok");
   });
 });

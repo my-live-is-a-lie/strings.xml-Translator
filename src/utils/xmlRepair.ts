@@ -298,11 +298,14 @@ export function repairAndroidXml(raw: string): RepairResult {
   // currently go unflagged. Tracked in issue #25 pending that verification.
   //
   // Commented-out entries are skipped throughout — they're not resources and would otherwise show up as
-  // duplicates or get a "fix" written into dead text. This scans `text` directly (not a comment-stripped
-  // copy): `range` below must be an exact offset into `text` for a later surgical fix, and stripping
-  // comments first would shift every offset after one by the comment's length.
-  const commentRanges = Array.from(text.matchAll(XML_COMMENT), (m) => [m.index!, m.index! + m[0].length] as const);
-  const isCommentedOut = (pos: number) => commentRanges.some(([start, end]) => pos >= start && pos < end);
+  // duplicates or get a "fix" written into dead text. Structure is matched on `scannable`: a copy of `text`
+  // with every comment blanked out by spaces of the same length (newlines kept). Offsets are therefore
+  // identical to `text`, so `range` stays an exact offset for a later surgical fix — but, unlike skipping
+  // matches that *start* inside a comment, this also (a) skips an `<item>` commented out inside a live
+  // `<plurals>`/`<string-array>`, and (b) stops a match that starts inside a comment (e.g. an unclosed
+  // `<!-- <string name="old">...  -->`) from running on and swallowing the real resource that follows.
+  // Bodies are always read back from `text`, so a comment inside a value survives byte-for-byte.
+  const scannable = text.replace(XML_COMMENT, (comment) => comment.replace(/[^\n]/g, ' '));
 
   function checkApostrophes(name: string, body: string, bodyStart: number, extras: Partial<IssueExtras> = {}) {
     const trimmed = body.trim();
@@ -338,42 +341,40 @@ export function repairAndroidXml(raw: string): RepairResult {
 
   // <string name="...">body</string>
   const seenStringNames = new Map<string, number>();
-  for (const match of text.matchAll(STRING_BODY)) {
-    if (isCommentedOut(match.index!)) continue;
-    const [, name, body] = match;
+  for (const match of scannable.matchAll(STRING_BODY)) {
+    const name = match[1];
     seenStringNames.set(name, (seenStringNames.get(name) || 0) + 1);
-    const bodyStart = match.indices![2][0];
-    checkApostrophes(name, body, bodyStart, { resourceType: 'string' });
+    const [bodyStart, bodyEnd] = match.indices![2];
+    checkApostrophes(name, text.slice(bodyStart, bodyEnd), bodyStart, { resourceType: 'string' });
   }
   reportDuplicates(seenStringNames, 'string', '<string>');
 
   // <plurals name="...">...<item quantity="...">body</item>...</plurals>
   const seenPluralNames = new Map<string, number>();
-  for (const block of text.matchAll(PLURALS_BLOCK)) {
-    if (isCommentedOut(block.index!)) continue;
+  for (const block of scannable.matchAll(PLURALS_BLOCK)) {
     const [, name, blockBody] = block;
     seenPluralNames.set(name, (seenPluralNames.get(name) || 0) + 1);
     const blockBodyStart = block.indices![2][0];
     for (const item of blockBody.matchAll(PLURAL_ITEM)) {
-      const [, quantity, body] = item;
+      const quantity = item[1];
       const bodyStart = blockBodyStart + item.indices![2][0];
-      checkApostrophes(name, body, bodyStart, { resourceType: 'plural', itemQualifier: quantity });
+      const bodyEnd = blockBodyStart + item.indices![2][1];
+      checkApostrophes(name, text.slice(bodyStart, bodyEnd), bodyStart, { resourceType: 'plural', itemQualifier: quantity });
     }
   }
   reportDuplicates(seenPluralNames, 'plural', '<plurals>');
 
   // <string-array name="...">...<item>body</item>...</string-array>
   const seenArrayNames = new Map<string, number>();
-  for (const block of text.matchAll(STRING_ARRAY_BLOCK)) {
-    if (isCommentedOut(block.index!)) continue;
+  for (const block of scannable.matchAll(STRING_ARRAY_BLOCK)) {
     const [, name, blockBody] = block;
     seenArrayNames.set(name, (seenArrayNames.get(name) || 0) + 1);
     const blockBodyStart = block.indices![2][0];
     let index = 0;
     for (const item of blockBody.matchAll(ARRAY_ITEM)) {
-      const [, body] = item;
       const bodyStart = blockBodyStart + item.indices![1][0];
-      checkApostrophes(name, body, bodyStart, { resourceType: 'array', itemQualifier: String(index) });
+      const bodyEnd = blockBodyStart + item.indices![1][1];
+      checkApostrophes(name, text.slice(bodyStart, bodyEnd), bodyStart, { resourceType: 'array', itemQualifier: String(index) });
       index += 1;
     }
   }
@@ -407,6 +408,14 @@ export function repairAndroidXml(raw: string): RepairResult {
   return { fixedXml: text, parsed, silentFixes, reviewIssues, blockingIssues };
 }
 
+/** A review issue the user can accept on the Import Report: it has both a `range` and a `suggestedFix`. Shared by
+ *  `applyReviewDecisions` and the UI, so what counts as "fixable" can never drift between the two. */
+export type FixableRepairIssue = RepairIssue & { range: { start: number; end: number }; suggestedFix: string };
+
+export function isFixableIssue(issue: RepairIssue): issue is FixableRepairIssue {
+  return issue.range !== undefined && issue.suggestedFix !== undefined;
+}
+
 /**
  * Phase 2 of issue #25: applies the subset of `reviewIssues` the user accepted (by `id`, from the Import
  * Report) on top of `fixedXml`, and leaves every other review issue's text exactly as it was — nothing is
@@ -416,17 +425,25 @@ export function repairAndroidXml(raw: string): RepairResult {
  *
  * Returns `fixedXml` unchanged (the identical string, by reference) when `acceptedIds` accepts nothing, so a
  * caller can cheaply tell "nothing changed" apart from "something changed" with `===` and skip re-parsing.
+ *
+ * Defensive: a range that is out of bounds, inverted, or overlaps one already applied is skipped instead of
+ * spliced in. `repairAndroidXml` never produces such a range today, but a wrong splice would silently corrupt
+ * the file, so it's cheaper to guard here than to debug later.
  */
 export function applyReviewDecisions(fixedXml: string, reviewIssues: RepairIssue[], acceptedIds: ReadonlySet<string>): string {
   const accepted = reviewIssues
-    .filter((i) => acceptedIds.has(i.id) && i.range && i.suggestedFix !== undefined)
-    .sort((a, b) => b.range!.start - a.range!.start); // descending, so each replace leaves earlier offsets valid
+    .filter((i): i is FixableRepairIssue => isFixableIssue(i) && acceptedIds.has(i.id))
+    .sort((a, b) => b.range.start - a.range.start); // descending, so each replace leaves earlier offsets valid
 
   if (accepted.length === 0) return fixedXml;
 
   let out = fixedXml;
+  let appliedFrom = fixedXml.length; // start of the lowest range applied so far
   for (const i of accepted) {
-    out = out.slice(0, i.range!.start) + i.suggestedFix! + out.slice(i.range!.end);
+    const { start, end } = i.range;
+    if (start < 0 || start > end || end > appliedFrom) continue;
+    out = out.slice(0, start) + i.suggestedFix + out.slice(end);
+    appliedFrom = start;
   }
   return out;
 }

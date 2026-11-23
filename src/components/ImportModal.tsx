@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { X, Upload, FileCode, AlertCircle, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { useDialog } from '../utils/useDialog';
 import { mergeTargetXml, normalizePluralsForLanguage, parseAndroidXml, ParsedXmlResult } from '../utils/xmlParser';
-import { applyReviewDecisions, applySilentFixes, repairAndroidXml, RepairIssue, RepairResult } from '../utils/xmlRepair';
+import { applyReviewDecisions, applySilentFixes, isFixableIssue, repairAndroidXml, RepairIssue, RepairResult } from '../utils/xmlRepair';
 import { TranslationProject } from '../types';
 import { getArabicLanguageName } from '../utils/languages';
 import { useT, tg } from '../i18n/i18n';
@@ -272,7 +272,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
       return;
     }
     setAcceptedFixIds(
-      new Set(pendingReport.result.reviewIssues.filter((i) => i.suggestedFix !== undefined).map((i) => i.id))
+      new Set(pendingReport.result.reviewIssues.filter(isFixableIssue).map((i) => i.id))
     );
   };
 
@@ -537,16 +537,19 @@ function ReviewIssueRow({
   accepted: boolean;
   onSetAccepted: (accepted: boolean) => void;
 }) {
-  const fixable = issue.range !== undefined && issue.suggestedFix !== undefined;
-  const before = fixable ? report.fixedXml.slice(issue.range!.start, issue.range!.end) : null;
+  const before = isFixableIssue(issue) ? report.fixedXml.slice(issue.range.start, issue.range.end) : null;
+  const fixable = before !== null;
+  const descriptionId = `${issue.id}-description`;
 
   return (
     <li className="text-xs text-slate-700 dark:text-slate-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-xl p-2.5 space-y-2">
-      <div>{localizeRepairIssue(issue, t)}</div>
+      <div id={descriptionId}>{localizeRepairIssue(issue, t)}</div>
 
       {fixable && (
         <>
-          <div className="flex items-center gap-1.5">
+          {/* Ties the two toggle buttons to the issue they decide, so a screen reader doesn't just hear a bare,
+              repeated "Keep as-is" / "Escape it" for every row. */}
+          <div role="group" aria-labelledby={descriptionId} className="flex items-center gap-1.5">
             <button
               type="button"
               onClick={() => onSetAccepted(false)}
@@ -572,14 +575,22 @@ function ReviewIssueRow({
               {t('import_report_escape_it')}
             </button>
           </div>
+          {/* XML is always left-to-right: without dir="ltr" the Arabic (RTL) UI reorders the punctuation and
+              backslashes and the preview no longer shows what will actually be written. min-w-0 lets a long
+              unbroken value wrap inside the flex row instead of overflowing it; whitespace-pre-wrap keeps the
+              value's real line breaks/indentation visible. */}
           <div className="space-y-1 text-[11px] font-mono">
             <div className="flex items-start gap-1.5">
               <span className="shrink-0 text-slate-400">{t('import_report_before')}</span>
-              <span className="text-rose-700 dark:text-rose-400 break-words">{before}</span>
+              <span dir="ltr" className="min-w-0 whitespace-pre-wrap break-words text-rose-700 dark:text-rose-400">
+                {before}
+              </span>
             </div>
             <div className="flex items-start gap-1.5">
               <span className="shrink-0 text-slate-400">{t('import_report_after')}</span>
-              <span className="text-emerald-700 dark:text-emerald-400 break-words">{issue.suggestedFix}</span>
+              <span dir="ltr" className="min-w-0 whitespace-pre-wrap break-words text-emerald-700 dark:text-emerald-400">
+                {issue.suggestedFix}
+              </span>
             </div>
           </div>
         </>
@@ -601,7 +612,7 @@ function ImportReportView({
   onSetFixAccepted: (id: string, accepted: boolean) => void;
   onSetAllFixesAccepted: (accepted: boolean) => void;
 }) {
-  const fixableCount = report.reviewIssues.filter((i) => i.suggestedFix !== undefined).length;
+  const fixableCount = report.reviewIssues.filter(isFixableIssue).length;
 
   return (
     <div className="pt-1 space-y-4">
