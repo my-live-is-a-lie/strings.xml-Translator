@@ -441,4 +441,20 @@ export const UI_STRINGS: Record<string, { en: string; ar: string }> = {
     en: "The file uses entity references that XML doesn't define: %1$s. Replace them with the actual character or escape the \"&\" as \"&amp;\".",
     ar: "يستخدم الملف مراجع كيانات غير معرّفة في XML: %1$s. استبدلها بالحرف نفسه أو اكتب \"&\" بصيغة \"&amp;\".",
   },
+  "repair_location_plural": {
+    en: "in the \"%1$s\" plural form",
+    ar: "في صيغة الجمع \"%1$s\"",
+  },
+  "repair_location_array": {
+    en: "in array item #%1$s",
+    ar: "في عنصر المصفوفة رقم %1$s",
+  },
+
+  // Phase 2 of issue #25: per-item accept/reject for a review issue that has a safe suggested fix.
+  "import_report_apply_all": { en: "Apply all suggested fixes", ar: "تطبيق كل الإصلاحات المقترحة" },
+  "import_report_keep_all": { en: "Keep all as-is", ar: "الإبقاء على الكل كما هو" },
+  "import_report_keep_original": { en: "Keep as-is", ar: "الإبقاء كما هو" },
+  "import_report_escape_it": { en: "Escape it", ar: "تهريبها (Escape)" },
+  "import_report_before": { en: "Before:", ar: "قبل:" },
+  "import_report_after": { en: "After:", ar: "بعد:" },
 };
