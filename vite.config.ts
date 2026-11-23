@@ -39,6 +39,13 @@ const demoBase = '/demo/';
 const SITE = 'https://xml-translator.is-a.dev/';
 const demoTitle = 'XML Translator \u2013 Try the Android strings.xml Translator Online';
 const demoSocialTitle = 'XML Translator \u2013 Android strings.xml Translator Online';
+export function demoDocumentLanguage(html: string, demo: boolean): string {
+  if (!demo) return html;
+  return html.replace(/<html\b[^>]*>/i, (tag) =>
+    tag.replace(/\blang\s*=\s*(["'])[^"']*\1/i, 'lang="en"')
+      .replace(/\bdir\s*=\s*(["'])[^"']*\1/i, 'dir="ltr"'),
+  );
+}
 const demoPlugin = {
   name: 'demo-plugin',
   transformIndexHtml(html: string) {
@@ -64,10 +71,9 @@ const demoPlugin = {
       '<noscript><main><h1>XML Translator</h1><p>Translate Android strings.xml localization files in your browser, ' +
       'with placeholder protection and quality checks. Everything runs on your device. ' +
       `<a href="${SITE}">Read the guide</a>.</p></main></noscript>`;
-    return html
+    return demoDocumentLanguage(html, isDemo)
       // The app is Arabic/RTL by default and switches lang/dir at runtime; this demo build ships English
       // head tags and fallback text, so the initial HTML (what a crawler sees before JS runs) must match.
-      .replace(/<html lang="[^"]*" dir="[^"]*">/, '<html lang="en" dir="ltr">')
       .replace(/<title>[^<]*<\/title>/, `<title>${demoTitle}</title>`)
       .replace('<meta property="og:title" content="XML Translator" />', `<meta property="og:title" content="${demoSocialTitle}" />`)
       .replace('</head>', `${head}\n  </head>`)
