@@ -473,6 +473,10 @@ export const UI_STRINGS: Record<string, { en: string; ar: string }> = {
     en: "A <%1$s> doesn't have a matching closing tag (or uses a misspelled one), so it can't be read as valid XML.",
     ar: "يوجد عنصر ⁦<%1$s>⁩ لا يملك وسمًا ختاميًا مطابقًا (أو يستخدم وسمًا ختاميًا بإملاء خاطئ)، لذا تعذّرت قراءته كـXML صالح.",
   },
+  "import_report_entry_excerpt": {
+    en: "Entry excerpt",
+    ar: "مقتطف من العنصر",
+  },
   "repair_missing_name": {
     en: "A <%1$s> has no \"name\" attribute, so it can't be imported.",
     ar: "يوجد عنصر ⁦<%1$s>⁩ بلا سمة ⁦\"name\"⁩، لذا يتعذّر استيراده.",
