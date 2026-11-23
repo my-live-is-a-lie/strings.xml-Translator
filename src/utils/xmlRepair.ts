@@ -63,6 +63,25 @@ export interface RepairIssue {
   suggestedFix?: string;
 }
 
+/**
+ * The single source linking each resource tag (`<string>`, `<plurals>`, `<string-array>`) to its
+ * resource kind. `excludeMalformedEntries` reads it directly, and `RESOURCE_TAG_BY_TYPE` below is
+ * derived from it, so the two directions can never drift apart.
+ *
+ * Adding a kind here is not enough on its own: the tag-scanning regexes (`RESOURCE_TAG_START` and
+ * `SIBLING_RESOURCE_TAG_START`) and the per-kind body/block patterns still name the tags by hand.
+ */
+export const RESOURCE_TYPE_BY_TAG: Record<string, NonNullable<RepairIssue['resourceType']>> = {
+  string: 'string',
+  plurals: 'plural',
+  'string-array': 'array',
+};
+
+/** The inverse of `RESOURCE_TYPE_BY_TAG` (resource kind → tag word), used for localized messages. */
+export const RESOURCE_TAG_BY_TYPE: Record<string, string> = Object.fromEntries(
+  Object.entries(RESOURCE_TYPE_BY_TAG).map(([tag, resourceType]) => [resourceType, tag])
+);
+
 export interface RepairResult {
   /** The text to hand to `parseAndroidXml` — with every silent fix already applied. */
   fixedXml: string;
@@ -395,12 +414,6 @@ function excludeMalformedEntries(
   const coveredRanges: Array<[number, number]> = [];
   const missingNameIssues: RepairIssue[] = [];
 
-  const resourceTypeByTag: Record<string, RepairIssue['resourceType']> = {
-    string: 'string',
-    plurals: 'plural',
-    'string-array': 'array',
-  };
-
   function excerptOf(chunk: string): string {
     const collapsed = chunk.replace(/\s+/g, ' ').trim();
     return collapsed.length > 80 ? `${collapsed.slice(0, 80)}…` : collapsed;
@@ -433,7 +446,7 @@ function excludeMalformedEntries(
           'missing-name',
           `A <${tag}> has no "name" attribute, so it can't be imported: "${excerptOf(m[0])}"`,
           undefined,
-          { resourceType: resourceTypeByTag[tag], params: { excerpt: excerptOf(m[2]) } }
+          { resourceType: RESOURCE_TYPE_BY_TAG[tag], params: { excerpt: excerptOf(m[2]) } }
         )
       );
     }
@@ -514,7 +527,7 @@ function excludeMalformedEntries(
         `mismatched one), so it can't be read as valid XML. It was excluded so the rest of the file could ` +
         `still be imported: "${excerptOf(chunk)}"`,
       name,
-      { resourceType: resourceTypeByTag[d.tag], params: { excerpt: excerptOf(chunk) } }
+      { resourceType: RESOURCE_TYPE_BY_TAG[d.tag], params: { excerpt: excerptOf(chunk) } }
     );
   });
 

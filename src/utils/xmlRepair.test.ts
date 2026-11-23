@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
-import { repairAndroidXml, applyReviewDecisions } from './xmlRepair';
+import {
+  repairAndroidXml,
+  applyReviewDecisions,
+  RESOURCE_TYPE_BY_TAG,
+  RESOURCE_TAG_BY_TYPE,
+} from './xmlRepair';
 
 function wrap(body: string): string {
   return `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n${body}\n</resources>\n`;
@@ -475,5 +480,28 @@ describe('repairAndroidXml / commented-out content', () => {
     const found = repairAndroidXml(xml).reviewIssues[0];
     expect(found.params?.count).toBe(1);
     expect(found.suggestedFix).toBe("it\\'s <!-- don't touch --> ok");
+  });
+});
+
+describe('RESOURCE_TYPE_BY_TAG / RESOURCE_TAG_BY_TYPE', () => {
+  it('covers every resource tag with a unique kind', () => {
+    expect(RESOURCE_TYPE_BY_TAG).toEqual({
+      string: 'string',
+      plurals: 'plural',
+      'string-array': 'array',
+    });
+    const kinds = Object.values(RESOURCE_TYPE_BY_TAG);
+    expect(new Set(kinds).size).toBe(kinds.length);
+  });
+
+  it('exports the inverse map that ImportModal uses for its localized messages', () => {
+    expect(RESOURCE_TAG_BY_TYPE).toEqual({
+      string: 'string',
+      plural: 'plurals',
+      array: 'string-array',
+    });
+    for (const [tag, kind] of Object.entries(RESOURCE_TYPE_BY_TAG)) {
+      expect(RESOURCE_TAG_BY_TYPE[kind]).toBe(tag);
+    }
   });
 });

@@ -159,6 +159,20 @@ describe('ImportModal / partial import (Phase 3 of #25)', () => {
     expect(hasButton(BTN_CONTINUE)).toBe(true);
   });
 
+  it.each([
+    ['plurals', '<plurals name="p"><item quantity="one">x</item>'],
+    ['string-array', '<string-array name="arr"><item>x</item>'],
+  ])('names the real tag for an unclosed <%s>, not a generic <string>', (tag, unclosed) => {
+    renderModal();
+    click(buttonWithText(TAB_PASTE));
+    pasteXml(`<resources>${unclosed}<string name="ok">fine</string></resources>`);
+    click(buttonWithText(BTN_START));
+
+    expect(container.textContent).toContain(`<${tag}>`);
+    expect(container.textContent).not.toContain('<string>');
+    expect(hasButton(BTN_CONTINUE)).toBe(true);
+  });
+
   it('does not render an empty excerpt block for an empty nameless entry', () => {
     renderModal();
     click(buttonWithText(TAB_PASTE));
