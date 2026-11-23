@@ -24,6 +24,12 @@ import { parseAndroidXml, ParsedXmlResult } from './xmlParser';
  * make), so it stays informational-only for now.
  */
 
+/**
+ * `blocking` covers both whole-file failures and entries the Import Report lists as not imported.
+ * In particular, `missing-name` is blocking for reporting, not a new import restriction: the parser
+ * already skipped nameless entries silently. Use `isEntryExclusion` to distinguish these entry-level
+ * issues from failures that must reject the whole file.
+ */
 export type RepairTier = 'silent' | 'review' | 'blocking';
 
 export interface RepairIssue {

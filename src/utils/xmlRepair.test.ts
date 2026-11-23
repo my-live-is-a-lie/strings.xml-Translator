@@ -218,6 +218,49 @@ describe('repairAndroidXml / plurals and string-array resources', () => {
 });
 
 describe('repairAndroidXml / blocking issues', () => {
+  it('excludes multiple broken entries while importing b and d', () => {
+    const result = repairAndroidXml(wrap(
+      '<string name="a">unclosed\n<string name="b">fine</string>\n' +
+      '<string name="c">mismatched</wrong>\n<string name="d">also fine</string>'
+    ));
+    expect(result.parsed.errors).toEqual([]);
+    expect(result.parsed.items.map((i) => i.name)).toEqual(['b', 'd']);
+    expect(result.blockingIssues.map((i) => [i.category, i.stringName])).toEqual([
+      ['malformed-entry', 'a'],
+      ['malformed-entry', 'c'],
+    ]);
+  });
+
+  it('excludes an unclosed plurals resource and keeps the next string', () => {
+    const result = repairAndroidXml(wrap(
+      '<plurals name="count"><item quantity="other">many</item>\n<string name="b">fine</string>'
+    ));
+    expect(result.parsed.errors).toEqual([]);
+    expect(result.parsed.items.map((i) => i.name)).toEqual(['b']);
+    expect(result.blockingIssues).toEqual([
+      expect.objectContaining({ category: 'malformed-entry', stringName: 'count', resourceType: 'plural' }),
+    ]);
+  });
+
+  it('reports a broken entry and a nameless entry in the same file', () => {
+    const result = repairAndroidXml(wrap(
+      '<string name="a">unclosed\n<string>nameless</string>\n<string name="b">fine</string>'
+    ));
+    expect(result.parsed.errors).toEqual([]);
+    expect(result.parsed.items.map((i) => i.name)).toEqual(['b']);
+    expect(result.blockingIssues).toEqual([
+      expect.objectContaining({ category: 'malformed-entry', stringName: 'a' }),
+      expect.objectContaining({ category: 'missing-name', resourceType: 'string' }),
+    ]);
+  });
+
+  it('keeps the whole-file parse failure for a dangling tag after the resources root', () => {
+    const xml = wrap('<string name="b">fine</string>') + '\n<string name="late">unclosed';
+    const result = repairAndroidXml(xml);
+    expect(result.fixedXml).toBe(xml);
+    expect(result.parsed.errors.length).toBeGreaterThan(0);
+    expect(result.blockingIssues.map((i) => i.category)).toEqual(['xml-parse-error']);
+  });
   it('surfaces a parse error for XML broken in a way that is not just one dangling resource tag', () => {
     // Two sibling <resources> roots: not something excludeMalformedEntries's single-entry heuristic can
     // repair, so this still surfaces the raw parser error exactly as before Phase 3.
