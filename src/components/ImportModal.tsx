@@ -1,9 +1,17 @@
 
 import React, { useEffect, useRef, useState } from 'react';
-import { X, Upload, FileCode, AlertCircle, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { X, Upload, FileCode, AlertCircle, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react';
 import { useDialog } from '../utils/useDialog';
 import { mergeTargetXml, normalizePluralsForLanguage, parseAndroidXml, ParsedXmlResult } from '../utils/xmlParser';
-import { applyReviewDecisions, applySilentFixes, isFixableIssue, repairAndroidXml, RepairIssue, RepairResult } from '../utils/xmlRepair';
+import {
+  applyReviewDecisions,
+  applySilentFixes,
+  isEntryExclusion,
+  isFixableIssue,
+  repairAndroidXml,
+  RepairIssue,
+  RepairResult,
+} from '../utils/xmlRepair';
 import { TranslationProject } from '../types';
 import { getArabicLanguageName } from '../utils/languages';
 import { useT, tg } from '../i18n/i18n';
@@ -15,9 +23,16 @@ type Translate = (key: string, ...args: unknown[]) => string;
 // positional `%1$s` placeholders (handled by `t`) rather than a second, hand-rolled `{name}` syntax.
 // Falls back to that English message only for a category this UI doesn't know how to phrase yet
 // (in practice: raw parser errors, which have no stable wording to translate).
+const RESOURCE_TAG_WORD: Record<string, string> = {
+  string: 'string',
+  plural: 'plurals',
+  array: 'string-array',
+};
+
 function localizeRepairIssue(issue: RepairIssue, t: Translate): string {
   const count = issue.params?.count ?? '';
   const name = issue.stringName ?? issue.params?.name ?? '';
+  const tagWord = (issue.resourceType && RESOURCE_TAG_WORD[issue.resourceType]) || 'string';
 
   switch (issue.category) {
     case 'bom':
@@ -46,6 +61,12 @@ function localizeRepairIssue(issue: RepairIssue, t: Translate): string {
       return t('repair_undefined_entity', issue.params?.names ?? '');
     case 'no-strings':
       return t('could_not_parse_any_strings');
+    case 'malformed-entry':
+      return issue.stringName
+        ? t('repair_malformed_entry_named', tagWord, issue.stringName)
+        : t('repair_malformed_entry_unnamed', tagWord);
+    case 'missing-name':
+      return t('repair_missing_name', tagWord);
     default:
       return issue.message;
   }
@@ -234,7 +255,16 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     // of today's all-or-nothing behavior, where one malformed tag fails the whole import.
     const result = repairAndroidXml(xmlToParse);
 
-    if (result.blockingIssues.length > 0) {
+    // Phase 3: a parse error, or a file with nothing importable at all (possibly *because* every entry in
+    // it turned out to be malformed/nameless — see result.blockingIssues in that case), still rejects the
+    // whole import — there's nothing to show a report about. Otherwise, per-entry exclusions only: they
+    // become a read-only section of the Import Report instead of blocking anything. Checked explicitly
+    // (not inferred from "it parsed") so a future file-level blocking category can't slip through as one.
+    const wholeFileRejected =
+      result.parsed.errors.length > 0 ||
+      result.parsed.items.length === 0 ||
+      result.blockingIssues.some((i) => !isEntryExclusion(i));
+    if (wholeFileRejected) {
       setErrorMsg(
         [t('import_report_blocking_header'), ...result.blockingIssues.map((i) => `• ${localizeRepairIssue(i, t)}`)].join('\n')
       );
@@ -243,11 +273,12 @@ export const ImportModal: React.FC<ImportModalProps> = ({
 
     // A BOM or a line-ending normalization is invisible in any text editor and can never be ambiguous —
     // reporting it on its own would just be noise, so only show the report when there's something else
-    // (another kind of silent fix, or anything needing a decision) worth telling the user about.
+    // (another kind of silent fix, anything needing a decision, or an excluded entry) worth telling the
+    // user about.
     const silentFixesWorthReporting = result.silentFixes.some(
       (f) => f.category !== 'bom' && f.category !== 'line-endings'
     );
-    if (silentFixesWorthReporting || result.reviewIssues.length > 0) {
+    if (silentFixesWorthReporting || result.reviewIssues.length > 0 || result.blockingIssues.some(isEntryExclusion)) {
       setAcceptedFixIds(new Set());
       setPendingReport({ result, fileName });
       return;
@@ -689,6 +720,29 @@ function ImportReportView({
                 accepted={acceptedFixIds.has(issue.id)}
                 onSetAccepted={(accepted) => onSetFixAccepted(issue.id, accepted)}
               />
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Phase 3 of issue #25: a per-entry exclusion. Read-only — the entry is already out of fixedXml
+          (repairAndroidXml only ever reports these once it has verified the rest of the file imports fine),
+          so there's nothing left to accept or reject here; this section just tells the user what and why. */}
+      {report.blockingIssues.some(isEntryExclusion) && (
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-rose-700 dark:text-rose-400">
+            <XCircle className="w-3.5 h-3.5" aria-hidden="true" />
+            {t('import_report_not_imported')}
+          </div>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">{t('import_report_not_imported_note')}</p>
+          <ul className="space-y-1">
+            {report.blockingIssues.filter(isEntryExclusion).map((issue) => (
+              <li
+                key={issue.id}
+                className="text-xs text-slate-700 dark:text-slate-300 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900 rounded-xl p-2.5"
+              >
+                {localizeRepairIssue(issue, t)}
+              </li>
             ))}
           </ul>
         </div>
