@@ -457,4 +457,24 @@ export const UI_STRINGS: Record<string, { en: string; ar: string }> = {
   "import_report_escape_it": { en: "Escape it", ar: "إضافة ⁦\\⁩ قبل الفاصلة" },
   "import_report_before": { en: "Before:", ar: "قبل:" },
   "import_report_after": { en: "After:", ar: "بعد:" },
+
+  // Phase 3 of issue #25: partial import — a single malformed or nameless entry is excluded and reported,
+  // instead of failing the whole file.
+  "import_report_not_imported": { en: "Not imported", ar: "لم يتم استيرادها" },
+  "import_report_not_imported_note": {
+    en: "These specific entries couldn't be read as valid XML (or have no name), so they were left out — everything else was imported normally. Check the source file to fix them.",
+    ar: "تعذّرت قراءة هذه العناصر كـXML صالح (أو لا تحمل اسمًا)، لذا تم استبعادها — وبقية الملف تم استيرادها بشكل طبيعي. راجع الملف المصدر لإصلاحها.",
+  },
+  "repair_malformed_entry_named": {
+    en: "The <%1$s> named \"%2$s\" doesn't have a matching closing tag (or uses a misspelled one), so it can't be read as valid XML.",
+    ar: "العنصر <%1$s> المسمى \"%2$s\" لا يملك وسمًا ختاميًا مطابقًا (أو يستخدم وسمًا ختاميًا بإملاء خاطئ)، لذا تعذّرت قراءته كـXML صالح.",
+  },
+  "repair_malformed_entry_unnamed": {
+    en: "A <%1$s> doesn't have a matching closing tag (or uses a misspelled one), so it can't be read as valid XML.",
+    ar: "يوجد عنصر <%1$s> لا يملك وسمًا ختاميًا مطابقًا (أو يستخدم وسمًا ختاميًا بإملاء خاطئ)، لذا تعذّرت قراءته كـXML صالح.",
+  },
+  "repair_missing_name": {
+    en: "A <%1$s> has no \"name\" attribute, so it can't be imported.",
+    ar: "يوجد عنصر <%1$s> بلا سمة \"name\"، لذا يتعذّر استيراده.",
+  },
 };

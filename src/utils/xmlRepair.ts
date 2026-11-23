@@ -11,15 +11,17 @@ import { parseAndroidXml, ParsedXmlResult } from './xmlParser';
  * into `fixedXml` on its own. `applyReviewDecisions` (Phase 2) applies only the specific review
  * issues the caller names, by id, once a person has actually chosen to accept each one on the
  * Import Report — so nothing that could change a string's meaning is ever applied without an
- * explicit, per-item decision.
+ * explicit, per-item decision. Phase 3 adds partial import: a single malformed `<string>`,
+ * `<plurals>` or `<string-array>` (unclosed, mismatched, or missing its `name` attribute) is
+ * excluded and reported, instead of failing the whole file — see `excludeMalformedEntries`.
  *
- * Deliberately out of scope so far (tracked as follow-up work in #25):
- * ICU-grammar-level checks (unbalanced `{}`, a missing mandatory `other` branch, a
- * misspelled `plural`/`select` keyword, an unterminated ICU quote, mixed placeholder
- * systems) and surgically excluding just one broken `<string>` instead of failing the
- * whole file. Those need a real ICU-aware checker and are a separate, focused change (Phase 3).
- * A duplicate resource name is detected but has no safe fix to propose (renaming or merging one
- * of them isn't a decision this tool can make), so it stays informational-only for now.
+ * Deliberately out of scope so far (tracked as follow-up work in #25): ICU-grammar-level checks
+ * (unbalanced `{}`, a missing mandatory `other` branch, a misspelled `plural`/`select` keyword, an
+ * unterminated ICU quote, mixed placeholder systems) and a bare `<`/`>` inside a value. Those need
+ * a real ICU-aware / tolerant-XML checker, which is a different kind of tool than the text-level
+ * heuristics here, and are tracked as a further phase. A duplicate resource name is detected but
+ * has no safe fix to propose (renaming or merging one of them isn't a decision this tool can
+ * make), so it stays informational-only for now.
  */
 
 export type RepairTier = 'silent' | 'review' | 'blocking';
@@ -127,6 +129,25 @@ const STRING_ARRAY_BLOCK = /<string-array\s+[^>]*?\bname\s*=\s*["']([^"']+)["'][
 const PLURAL_ITEM = /<item\s+[^>]*?\bquantity\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/item>/gd;
 const ARRAY_ITEM = /<item\b[^>]*>([\s\S]*?)<\/item>/gd;
 const XML_COMMENT = /<!--[\s\S]*?-->/g;
+
+// Phase 3 (partial import): a resource tag that's self-closed (`<string name="a"/>`) is complete and valid
+// on its own (an empty value), regardless of whether it has a `name`.
+const SELF_CLOSED_RESOURCE = /<(?:string|plurals|string-array)\b[^>]*\/>/gd;
+// The same three resource blocks as above, but for a tag whose opening tag has *no* `name` attribute at all
+// (Android silently drops these — see parseDomTree's `if (!name) continue`). The tempered-greedy group
+// `(?:(?!\bname\s*=)[^>])*` consumes attribute characters one at a time, refusing to advance past any
+// position where `name\s*=` would start — so the overall match fails outright if a `name=` appears anywhere
+// before the tag's `>`, exactly mirroring how STRING_BODY etc. require one.
+const NAMELESS_STRING_BODY = /<string((?:(?!\bname\s*=)[^>])*)(?<!\/)>([\s\S]*?)<\/string>/gd;
+const NAMELESS_PLURALS_BLOCK = /<plurals((?:(?!\bname\s*=)[^>])*)(?<!\/)>([\s\S]*?)<\/plurals>/gd;
+const NAMELESS_STRING_ARRAY_BLOCK = /<string-array((?:(?!\bname\s*=)[^>])*)(?<!\/)>([\s\S]*?)<\/string-array>/gd;
+// Any top-level resource opening tag, named or not, self-closed or not — used to find every candidate and
+// to locate "the next one" as an excision boundary for a dangling (unclosed/mismatched) tag.
+const RESOURCE_TAG_START = /<(string|plurals|string-array)\b/gd;
+const RESOURCES_CLOSE = /<\/resources>/;
+// A loose, best-effort scrape of a `name="..."` attribute from an excised chunk of text, just to label a
+// blocking issue with the resource's name when one is present — not used for anything structural.
+const LOOSE_NAME_ATTR = /\bname\s*=\s*["']([^"']+)["']/;
 // Known edge case: a CDATA section also matches this pattern, since `<![CDATA[` looks like the start of a
 // tag. An apostrophe inside CDATA is therefore checked only when the CDATA content itself contains a `>`
 // (which ends the "tag" early), and then only the part after that `>`. CDATA is rare in strings.xml and
@@ -285,12 +306,174 @@ export function applySilentFixes(raw: string, issue: IssueFactory = createIssueF
   return { text, silentFixes, undefinedEntities: [...undefinedEntities] };
 }
 
+/** A copy of `text` with every comment's content blanked out by spaces of the same length (newlines kept),
+ *  so a structural scan never mistakes example/commented-out markup for a real resource, while every offset
+ *  it finds still lines up exactly with `text` itself. */
+function blankComments(text: string): string {
+  return text.replace(XML_COMMENT, (comment) => comment.replace(/[^\n]/g, ' '));
+}
+
+const SIBLING_RESOURCE_TAG_START = /<(?:string|plurals|string-array)\b/;
+
+/**
+ * Like `scannable.matchAll(re)` for one of the `*_BODY`/`*_BLOCK` regexes, except it refuses to accept a
+ * match whose captured body itself contains another top-level `<string`/`<plurals`/`<string-array` start.
+ * That shape only ever happens when this tag's *own* closing tag is missing or misspelled: the non-greedy
+ * body group just runs on past it and latches onto an unrelated sibling's closing tag instead, silently
+ * absorbing that sibling into this one's "body". Accepting a match like that would hide the sibling (and
+ * the real, broken tag) from both exclusion and review scanning — instead, the match is rejected and the
+ * search resumes right after *this* tag's own opening tag, so whatever it wrongly swallowed still gets a
+ * chance to match cleanly on its own; the rejected tag's start is left for `excludeMalformedEntries`'s
+ * general dangling-tag pass to find and excise.
+ */
+function validBodyMatches(scannable: string, re: RegExp): RegExpExecArray[] {
+  const valid: RegExpExecArray[] = [];
+  const local = new RegExp(re.source, re.flags);
+  local.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = local.exec(scannable)) !== null) {
+    const body = m[2] ?? '';
+    if (SIBLING_RESOURCE_TAG_START.test(body)) {
+      // Rewind past just this tag's own opening tag — not past the whole (wrongly absorbed) match, which
+      // is where `exec` already advanced `lastIndex` to, since this is still a 'g' regex.
+      const openTagEnd = m.index + m[0].indexOf('>') + 1;
+      local.lastIndex = Math.max(openTagEnd, m.index + 1);
+      continue;
+    }
+    valid.push(m);
+    if (m[0].length === 0) local.lastIndex += 1; // defensive: avoid looping forever on a zero-length match
+  }
+  return valid;
+}
+
+/**
+ * Phase 3 (partial import): finds a `<string>`, `<plurals>` or `<string-array>` that's either (a) dangling —
+ * its opening tag has no matching close tag before the next resource starts (unclosed, or closed with a
+ * mismatched/misspelled tag name) — or (b) missing its `name` attribute entirely (silently dropped by
+ * `parseDomTree` today, with zero visibility).
+ *
+ * (a) is excised from `text` and the result is re-parsed to *verify* that removing it actually fixes the
+ * file; if it doesn't (something else is also broken, or this heuristic mis-identified the boundary), the
+ * whole attempt is discarded and the caller falls back to today's whole-file error — this never ships a
+ * guess that didn't demonstrably work. (b) is never excised (it was never what broke parsing — Android just
+ * silently drops it), so it's only ever reported, and only once the rest of the file is confirmed to import
+ * (see `repairAndroidXml`), so it's never shown alongside a "nothing imported" error.
+ */
+function excludeMalformedEntries(
+  text: string,
+  issue: IssueFactory
+): { text: string; malformedEntryIssues: RepairIssue[]; missingNameIssues: RepairIssue[] } {
+  const scannable = blankComments(text);
+
+  const coveredRanges: Array<[number, number]> = [];
+  const missingNameIssues: RepairIssue[] = [];
+
+  const resourceTypeByTag: Record<string, RepairIssue['resourceType']> = {
+    string: 'string',
+    plurals: 'plural',
+    'string-array': 'array',
+  };
+
+  function excerptOf(chunk: string): string {
+    const collapsed = chunk.replace(/\s+/g, ' ').trim();
+    return collapsed.length > 80 ? `${collapsed.slice(0, 80)}…` : collapsed;
+  }
+
+  // Well-formed, named resources (the same shapes checkApostrophes/reportDuplicates rely on) are covered —
+  // they're not candidates for either exclusion or missing-name reporting.
+  for (const re of [STRING_BODY, PLURALS_BLOCK, STRING_ARRAY_BLOCK]) {
+    for (const m of validBodyMatches(scannable, re)) {
+      coveredRanges.push([m.index!, m.index! + m[0].length]);
+    }
+  }
+  // Self-closed resources are complete and valid regardless of whether they have a name.
+  for (const m of scannable.matchAll(SELF_CLOSED_RESOURCE)) {
+    coveredRanges.push([m.index!, m.index! + m[0].length]);
+  }
+  // Well-formed but nameless resources: covered (they're not "dangling"), and always reported — Android
+  // parses the file fine but silently drops exactly this one entry.
+  const namelessSpecs: Array<[RegExp, 'string' | 'plurals' | 'string-array']> = [
+    [NAMELESS_STRING_BODY, 'string'],
+    [NAMELESS_PLURALS_BLOCK, 'plurals'],
+    [NAMELESS_STRING_ARRAY_BLOCK, 'string-array'],
+  ];
+  for (const [re, tag] of namelessSpecs) {
+    for (const m of validBodyMatches(scannable, re)) {
+      coveredRanges.push([m.index!, m.index! + m[0].length]);
+      missingNameIssues.push(
+        issue(
+          'blocking',
+          'missing-name',
+          `A <${tag}> has no "name" attribute, so it can't be imported: "${excerptOf(m[0])}"`,
+          undefined,
+          { resourceType: resourceTypeByTag[tag], params: { excerpt: excerptOf(m[2]) } }
+        )
+      );
+    }
+  }
+
+  const isCovered = (pos: number) => coveredRanges.some(([s, e]) => pos >= s && pos < e);
+
+  const allTagStarts = Array.from(scannable.matchAll(RESOURCE_TAG_START), (m) => ({
+    start: m.index!,
+    tag: m[1],
+  })).sort((a, b) => a.start - b.start);
+
+  const resourcesCloseMatch = scannable.match(RESOURCES_CLOSE);
+  const resourcesCloseIndex = resourcesCloseMatch?.index ?? text.length;
+
+  function endBoundaryAfter(start: number): number {
+    const next = allTagStarts.find((t) => t.start > start);
+    return Math.min(next?.start ?? Infinity, resourcesCloseIndex, text.length);
+  }
+
+  const dangling = allTagStarts
+    .filter((t) => !isCovered(t.start))
+    .map((t) => ({ ...t, end: endBoundaryAfter(t.start) }));
+
+  if (dangling.length === 0) {
+    return { text, malformedEntryIssues: [], missingNameIssues };
+  }
+
+  // Excise every dangling span (descending, so each splice leaves earlier offsets valid) and verify by
+  // actually re-parsing — only keep the result if it demonstrably fixed the file.
+  let candidate = text;
+  for (const d of [...dangling].sort((a, b) => b.start - a.start)) {
+    candidate = candidate.slice(0, d.start) + candidate.slice(d.end);
+  }
+  const verifyParsed = parseAndroidXml(candidate);
+  if (verifyParsed.errors.length > 0) {
+    // Our guess didn't fix it (something else is also broken, or we mis-identified a boundary) — discard
+    // the attempt entirely rather than ship a half-measure; the caller's own final parse of the untouched
+    // `text` will surface the real error as a whole-file blocking issue, exactly as before this change.
+    return { text, malformedEntryIssues: [], missingNameIssues };
+  }
+
+  const malformedEntryIssues = dangling.map((d) => {
+    const chunk = text.slice(d.start, d.end);
+    const name = chunk.match(LOOSE_NAME_ATTR)?.[1];
+    return issue(
+      'blocking',
+      'malformed-entry',
+      `A <${d.tag}>${name ? ` named "${name}"` : ''} doesn't have a matching closing tag (or uses a ` +
+        `mismatched one), so it can't be read as valid XML. It was excluded so the rest of the file could ` +
+        `still be imported: "${excerptOf(chunk)}"`,
+      name,
+      { resourceType: resourceTypeByTag[d.tag], params: { excerpt: excerptOf(chunk) } }
+    );
+  });
+
+  return { text: candidate, malformedEntryIssues, missingNameIssues };
+}
+
 export function repairAndroidXml(raw: string): RepairResult {
   const issue = createIssueFactory();
-  const { text, silentFixes, undefinedEntities } = applySilentFixes(raw, issue);
+  const { text: afterSilentFixes, silentFixes, undefinedEntities } = applySilentFixes(raw, issue);
 
   const reviewIssues: RepairIssue[] = [];
   const blockingIssues: RepairIssue[] = [];
+
+  const { text, malformedEntryIssues, missingNameIssues } = excludeMalformedEntries(afterSilentFixes, issue);
 
   // Review: an Android resource value with a raw apostrophe that isn't backslash-escaped and isn't a whole
   // value wrapped in double quotes. This can be perfectly valid ICU (a balanced quote span), so it isn't
@@ -313,7 +496,7 @@ export function repairAndroidXml(raw: string): RepairResult {
   // `<plurals>`/`<string-array>`, and (b) stops a match that starts inside a comment (e.g. an unclosed
   // `<!-- <string name="old">...  -->`) from running on and swallowing the real resource that follows.
   // Bodies are always read back from `text`, so a comment inside a value survives byte-for-byte.
-  const scannable = text.replace(XML_COMMENT, (comment) => comment.replace(/[^\n]/g, ' '));
+  const scannable = blankComments(text);
 
   function checkApostrophes(name: string, body: string, bodyStart: number, extras: Partial<IssueExtras> = {}) {
     const trimmed = body.trim();
@@ -407,8 +590,17 @@ export function repairAndroidXml(raw: string): RepairResult {
   for (const message of parsed.errors) {
     blockingIssues.push(issue('blocking', 'xml-parse-error', message));
   }
-  // A well-formed file with nothing importable (e.g. an empty <resources/>) would otherwise pass every check,
-  // show the report, and then fail only after the user clicks Continue.
+  // The excluded-entry issues (malformed-entry, missing-name) are only meaningful once `text` itself is
+  // confirmed to parse — `excludeMalformedEntries` only ever returns them once it has verified exactly that
+  // by re-parsing, so `parsed` (computed from that same `text`) is guaranteed to have zero errors whenever
+  // either array is non-empty. Reported even if every entry in the file turned out to be one of these (see
+  // the no-strings check below) — "here's specifically what was wrong" is strictly more useful than silence.
+  if (parsed.errors.length === 0) {
+    blockingIssues.push(...malformedEntryIssues, ...missingNameIssues);
+  }
+  // A well-formed file with nothing importable (e.g. an empty <resources/>, or one where every entry was
+  // excluded above) would otherwise pass every check, show the report, and then fail only after the user
+  // clicks Continue.
   if (parsed.errors.length === 0 && parsed.items.length === 0) {
     blockingIssues.push(issue('blocking', 'no-strings', 'Could not parse any strings from this XML.'));
   }

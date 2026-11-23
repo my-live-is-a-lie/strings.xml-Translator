@@ -218,11 +218,60 @@ describe('repairAndroidXml / plurals and string-array resources', () => {
 });
 
 describe('repairAndroidXml / blocking issues', () => {
-  it('surfaces a parse error for truly malformed XML', () => {
-    const xml = wrap('<string name="a">unterminated');
+  it('surfaces a parse error for XML broken in a way that is not just one dangling resource tag', () => {
+    // Two sibling <resources> roots: not something excludeMalformedEntries's single-entry heuristic can
+    // repair, so this still surfaces the raw parser error exactly as before Phase 3.
+    const xml = '<resources><string name="a">one</string></resources><resources></resources>';
     const result = repairAndroidXml(xml);
     expect(result.blockingIssues.length).toBeGreaterThan(0);
     expect(result.blockingIssues[0].category).toBe('xml-parse-error');
+  });
+
+  it('excludes a single unclosed <string>, naming it, instead of failing the whole file (Phase 3)', () => {
+    const xml = wrap('<string name="a">unterminated\n<string name="b">fine</string>');
+    const result = repairAndroidXml(xml);
+    const malformed = result.blockingIssues.find((i) => i.category === 'malformed-entry');
+    expect(malformed?.stringName).toBe('a');
+    expect(result.parsed.errors).toEqual([]);
+    expect(result.parsed.items.map((i) => i.name)).toEqual(['b']);
+  });
+
+  it('reports no-strings alongside the malformed-entry issue when the only entry was the broken one', () => {
+    const xml = wrap('<string name="a">unterminated');
+    const result = repairAndroidXml(xml);
+    expect(result.blockingIssues.map((i) => i.category)).toEqual(
+      expect.arrayContaining(['malformed-entry', 'no-strings'])
+    );
+    expect(result.parsed.items).toEqual([]);
+  });
+
+  it('excludes a <string> closed with a mismatched tag name, naming it', () => {
+    const xml = wrap(
+      '<string name="a">oops</strong>\n<string name="b">fine</string>'
+    );
+    const result = repairAndroidXml(xml);
+    const malformed = result.blockingIssues.find((i) => i.category === 'malformed-entry');
+    expect(malformed?.stringName).toBe('a');
+    expect(result.parsed.items.map((i) => i.name)).toEqual(['b']);
+  });
+
+  it('reports a <string> missing its name attribute, without excluding or touching anything else', () => {
+    const xml = wrap('<string>no name here</string>\n<string name="b">fine</string>');
+    const result = repairAndroidXml(xml);
+    const missingName = result.blockingIssues.find((i) => i.category === 'missing-name');
+    expect(missingName).toBeTruthy();
+    expect(missingName?.resourceType).toBe('string');
+    expect(result.parsed.errors).toEqual([]);
+    expect(result.parsed.items.map((i) => i.name)).toEqual(['b']);
+    // Nothing was excised for this case - fixedXml is unchanged apart from earlier silent fixes.
+    expect(result.fixedXml).toContain('<string>no name here</string>');
+  });
+
+  it('does not treat a self-closed resource as dangling regardless of a missing name', () => {
+    const xml = wrap('<string-array/>\n<string name="b">fine</string>');
+    const result = repairAndroidXml(xml);
+    expect(result.blockingIssues).toEqual([]);
+    expect(result.parsed.items.map((i) => i.name)).toEqual(['b']);
   });
 
   it('blocks an entity reference XML does not define, naming it', () => {
