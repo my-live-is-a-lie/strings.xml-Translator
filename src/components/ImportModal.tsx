@@ -2,8 +2,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { X, Upload, FileCode, AlertCircle, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { useDialog } from '../utils/useDialog';
-import { mergeTargetXml, normalizePluralsForLanguage, ParsedXmlResult } from '../utils/xmlParser';
-import { applySilentFixes, repairAndroidXml, RepairIssue, RepairResult } from '../utils/xmlRepair';
+import { mergeTargetXml, normalizePluralsForLanguage, parseAndroidXml, ParsedXmlResult } from '../utils/xmlParser';
+import { applyReviewDecisions, applySilentFixes, repairAndroidXml, RepairIssue, RepairResult } from '../utils/xmlRepair';
 import { TranslationProject } from '../types';
 import { getArabicLanguageName } from '../utils/languages';
 import { useT, tg } from '../i18n/i18n';
@@ -30,8 +30,16 @@ function localizeRepairIssue(issue: RepairIssue, t: Translate): string {
       return t('repair_bare_ampersand', count);
     case 'html-entity':
       return t('repair_html_entity', count);
-    case 'unescaped-apostrophe':
-      return t('repair_unescaped_apostrophe', name, count);
+    case 'unescaped-apostrophe': {
+      const base = t('repair_unescaped_apostrophe', name, count);
+      if (issue.resourceType === 'plural' && issue.itemQualifier) {
+        return `${base} ${t('repair_location_plural', issue.itemQualifier)}`;
+      }
+      if (issue.resourceType === 'array' && issue.itemQualifier !== undefined) {
+        return `${base} ${t('repair_location_array', String(Number(issue.itemQualifier) + 1))}`;
+      }
+      return base;
+    }
     case 'duplicate-name':
       return t('repair_duplicate_name', name, count);
     case 'undefined-entity':
@@ -45,6 +53,11 @@ function localizeRepairIssue(issue: RepairIssue, t: Translate): string {
 
 // Larger files freeze the page while parsing; real strings.xml files are far smaller than this.
 const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
+
+const FOOTER_SECONDARY_BTN =
+  'py-2 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition cursor-pointer';
+const FOOTER_PRIMARY_BTN =
+  'px-5 py-2 rounded-full bg-[#0B57D0] hover:bg-[#0842A0] dark:bg-[#A8C7FA] dark:hover:bg-[#82AAFA] text-white dark:text-[#062E6F] text-xs font-semibold shadow-xs transition cursor-pointer m3-state-layer';
 
 function importTooLargeMessage(_isAr: boolean): string {
   return tg('the_file_is_too_large');
@@ -67,7 +80,6 @@ export const ImportModal: React.FC<ImportModalProps> = ({
 }) => {
   const { t, tb } = useT();
   const isAr = appLang === 'ar';
-  const dialogRef = useDialog(isOpen, onClose);
   const [activeTab, setActiveTab] = useState<'upload' | 'paste'>('upload');
   const [sourceFile, setSourceFile] = useState<{ name: string; content: string } | null>(null);
   const [targetFile, setTargetFile] = useState<{ name: string; content: string } | null>(null);
@@ -76,7 +88,22 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   const [projectName, setProjectName] = useState('XML Translator');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [pendingReport, setPendingReport] = useState<{ result: RepairResult; fileName: string } | null>(null);
+  // Phase 2 of issue #25: which fixable review issues (by id) the user has opted to apply. A fixable
+  // issue defaults to NOT accepted — nothing with a possible meaning change is ever applied unless the
+  // user explicitly chooses it.
+  const [acceptedFixIds, setAcceptedFixIds] = useState<Set<string>>(new Set());
   const continueButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Escape, while the Import Report is showing, steps back to the form instead of closing the whole
+  // dialog — the report is a step inside the import flow, not a separate thing to dismiss outright.
+  // The header's X button keeps closing the dialog outright either way.
+  const dialogRef = useDialog(isOpen, () => {
+    if (pendingReport) {
+      setPendingReport(null);
+      return;
+    }
+    onClose();
+  });
 
   // The component stays mounted while closed, so without this a report left open (closed via X/Escape)
   // would reappear — with a stale file — the next time the dialog opens. Reset during render (not in an
@@ -86,6 +113,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     setWasOpen(isOpen);
     if (!isOpen) {
       setPendingReport(null);
+      setAcceptedFixIds(new Set());
       setErrorMsg(null);
     }
   }
@@ -202,12 +230,50 @@ export const ImportModal: React.FC<ImportModalProps> = ({
       return;
     }
 
-    if (result.silentFixes.length > 0 || result.reviewIssues.length > 0) {
+    // A BOM or a line-ending normalization is invisible in any text editor and can never be ambiguous —
+    // reporting it on its own would just be noise, so only show the report when there's something else
+    // (another kind of silent fix, or anything needing a decision) worth telling the user about.
+    const silentFixesWorthReporting = result.silentFixes.some(
+      (f) => f.category !== 'bom' && f.category !== 'line-endings'
+    );
+    if (silentFixesWorthReporting || result.reviewIssues.length > 0) {
+      setAcceptedFixIds(new Set());
       setPendingReport({ result, fileName });
       return;
     }
 
     finalizeImport(result.parsed, result.fixedXml, fileName);
+  };
+
+  // Applies whichever suggested fixes the user accepted on the report screen, then finishes the import.
+  const handleContinueFromReport = () => {
+    if (!pendingReport) return;
+    const { result, fileName } = pendingReport;
+    const finalXml = applyReviewDecisions(result.fixedXml, result.reviewIssues, acceptedFixIds);
+    // Nothing accepted (or nothing fixable) means finalXml is the exact same string — reuse the parse
+    // already done in repairAndroidXml instead of parsing the file again.
+    const parsed = finalXml === result.fixedXml ? result.parsed : parseAndroidXml(finalXml);
+    finalizeImport(parsed, finalXml, fileName);
+  };
+
+  const setFixAccepted = (id: string, accepted: boolean) => {
+    setAcceptedFixIds((prev) => {
+      const next = new Set(prev);
+      if (accepted) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  const setAllFixesAccepted = (accepted: boolean) => {
+    if (!pendingReport) return;
+    if (!accepted) {
+      setAcceptedFixIds(new Set());
+      return;
+    }
+    setAcceptedFixIds(
+      new Set(pendingReport.result.reviewIssues.filter((i) => i.suggestedFix !== undefined).map((i) => i.id))
+    );
   };
 
   return (
@@ -239,7 +305,13 @@ export const ImportModal: React.FC<ImportModalProps> = ({
         {/* Modal Body */}
         <div className="px-6 py-2 space-y-4 flex-1 overflow-y-auto">
           {pendingReport ? (
-            <ImportReportView report={pendingReport.result} t={t} />
+            <ImportReportView
+              report={pendingReport.result}
+              t={t}
+              acceptedFixIds={acceptedFixIds}
+              onSetFixAccepted={setFixAccepted}
+              onSetAllFixesAccepted={setAllFixesAccepted}
+            />
           ) : (
             <>
           {/* M3 Segmented Button for Tabs */}
@@ -398,28 +470,16 @@ export const ImportModal: React.FC<ImportModalProps> = ({
         <div className="p-6 pt-4 flex items-center gap-5">
           {pendingReport ? (
             <>
-              <button
-                onClick={() => setPendingReport(null)}
-                className="py-2 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition cursor-pointer"
-              >
+              <button onClick={() => setPendingReport(null)} className={FOOTER_SECONDARY_BTN}>
                 {t('import_report_back')}
               </button>
-              <button
-                ref={continueButtonRef}
-                onClick={() =>
-                  finalizeImport(pendingReport.result.parsed, pendingReport.result.fixedXml, pendingReport.fileName)
-                }
-                className="ms-auto px-5 py-2 rounded-full bg-[#0B57D0] hover:bg-[#0842A0] dark:bg-[#A8C7FA] dark:hover:bg-[#82AAFA] text-white dark:text-[#062E6F] text-xs font-semibold shadow-xs transition cursor-pointer m3-state-layer"
-              >
+              <button ref={continueButtonRef} onClick={handleContinueFromReport} className={`ms-auto ${FOOTER_PRIMARY_BTN}`}>
                 {t('import_report_continue')}
               </button>
             </>
           ) : (
             <>
-              <button
-                onClick={onClose}
-                className="py-2 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition cursor-pointer"
-              >
+              <button onClick={onClose} className={FOOTER_SECONDARY_BTN}>
                 {tb('cancel')}
               </button>
               <button
@@ -431,10 +491,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
               >
                 <span data-i18n>{t('load_sample_app')}</span>
               </button>
-              <button
-                onClick={handleProcessImport}
-                className="ms-auto px-5 py-2 rounded-full bg-[#0B57D0] hover:bg-[#0842A0] dark:bg-[#A8C7FA] dark:hover:bg-[#82AAFA] text-white dark:text-[#062E6F] text-xs font-semibold shadow-xs transition cursor-pointer m3-state-layer"
-              >
+              <button onClick={handleProcessImport} className={`ms-auto ${FOOTER_PRIMARY_BTN}`}>
                 {tb('start_translating')}
               </button>
             </>
@@ -463,9 +520,89 @@ function getLocaleName(code: string): string {
   return map[code] || code;
 }
 
-// Phase 1 of issue #25: a read-only report of what repairAndroidXml found before the file is
-// actually imported — nothing here is interactive yet (accept/reject per item is Phase 2).
-function ImportReportView({ report, t }: { report: RepairResult; t: Translate }) {
+// Phase 2 of issue #25: a review issue the user can act on — it has a `range` into `report.fixedXml` and a
+// `suggestedFix` — gets a before/after preview and an explicit Keep-as-is / Escape-it choice, defaulting to
+// Keep-as-is. A review issue with no safe fix to propose (today: duplicate-name) stays informational only,
+// same as Phase 1 — there's nothing yet for the user to decide here beyond "go look at the source file".
+function ReviewIssueRow({
+  issue,
+  report,
+  t,
+  accepted,
+  onSetAccepted,
+}: {
+  issue: RepairIssue;
+  report: RepairResult;
+  t: Translate;
+  accepted: boolean;
+  onSetAccepted: (accepted: boolean) => void;
+}) {
+  const fixable = issue.range !== undefined && issue.suggestedFix !== undefined;
+  const before = fixable ? report.fixedXml.slice(issue.range!.start, issue.range!.end) : null;
+
+  return (
+    <li className="text-xs text-slate-700 dark:text-slate-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-xl p-2.5 space-y-2">
+      <div>{localizeRepairIssue(issue, t)}</div>
+
+      {fixable && (
+        <>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => onSetAccepted(false)}
+              aria-pressed={!accepted}
+              className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition cursor-pointer ${
+                !accepted
+                  ? 'bg-slate-700 text-white dark:bg-slate-200 dark:text-slate-900'
+                  : 'bg-white/70 dark:bg-black/20 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+              }`}
+            >
+              {t('import_report_keep_original')}
+            </button>
+            <button
+              type="button"
+              onClick={() => onSetAccepted(true)}
+              aria-pressed={accepted}
+              className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition cursor-pointer ${
+                accepted
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-white/70 dark:bg-black/20 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+              }`}
+            >
+              {t('import_report_escape_it')}
+            </button>
+          </div>
+          <div className="space-y-1 text-[11px] font-mono">
+            <div className="flex items-start gap-1.5">
+              <span className="shrink-0 text-slate-400">{t('import_report_before')}</span>
+              <span className="text-rose-700 dark:text-rose-400 break-words">{before}</span>
+            </div>
+            <div className="flex items-start gap-1.5">
+              <span className="shrink-0 text-slate-400">{t('import_report_after')}</span>
+              <span className="text-emerald-700 dark:text-emerald-400 break-words">{issue.suggestedFix}</span>
+            </div>
+          </div>
+        </>
+      )}
+    </li>
+  );
+}
+
+function ImportReportView({
+  report,
+  t,
+  acceptedFixIds,
+  onSetFixAccepted,
+  onSetAllFixesAccepted,
+}: {
+  report: RepairResult;
+  t: Translate;
+  acceptedFixIds: Set<string>;
+  onSetFixAccepted: (id: string, accepted: boolean) => void;
+  onSetAllFixesAccepted: (accepted: boolean) => void;
+}) {
+  const fixableCount = report.reviewIssues.filter((i) => i.suggestedFix !== undefined).length;
+
   return (
     <div className="pt-1 space-y-4">
       <div>
@@ -494,19 +631,42 @@ function ImportReportView({ report, t }: { report: RepairResult; t: Translate })
 
       {report.reviewIssues.length > 0 && (
         <div className="space-y-1.5">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-400">
-            <AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" />
-            {t('import_report_needs_review')}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" />
+              {t('import_report_needs_review')}
+            </div>
+            {fixableCount > 0 && (
+              <div className="flex items-center gap-2 text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => onSetAllFixesAccepted(true)}
+                  className="font-medium text-[#0B57D0] dark:text-[#A8C7FA] hover:underline cursor-pointer"
+                >
+                  {t('import_report_apply_all')}
+                </button>
+                <span className="text-slate-300 dark:text-slate-600">·</span>
+                <button
+                  type="button"
+                  onClick={() => onSetAllFixesAccepted(false)}
+                  className="font-medium text-slate-500 dark:text-slate-400 hover:underline cursor-pointer"
+                >
+                  {t('import_report_keep_all')}
+                </button>
+              </div>
+            )}
           </div>
           <p className="text-[11px] text-slate-500 dark:text-slate-400">{t('import_report_review_note')}</p>
-          <ul className="space-y-1">
+          <ul className="space-y-1.5">
             {report.reviewIssues.map((issue) => (
-              <li
+              <ReviewIssueRow
                 key={issue.id}
-                className="text-xs text-slate-700 dark:text-slate-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-xl p-2.5"
-              >
-                {localizeRepairIssue(issue, t)}
-              </li>
+                issue={issue}
+                report={report}
+                t={t}
+                accepted={acceptedFixIds.has(issue.id)}
+                onSetAccepted={(accepted) => onSetFixAccepted(issue.id, accepted)}
+              />
             ))}
           </ul>
         </div>

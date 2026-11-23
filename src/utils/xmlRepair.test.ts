@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
-import { repairAndroidXml } from './xmlRepair';
+import { repairAndroidXml, applyReviewDecisions } from './xmlRepair';
 
 function wrap(body: string): string {
   return `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n${body}\n</resources>\n`;
@@ -122,7 +122,66 @@ describe('repairAndroidXml / review issues', () => {
     const result = repairAndroidXml(xml);
     const found = result.reviewIssues.find((i) => i.category === 'duplicate-name');
     expect(found?.stringName).toBe('dup');
+    expect(found?.resourceType).toBe('string');
     expect(found?.params?.count).toBe(2);
+  });
+
+  it('gives an unescaped-apostrophe issue a range and suggestedFix that round-trips through fixedXml', () => {
+    const xml = wrap(`<string name="quoted_message">'{username}' said hi</string>`);
+    const result = repairAndroidXml(xml);
+    const found = result.reviewIssues.find((i) => i.category === 'unescaped-apostrophe')!;
+    expect(found.resourceType).toBe('string');
+    expect(found.range).toBeTruthy();
+    expect(result.fixedXml.slice(found.range!.start, found.range!.end)).toBe(`'{username}' said hi`);
+    expect(found.suggestedFix).toBe(`\\'{username}\\' said hi`);
+  });
+});
+
+describe('repairAndroidXml / plurals and string-array resources', () => {
+  it('flags an unescaped apostrophe inside a <plurals> item, naming its quantity', () => {
+    const xml = wrap(
+      '<plurals name="price">\n' +
+        '  <item quantity="one">%d dollar</item>\n' +
+        "  <item quantity=\"other\">%d dollars, that's all</item>\n" +
+        '</plurals>'
+    );
+    const result = repairAndroidXml(xml);
+    const found = result.reviewIssues.find((i) => i.category === 'unescaped-apostrophe')!;
+    expect(found.stringName).toBe('price');
+    expect(found.resourceType).toBe('plural');
+    expect(found.itemQualifier).toBe('other');
+    expect(result.fixedXml.slice(found.range!.start, found.range!.end)).toBe("%d dollars, that's all");
+  });
+
+  it('flags an unescaped apostrophe inside a <string-array> item, naming its index', () => {
+    const xml = wrap(
+      '<string-array name="flavors">\n' +
+        '  <item>vanilla</item>\n' +
+        "  <item>rocky road's special</item>\n" +
+        '</string-array>'
+    );
+    const result = repairAndroidXml(xml);
+    const found = result.reviewIssues.find((i) => i.category === 'unescaped-apostrophe')!;
+    expect(found.stringName).toBe('flavors');
+    expect(found.resourceType).toBe('array');
+    expect(found.itemQualifier).toBe('1');
+  });
+
+  it('flags a duplicate <plurals> name separately from a duplicate <string> name', () => {
+    const xml = wrap(
+      '<plurals name="dup"><item quantity="one">a</item></plurals>\n' +
+        '<plurals name="dup"><item quantity="one">b</item></plurals>'
+    );
+    const result = repairAndroidXml(xml);
+    const found = result.reviewIssues.find((i) => i.category === 'duplicate-name');
+    expect(found?.stringName).toBe('dup');
+    expect(found?.resourceType).toBe('plural');
+  });
+
+  it('does not treat a <string> and a <plurals> sharing the same name as duplicates', () => {
+    const xml = wrap('<string name="shared">one</string>\n<plurals name="shared"><item quantity="other">%d</item></plurals>');
+    const result = repairAndroidXml(xml);
+    expect(result.reviewIssues.some((i) => i.category === 'duplicate-name')).toBe(false);
   });
 });
 
@@ -177,5 +236,45 @@ describe('repairAndroidXml / the reported ICU test file', () => {
     expect(result.blockingIssues).toEqual([]);
     expect(result.reviewIssues).toHaveLength(1);
     expect(result.reviewIssues[0].stringName).toBe('quoted_message');
+  });
+});
+
+describe('applyReviewDecisions', () => {
+  it('returns the identical string when nothing is accepted', () => {
+    const xml = wrap(`<string name="a">it's fine</string>`);
+    const result = repairAndroidXml(xml);
+    expect(applyReviewDecisions(result.fixedXml, result.reviewIssues, new Set())).toBe(result.fixedXml);
+  });
+
+  it('applies only the accepted fix, leaving an unaccepted one untouched', () => {
+    const xml = wrap(
+      `<string name="a">it's fine</string>\n<string name="b">it's also fine</string>`
+    );
+    const result = repairAndroidXml(xml);
+    const [first, second] = result.reviewIssues;
+    const applied = applyReviewDecisions(result.fixedXml, result.reviewIssues, new Set([first.id]));
+
+    expect(applied).toContain("it\\'s fine");
+    expect(applied).toContain("it's also fine"); // second issue's fix was not accepted
+    // Re-running the repair on the already-fixed text finds only the still-unfixed one.
+    expect(repairAndroidXml(applied).reviewIssues).toHaveLength(1);
+    expect(repairAndroidXml(applied).reviewIssues[0].stringName).toBe(second.stringName);
+  });
+
+  it('ignores an id with no safe suggested fix (e.g. duplicate-name)', () => {
+    const xml = wrap('<string name="dup">one</string>\n<string name="dup">two</string>');
+    const result = repairAndroidXml(xml);
+    const dup = result.reviewIssues.find((i) => i.category === 'duplicate-name')!;
+    expect(applyReviewDecisions(result.fixedXml, result.reviewIssues, new Set([dup.id]))).toBe(result.fixedXml);
+  });
+
+  it('applies two accepted fixes in the same file correctly, in either order', () => {
+    const xml = wrap(`<string name="a">it's fine</string>\n<string name="b">that's ok</string>`);
+    const result = repairAndroidXml(xml);
+    const ids = new Set(result.reviewIssues.map((i) => i.id));
+    const applied = applyReviewDecisions(result.fixedXml, result.reviewIssues, ids);
+    expect(applied).toContain("it\\'s fine");
+    expect(applied).toContain("that\\'s ok");
+    expect(repairAndroidXml(applied).reviewIssues).toEqual([]);
   });
 });
