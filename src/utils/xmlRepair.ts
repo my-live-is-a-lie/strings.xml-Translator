@@ -66,7 +66,7 @@ export interface RepairResult {
   silentFixes: RepairIssue[];
   /** Not applied. The file still imports; each of these needs a human decision. */
   reviewIssues: RepairIssue[];
-  /** The file (or, once per-entry exclusion ships, the specific entry) could not be imported. */
+  /** The file could not be imported, or a specific entry was excluded during partial import. */
   blockingIssues: RepairIssue[];
 }
 
@@ -636,8 +636,8 @@ export function repairAndroidXml(raw: string): RepairResult {
   }
   reportDuplicates(seenArrayNames, 'array', '<string-array>');
 
-  // Blocking: anything parseAndroidXml itself can't make sense of. Today that fails the whole
-  // file rather than just the one broken entry (tracked as follow-up work in #25).
+  // Blocking issues that remain after per-entry exclusion reject the whole file.
+  // Excluded malformed or nameless entries are reported separately below if the remaining XML parses.
   if (undefinedEntities.length > 0) {
     const names = undefinedEntities.map((n) => `&${n};`).join(', ');
     blockingIssues.push(
