@@ -2,24 +2,10 @@
 
 > XML Translator is an Android app for translating strings.xml localization files on your phone. Keeps placeholders and plurals intact, adds quality checks, and exports values-xx folders.
 
-## Guide
+## Docs
 
-- [What it is](https://xml-translator.is-a.dev/#1-what-it-is)
-- [Quick start](https://xml-translator.is-a.dev/#2-quick-start)
-- [Finding your way around](https://xml-translator.is-a.dev/#3-finding-your-way-around)
-- [The translation editor](https://xml-translator.is-a.dev/#4-the-translation-editor)
-- [Typing helpers (the hidden details)](https://xml-translator.is-a.dev/#5-typing-helpers-the-hidden-details)
-- [Quality checks](https://xml-translator.is-a.dev/#6-quality-checks)
-- [Getting translations](https://xml-translator.is-a.dev/#7-getting-translations)
-- [Organising your work](https://xml-translator.is-a.dev/#8-organising-your-work)
-- [Updating the source file](https://xml-translator.is-a.dev/#9-updating-the-source-file)
-- [Projects and saved work](https://xml-translator.is-a.dev/#10-projects-and-saved-work)
-- [Exporting](https://xml-translator.is-a.dev/#11-exporting)
-- [Plurals and arrays](https://xml-translator.is-a.dev/#12-plurals-and-arrays)
-- [Interface, languages and themes](https://xml-translator.is-a.dev/#13-interface-languages-and-themes)
-- [Privacy and offline use](https://xml-translator.is-a.dev/#14-privacy-and-offline-use)
-- [Keyboard shortcuts](https://xml-translator.is-a.dev/#15-keyboard-shortcuts)
-- [Tips](https://xml-translator.is-a.dev/#16-tips)
+- [Full guide (Markdown)](https://raw.githubusercontent.com/my-live-is-a-lie/strings.xml-translator/main/docs/GUIDE.md): every feature, step by step
+- [Guide (web page)](https://xml-translator.is-a.dev/): the same guide with screenshots
 
 ## Try it
 
