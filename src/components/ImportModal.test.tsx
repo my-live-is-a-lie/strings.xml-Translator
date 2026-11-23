@@ -145,6 +145,28 @@ describe('ImportModal / Import Report', () => {
 });
 
 describe('ImportModal / partial import (Phase 3 of #25)', () => {
+  it('shows a nameless entry excerpt as text, with automatic direction and no HTML execution', () => {
+    renderModal();
+    click(buttonWithText(TAB_PASTE));
+    pasteXml('<resources><string>&lt;img src=x onerror=alert(1)&gt; مرحباً</string><string name="b">fine</string></resources>');
+    click(buttonWithText(BTN_START));
+
+    const excerpt = container.querySelector('pre');
+    expect(excerpt?.textContent).toContain('&lt;img src=x onerror=alert(1)&gt; مرحباً');
+    expect(excerpt?.getAttribute('dir')).toBe('auto');
+    expect(container.textContent).toContain('مقتطف من العنصر');
+    expect(container.querySelector('img')).toBeNull();
+    expect(hasButton(BTN_CONTINUE)).toBe(true);
+  });
+
+  it('does not render an empty excerpt block for an empty nameless entry', () => {
+    renderModal();
+    click(buttonWithText(TAB_PASTE));
+    pasteXml('<resources><string>  </string><string name="b">fine</string></resources>');
+    click(buttonWithText(BTN_START));
+    expect(container.querySelector('pre')).toBeNull();
+    expect(hasButton(BTN_CONTINUE)).toBe(true);
+  });
   it('rejects an unknown blocking category even when parsing succeeds and valid items remain', () => {
     const result = repairAndroidXml(CLEAN_XML);
     expect(result.parsed.errors).toEqual([]);
@@ -185,6 +207,7 @@ describe('ImportModal / partial import (Phase 3 of #25)', () => {
 
     expect(hasButton(BTN_CONTINUE)).toBe(true);
     expect(container.textContent).toContain('broken');
+    expect(container.querySelector('pre')?.textContent).toContain('<string name="broken">oops');
   });
 
   it('completes the import with only the well-formed entry, once Continue is clicked', () => {

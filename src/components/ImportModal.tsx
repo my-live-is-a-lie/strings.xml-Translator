@@ -741,7 +741,17 @@ function ImportReportView({
                 key={issue.id}
                 className="text-xs text-slate-700 dark:text-slate-300 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900 rounded-xl p-2.5"
               >
-                {localizeRepairIssue(issue, t)}
+                <p>{localizeRepairIssue(issue, t)}</p>
+                {typeof issue.params?.excerpt === 'string' && issue.params.excerpt.trim() && (
+                  <div className="mt-2 border-t border-rose-200/70 dark:border-rose-900/70 pt-2">
+                    <p className="text-[10px] font-medium text-slate-500 dark:text-slate-400">
+                      {t('import_report_entry_excerpt')}
+                    </p>
+                    <pre dir="auto" className="mt-1 whitespace-pre-wrap break-words text-start font-mono text-[11px] leading-relaxed">
+                      {issue.params.excerpt}
+                    </pre>
+                  </div>
+                )}
               </li>
             ))}
           </ul>
