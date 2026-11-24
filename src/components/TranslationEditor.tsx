@@ -752,6 +752,115 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   };
 
   // Clone source directly to target (Weblate clone action - updates local draft only)
+  // The plural form the translator picked by clicking into it: the focused one, else the last
+  // one clicked in this entry. Clone and paste act on that form only; with none picked they do
+  // nothing and show a hint.
+  // 'clone': the next click on a form fills it with its source; 'paste': a hint only (the click
+  // selects the form, then paste is pressed again). A click anywhere else cancels the mode.
+  const [pluralPick, setPluralPick] = useState<null | 'clone' | 'paste' | 'clear'>(null);
+  const pluralPickHint = pluralPick !== null;
+  // The hint floats just under the strings-list/filters bar (or the header) so it stays visible while scrolling
+  const [pickHintTop, setPickHintTop] = useState(0);
+  // Without the list/filters bar (desktop) the hint sticks in the flow above the fields instead of floating over them
+  const [pickHintSticky, setPickHintSticky] = useState(false);
+  const pickHintRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!pluralPickHint) return;
+    const measure = () => {
+      const bar = document.getElementById('mobile-drawer-btn')?.parentElement?.parentElement;
+      const barRect = bar && bar.getBoundingClientRect();
+      const header = document.querySelector('header')?.getBoundingClientRect();
+      if (barRect && barRect.height > 0) {
+        setPickHintSticky(false);
+        setPickHintTop(Math.max(0, Math.round(barRect.bottom) + 4));
+        return;
+      }
+      setPickHintSticky(true);
+      let el: HTMLElement | null = pickHintRef.current?.parentElement ?? null;
+      let scroller: HTMLElement | null = null;
+      while (el) {
+        const oy = getComputedStyle(el).overflowY;
+        if ((oy === 'auto' || oy === 'scroll') && el.scrollHeight > el.clientHeight) { scroller = el; break; }
+        el = el.parentElement;
+      }
+      setPickHintTop(scroller ? 4 : Math.max(0, Math.round(header?.bottom ?? 0) + 4));
+    };
+    measure();
+    window.addEventListener('scroll', measure, true);
+    window.addEventListener('resize', measure);
+    return () => {
+      window.removeEventListener('scroll', measure, true);
+      window.removeEventListener('resize', measure);
+    };
+  }, [pluralPickHint]);
+  // Only a form that has the caret right now counts as picked. The clone button keeps the focus
+  // (see its mousedown handler), so pressing it does not drop the pick; tapping elsewhere does.
+  const pickedPluralQuantity = (): string | undefined => {
+    const refs = pluralTextareaRefs.current;
+    return Object.keys(refs).find((q) => refs[q] && refs[q] === document.activeElement);
+  };
+  const showPluralPickHint = (kind: 'clone' | 'paste' | 'clear') => setPluralPick(kind);
+
+  const cloneSourceIntoPluralForm = (qty: string) => {
+    if (draftItem.type !== 'plural') return;
+    const updated: PluralStringItem = {
+      ...draftItem,
+      items: normalizedPluralItems.map((pi) => (pi.quantity === qty ? { ...pi, target: pi.source } : pi)),
+      status: draftItem.status === 'untranslated' ? 'translated' : draftItem.status,
+      translationSource: 'manual',
+    };
+    updateDraftItem(updated);
+  };
+
+  const clearPluralForm = (qty: string) => {
+    if (draftItem.type !== 'plural') return;
+    const items = normalizedPluralItems.map((pi) => (pi.quantity === qty ? { ...pi, target: '' } : pi));
+    const anyFilled = items.some((pi) => pi.target.trim() !== '');
+    updateDraftItem({
+      ...draftItem,
+      items,
+      status: anyFilled ? draftItem.status : 'untranslated',
+      translationSource: anyFilled ? draftItem.translationSource : undefined,
+    });
+  };
+
+  // While the mode is on: a press on a form field picks it (clone fills it), a press anywhere else cancels
+  useEffect(() => {
+    if (!pluralPick) return;
+    // A press only counts as a tap: a drag/scroll (movement or pointercancel) leaves the mode on
+    let start: { x: number; y: number; target: EventTarget | null; id: number } | null = null;
+    const onPointerDown = (e: PointerEvent) => {
+      if (!start) start = { x: e.clientX, y: e.clientY, target: e.target, id: e.pointerId };
+    };
+    const onPointerMove = (e: PointerEvent) => {
+      if (start && e.pointerId === start.id && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 10) start = null;
+    };
+    const onPointerCancel = () => {
+      start = null;
+    };
+    const onPointerUp = (e: PointerEvent) => {
+      if (!start || e.pointerId !== start.id) return;
+      const target = start.target;
+      start = null;
+      const refs = pluralTextareaRefs.current;
+      const qty = Object.keys(refs).find((q) => refs[q] && target instanceof Node && refs[q]!.contains(target));
+      setPluralPick(null);
+      if (qty && pluralPick === 'clone') cloneSourceIntoPluralForm(qty);
+      if (qty && pluralPick === 'clear') clearPluralForm(qty);
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('pointermove', onPointerMove, true);
+    document.addEventListener('pointercancel', onPointerCancel, true);
+    document.addEventListener('pointerup', onPointerUp, true);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      document.removeEventListener('pointermove', onPointerMove, true);
+      document.removeEventListener('pointercancel', onPointerCancel, true);
+      document.removeEventListener('pointerup', onPointerUp, true);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pluralPick, draftItem, normalizedPluralItems]);
+
   const handleCloneSourceToTarget = () => {
     if (draftItem.type === 'string') {
       const updated: SingleStringItem = {
@@ -762,13 +871,13 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       };
       updateDraftItem(updated);
     } else if (draftItem.type === 'plural') {
-      const updated: PluralStringItem = {
-        ...draftItem,
-        items: normalizedPluralItems.map((pi) => ({ ...pi, target: pi.source })),
-        status: 'translated',
-        translationSource: 'manual',
-      };
-      updateDraftItem(updated);
+      const qty = pickedPluralQuantity();
+      if (!qty) {
+        showPluralPickHint('clone');
+        return;
+      }
+      setPluralPick(null);
+      cloneSourceIntoPluralForm(qty);
     } else if (draftItem.type === 'array') {
       const updated: ArrayStringItem = {
         ...draftItem,
@@ -1194,12 +1303,13 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       const hasActiveLineMarker = Boolean(
         focusedQty || (activeMarker?.fieldType === 'plural' && activeMarker.quantity)
       );
-      const targetQty =
-        focusedQty ||
-        activeMarker?.quantity ||
-        lastCursorRef.current?.quantity ||
-        normalizedPluralItems[0]?.quantity;
-      if (!targetQty) return;
+      // Only a form with the caret right now counts; a form picked earlier does not
+      const targetQty = focusedQty;
+      if (!targetQty || !normalizedPluralItems.some((pi) => pi.quantity === targetQty)) {
+        showPluralPickHint('paste');
+        return;
+      }
+      setPluralPick(null);
 
       const pluralEntry = normalizedPluralItems.find((pi) => pi.quantity === targetQty);
       if (!pluralEntry) return;
@@ -1749,12 +1859,13 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     if (draftItem.type === 'string') {
       handleSingleTextChange('');
     } else if (draftItem.type === 'plural') {
-      updateDraftItem({
-        ...draftItem,
-        items: normalizedPluralItems.map((pi) => ({ ...pi, target: '' })),
-        status: 'untranslated',
-        translationSource: undefined,
-      });
+      const qty = pickedPluralQuantity();
+      if (!qty) {
+        showPluralPickHint('clear');
+        return;
+      }
+      setPluralPick(null);
+      clearPluralForm(qty);
     } else if (draftItem.type === 'array') {
       updateDraftItem({
         ...draftItem,
@@ -1930,6 +2041,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               {/* Clone icon button (Weblate clone to target — matches screenshot) */}
               <button
                 id="weblate-clone-to-target-btn"
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={handleCloneSourceToTarget}
                 className="mt-1.5 ps-1.5 pe-1 py-1 rounded-md text-slate-500 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-[#1C2330] transition cursor-pointer shrink-0"
                 title={t('clone_source_to_translation')}
@@ -2223,6 +2335,21 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             {/* Plural Support (if plural string) with Visual Typing Mistake Indicator */}
             {draftItem.type === 'plural' && (
               <div className="space-y-2">
+                {pluralPickHint && (
+                  <div
+                    data-testid="plural-pick-hint"
+                    role="status"
+                    ref={pickHintRef}
+                    style={{ top: pickHintTop }}
+                    className={`${pickHintSticky ? 'sticky' : 'fixed inset-x-3 mx-auto max-w-md'} z-40 rounded-lg border px-3 py-1.5 text-center text-xs font-medium shadow-lg backdrop-blur ${
+                      pluralPick === 'clear'
+                        ? 'border-red-400/60 bg-red-100/95 text-red-800 dark:bg-red-950/90 dark:text-red-200'
+                        : 'border-sky-400/50 bg-sky-100/95 text-sky-800 dark:bg-sky-950/90 dark:text-sky-200'
+                    }`}
+                  >
+                    {t('plural_pick_form_first')}
+                  </div>
+                )}
                 {normalizedPluralItems.map((pi, pIdx) => (
                   <div key={pi.quantity} className="space-y-1">
                     {(barField ? barField === `plural:${pi.quantity}` : pIdx === 0) && shortcutBar}
@@ -2289,7 +2416,14 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                           ? `ترجمة صيغة ${pi.quantity} (${pluralLabels[pi.quantity] || pi.quantity})...`
                           : `Translate ${pi.quantity} form (${pluralLabels[pi.quantity] || pi.quantity})...`
                       }
-                      containerClassName="rounded-lg bg-slate-100/90 dark:bg-[#0E121A] border border-slate-200/90 dark:border-transparent"
+                      enableSwipeResize={!pluralPick}
+                      containerClassName={
+                        pluralPick === 'clear'
+                          ? 'rounded-lg border border-transparent !bg-red-500/25 cursor-pointer'
+                          : pluralPick
+                          ? 'rounded-lg border border-transparent !bg-[color-mix(in_srgb,var(--accent-primary)_25%,transparent)] cursor-pointer'
+                          : 'rounded-lg bg-slate-100/90 dark:bg-[#0E121A] border border-slate-200/90 dark:border-transparent'
+                      }
                       backdropClassName="border-0 border-b-2 border-transparent px-3.5 pt-1.5 pb-3 text-xs sm:text-sm leading-relaxed"
                       className="px-3.5 pt-1.5 pb-3 text-xs sm:text-sm leading-relaxed rounded-lg border-0 border-b-2 border-[var(--accent-primary)]/30 focus:border-[var(--accent-primary)] text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none transition-colors duration-300 resize-none overflow-hidden block"
                     />
