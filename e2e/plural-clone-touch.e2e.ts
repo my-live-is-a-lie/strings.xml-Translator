@@ -1,0 +1,26 @@
+import { test, expect } from '@playwright/test';
+test.use({ hasTouch: true, isMobile: true, viewport: { width: 412, height: 900 } });
+test('plural clone on a touch screen: hint, pick by tap, stale pick ignored', async ({ page }) => {
+  const xml = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <plurals name="files">\n        <item quantity="one">%d file</item>\n        <item quantity="other">%d files</item>\n    </plurals>\n</resources>`;
+  await page.goto('/');
+  await page.click('#header-right-drawer-btn');
+  await page.click('#drawer-import-btn');
+  await page.fill('#import-project-name', 'T');
+  await page.getByRole('button', { name: /لصق نص XML|Paste XML/ }).click();
+  await page.locator('textarea').last().fill(xml);
+  await page.locator('select').first().selectOption('ar');
+  await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
+  const fields = page.locator('textarea:visible');
+  await page.locator('#weblate-clone-to-target-btn').tap();
+  await expect(page.getByTestId('plural-pick-hint')).toBeVisible();
+  await fields.nth(1).tap();
+  await expect(fields.nth(1)).toHaveValue('%d file');
+  await expect(fields.nth(0)).toHaveValue('');
+  await expect(page.getByTestId('plural-pick-hint')).toHaveCount(0);
+  await fields.nth(2).tap();
+  await page.locator('#weblate-clone-to-target-btn').tap();
+  await expect(fields.nth(2)).toHaveValue('%d files');
+  await page.locator('[data-src-text]').tap();
+  await page.locator('#weblate-clone-to-target-btn').tap();
+  await expect(page.getByTestId('plural-pick-hint')).toBeVisible();
+});

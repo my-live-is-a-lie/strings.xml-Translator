@@ -758,14 +758,11 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   // selects the form, then paste is pressed again). A click anywhere else cancels the mode.
   const [pluralPick, setPluralPick] = useState<null | 'clone' | 'paste'>(null);
   const pluralPickHint = pluralPick !== null;
+  // Only a form that has the caret right now counts as picked. The clone button keeps the focus
+  // (see its mousedown handler), so pressing it does not drop the pick; tapping elsewhere does.
   const pickedPluralQuantity = (): string | undefined => {
     const refs = pluralTextareaRefs.current;
-    const focused = Object.keys(refs).find((q) => refs[q] && refs[q] === document.activeElement);
-    if (focused) return focused;
-    const last = lastCursorRef.current;
-    return last?.fieldType === 'plural' && last.quantity && normalizedPluralItems.some((pi) => pi.quantity === last.quantity)
-      ? last.quantity
-      : undefined;
+    return Object.keys(refs).find((q) => refs[q] && refs[q] === document.activeElement);
   };
   const showPluralPickHint = (kind: 'clone' | 'paste') => setPluralPick(kind);
 
@@ -1964,6 +1961,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               {/* Clone icon button (Weblate clone to target — matches screenshot) */}
               <button
                 id="weblate-clone-to-target-btn"
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={handleCloneSourceToTarget}
                 className="mt-1.5 ps-1.5 pe-1 py-1 rounded-md text-slate-500 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-[#1C2330] transition cursor-pointer shrink-0"
                 title={t('clone_source_to_translation')}

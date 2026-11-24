@@ -793,6 +793,15 @@ test('plural clone and paste act on the picked form only, and hint when none is 
   for (let i = 0; i < count; i++) if (i !== 1) await expect(fields.nth(i)).toHaveValue('');
   await expect(hint).toHaveCount(0);
 
+  // A form clicked earlier but left again (focus moved away) is no longer picked: clone shows the hint
+  await fields.nth(0).click();
+  await page.locator('[data-src-text]').click();
+  await page.click('#weblate-clone-to-target-btn');
+  await expect(hint).toBeVisible();
+  await page.locator('[data-src-text]').click();
+  await expect(hint).toHaveCount(0);
+  await expect(fields.nth(0)).toHaveValue('');
+
   // With a form already picked, clone fills it straight away
   await fields.nth(count - 1).click();
   await page.click('#weblate-clone-to-target-btn');
