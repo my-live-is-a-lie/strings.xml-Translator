@@ -54,4 +54,24 @@ describe('getIcuIncompleteIssues', () => {
   it('ignores plain strings', () => {
     expect(getIcuIncompleteIssues(str('مرحبا', 'Hello'), 'ar')).toEqual([]);
   });
+
+  it('flags a <plurals> resource whose other quantity is empty', () => {
+    const item = {
+      id: 'p', name: 'p', type: 'plural', status: 'translated',
+      items: [
+        { quantity: 'one', source: 'a', target: 'x' },
+        { quantity: 'two', source: 'a', target: 'y' },
+        { quantity: 'other', source: 'b', target: '' },
+      ],
+    } as unknown as ResourceItem;
+    expect(getIcuIncompleteIssues(item, 'ar')).toHaveLength(1);
+  });
+
+  it('passes a <plurals> resource with other filled, or nothing translated', () => {
+    const mk = (o: string, one: string) =>
+      ({ id: 'p', name: 'p', type: 'plural', status: 'translated', items: [
+        { quantity: 'one', source: 'a', target: one }, { quantity: 'other', source: 'b', target: o } ] }) as unknown as ResourceItem;
+    expect(getIcuIncompleteIssues(mk('z', 'x'), 'ar')).toEqual([]);
+    expect(getIcuIncompleteIssues(mk('', ''), 'ar')).toEqual([]);
+  });
 });

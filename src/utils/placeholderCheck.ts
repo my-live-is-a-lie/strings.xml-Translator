@@ -2472,6 +2472,25 @@ export function getIcuIncompleteIssues(item: ResourceItem, targetLocale?: string
     }
   }
   const issues: QaIssue[] = [];
+  // A `<plurals>` resource: `other` is the fallback of every count without its own quantity (and
+  // Android lint's MissingQuantity), so once any quantity is translated `other` must be too.
+  if (item.type === 'plural') {
+    const quantities = item.items || [];
+    const anyFilled = quantities.some((q) => (q.target || '').trim() !== '');
+    const other = quantities.find((q) => q.quantity === 'other');
+    if (anyFilled && (!other || (other.target || '').trim() === '')) {
+      issues.push({
+        id: `${item.id}_main_icu_incomplete`,
+        itemId: item.id,
+        itemName: item.name,
+        category: 'placeholder',
+        severity: 'error',
+        messageEn: "The 'other' quantity is empty. Translate it, or none of the quantities will be saved.",
+        messageAr: "صيغة 'other' فارغة. يجب ترجمتها، وإلا فلن يُحفظ أي من الصيغ.",
+        tokens: [],
+      });
+    }
+  }
   for (const p of parts) {
     if (!p.target.trim() || !p.source.includes('{')) continue;
     const model = getIcuFieldModel(p.source, p.target, targetLocale);
