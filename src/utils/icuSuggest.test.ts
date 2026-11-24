@@ -37,4 +37,15 @@ describe('suggest fills the plural categories the target language adds', () => {
     const out = await fillAddedIcuClauses('{count, plural, one{# file} other{# files}}', t, 'de', async () => 'x');
     expect(out).toBe(t);
   });
+
+  it('keeps the suggestion and the other categories when one request throws', async () => {
+    const out = await fillAddedIcuClauses(SRC, SUGGESTED, 'ar', async (_b, q) => {
+      if (q === 'two') throw new Error('network');
+      return `[${q}] #`;
+    });
+    expect(out).toContain('few{[few] #}');
+    expect(out).toContain('many{[many] #}');
+    expect(out).not.toContain('two{');
+    expect(out).toContain('# إشعار');
+  });
 });

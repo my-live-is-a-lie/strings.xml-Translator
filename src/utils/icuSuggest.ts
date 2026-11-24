@@ -25,7 +25,13 @@ export async function fillAddedIcuClauses(
     for (let k = 0; k < field.clauses.length; k++) {
       const clause = field.clauses[k];
       if (!clause.added || clause.value.trim() || !QUANTITIES.includes(clause.selector)) continue;
-      const text = await translateBody(clause.sourceValue, clause.selector as IcuQuantity);
+      // One failed request must not lose the suggestion that already succeeded
+      let text: string | null = null;
+      try {
+        text = await translateBody(clause.sourceValue, clause.selector as IcuQuantity);
+      } catch {
+        text = null;
+      }
       if (text && text.trim()) {
         model = setIcuClauseValue(model, f, k, text);
         changed = true;
