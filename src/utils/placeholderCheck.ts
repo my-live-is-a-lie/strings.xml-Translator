@@ -2057,6 +2057,10 @@ export function usesHashWithoutClauseNumber(source: string, target: string, targ
  * reported, so ordinary placeholder repair is unaffected.
  */
 /**
+ * Note: `skipQuotedLiteral` (used by the brace parser) treats a `'` before `{`, `}`, `|` or `#` as the start of a
+ * quoted literal, while this function only looks at `{` and `}`. The two are kept separate on purpose; the
+ * difference only matters for a `'` right before `|` or `#`.
+ *
  * ICU apostrophe quoting: '' is a literal apostrophe, and a single ' right before { or } opens
  * quoted literal text that must be closed by another single '. An unterminated quote makes
  * MessageFormat throw at runtime, so the save gate blocks it. A ' before any other character

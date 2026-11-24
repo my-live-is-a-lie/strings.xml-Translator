@@ -17,10 +17,13 @@ import { findIcuFindings, IcuFinding } from './icuSourceChecks';
  * `<plurals>` or `<string-array>` (unclosed, mismatched, or missing its `name` attribute) is
  * excluded and reported, instead of failing the whole file — see `excludeMalformedEntries`.
  *
- * Issue #33 phase 4a adds two ICU-level checks: an unterminated ICU quote (blocking, entry excluded) and mixed
- * printf/`{name}` placeholders (review, informational). Still out of scope: the other ICU-grammar checks
- * (unbalanced `{}`, a missing mandatory `other` branch, a misspelled `plural`/`select` keyword) and a bare `<`/`>` inside a value. Those need
- * a real ICU-aware / tolerant-XML checker, which is a different kind of tool than the text-level
+ * Issue #33 (phase 4) adds ICU-level checks on each `<string>` / `<string-array>` value (never on `<plurals>`
+ * quantity bodies), always on the Android-decoded text: an unterminated ICU quote, unbalanced braces in a clearly
+ * ICU block and a misspelled `plural`/`select` keyword are blocking (the entry is excluded); a missing `other`
+ * branch, a repeated clause key, a lone `{`, a doubtful keyword and mixed printf/`{name}` placeholders are review
+ * (informational). The optional translation file merged at import time gets the same checks, review-only, and is
+ * never excluded or edited (see `checkTargetFileIcu`). Still out of scope: a bare `<`/`>` inside a value. That
+ * needs a real tolerant-XML checker, which is a different kind of tool than the text-level
  * heuristics here, and are tracked as a further phase. A duplicate resource name is detected but
  * has no safe fix to propose (renaming or merging one of them isn't a decision this tool can
  * make), so it stays informational-only for now.
