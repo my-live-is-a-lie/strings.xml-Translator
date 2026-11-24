@@ -74,34 +74,41 @@ export async function saveToDevice(blob: Blob, fileName: string): Promise<SaveLo
       // fall through to the share sheet
     }
   }
-  await shareViaSystem(blob, fileName, data);
+  await shareViaSystem(blob, fileName, data).catch((err) => {
+    // Dismissing the sheet is not a failure.
+    if ((err as { name?: string } | null)?.name === 'AbortError') return;
+    throw err;
+  });
   return 'shared';
 }
 
 /**
  * Opens a share for the file: the system share sheet in the Android app, the Web Share API in
  * browsers that can share files, and a plain download everywhere else. A user dismissing the
- * share UI (AbortError) resolves quietly.
+ * share UI (AbortError) resolves quietly as 'shared'. When a browser claims it can share but the
+ * share is still refused (Chromium shares only certain file types, and application/zip is not one
+ * of them), the file is downloaded instead of showing an error.
  */
-export async function shareFile(blob: Blob, fileName: string): Promise<void> {
+export async function shareFile(blob: Blob, fileName: string): Promise<'shared' | 'downloaded'> {
   if (Capacitor.isNativePlatform()) {
     try {
       await shareViaSystem(blob, fileName);
     } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') return;
+      if ((err as { name?: string } | null)?.name === 'AbortError') return 'shared';
       throw err;
     }
-    return;
+    return 'shared';
   }
   const file = new File([blob], fileName, { type: blob.type || 'application/octet-stream' });
   if (typeof navigator !== 'undefined' && navigator.canShare?.({ files: [file] })) {
     try {
       await navigator.share({ files: [file] });
+      return 'shared';
     } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') return;
-      throw err;
+      if ((err as { name?: string } | null)?.name === 'AbortError') return 'shared';
+      // Fall through to the download.
     }
-    return;
   }
   browserDownload(blob, fileName);
+  return 'downloaded';
 }

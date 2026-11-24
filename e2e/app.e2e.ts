@@ -90,6 +90,19 @@ test('exports a zip named <project>-values-<lang> containing strings.xml', async
   expect(listing).toEqual(['strings.xml']);
 });
 
+test('the share button falls back to a download when the browser cannot share a zip', async ({ page }) => {
+  await openAppWithProvider(page);
+  await loadSample(page);
+  await openDrawer(page);
+  await page.click('#drawer-export-btn');
+  await page.locator('#export-allow-broken').check();
+  // Desktop Chromium cannot share an application/zip file; the share click must not error out,
+  // it quietly downloads the same zip instead.
+  const [download] = await Promise.all([page.waitForEvent('download'), page.click('#export-share-btn')]);
+  expect(download.suggestedFilename()).toBe('XML_Translator-values-ar.zip');
+  await expect(page.locator('#export-save-btn')).toBeEnabled();
+});
+
 test('updating the source file keeps translations and reports what changed', async ({ page }) => {
   await openAppWithProvider(page);
   await loadSample(page);

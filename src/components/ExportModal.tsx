@@ -76,7 +76,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
   // Wrong or missing placeholders (%s, %1$d, tags) crash or garble the app at runtime, so exporting them needs a deliberate OK
   // 'documents' = in the device Documents folder, 'download' = a browser download; the share sheet is its own feedback
-  const [saveState, setSaveState] = useState<'idle' | 'working' | 'documents' | 'download' | 'error'>('idle');
+  const [saveState, setSaveState] = useState<'idle' | 'working' | 'documents' | 'download' | 'error' | 'share-error'>('idle');
   const [allowBroken, setAllowBroken] = useState(false);
   const blockingIssues = useMemo(
     () =>
@@ -108,11 +108,17 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         // Falling back to the share sheet needs no status line; the sheet itself is the feedback.
         setSaveState(where === 'shared' ? 'idle' : where);
       } else {
-        await shareFile(blob, zipName);
-        setSaveState('idle');
+        // A browser that cannot share the file downloads it instead; the share sheet needs no status line.
+        const outcome = await shareFile(blob, zipName);
+        setSaveState(outcome === 'downloaded' ? 'download' : 'idle');
       }
-    } catch {
-      setSaveState('error');
+    } catch (err) {
+      // Dismissing the share UI is never an error.
+      if ((err as { name?: string } | null)?.name === 'AbortError') {
+        setSaveState('idle');
+        return;
+      }
+      setSaveState(action === 'share' ? 'share-error' : 'error');
     }
   };
 
@@ -442,16 +448,17 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         )}
 
         <div className="p-6 pt-4">
-          {(saveState === 'documents' || saveState === 'download' || saveState === 'error') && (
+          {(saveState === 'documents' || saveState === 'download' || saveState === 'error' || saveState === 'share-error') && (
             <p
               role="status"
               className={`mb-2 text-xs ${
-                saveState === 'error' ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
+                saveState === 'error' || saveState === 'share-error' ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
               }`}
             >
               {saveState === 'documents' && t('saved_to_documents', zipName)}
               {saveState === 'download' && t('downloaded_zip', zipName)}
               {saveState === 'error' && t('could_not_save_zip')}
+              {saveState === 'share-error' && t('could_not_share_zip')}
             </p>
           )}
           <div className="flex items-center justify-between">
