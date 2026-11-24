@@ -839,6 +839,8 @@ test('plural clone and paste act on the picked form only, and hint when none is 
   await page.click('#weblate-quick-delete-btn');
   await expect(hint).toBeVisible();
   expect(await highlighted(2)).toBeGreaterThan(0);
+  // The resize capsule is hidden during pick mode
+  await expect(page.locator('[data-resize-handle]:visible')).toHaveCount(0);
   // Delete pick mode is red
   await expect(hint).toHaveClass(/red/);
   expect(await fields.nth(2).locator('xpath=ancestor::div[contains(@class,"bg-red-500")]').count()).toBeGreaterThan(0);

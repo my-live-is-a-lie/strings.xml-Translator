@@ -2404,6 +2404,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                           ? `ترجمة صيغة ${pi.quantity} (${pluralLabels[pi.quantity] || pi.quantity})...`
                           : `Translate ${pi.quantity} form (${pluralLabels[pi.quantity] || pi.quantity})...`
                       }
+                      enableSwipeResize={!pluralPick}
                       containerClassName={
                         pluralPick === 'clear'
                           ? 'rounded-lg border border-transparent !bg-red-500/25 cursor-pointer'
