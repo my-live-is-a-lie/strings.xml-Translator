@@ -6,12 +6,12 @@ import { countLineBreaks, hasMidLineDoubleSpaces } from './newlines';
 // `number`, `date`, `time`, `duration`, `spellout` and `ordinal` only take a
 // simple style keyword with no nested braces, so they don't need clause parsing.
 const ICU_PLURAL_LIKE_FORMAT_TYPES = new Set(['plural', 'selectordinal']);
-const ICU_CLAUSE_FORMAT_TYPES = new Set(['plural', 'select', 'selectordinal']);
+export const ICU_CLAUSE_FORMAT_TYPES = new Set(['plural', 'select', 'selectordinal']);
 
 // Every format type ICU MessageFormat accepts. A `{word, word}` pair whose
 // second word is not one of these is not an ICU argument at all (e.g. plain
 // text such as `{red, green}`), so it must not yield a `{word}` placeholder.
-const ICU_FORMAT_TYPES = new Set([
+export const ICU_FORMAT_TYPES = new Set([
   'number',
   'date',
   'time',
@@ -50,7 +50,7 @@ function stripBidiControls(text: string): string {
  * plain apostrophe. Used by both the brace-balance check and the parser so
  * the two agree on what is literal text and what is structure.
  */
-function skipQuotedLiteral(text: string, i: number): number {
+export function skipQuotedLiteral(text: string, i: number): number {
   if (text[i] !== "'") return -1;
   const next = text[i + 1];
   if (next === "'") return i + 2; // escaped apostrophe: a literal `'`
@@ -77,7 +77,7 @@ function skipQuotedLiteral(text: string, i: number): number {
  * instead of stopping at the first `}` found. Braces inside an ICU quoted
  * literal (`'...'`) are literal text, so they are skipped.
  */
-function findMatchingBrace(text: string, openIndex: number): number {
+export function findMatchingBrace(text: string, openIndex: number): number {
   let depth = 0;
   let i = openIndex;
   while (i < text.length) {

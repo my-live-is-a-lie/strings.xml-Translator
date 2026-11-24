@@ -591,3 +591,25 @@ test('import report: an unterminated ICU quote is left out and a mixed-placehold
   await expect(dialog).toContainText('%1$s');
   if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/import-report-${process.env.SHOT_NAME ?? 'ar'}.png` });
 });
+
+test('import report: ICU structure findings on the source and on the merged translation file', async ({ page }) => {
+  const source = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="greeting">Hello</string>\n    <string name="no_other">{count, plural, one {# item}}</string>\n    <string name="dup_key">{n, plural, one {#} other {a} other {b}}</string>\n    <string name="typo_keyword">{count, plurall, one {# a} other {# b}}</string>\n    <string name="unclosed_block">{count, plural, one {# a} other {# b}</string>\n</resources>`;
+  const target = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="greeting">مرحبا</string>\n    <string name="no_other">{count, plural, one {# عنصر}}</string>\n    <string name="typo_keyword">{count, plurall, one {# أ} other {# ب}}</string>\n</resources>`;
+  await page.goto('/');
+  await page.click('#header-right-drawer-btn');
+  await page.click('#drawer-import-btn');
+  const inputs = page.locator('input[type=file]');
+  await inputs.nth(0).setInputFiles({ name: 'strings.xml', mimeType: 'text/xml', buffer: Buffer.from(source) });
+  await inputs.nth(1).setInputFiles({ name: 'strings-ar.xml', mimeType: 'text/xml', buffer: Buffer.from(target) });
+  await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
+
+  const dialog = page.getByRole('dialog');
+  // source: the two blocking entries are left out; the two review findings are listed
+  await expect(dialog).toContainText('typo_keyword');
+  await expect(dialog).toContainText('unclosed_block');
+  await expect(dialog).toContainText('no_other');
+  await expect(dialog).toContainText('dup_key');
+  // target file: reported as review, in a clearly labelled line, and nothing was dropped
+  await expect(dialog).toContainText('ملف الترجمة الذي أضفته');
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/import-report-4b4c.png` });
+});

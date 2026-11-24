@@ -489,6 +489,54 @@ export const UI_STRINGS: Record<string, { en: string; ar: string }> = {
     en: "Item #%2$s of the array \"%1$s\" has an ICU quote (an apostrophe before { or }) that is never closed, so the whole array was left out.",
     ar: "في عنصر المصفوفة رقم %2$s من \"%1$s\" اقتباس ICU (علامة ⁦'⁩ قبل ⁦{⁩ أو ⁦}⁩) لا يُغلق أبدًا، لذا تم استبعاد المصفوفة كاملة.",
   },
+  "repair_unbalanced_icu_block": {
+    en: "\"%1$s\" has an ICU %2$s block whose braces never balance, so it can't be used as a message.",
+    ar: "يحتوي \"%1$s\" على كتلة ICU من النوع ⁦%2$s⁩ أقواسها غير متوازنة، لذا لا يمكن استخدامه كرسالة.",
+  },
+  "repair_unknown_icu_keyword": {
+    en: "\"%1$s\" uses \"%2$s\" as an ICU keyword, which looks like a misspelled plural/select, so it can't be used as a message.",
+    ar: "يستخدم \"%1$s\" الكلمة ⁦\"%2$s\"⁩ ككلمة ICU، وتبدو خطأً إملائيًا في plural/select، لذا لا يمكن استخدامه كرسالة.",
+  },
+  "repair_array_left_out": {
+    en: "The whole array was left out.",
+    ar: "تم استبعاد المصفوفة كاملة.",
+  },
+  "repair_unmatched_brace": {
+    en: "\"%1$s\" has a { that is never closed (near \"%2$s\"). If it was meant as a placeholder, it won't be filled in.",
+    ar: "يحتوي \"%1$s\" على ⁦{⁩ لا يُغلق أبدًا (عند ⁦\"%2$s\"⁩). إن كان يُقصد به عنصر نائب فلن يُملأ.",
+  },
+  "repair_suspect_icu_keyword": {
+    en: "In \"%1$s\", \"%2$s\" is not a known ICU keyword for the block on %3$s. Check the spelling.",
+    ar: "في \"%1$s\"، الكلمة ⁦\"%2$s\"⁩ ليست كلمة ICU معروفة للكتلة الخاصة بـ⁦%3$s⁩. راجع الإملاء.",
+  },
+  "repair_missing_other_branch": {
+    en: "In \"%1$s\", the %2$s block for %3$s has no \"other\" branch. ICU requires it, so this must be fixed in the source file: without it the message fails to render.",
+    ar: "في \"%1$s\"، كتلة ⁦%2$s⁩ الخاصة بـ⁦%3$s⁩ بلا فرع ⁦\"other\"⁩. هذا الفرع إلزامي في ICU، لذا يجب إصلاحه في الملف المصدر وإلا فشل عرض الرسالة.",
+  },
+  "repair_duplicate_icu_category": {
+    en: "In \"%1$s\", the \"%2$s\" branch appears more than once in the block for %3$s.",
+    ar: "في \"%1$s\"، الفرع ⁦\"%2$s\"⁩ مكرر في الكتلة الخاصة بـ⁦%3$s⁩.",
+  },
+  "repair_target_prefix": {
+    en: "In the translation file you added:",
+    ar: "في ملف الترجمة الذي أضفته:",
+  },
+  "repair_target_unterminated_icu_quote": {
+    en: "\"%1$s\" has an ICU quote (an apostrophe before { or }) that is never closed. It was kept as is.",
+    ar: "يحتوي \"%1$s\" على اقتباس ICU (علامة ⁦'⁩ قبل ⁦{⁩ أو ⁦}⁩) لا يُغلق أبدًا. تم الإبقاء عليه كما هو.",
+  },
+  "repair_target_unbalanced_icu_block": {
+    en: "\"%1$s\" has an ICU %2$s block whose braces never balance. It was kept as is.",
+    ar: "يحتوي \"%1$s\" على كتلة ICU من النوع ⁦%2$s⁩ أقواسها غير متوازنة. تم الإبقاء عليه كما هو.",
+  },
+  "repair_target_unknown_icu_keyword": {
+    en: "\"%1$s\" uses \"%2$s\" as an ICU keyword, which looks like a misspelled plural/select. It was kept as is.",
+    ar: "يستخدم \"%1$s\" الكلمة ⁦\"%2$s\"⁩ ككلمة ICU، وتبدو خطأً إملائيًا في plural/select. تم الإبقاء عليه كما هو.",
+  },
+  "repair_target_missing_other_branch": {
+    en: "\"%1$s\": the %2$s block for %3$s has no \"other\" branch, which ICU requires, so it may fail to render. It was kept as is.",
+    ar: "\"%1$s\": كتلة ⁦%2$s⁩ الخاصة بـ⁦%3$s⁩ بلا فرع ⁦\"other\"⁩ وهو إلزامي في ICU، فقد يفشل عرضها. تم الإبقاء عليها كما هي.",
+  },
   "repair_missing_name": {
     en: "A <%1$s> has no \"name\" attribute, so it can't be imported.",
     ar: "يوجد عنصر ⁦<%1$s>⁩ بلا سمة ⁦\"name\"⁩، لذا يتعذّر استيراده.",

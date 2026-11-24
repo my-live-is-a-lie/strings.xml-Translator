@@ -1,5 +1,6 @@
 import { parseAndroidXml, ParsedXmlResult } from './xmlParser';
 import { extractBraceTokens, hasUnterminatedIcuQuote } from './placeholderCheck';
+import { findIcuFindings, IcuFinding } from './icuSourceChecks';
 
 /**
  * The import-repair system (see issue #25): a pre-pass that runs before `parseAndroidXml` on a
@@ -584,6 +585,15 @@ export function findMixedPlaceholders(decoded: string): { printf: string; icu: s
  * `<string-array>` is excluded as a whole — dropping one item would silently renumber the ones after it.
  * `<plurals>` items are plain text per quantity, not ICU, and are never checked.
  */
+/** The first reason (if any) a decoded value can't be used as an ICU message: an unterminated quote (#14), or a
+ *  clearly-ICU block with unbalanced braces (#13) or a misspelled keyword (#15). */
+function blockingIcuProblem(body: string): { category: string; detail?: string } | null {
+  const decoded = decodeBodyForIcuChecks(body);
+  if (hasUnterminatedIcuQuote(decoded)) return { category: 'unterminated-icu-quote' };
+  const f = findIcuFindings(decoded).find((x) => x.blocking);
+  return f ? { category: f.kind, detail: f.detail } : null;
+}
+
 function excludeUnterminatedIcuQuotes(
   text: string,
   issue: IssueFactory
@@ -598,16 +608,17 @@ function excludeUnterminatedIcuQuotes(
   for (const m of validBodyMatches(scannable, STRING_BODY)) {
     const [bodyStart, bodyEnd] = m.indices![2];
     const body = text.slice(bodyStart, bodyEnd);
-    if (!hasUnterminatedIcuQuote(decodeBodyForIcuChecks(body))) continue;
+    const problem = blockingIcuProblem(body);
+    if (!problem) continue;
     found.push({
       start: m.index!,
       end: m.index! + m[0].length,
       issue: issue(
         'blocking',
-        'unterminated-icu-quote',
-        `"${m[1]}" has an ICU quote that is never closed, so it can't be used as a message: "${excerptOf(body)}"`,
+        problem.category,
+        `"${m[1]}" can't be used as an ICU message (${problem.category}): "${excerptOf(body)}"`,
         m[1],
-        { resourceType: 'string', params: { excerpt: excerptOf(body) } }
+        { resourceType: 'string', params: { excerpt: excerptOf(body), ...(problem.detail ? { detail: problem.detail } : {}) } }
       ),
     });
   }
@@ -617,16 +628,21 @@ function excludeUnterminatedIcuQuotes(
     for (const item of block[2].matchAll(ARRAY_ITEM)) {
       const [s, e] = item.indices![1];
       const body = text.slice(blockBodyStart + s, blockBodyStart + e);
-      if (hasUnterminatedIcuQuote(decodeBodyForIcuChecks(body))) {
+      const problem = blockingIcuProblem(body);
+      if (problem) {
         found.push({
           start: block.index!,
           end: block.index! + block[0].length,
           issue: issue(
             'blocking',
-            'unterminated-icu-quote',
-            `Item #${index + 1} of "${block[1]}" has an ICU quote that is never closed: "${excerptOf(body)}"`,
+            problem.category,
+            `Item #${index + 1} of "${block[1]}" can't be used as an ICU message (${problem.category}): "${excerptOf(body)}"`,
             block[1],
-            { resourceType: 'array', itemQualifier: String(index), params: { excerpt: excerptOf(body) } }
+            {
+              resourceType: 'array',
+              itemQualifier: String(index),
+              params: { excerpt: excerptOf(body), ...(problem.detail ? { detail: problem.detail } : {}) },
+            }
           ),
         });
         break; // one report per array: the whole array is excluded
@@ -655,10 +671,81 @@ function excludeUnterminatedIcuQuotes(
   return { text: candidate, issues: found.reverse().map((f) => f.issue) };
 }
 
+function describeIcuFinding(name: string, f: IcuFinding): string {
+  switch (f.kind) {
+    case 'unmatched-brace':
+      return `"${name}" has a "{" that is never closed (${f.detail}).`;
+    case 'suspect-icu-keyword':
+      return `"${name}": "${f.detail}" in {${f.arg}, ${f.detail}, ...} isn't a known ICU keyword.`;
+    case 'missing-other-branch':
+      return `"${name}": the ${f.detail} block for "${f.arg}" has no mandatory "other" branch.`;
+    default:
+      return `"${name}": the "${f.detail}" branch is repeated in the block for "${f.arg}".`;
+  }
+}
+
+/**
+ * Issue #33 phase 4c: the optional translation file that is merged in at import time gets the same ICU checks
+ * as the source, but EVERYTHING is a `review` issue and nothing is ever excluded: those are the user's own
+ * translations, and silently dropping one would lose their work. It only reports. The issue category is always
+ * `target-icu` and `params.kind` carries the underlying finding (e.g. `unterminated-icu-quote`,
+ * `unbalanced-icu-block`, `mixed-placeholders`). Plural quantity bodies are skipped, like for the source.
+ * The file is read after the same mechanical clean-up the merge itself applies.
+ */
+export function checkTargetFileIcu(rawTarget: string): RepairIssue[] {
+  const text = applySilentFixes(rawTarget).text;
+  if (parseAndroidXml(text).errors.length > 0) return []; // nothing from it is merged either
+  const scannable = blankComments(text);
+  const out: RepairIssue[] = [];
+  let seq = 0;
+  const add = (name: string, kind: string, extras: Partial<IssueExtras>, params: Record<string, number | string>) => {
+    seq += 1;
+    out.push({
+      id: `target_${seq}`,
+      tier: 'review',
+      category: 'target-icu',
+      message: `In the translation file, "${name}": ${kind}.`,
+      stringName: name,
+      ...extras,
+      params: { kind, ...params },
+    });
+  };
+  const check = (name: string, body: string, extras: Partial<IssueExtras>) => {
+    const decoded = decodeBodyForIcuChecks(body);
+    const seen = new Set<string>();
+    if (hasUnterminatedIcuQuote(decoded)) {
+      add(name, 'unterminated-icu-quote', extras, { detail: '', arg: '' });
+    } else {
+      for (const f of findIcuFindings(decoded)) {
+        const key = `${f.kind}|${f.arg ?? ''}|${f.detail}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        add(name, f.kind, extras, { detail: f.detail, arg: f.arg ?? '' });
+      }
+    }
+    const mixed = findMixedPlaceholders(decoded);
+    if (mixed) add(name, 'mixed-placeholders', extras, { printf: mixed.printf, icu: mixed.icu });
+  };
+  for (const m of validBodyMatches(scannable, STRING_BODY)) {
+    const [a, b] = m.indices![2];
+    check(m[1], text.slice(a, b), { resourceType: 'string' });
+  }
+  for (const block of validBodyMatches(scannable, STRING_ARRAY_BLOCK)) {
+    const base = block.indices![2][0];
+    let index = 0;
+    for (const item of block[2].matchAll(ARRAY_ITEM)) {
+      const [a, b] = item.indices![1];
+      check(block[1], text.slice(base + a, base + b), { resourceType: 'array', itemQualifier: String(index) });
+      index += 1;
+    }
+  }
+  return out;
+}
+
 /** Blocking categories that describe one excluded entry rather than the whole file. The Import Report shows
  *  these as its read-only "Not imported" section and still lets the import continue; any *other* blocking
  *  issue keeps rejecting the whole file. Defined next to where they're produced so the two can't drift. */
-const ENTRY_EXCLUSION_CATEGORIES: ReadonlySet<string> = new Set(['malformed-entry', 'missing-name', 'unterminated-icu-quote']);
+const ENTRY_EXCLUSION_CATEGORIES: ReadonlySet<string> = new Set(['malformed-entry', 'missing-name', 'unterminated-icu-quote', 'unbalanced-icu-block', 'unknown-icu-keyword']);
 
 export function isEntryExclusion(issue: RepairIssue): boolean {
   return issue.tier === 'blocking' && ENTRY_EXCLUSION_CATEGORIES.has(issue.category);
@@ -740,6 +827,25 @@ export function repairAndroidXml(raw: string): RepairResult {
     );
   }
 
+  // Issue #33 (4b): non-blocking ICU findings for one value: a lone `{`, a keyword that may be a typo, a
+  // missing mandatory `other`, a repeated clause key. Informational (no suggested fix). Blocking findings were
+  // already handled (the entry is gone from `text`), so only review-tier findings can show up here.
+  function checkIcuStructure(name: string, body: string, extras: Partial<IssueExtras> = {}) {
+    const seen = new Set<string>();
+    for (const f of findIcuFindings(decodeBodyForIcuChecks(body))) {
+      if (f.blocking) continue;
+      const key = `${f.kind}|${f.arg ?? ''}|${f.detail}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      reviewIssues.push(
+        issue('review', f.kind, describeIcuFinding(name, f), name, {
+          ...extras,
+          params: { detail: f.detail, arg: f.arg ?? '' },
+        })
+      );
+    }
+  }
+
   function reportDuplicates(seenNames: Map<string, number>, resourceType: RepairIssue['resourceType'], noun: string) {
     for (const [name, count] of seenNames) {
       if (count > 1) {
@@ -761,6 +867,7 @@ export function repairAndroidXml(raw: string): RepairResult {
     const [bodyStart, bodyEnd] = match.indices![2];
     checkApostrophes(name, text.slice(bodyStart, bodyEnd), bodyStart, { resourceType: 'string' });
     checkMixedPlaceholders(name, text.slice(bodyStart, bodyEnd), { resourceType: 'string' });
+    checkIcuStructure(name, text.slice(bodyStart, bodyEnd), { resourceType: 'string' });
   }
   reportDuplicates(seenStringNames, 'string', '<string>');
 
@@ -791,6 +898,7 @@ export function repairAndroidXml(raw: string): RepairResult {
       const bodyEnd = blockBodyStart + item.indices![1][1];
       checkApostrophes(name, text.slice(bodyStart, bodyEnd), bodyStart, { resourceType: 'array', itemQualifier: String(index) });
       checkMixedPlaceholders(name, text.slice(bodyStart, bodyEnd), { resourceType: 'array', itemQualifier: String(index) });
+      checkIcuStructure(name, text.slice(bodyStart, bodyEnd), { resourceType: 'array', itemQualifier: String(index) });
       index += 1;
     }
   }
