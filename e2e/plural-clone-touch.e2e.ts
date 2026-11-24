@@ -11,7 +11,8 @@ test('plural clone on a touch screen: hint, pick by tap, stale pick ignored', as
   await page.locator('select').first().selectOption('ar');
   await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
   const fields = page.locator('textarea:visible');
-  await page.locator('#weblate-clone-to-target-btn').tap();
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/plural-source-forms-mobile.png` });
+  await page.locator('#weblate-clone-source-one-btn').tap();
   await expect(page.getByTestId('plural-pick-hint')).toBeVisible();
   if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/plural-pick-mobile.png` });
   await fields.nth(1).tap();
@@ -19,10 +20,10 @@ test('plural clone on a touch screen: hint, pick by tap, stale pick ignored', as
   await expect(fields.nth(0)).toHaveValue('');
   await expect(page.getByTestId('plural-pick-hint')).toHaveCount(0);
   await fields.nth(2).tap();
-  await page.locator('#weblate-clone-to-target-btn').tap();
+  await page.locator('#weblate-clone-source-other-btn').tap();
   await expect(fields.nth(2)).toHaveValue('%d files');
   await page.locator('[data-src-text]').tap();
-  await page.locator('#weblate-clone-to-target-btn').tap();
+  await page.locator('#weblate-clone-source-one-btn').tap();
   await expect(page.getByTestId('plural-pick-hint')).toBeVisible();
 });
 

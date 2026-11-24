@@ -834,11 +834,13 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     setTimeout(() => setCopiedArrayIdx((c) => (c === index ? null : c)), 2000);
   };
 
-  const cloneSourceIntoPluralForm = (qty: string) => {
+  // The source text a clone puts into the picked form: the singular or plural source box that was pressed
+  const [pluralCloneText, setPluralCloneText] = useState<string | null>(null);
+  const cloneSourceIntoPluralForm = (qty: string, text?: string) => {
     if (draftItem.type !== 'plural') return;
     const updated: PluralStringItem = {
       ...draftItem,
-      items: normalizedPluralItems.map((pi) => (pi.quantity === qty ? { ...pi, target: pi.source } : pi)),
+      items: normalizedPluralItems.map((pi) => (pi.quantity === qty ? { ...pi, target: text ?? pi.source } : pi)),
       status: draftItem.status === 'untranslated' ? 'translated' : draftItem.status,
       translationSource: 'manual',
     };
@@ -880,7 +882,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       const arefs = arrayTextareaRefs.current;
       const aKey = Object.keys(arefs).find((i) => arefs[Number(i)] && target instanceof Node && arefs[Number(i)]!.contains(target));
       setPluralPick(null);
-      if (qty && pluralPick === 'clone') cloneSourceIntoPluralForm(qty);
+      if (qty && pluralPick === 'clone') cloneSourceIntoPluralForm(qty, pluralCloneText ?? undefined);
       if (qty && pluralPick === 'clear') clearPluralForm(qty);
       if (aKey !== undefined && pluralPick === 'clear') clearArrayItem(Number(aKey));
     };
@@ -895,7 +897,19 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       document.removeEventListener('pointerup', onPointerUp, true);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pluralPick, draftItem, normalizedPluralItems]);
+  }, [pluralPick, pluralCloneText, draftItem, normalizedPluralItems]);
+
+  // Clone one of the plural source boxes (singular / plural) into the form that has the caret, else pick mode
+  const handleClonePluralSource = (text: string) => {
+    const qty = pickedPluralQuantity();
+    if (!qty) {
+      setPluralCloneText(text);
+      showPluralPickHint('clone');
+      return;
+    }
+    setPluralPick(null);
+    cloneSourceIntoPluralForm(qty, text);
+  };
 
   const handleCloneSourceToTarget = () => {
     if (draftItem.type === 'string') {
@@ -907,13 +921,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       };
       updateDraftItem(updated);
     } else if (draftItem.type === 'plural') {
-      const qty = pickedPluralQuantity();
-      if (!qty) {
-        showPluralPickHint('clone');
-        return;
-      }
-      setPluralPick(null);
-      cloneSourceIntoPluralForm(qty);
+      return;
     } else if (draftItem.type === 'array') {
       const updated: ArrayStringItem = {
         ...draftItem,
@@ -1235,6 +1243,25 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
 
   // Copy link / XML key
   // Copy English source
+  // Plural entries always show the singular and plural source texts, whatever forms the target language has
+  const pluralSourceBoxes: Array<{ quantity: 'one' | 'other'; text: string }> =
+    draftItem.type === 'plural'
+      ? (['one', 'other'] as const).flatMap((q) => {
+          const raw =
+            draftItem.items.find((x) => x.quantity === q)?.source ??
+            normalizedPluralItems.find((x) => x.quantity === q)?.source;
+          if (!raw || !raw.trim()) return [];
+          const core = splitFormattingEdges(raw, raw).core;
+          return [{ quantity: q, text: splitInteriorIndents(core, core).display }];
+        })
+      : [];
+  const [copiedPluralSource, setCopiedPluralSource] = useState<string | null>(null);
+  const copyPluralSource = (quantity: string, text: string) => {
+    void copyTextToClipboard(text);
+    setCopiedPluralSource(quantity);
+    setTimeout(() => setCopiedPluralSource((c) => (c === quantity ? null : c)), 2000);
+  };
+
   const handleCopySource = () => {
     void copyTextToClipboard(sourceDisplayText);
     setCopiedSource(true);
@@ -2092,7 +2119,47 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             </div>
 
             {/* A string-array has no combined source box (it would show the first item only): each item carries its own source line */}
-            {draftItem.type !== 'array' && (
+            {draftItem.type === 'plural' && pluralSourceBoxes.length > 0 && (
+              <div className="space-y-1.5">
+                {pluralSourceBoxes.map((box, bIdx) => (
+                  <div key={box.quantity} dir="ltr" className="flex items-start gap-1">
+                    <button
+                      id={`weblate-clone-source-${box.quantity}-btn`}
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => handleClonePluralSource(box.text)}
+                      className="mt-1.5 ps-1.5 pe-1 py-1 rounded-md text-slate-500 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-[#1C2330] transition cursor-pointer shrink-0"
+                      title={t('clone_source_to_translation')}
+                    >
+                      <svg className="w-4 h-4" viewBox="3 2 19 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M10 11V8.5A1.5 1.5 0 0 1 11.5 7h7A1.5 1.5 0 0 1 20 8.5v10a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 10 18.5V17" />
+                        <path d="M15 4H6.5A1.5 1.5 0 0 0 5 5.5v7A1.5 1.5 0 0 0 6.5 14H15" />
+                        <path d="m12.5 11.5 2.5 2.5-2.5 2.5" />
+                      </svg>
+                    </button>
+                    <div dir="ltr" className="kb-src flex-1 min-h-[38px] px-3 py-1.5 rounded-lg bg-slate-100/90 dark:bg-[#141822] border border-slate-200/90 dark:border-[#283140]">
+                      <div dir="rtl" data-testid={`plural-source-label-${box.quantity}`} className="text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-100 text-start">
+                        {t(box.quantity === 'one' ? 'plural_source_singular' : 'plural_source_plural')}
+                      </div>
+                      <span dir="auto" {...(bIdx === 0 ? { 'data-src-text': '' } : {})} data-testid={`plural-source-${box.quantity}`} data-src-raw={box.text} className="block text-xs sm:text-sm font-normal text-slate-800 dark:text-slate-100 select-text break-words whitespace-pre-line leading-relaxed">
+                        <button
+                          type="button"
+                          onClick={() => copyPluralSource(box.quantity, box.text)}
+                          className="float-left mr-2 -mt-px p-0.5 rounded-md text-slate-500 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-[#202736] transition cursor-pointer"
+                          title={t('copy_english_source_text')}
+                          data-testid={`plural-source-copy-${box.quantity}`}
+                        >
+                          {copiedPluralSource === box.quantity ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                        </button>
+                        {renderSourceWithSyntaxHighlights(box.text)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {draftItem.type !== 'array' && draftItem.type !== 'plural' && (
             <>
             <div dir="ltr" className="flex items-start gap-1">
               {/* Clone icon button (Weblate clone to target — matches screenshot) */}

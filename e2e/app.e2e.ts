@@ -774,8 +774,15 @@ test('plural clone and paste act on the picked form only, and hint when none is 
   const count = await fields.count();
   const hint = page.getByTestId('plural-pick-hint');
 
+  // The source section always shows the singular and the plural source, each with its own copy and clone
+  await expect(page.getByTestId('plural-source-one')).toContainText('%d file');
+  await expect(page.getByTestId('plural-source-other')).toContainText('%d files');
+  await expect(page.getByTestId('plural-source-label-one')).toHaveText(/مفرد|Singular/);
+  await expect(page.getByTestId('plural-source-label-other')).toHaveText(/الجمع|Plural/);
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/plural-source-forms.png` });
+
   // Nothing picked: clone fills nothing and shows the hint
-  await page.click('#weblate-clone-to-target-btn');
+  await page.click('#weblate-clone-source-one-btn');
   await expect(hint).toBeVisible();
   if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/plural-pick-hint.png` });
   for (let i = 0; i < count; i++) await expect(fields.nth(i)).toHaveValue('');
@@ -786,7 +793,7 @@ test('plural clone and paste act on the picked form only, and hint when none is 
   for (let i = 0; i < count; i++) await expect(fields.nth(i)).toHaveValue('');
 
   // Clone mode, then a click on a form fills that form only
-  await page.click('#weblate-clone-to-target-btn');
+  await page.click('#weblate-clone-source-one-btn');
   await expect(hint).toBeVisible();
   const highlighted = (i: number) => fields.nth(i).locator('xpath=ancestor::div[contains(@class,"cursor-pointer")]').count();
   expect(await highlighted(1)).toBeGreaterThan(0);
@@ -800,7 +807,7 @@ test('plural clone and paste act on the picked form only, and hint when none is 
   // A form clicked earlier but left again (focus moved away) is no longer picked: clone shows the hint
   await fields.nth(0).click();
   await page.locator('[data-src-text]').click();
-  await page.click('#weblate-clone-to-target-btn');
+  await page.click('#weblate-clone-source-one-btn');
   await expect(hint).toBeVisible();
   await page.locator('[data-src-text]').click();
   await expect(hint).toHaveCount(0);
@@ -808,7 +815,7 @@ test('plural clone and paste act on the picked form only, and hint when none is 
 
   // With a form already picked, clone fills it straight away
   await fields.nth(count - 1).click();
-  await page.click('#weblate-clone-to-target-btn');
+  await page.click('#weblate-clone-source-other-btn');
   await expect(fields.nth(count - 1)).toHaveValue('%d files');
   await expect(hint).toHaveCount(0);
 
