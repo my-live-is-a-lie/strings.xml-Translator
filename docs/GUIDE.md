@@ -161,6 +161,14 @@ The **QA Checks** card in the strings list counts problems across the file and l
 - **HTML tags** – invalid or missing tags (`<b>`, `<i>`, `<u>`, `<font …>`, …).
 - **Plural forms** – a missing or unexpected plural category for the target language (for example Arabic needs `zero`, `one`, `two`, `few`, `many` and `other`, while Japanese needs only `other`). This is a *warning*, not an error: ICU falls back to `other`.
 
+### Checks when you import a file
+
+When you import a `strings.xml`, the app checks it before creating the project and shows an **Import Report** if it found something. Text-level problems it can fix safely are fixed for you. The ICU MessageFormat checks only report; they never change a string. They look at normal strings and array items (not the separate `<plurals>` items) and read the text the way Android does, so `\'` and `&apos;` count as plain apostrophes.
+
+- **Not imported** – an entry is left out, and the rest of the file is imported, when it has an ICU quote that is never closed (an apostrophe before `{` or `}`), an ICU block (`{count, plural, …}`) whose braces never balance, or a misspelled keyword such as `plurall` or `selct`. For an array, the whole array is left out. Fix these in the source file.
+- **Needs review** – imported as written, but worth a look: a `plural`, `select` or `selectordinal` block with no `other` branch (ICU requires it, so the message can fail to render), a branch repeated in one block, a `{` that is never closed, a keyword that may be a typo, and a value that mixes `%s`-style and `{name}`-style placeholders.
+- **Translation file you add** – if you also add an existing translation file, it gets the same checks, but everything is only a review note. Nothing in it is removed or changed.
+
 ### ICU MessageFormat blocks
 
 A string can contain an ICU block, where the text inside each clause is translated and the surrounding syntax is not:

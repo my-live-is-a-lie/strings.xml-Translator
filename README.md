@@ -60,6 +60,7 @@ It was built for translators who work from a phone as comfortably as from a desk
 
 ### Quality checks
 - **QA checks** for missing or altered placeholders (`%1$s`, `%d`, …), broken HTML tags, and ICU MessageFormat blocks with a missing `other`, a changed `select` key or a plural category the target language needs.
+- **Import checks** – on import, an Import Report lists what was fixed, what needs a look, and any entry left out (for example an ICU block with unbalanced braces, an unclosed ICU quote or a misspelled `plural`/`select`). A translation file you add is checked too, as review notes only.
 - **Smart typing helpers** – next-word prediction, optional auto-correct, and a double-space shortcut that closes open brackets and quotes (`( " ' ﴿ …`).
 - **Quick-insert bar** for special characters and Unicode direction marks (RLM, LRM, ZWJ, NBS, …) that adapts to what you use most.
 - Per-string **RTL / LTR** switch for mixed-direction text.
