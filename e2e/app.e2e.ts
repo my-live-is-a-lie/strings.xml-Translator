@@ -1064,3 +1064,21 @@ test('plural source labels sit opposite the source text direction', async ({ pag
   }
   if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/plural-source-forms-rtl.png` });
 });
+
+test('Suggest fills every plural category of the target language in an ICU message', async ({ page }) => {
+  await mockProviderApi(page);
+  await openAppWithProvider(page);
+  const xml = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="notes">{count, plural, =0{No notifications} one{# notification} other{# notifications}}</string>\n</resources>`;
+  await page.click('#header-right-drawer-btn');
+  await page.click('#drawer-import-btn');
+  await page.fill('#import-project-name', 'Test App');
+  await page.getByRole('button', { name: /لصق نص XML|Paste XML/ }).click();
+  await page.locator('textarea').last().fill(xml);
+  await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
+  const fields = page.locator('[data-testid^="icu-field-"]');
+  await expect(fields).toHaveCount(7); // =0, zero, one, two, few, many, other
+  await page.click('#weblate-suggest-btn');
+  await expect(fields.nth(0)).not.toHaveValue('');
+  for (let i = 0; i < 7; i++) await expect(fields.nth(i)).not.toHaveValue('');
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/suggest-all-plural-forms.png` });
+});
