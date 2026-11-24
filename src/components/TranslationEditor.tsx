@@ -2014,23 +2014,27 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   const pickHintNode = (
                 pluralPickHint && (
                   <div
-                    data-testid="plural-pick-hint"
-                    role="status"
                     ref={pickHintRef}
                     style={{ top: pickHintTop }}
-                    className={`${pickHintSticky ? 'sticky' : 'fixed inset-x-3 mx-auto max-w-md'} z-40 rounded-lg border px-3 py-1.5 text-center text-xs font-medium shadow-lg backdrop-blur ${
-                      pluralPick === 'clear'
-                        ? 'border-red-400/60 bg-red-100/95 text-red-800 dark:bg-red-950/90 dark:text-red-200'
-                        : 'border-sky-400/50 bg-sky-100/95 text-sky-800 dark:bg-sky-950/90 dark:text-sky-200'
-                    }`}
+                    className={`${pickHintSticky ? 'sticky' : 'fixed inset-x-3 mx-auto max-w-md'} z-40 space-y-1.5`}
                   >
-                    <div>{t(draftItem.type === 'array' ? 'array_pick_item_first' : 'plural_pick_form_first')}</div>
+                    <div
+                      data-testid="plural-pick-hint"
+                      role="status"
+                      className={`rounded-lg border px-3 py-1.5 text-center text-xs font-medium shadow-lg backdrop-blur ${
+                        pluralPick === 'clear'
+                          ? 'border-red-400/60 bg-red-100/95 text-red-800 dark:bg-red-950/90 dark:text-red-200'
+                          : 'border-sky-400/50 bg-sky-100/95 text-sky-800 dark:bg-sky-950/90 dark:text-sky-200'
+                      }`}
+                    >
+                      {t(draftItem.type === 'array' ? 'array_pick_item_first' : 'plural_pick_form_first')}
+                    </div>
                     {pluralPick === 'clear' && (
                       <button
                         type="button"
                         data-testid="plural-delete-all"
                         onClick={clearAllFields}
-                        className="mt-1.5 w-full rounded-md border border-red-500/60 bg-red-600 px-3 py-1 text-xs font-semibold text-white hover:bg-red-700 active:bg-red-800 transition cursor-pointer"
+                        className="w-full rounded-lg border border-red-500/60 bg-red-600 px-3 py-1.5 text-xs font-semibold text-white shadow-lg hover:bg-red-700 active:bg-red-800 transition cursor-pointer"
                       >
                         {t('delete_all_fields')}
                       </button>
