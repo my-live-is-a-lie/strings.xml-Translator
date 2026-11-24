@@ -774,8 +774,26 @@ test('plural clone and paste act on the picked form only, and hint when none is 
   const count = await fields.count();
   const hint = page.getByTestId('plural-pick-hint');
 
+  // The source section always shows the singular and the plural source, each with its own copy and clone
+  await expect(page.getByTestId('plural-source-one')).toContainText('%d file');
+  await expect(page.getByTestId('plural-source-other')).toContainText('%d files');
+  await expect(page.getByTestId('plural-source-label-one')).toHaveText(/مفرد|Singular/);
+  await expect(page.getByTestId('plural-source-label-other')).toHaveText(/الجمع|Plural/);
+  // The label sits on the right of its box (opposite the English text direction), the same on every screen size
+  for (const q of ['one', 'other']) {
+    const label = (await page.getByTestId(`plural-source-label-${q}`).boundingBox())!;
+    const box = (await page.getByTestId(`plural-source-label-${q}`).locator('xpath=..').boundingBox())!;
+    expect(box.x + box.width - (label.x + label.width)).toBeLessThan(20);
+    expect(await page.getByTestId(`plural-source-label-${q}`).evaluate((e) => getComputedStyle(e).textAlign)).toBe('right');
+    // Clone button sits at the same level as the copy button
+    const cl = (await page.locator(`#weblate-clone-source-${q}-btn`).boundingBox())!;
+    const cp = (await page.getByTestId(`plural-source-copy-${q}`).boundingBox())!;
+    expect(Math.abs((cl.y + cl.height / 2) - (cp.y + cp.height / 2))).toBeLessThan(2.5);
+  }
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/plural-source-forms.png` });
+
   // Nothing picked: clone fills nothing and shows the hint
-  await page.click('#weblate-clone-to-target-btn');
+  await page.click('#weblate-clone-source-one-btn');
   await expect(hint).toBeVisible();
   if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/plural-pick-hint.png` });
   for (let i = 0; i < count; i++) await expect(fields.nth(i)).toHaveValue('');
@@ -786,7 +804,7 @@ test('plural clone and paste act on the picked form only, and hint when none is 
   for (let i = 0; i < count; i++) await expect(fields.nth(i)).toHaveValue('');
 
   // Clone mode, then a click on a form fills that form only
-  await page.click('#weblate-clone-to-target-btn');
+  await page.click('#weblate-clone-source-one-btn');
   await expect(hint).toBeVisible();
   const highlighted = (i: number) => fields.nth(i).locator('xpath=ancestor::div[contains(@class,"cursor-pointer")]').count();
   expect(await highlighted(1)).toBeGreaterThan(0);
@@ -800,7 +818,7 @@ test('plural clone and paste act on the picked form only, and hint when none is 
   // A form clicked earlier but left again (focus moved away) is no longer picked: clone shows the hint
   await fields.nth(0).click();
   await page.locator('[data-src-text]').click();
-  await page.click('#weblate-clone-to-target-btn');
+  await page.click('#weblate-clone-source-one-btn');
   await expect(hint).toBeVisible();
   await page.locator('[data-src-text]').click();
   await expect(hint).toHaveCount(0);
@@ -808,7 +826,7 @@ test('plural clone and paste act on the picked form only, and hint when none is 
 
   // With a form already picked, clone fills it straight away
   await fields.nth(count - 1).click();
-  await page.click('#weblate-clone-to-target-btn');
+  await page.click('#weblate-clone-source-other-btn');
   await expect(fields.nth(count - 1)).toHaveValue('%d files');
   await expect(hint).toHaveCount(0);
 
@@ -996,4 +1014,29 @@ test('string-array: per-item source line, copy and clone, and delete picks one i
   await page.click('#weblate-quick-delete-btn');
   await expect(fields.nth(2)).toHaveValue('');
   await expect(fields.nth(0)).toHaveValue('पहला');
+});
+
+test('plural source labels sit opposite the source text direction', async ({ page }) => {
+  const xml = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <plurals name="files">\n        <item quantity="one">%d ملف</item>\n        <item quantity="other">%d ملفات</item>\n    </plurals>\n</resources>`;
+  await page.goto('/');
+  await page.click('#header-right-drawer-btn');
+  await page.click('#drawer-import-btn');
+  await page.fill('#import-project-name', 'Test App');
+  await page.getByRole('button', { name: /لصق نص XML|Paste XML/ }).click();
+  await page.locator('textarea').last().fill(xml);
+  await page.locator('select').first().selectOption('hi');
+  await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
+  for (const q of ['one', 'other']) {
+    expect(await page.getByTestId(`plural-source-label-${q}`).evaluate((e) => getComputedStyle(e).textAlign)).toBe('left');
+    // RTL source: the label is beside the copy button on the same row, not under it
+    const lb = (await page.getByTestId(`plural-source-label-${q}`).boundingBox())!;
+    const cb = (await page.getByTestId(`plural-source-copy-${q}`).boundingBox())!;
+    expect(Math.abs((lb.y + lb.height / 2) - (cb.y + cb.height / 2))).toBeLessThan(6);
+    // Clone button sits at the same level as the copy button
+    const cl2 = (await page.locator(`#weblate-clone-source-${q}-btn`).boundingBox())!;
+    const cb2 = (await page.getByTestId(`plural-source-copy-${q}`).boundingBox())!;
+    expect(Math.abs((cl2.y + cl2.height / 2) - (cb2.y + cb2.height / 2))).toBeLessThan(2.5);
+    expect(lb.x).toBeGreaterThan(cb.x);
+  }
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/plural-source-forms-rtl.png` });
 });
