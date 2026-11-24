@@ -812,3 +812,30 @@ test('a <plurals> resource with any empty quantity is not saved', async ({ page 
   await expect(warning).toHaveCount(0);
   await expect(page.getByText(/100%|\(1\/1\)/).first()).toBeVisible();
 });
+
+test('a <string-array> with any empty item is not saved', async ({ page }) => {
+  const xml = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string-array name="choices">\n        <item>First</item>\n        <item>Second</item>\n    </string-array>\n</resources>`;
+  await page.goto('/');
+  await page.click('#header-right-drawer-btn');
+  await page.click('#drawer-import-btn');
+  await page.fill('#import-project-name', 'Test App');
+  await page.getByRole('button', { name: /لصق نص XML|Paste XML/ }).click();
+  await page.locator('textarea').last().fill(xml);
+  await page.locator('select').first().selectOption('hi');
+  await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
+
+  const fields = page.locator('textarea:visible');
+  await fields.first().fill('पहला');
+  const warning = page.getByText(/Some items are empty|بعض العناصر فارغة/);
+  await page.click('#weblate-save-stay-btn');
+  await expect(warning).toBeVisible();
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/array-empty-item.png` });
+  await page.click('#weblate-save-stay-btn');
+  await expect(warning).toBeVisible();
+
+  await fields.nth(1).fill('दूसरा');
+  await expect(warning).toHaveCount(0);
+  await page.click('#weblate-save-stay-btn');
+  await expect(warning).toHaveCount(0);
+  await expect(page.getByText(/100%|\(1\/1\)/).first()).toBeVisible();
+});

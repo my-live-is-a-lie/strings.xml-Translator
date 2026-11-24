@@ -2537,7 +2537,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                     ? liveSaveGuard.remaining.some((i) => i.id.endsWith('_linebreaks'))
                       ? t('not_saved_line_breaks_differ')
                       : liveSaveGuard.remaining.every((i) => i.id.endsWith('_icu_incomplete'))
-                      ? t('not_saved_icu_incomplete')
+                      ? t(draftItem.type === 'array' ? 'not_saved_array_incomplete' : 'not_saved_icu_incomplete')
                       : t('not_saved_fix_problems')
                     : liveSaveGuard.notes.length > 0
                     ? t('not_saved_the_translation_was')

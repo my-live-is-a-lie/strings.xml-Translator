@@ -84,3 +84,25 @@ describe('getIcuIncompleteIssues', () => {
     expect(getIcuIncompleteIssues(mk(''), 'ar')).toEqual([]);
   });
 });
+
+describe('getIcuIncompleteIssues for string-array', () => {
+  const arr = (targets: string[]): ResourceItem =>
+    ({
+      id: 'arr', name: 'arr', type: 'array', status: 'translated',
+      items: targets.map((t, i) => ({ index: i, source: `Item ${i + 1}`, target: t })),
+    }) as unknown as ResourceItem;
+
+  it('flags empty items once any item is translated', () => {
+    const issues = getIcuIncompleteIssues(arr(['a', '', 'c', '']), 'hi');
+    expect(issues).toHaveLength(1);
+    expect(issues[0].messageEn).toContain('#2, #4');
+  });
+
+  it('passes when every item is translated', () => {
+    expect(getIcuIncompleteIssues(arr(['a', 'b']), 'hi')).toEqual([]);
+  });
+
+  it('does not flag an array with nothing translated', () => {
+    expect(getIcuIncompleteIssues(arr(['', '']), 'hi')).toEqual([]);
+  });
+});

@@ -2493,6 +2493,25 @@ export function getIcuIncompleteIssues(item: ResourceItem, targetLocale?: string
       });
     }
   }
+  // A `string-array`: every element is translated or none is saved (Android lint's InconsistentArrays
+  // flags a translation whose element count differs from the source). Nothing translated stays saveable.
+  if (item.type === 'array') {
+    const els = (item.items || []).filter((el) => (el.source || '').trim() !== '');
+    const anyFilled = els.some((el) => (el.target || '').trim() !== '');
+    const empty = els.filter((el) => (el.target || '').trim() === '').map((el) => `#${(el.index ?? 0) + 1}`);
+    if (anyFilled && empty.length > 0) {
+      issues.push({
+        id: `${item.id}_main_icu_incomplete`,
+        itemId: item.id,
+        itemName: item.name,
+        category: 'placeholder',
+        severity: 'error',
+        messageEn: `Some items are empty (${empty.join(', ')}). Translate every item, or none of them will be saved.`,
+        messageAr: `بعض العناصر فارغة (${empty.join(', ')}). يجب ترجمة كل العناصر، وإلا فلن يُحفظ أي منها.`,
+        tokens: [],
+      });
+    }
+  }
   for (const p of parts) {
     if (!p.target.trim() || !p.source.includes('{')) continue;
     const model = getIcuFieldModel(p.source, p.target, targetLocale);
