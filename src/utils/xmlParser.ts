@@ -1,4 +1,5 @@
 import { ResourceItem, SingleStringItem, PluralStringItem, ArrayStringItem, PluralQuantityItem, ArrayElementItem } from '../types';
+import { getCldrPluralCategories } from './pluralCategories';
 
 /**
  * Preserves Android XML string content verbatim without stripping escape sequences
@@ -236,20 +237,14 @@ const CANONICAL_PLURAL_ORDER: PluralQuantityItem['quantity'][] = [
 export function getPluralQuantitiesForLanguage(
   langCode: string = 'ar'
 ): PluralQuantityItem['quantity'][] {
+  const fromCldr = getCldrPluralCategories(langCode, 'cardinal');
+  if (fromCldr) return fromCldr as PluralQuantityItem['quantity'][];
+  // Runtime without data for this language: the closest simple table.
   const base = langCode.split('-')[0].toLowerCase();
-
-  if (base === 'ar') {
-    return ['zero', 'one', 'two', 'few', 'many', 'other'];
-  }
-  if (['ru', 'uk', 'pl', 'cs'].includes(base)) {
-    return ['one', 'few', 'many', 'other'];
-  }
-  if (base === 'he') {
-    return ['one', 'two', 'many', 'other'];
-  }
-  if (base === 'ro') {
-    return ['one', 'few', 'other'];
-  }
+  if (base === 'ar') return ['zero', 'one', 'two', 'few', 'many', 'other'];
+  if (['ru', 'uk', 'pl', 'cs'].includes(base)) return ['one', 'few', 'many', 'other'];
+  if (base === 'he') return ['one', 'two', 'many', 'other'];
+  if (base === 'ro') return ['one', 'few', 'other'];
   return ['one', 'other'];
 }
 
@@ -283,10 +278,13 @@ export function normalizePluralsForLanguage(
       '';
 
     // Combine required quantities for target language with any quantities already in the item
+    // A category the language does not use is dropped when it holds no translation; one that
+    // already has a translation stays, so nothing the user typed is lost.
     const allQuantitiesSet = new Set<PluralQuantityItem['quantity']>([
       ...requiredQuantities,
-      ...item.items.map((i) => i.quantity),
+      ...item.items.filter((i) => (i.target || '').trim().length > 0).map((i) => i.quantity),
     ]);
+    allQuantitiesSet.add('other');
 
     const sortedQuantities = CANONICAL_PLURAL_ORDER.filter((q) => allQuantitiesSet.has(q));
 

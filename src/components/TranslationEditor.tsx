@@ -12,6 +12,7 @@ import { HighlightedTextarea } from './HighlightedTextarea';
 import { getArabicLanguageName, getLanguageOption } from '../utils/languages';
 import { isFillableSuggestion, suggestTranslation, suggestionRejectedForIcu } from '../utils/translator';
 import { normalizePluralsForLanguage } from '../utils/xmlParser';
+import { getPluralExamples } from '../utils/pluralCategories';
 import { fixItemEndings } from '../utils/endPunctuation';
 import { fixItemSyntax, FixNote } from '../utils/syntaxFix';
 import { debugIgnored } from '../utils/debug';
@@ -68,6 +69,24 @@ const PLURAL_QUANTITY_LABELS_EN: Record<string, string> = {
   few: 'Few (3–10)',
   many: 'Many (11–99)',
   other: 'Other (100+)',
+};
+
+const PLURAL_CATEGORY_NAMES_AR: Record<string, string> = {
+  zero: 'صفر',
+  one: 'مفرد',
+  two: 'مثنى',
+  few: 'قلة',
+  many: 'كثرة',
+  other: 'أخرى',
+};
+
+const PLURAL_CATEGORY_NAMES_EN: Record<string, string> = {
+  zero: 'Zero',
+  one: 'One',
+  two: 'Two',
+  few: 'Few',
+  many: 'Many',
+  other: 'Other',
 };
 
 interface DraftState {
@@ -184,7 +203,18 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
 }) => {
   const { t, tb } = useT();
   const isAr = appLang === 'ar';
-  const pluralLabels = isAr ? PLURAL_QUANTITY_LABELS_AR : PLURAL_QUANTITY_LABELS_EN;
+  // Category hints follow the target language: the Arabic ranges only for Arabic, otherwise
+  // example numbers computed from that language's own plural rules.
+  const pluralLabels = useMemo(() => {
+    if (targetLang.split('-')[0].toLowerCase() === 'ar') {
+      return isAr ? PLURAL_QUANTITY_LABELS_AR : PLURAL_QUANTITY_LABELS_EN;
+    }
+    const names = isAr ? PLURAL_CATEGORY_NAMES_AR : PLURAL_CATEGORY_NAMES_EN;
+    const examples = getPluralExamples(targetLang);
+    const out: Record<string, string> = {};
+    for (const [cat, name] of Object.entries(names)) out[cat] = examples[cat] ? `${name} (${examples[cat]})` : name;
+    return out;
+  }, [targetLang, isAr]);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const pluralTextareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const arrayTextareaRefs = useRef<Record<number, HTMLTextAreaElement | null>>({});
@@ -558,8 +588,8 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   // ICU branch editor: the fields are a view over draftItem.target (the single source of truth),
   // so the model is re-derived from the string on every render and never stored.
   const icuModel = useMemo(
-    () => (draftItem.type === 'string' ? getIcuFieldModel(draftItem.source, draftItem.target) : null),
-    [draftItem]
+    () => (draftItem.type === 'string' ? getIcuFieldModel(draftItem.source, draftItem.target, targetLang) : null),
+    [draftItem, targetLang]
   );
   const icuFieldsActive = draftItem.type === 'string' && icuModel !== null && !icuRawView;
 
