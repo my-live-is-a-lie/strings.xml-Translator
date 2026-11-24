@@ -1,4 +1,5 @@
 import { breakAfterUnderscores } from './keyBreaks';
+import { fillAddedIcuClauses } from '../utils/icuSuggest';
 import { SourceChangeBadge, SourceChangeDiff } from './SourceChangeDiff';
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
@@ -1735,10 +1736,15 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
         // A rejected suggestion hands back the unchanged source text; filling it would
         // show English as "translated", so leave the box and the status untouched.
         if (isFillableSuggestion(res)) {
-          const isNowEmpty = !res.text.trim();
+          // The suggestion only has the source's clauses: also fill the plural categories the target language adds
+          const filledText = await fillAddedIcuClauses(draftItem.source, res.text, targetLang, async (body, quantity) => {
+            const r = await suggestTranslation(body, targetLang, targetLocaleName, quantity);
+            return isFillableSuggestion(r) ? r.text : null;
+          });
+          const isNowEmpty = !filledText.trim();
           const updated: SingleStringItem = {
             ...draftItem,
-            target: res.text,
+            target: filledText,
             status: isNowEmpty ? 'untranslated' : 'translated',
             translationSource: isNowEmpty ? undefined : 'ai',
             translationEngine: isNowEmpty ? undefined : res.source,
@@ -1834,9 +1840,14 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
           // isFillableSuggestion() check the manual Suggest path uses.
           setIcuRejected(suggestionRejectedForIcu(res));
           if (isFillableSuggestion(res) && res.text.trim()) {
+            const filledText = await fillAddedIcuClauses(item.source, res.text, targetLang, async (body, quantity) => {
+              const r = await suggestTranslation(body, targetLang, targetLocaleName, quantity);
+              return isFillableSuggestion(r) ? r.text : null;
+            });
+            if (cancelled) return;
             const updated: SingleStringItem = {
               ...item,
-              target: res.text,
+              target: filledText,
               status: 'translated',
               translationSource: 'ai',
               translationEngine: res.source,
