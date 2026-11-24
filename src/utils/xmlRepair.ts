@@ -581,13 +581,18 @@ export function hasEscapedApostropheIcuQuote(body: string): boolean {
 const PRINTF_POSITIONAL = /%\d+\$[-#+0,(]*\d*(?:\.\d+)?[a-zA-Z]/;
 const PRINTF_BARE = /(?<![\d%])%[-#+0,(]*\d*(?:\.\d+)?[sdf]/;
 
-/** Case #18: returns the first printf placeholder and the first `{name}`/`{0}` argument when one text uses both. */
+/** Case #18: returns the first printf placeholder and the first `{name}`/`{0}` argument (or plural/select block) when one text uses both. */
 export function findMixedPlaceholders(decoded: string): { printf: string; icu: string } | null {
   if (!decoded.includes('%') || !decoded.includes('{')) return null;
   const noPercents = decoded.replace(/%%/g, '');
   const printf = (PRINTF_POSITIONAL.exec(noPercents) ?? PRINTF_BARE.exec(noPercents))?.[0];
   if (!printf) return null;
-  const icu = extractBraceTokens(decoded, false).find((tok) => /^\{[a-zA-Z0-9_-]+\}$/.test(tok));
+  const tokens = extractBraceTokens(decoded, false);
+  // A simple `{name}` / `{0}` argument, or the opening of a plural/select/selectordinal block (its token is
+  // `{arg:type}`), which is ICU too: `{n, plural, one {%1$s file} other {%1$s files}}` still mixes both systems.
+  const simple = tokens.find((tok) => /^\{[a-zA-Z0-9_-]+\}$/.test(tok));
+  const block = tokens.map((tok) => /^\{([a-zA-Z0-9_-]+):(plural|select|selectordinal)\}$/.exec(tok)).find(Boolean);
+  const icu = simple ?? (block ? `{${block[1]}, ${block[2]}, …}` : undefined);
   return icu ? { printf, icu } : null;
 }
 

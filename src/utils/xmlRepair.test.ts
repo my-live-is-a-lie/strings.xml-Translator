@@ -5,6 +5,7 @@ import {
   isEntryExclusion,
   checkTargetFileIcu,
   excludeUnterminatedIcuQuotes,
+  findMixedPlaceholders,
   hasEscapedApostropheIcuQuote,
   applyReviewDecisions,
   RESOURCE_TYPE_BY_TAG,
@@ -798,5 +799,49 @@ describe('excludeUnterminatedIcuQuotes: exclusion that cannot be verified', () =
     const out = excludeUnterminatedIcuQuotes(text, makeFactory());
     expect(out.text).not.toContain('bad');
     expect(out.issues[0]).toMatchObject({ tier: 'blocking', category: 'unterminated-icu-quote' });
+  });
+});
+
+describe('#18: printf placeholders mixed with a plural/select block', () => {
+  const mixed = (body: string) => findMixedPlaceholders(body);
+
+  it('flags %1$s inside a plural clause', () => {
+    expect(mixed('{count, plural, one {%1$s has # file} other {%1$s has # files}}')).toEqual({ printf: '%1$s', icu: '{count, plural, …}' });
+  });
+
+  it('flags printf next to a select or selectordinal block, in or outside a clause', () => {
+    expect(mixed('{g, select, male {He %s} other {They}}')?.icu).toBe('{g, select, …}');
+    expect(mixed('{n, selectordinal, one {#st %d} other {#th}}')?.icu).toBe('{n, selectordinal, …}');
+    expect(mixed('%s: {n, plural, one {a} other {b}}')?.printf).toBe('%s');
+  });
+
+  it('prefers a simple {name} argument when there is one', () => {
+    expect(mixed('%s {who} {n, plural, one {a} other {b}}')?.icu).toBe('{who}');
+  });
+
+  it('does not flag a plural/select block without printf', () => {
+    expect(mixed('{count, plural, one {# item} other {# items}}')).toBeNull();
+    expect(mixed('{n, plural, one {# percent: 5%} other {5% of #}}')).toBeNull();
+    expect(mixed('{g, select, male {He} other {They}}')).toBeNull();
+  });
+
+  it('does not flag literal percents or a non-plural format type', () => {
+    expect(mixed('{n, plural, one {100%% sure} other {100%% sure}}')).toBeNull();
+    expect(mixed('{n, number, percent} %s')).toBeNull();
+    expect(mixed('{n, plural, one {20%off} other {#}}')).toBeNull();
+  });
+
+  it('keeps the old behavior for the cases that were already decided', () => {
+    expect(mixed('Item 2%s {x}')).toBeNull();
+    expect(mixed('%%s is literal, {x}')).toBeNull();
+    expect(mixed('Hi %1$s, you have {count} new items')?.icu).toBe('{count}');
+  });
+
+  it('is reported by the import check as a Review issue', () => {
+    const r = repairAndroidXml(wrap(`  <string name="a">{count, plural, one {%1$s has # file} other {%1$s has # files}}</string>\n  <string name="b">{count, plural, one {# file} other {# files}}</string>`));
+    expect(r.blockingIssues).toEqual([]);
+    const m = r.reviewIssues.filter((i) => i.category === 'mixed-placeholders');
+    expect(m).toHaveLength(1);
+    expect(m[0]).toMatchObject({ tier: 'review', stringName: 'a', params: { printf: '%1$s', icu: '{count, plural, …}' } });
   });
 });
