@@ -60,6 +60,16 @@ function click(el: HTMLElement) {
   });
 }
 
+function fillProjectName(name: string) {
+  const input = container.querySelector<HTMLInputElement>('#import-project-name');
+  if (!input) throw new Error('project name input not found');
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+  act(() => {
+    setter.call(input, name);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+
 function pasteXml(xml: string) {
   const textarea = container.querySelector('textarea');
   if (!textarea) throw new Error('paste textarea not found');
@@ -68,6 +78,8 @@ function pasteXml(xml: string) {
     setter.call(textarea, xml);
     textarea.dispatchEvent(new Event('input', { bubbles: true }));
   });
+  // Every test here exercises the import itself, not the name guard, so give it a valid name.
+  fillProjectName('Test App');
 }
 
 function pressEscape() {
@@ -141,6 +153,39 @@ describe('ImportModal / Import Report', () => {
 
     expect(hasButton(BTN_CONTINUE)).toBe(false);
     expect(onImportComplete).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ImportModal / project name', () => {
+  it('refuses to start with an empty name and shows an inline hint', () => {
+    const { onImportComplete } = renderModal();
+    click(buttonWithText(TAB_PASTE));
+    pasteXml(CLEAN_XML);
+    fillProjectName('   ');
+    click(buttonWithText(BTN_START));
+
+    expect(onImportComplete).not.toHaveBeenCalled();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('اسم المشروع');
+    expect(hasButton(BTN_START)).toBe(true);
+  });
+
+  it('suggests the project name from the file, and clears it for the generic strings.xml', async () => {
+    renderModal();
+    const fileInput = container.querySelector<HTMLInputElement>('input[type=file]')!;
+    const nameInput = () => container.querySelector<HTMLInputElement>('#import-project-name')!.value;
+    const pickFile = async (name: string) => {
+      const file = new File(['<resources><string name="a">x</string></resources>'], name, { type: 'text/xml' });
+      Object.defineProperty(fileInput, 'files', { value: [file], configurable: true });
+      await act(async () => {
+        fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+        await new Promise((r) => setTimeout(r, 20));
+      });
+    };
+
+    await pickFile('ICU.MessageFormat.xml');
+    expect(nameInput()).toBe('ICU.MessageFormat');
+    await pickFile('strings.xml');
+    expect(nameInput()).toBe('');
   });
 });
 

@@ -55,6 +55,12 @@ export function xmlForLanguage(project: TranslationProject, items: ResourceItem[
   return generateAndroidXml(items, { ...defaultExportOptions, fallbackToSource: false }, project);
 }
 
+/** Project name suggested by an uploaded file: the name without .xml, or '' for the generic strings.xml. */
+export function suggestedProjectName(fileName: string): string {
+  const base = fileName.trim().replace(/\.xml$/i, '');
+  return base.toLowerCase() === 'strings' ? '' : base;
+}
+
 /** File-system-safe base for exported file names: strips a trailing .xml and replaces unsafe characters. */
 export function safeFileBase(name: string): string {
   const cleaned = name.trim().replace(/\.xml$/i, '').replace(/[^\p{L}\p{N}._-]+/gu, '_');

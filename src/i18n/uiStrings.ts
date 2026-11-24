@@ -94,6 +94,8 @@ export const UI_STRINGS: Record<string, { en: string; ar: string }> = {
   "saved_to_documents": { en: "Saved to Documents: %1$s", ar: "تم الحفظ في Documents: %1$s" },
   "downloaded_zip": { en: "Downloaded %1$s", ar: "تم تنزيل %1$s" },
   "could_not_save_zip": { en: "Couldn't save the file. Try the share button.", ar: "تعذّر حفظ الملف. جرّب زر المشاركة." },
+  "project_name_required": { en: "Enter a project name. It names the exported zip.", ar: "اكتب اسم المشروع، الاسم ده بيبقى اسم ملف الـ zip عند التصدير." },
+  "project_name_export_hint": { en: "Used as the exported zip name, e.g. MyApp-values-ar.zip", ar: "بيُستخدم كاسم للـ zip المصدَّر، مثلاً MyApp-values-ar.zip" },
   "save_name": { en: "Save Name", ar: "حفظ الاسم" },
   "rename": { en: "Rename", ar: "إعادة التسمية" },
   "rename_2": { en: "Rename", ar: "إعادة تسمية" },

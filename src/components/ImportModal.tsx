@@ -16,6 +16,7 @@ import {
 } from '../utils/xmlRepair';
 import { TranslationProject } from '../types';
 import { getArabicLanguageName } from '../utils/languages';
+import { suggestedProjectName } from '../utils/multiLang';
 import { useT, tg } from '../i18n/i18n';
 
 type Translate = (key: string, ...args: unknown[]) => string;
@@ -173,9 +174,12 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   const [targetFile, setTargetFile] = useState<{ name: string; content: string } | null>(null);
   const [pastedXml, setPastedXml] = useState('');
   const [targetLang, setTargetLang] = useState('ar');
-  const [projectName, setProjectName] = useState('XML Translator');
+  const [projectName, setProjectName] = useState('');
+  // Shown after an import attempt with an empty name; the name becomes the exported zip's name.
+  const [nameMissing, setNameMissing] = useState(false);
   // Once the user types a project name, picking a file no longer overwrites it.
   const projectNameTouched = useRef(false);
+  const projectNameInputRef = useRef<HTMLInputElement>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [pendingReport, setPendingReport] = useState<{ result: RepairResult; fileName: string } | null>(null);
   // Phase 2 of issue #25: which fixable review issues (by id) the user has opted to apply. A fixable
@@ -239,7 +243,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({
       const text = ev.target?.result as string;
       setSourceFile({ name: file.name, content: text });
       // The file name (without .xml) becomes the project name, so exports can be named after it.
-      if (!projectNameTouched.current) setProjectName(file.name.replace(/\.xml$/i, ''));
+      // The generic strings.xml carries no project name, so the field stays empty for the user to fill.
+      if (!projectNameTouched.current) setProjectName(suggestedProjectName(file.name));
       setErrorMsg(null);
     };
     reader.readAsText(file);
@@ -303,9 +308,17 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     onClose();
   };
 
+  // A name arriving after the failed attempt (typed or auto-filled from a file) clears the error.
+  const showNameMissing = nameMissing && !projectName.trim();
+
   const handleProcessImport = () => {
     setErrorMsg(null);
     setPendingReport(null);
+    if (!projectName.trim()) {
+      setNameMissing(true);
+      projectNameInputRef.current?.focus();
+      return;
+    }
     const xmlToParse = activeTab === 'upload' ? sourceFile?.content : pastedXml;
     const fileName = activeTab === 'upload' ? sourceFile?.name || 'strings.xml' : 'strings.xml';
 
@@ -464,15 +477,32 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                 {t('project_name')}
               </label>
               <input
+                ref={projectNameInputRef}
+                id="import-project-name"
                 type="text"
                 value={projectName}
                 onChange={(e) => {
                   projectNameTouched.current = true;
                   setProjectName(e.target.value);
+                  if (e.target.value.trim()) setNameMissing(false);
                 }}
                 placeholder={t('e_g_my_app_strings')}
-                className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-[#0B57D0] focus:ring-2 focus:ring-[#0B57D0]/20 transition"
+                aria-invalid={showNameMissing}
+                className={`w-full px-3.5 py-2 text-xs rounded-xl border bg-slate-50/50 dark:bg-slate-800/50 text-slate-900 dark:text-slate-100 focus:outline-none transition ${
+                  showNameMissing
+                    ? 'border-rose-400 dark:border-rose-500 focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20'
+                    : 'border-slate-200 dark:border-slate-700 focus:border-[#0B57D0] focus:ring-2 focus:ring-[#0B57D0]/20'
+                }`}
               />
+              {showNameMissing ? (
+                <p role="alert" className="mt-1 text-[11px] text-rose-600 dark:text-rose-400">
+                  {t('project_name_required')}
+                </p>
+              ) : (
+                <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
+                  {t('project_name_export_hint')}
+                </p>
+              )}
             </div>
             <div>
               <label data-i18n className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">

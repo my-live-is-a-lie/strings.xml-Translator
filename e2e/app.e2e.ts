@@ -373,6 +373,7 @@ test('a long source gets a short window that follows the translation; short text
   await page.setViewportSize({ width: 390, height: 800 });
   await page.click('#header-right-drawer-btn');
   await page.click('#drawer-import-btn');
+  await page.fill('#import-project-name', 'Test App');
   await page.getByRole('button', { name: /لصق نص XML|Paste XML/ }).click();
   await page.locator('textarea').last().fill(xml);
   await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
@@ -477,6 +478,7 @@ test('line breaks show as ↵, Enter writes them, and a different count cannot b
   await page.setViewportSize({ width: 390, height: 800 });
   await page.click('#header-right-drawer-btn');
   await page.click('#drawer-import-btn');
+  await page.fill('#import-project-name', 'Test App');
   await page.getByRole('button', { name: /لصق نص XML|Paste XML/ }).click();
   await page.locator('textarea').last().fill(xml);
   await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
@@ -517,6 +519,7 @@ test('ICU branch editor: fields view edits each clause, raw view shows the same 
   await page.goto('/');
   await page.click('#header-right-drawer-btn');
   await page.click('#drawer-import-btn');
+  await page.fill('#import-project-name', 'Test App');
   await page.getByRole('button', { name: /لصق نص XML|Paste XML/ }).click();
   await page.locator('textarea').last().fill(xml);
   await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
@@ -554,6 +557,7 @@ test('the # warning is shown without blocking the save, and never replaces a rea
   await page.goto('/');
   await page.click('#header-right-drawer-btn');
   await page.click('#drawer-import-btn');
+  await page.fill('#import-project-name', 'Test App');
   await page.getByRole('button', { name: /لصق نص XML|Paste XML/ }).click();
   await page.locator('textarea').last().fill(xml);
   await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
@@ -592,11 +596,35 @@ test('the # warning is shown without blocking the save, and never replaces a rea
   await expect(warning).toHaveCount(0);
 });
 
+test('import requires a project name and suggests it from the file, skipping strings.xml', async ({ page }) => {
+  const xml = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="greeting">Hello</string>\n</resources>`;
+  await page.goto('/');
+  await page.click('#header-right-drawer-btn');
+  await page.click('#drawer-import-btn');
+
+  // A meaningful file name fills the project name without its .xml extension.
+  await page.locator('input[type=file]').first().setInputFiles({ name: 'ICU.MessageFormat.xml', mimeType: 'text/xml', buffer: Buffer.from(xml) });
+  await expect(page.locator('#import-project-name')).toHaveValue('ICU.MessageFormat');
+  // The generic strings.xml carries no project name: the field clears for the user to type one.
+  await page.locator('input[type=file]').first().setInputFiles({ name: 'strings.xml', mimeType: 'text/xml', buffer: Buffer.from(xml) });
+  await expect(page.locator('#import-project-name')).toHaveValue('');
+
+  // Starting with an empty name is refused with an inline hint instead of a silent default.
+  await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
+  await expect(page.getByRole('alert')).toContainText(/اسم المشروع|project name/);
+  await expect(page.getByRole('button', { name: /بدء الترجمة|Start Translating/ })).toBeVisible();
+
+  await page.fill('#import-project-name', 'MyApp');
+  await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
+  await expect(page.locator('#string-item-greeting')).toBeVisible();
+});
+
 test('import report: an unterminated ICU quote is left out and a mixed-placeholder value is flagged for review', async ({ page }) => {
   const xml = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="greeting">Hello</string>\n    <string name="mixed">Hi %1$s, you have {count} new items</string>\n    <string name="broken_quote">'{username} said hi</string>\n</resources>`;
   await page.goto('/');
   await page.click('#header-right-drawer-btn');
   await page.click('#drawer-import-btn');
+  await page.fill('#import-project-name', 'Test App');
   await page.getByRole('button', { name: /لصق نص XML|Paste XML/ }).click();
   await page.locator('textarea').last().fill(xml);
   await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
@@ -614,6 +642,7 @@ test('import report: ICU structure findings on the source and on the merged tran
   await page.goto('/');
   await page.click('#header-right-drawer-btn');
   await page.click('#drawer-import-btn');
+  await page.fill('#import-project-name', 'Test App');
   const inputs = page.locator('input[type=file]');
   await inputs.nth(0).setInputFiles({ name: 'strings.xml', mimeType: 'text/xml', buffer: Buffer.from(source) });
   await inputs.nth(1).setInputFiles({ name: 'strings-ar.xml', mimeType: 'text/xml', buffer: Buffer.from(target) });
@@ -636,6 +665,7 @@ test('import report: an escaped apostrophe before a brace is listed for review a
   await page.goto('/');
   await page.click('#header-right-drawer-btn');
   await page.click('#drawer-import-btn');
+  await page.fill('#import-project-name', 'Test App');
   const inputs = page.locator('input[type=file]');
   await inputs.nth(0).setInputFiles({ name: 'strings.xml', mimeType: 'text/xml', buffer: Buffer.from(source) });
   await inputs.nth(1).setInputFiles({ name: 'strings-ar.xml', mimeType: 'text/xml', buffer: Buffer.from(target) });

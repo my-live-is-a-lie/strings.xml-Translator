@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
 import { parseAndroidXml } from '../src/utils/xmlParser';
-import { itemsForLanguage, needsTranslation, safeFileBase, exportZipName, valuesDirFor, xmlForLanguage } from '../src/utils/multiLang';
+import { itemsForLanguage, needsTranslation, safeFileBase, exportZipName, suggestedProjectName, valuesDirFor, xmlForLanguage } from '../src/utils/multiLang';
 import type { SingleStringItem, TranslationProject } from '../src/types';
 
 const raw = '<resources>\n    <string name="a">Hello</string>\n    <string name="b">Bye</string>\n</resources>';
@@ -43,6 +43,16 @@ describe('export zip naming', () => {
     expect(safeFileBase('تطبيقي')).toBe('تطبيقي');
     expect(safeFileBase('a/b\\c')).toBe('a_b_c');
     expect(safeFileBase('')).toBe('strings');
+  });
+});
+
+describe('project name suggestion', () => {
+  it('uses the file name without .xml, and skips the generic strings.xml', () => {
+    expect(suggestedProjectName('ICU.MessageFormat.xml')).toBe('ICU.MessageFormat');
+    expect(suggestedProjectName('my-app.XML')).toBe('my-app');
+    expect(suggestedProjectName('strings.xml')).toBe('');
+    expect(suggestedProjectName('STRINGS.XML')).toBe('');
+    expect(suggestedProjectName('strings')).toBe('');
   });
 });
 

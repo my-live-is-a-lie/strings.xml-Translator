@@ -6,6 +6,7 @@ for (const kind of ['plural', 'array'] as const) {
     await page.goto('/');
     await page.click('#header-right-drawer-btn');
     await page.click('#drawer-import-btn');
+    await page.fill('#import-project-name', 'Test App');
     await page.getByRole('button', { name: /لصق نص XML|Paste XML/ }).click();
     await page.locator('textarea').last().fill(xml);
     await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
