@@ -28,7 +28,7 @@ import {
   type IcuField,
   type IcuFieldPath,
   getIcuStructureIssues,
-  getIcuEmptyOtherIssues,
+  getIcuIncompleteIssues,
   repairItemQuoteMarks,
   getItemQaIssues,
   getLineBreakIssues,
@@ -1444,10 +1444,11 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     return false;
   }, [autoCorrect, draftItem, targetLang, updateDraftItem, withHiddenEdges]);
 
-  // An empty `other` clause leaves every count without its own clause blank, so the message is
-  // incomplete: refuse the save (a hard guard, like a damaged block) until `other` is filled.
-  const blockIfIcuOtherEmpty = React.useCallback((): boolean => {
-    const issues = getIcuEmptyOtherIssues(toStoredItem(withHiddenEdges(draftItem)), targetLang);
+  // Every field of an ICU message must be translated or none is saved: a partly filled message
+  // does not keep the source's shape (and an empty `other` blanks every count without its own
+  // clause). A hard guard, like a damaged block, until the empty fields are filled.
+  const blockIfIcuIncomplete = React.useCallback((): boolean => {
+    const issues = getIcuIncompleteIssues(toStoredItem(withHiddenEdges(draftItem)), targetLang);
     if (issues.length === 0) return false;
     setSaveGuard({ notes: [], remaining: issues, hard: true, itemId: item.id });
     return true;
@@ -1459,7 +1460,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       ? [
           ...getLineBreakIssues(toStoredItem(withHiddenEdges(draftItem)), targetLang),
           ...getIcuStructureIssues(toStoredItem(withHiddenEdges(draftItem)), targetLang),
-          ...getIcuEmptyOtherIssues(toStoredItem(withHiddenEdges(draftItem)), targetLang),
+          ...getIcuIncompleteIssues(toStoredItem(withHiddenEdges(draftItem)), targetLang),
         ]
       : []),
     [saveGuard, item.id, draftItem, targetLang, withHiddenEdges]
@@ -1487,7 +1488,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
 
   // Save without continuing (حفظ بدون متابعة / Save & Stay)
   const handleSaveWithoutContinuing = React.useCallback(() => {
-    if (blockIfNothingTyped() || blockIfLineBreaksDiffer() || blockIfIcuBroken() || blockIfIcuOtherEmpty() || blockIfNeedsFix()) return;
+    if (blockIfNothingTyped() || blockIfLineBreaksDiffer() || blockIfIcuBroken() || blockIfIcuIncomplete() || blockIfNeedsFix()) return;
     // Saving settles the string: the old source text (diff) is no longer shown
     const savedItem = { ...buildSavedItemFromDraft(draftItem), previousSources: undefined };
     const undoDeletesText = savedItem.translationSource === 'ai' && item.status === 'untranslated';
@@ -1496,7 +1497,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     onUpdateTranslation(savedItem, undoDeletesText ? { undoDeletesText: true } : undefined);
     setShowSavedFeedback(true);
     setTimeout(() => setShowSavedFeedback(false), 2000);
-  }, [blockIfNothingTyped, blockIfLineBreaksDiffer, blockIfIcuBroken, blockIfNeedsFix, blockIfIcuOtherEmpty, buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation]);
+  }, [blockIfNothingTyped, blockIfLineBreaksDiffer, blockIfIcuBroken, blockIfNeedsFix, blockIfIcuIncomplete, buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation]);
 
   // Save and continue (حفظ ومتابعة / Save & Continue)
   const handleSaveAndContinue = React.useCallback(() => {
@@ -1504,7 +1505,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       onNavigateNext(); // nothing typed: nothing is saved, just continue
       return;
     }
-    if (blockIfLineBreaksDiffer() || blockIfIcuBroken() || blockIfIcuOtherEmpty() || blockIfNeedsFix()) return;
+    if (blockIfLineBreaksDiffer() || blockIfIcuBroken() || blockIfIcuIncomplete() || blockIfNeedsFix()) return;
     // Saving settles the string: the old source text (diff) is no longer shown
     const savedItem = { ...buildSavedItemFromDraft(draftItem), previousSources: undefined };
     const undoDeletesText = savedItem.translationSource === 'ai' && item.status === 'untranslated';
@@ -1512,7 +1513,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     setDraftState(freshDraftState(savedItem));
     onUpdateTranslation(savedItem, undoDeletesText ? { undoDeletesText: true } : undefined);
     onNavigateNext();
-  }, [isNothingTyped, blockIfLineBreaksDiffer, blockIfIcuBroken, blockIfNeedsFix, blockIfIcuOtherEmpty, buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation, onNavigateNext]);
+  }, [isNothingTyped, blockIfLineBreaksDiffer, blockIfIcuBroken, blockIfNeedsFix, blockIfIcuIncomplete, buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation, onNavigateNext]);
 
   // Editor keyboard shortcuts for Undo/Redo and Ctrl+Enter (Save & Continue)
   useEffect(() => {
@@ -2535,8 +2536,8 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                     : liveSaveGuard.hard
                     ? liveSaveGuard.remaining.some((i) => i.id.endsWith('_linebreaks'))
                       ? t('not_saved_line_breaks_differ')
-                      : liveSaveGuard.remaining.every((i) => i.id.endsWith('_empty_other'))
-                      ? t('not_saved_empty_other')
+                      : liveSaveGuard.remaining.every((i) => i.id.endsWith('_icu_incomplete'))
+                      ? t('not_saved_icu_incomplete')
                       : t('not_saved_fix_problems')
                     : liveSaveGuard.notes.length > 0
                     ? t('not_saved_the_translation_was')

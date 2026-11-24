@@ -758,7 +758,7 @@ test('plural categories follow the target language, not Arabic', async ({ page }
   await expect(page.getByTestId('icu-field-0:2')).toHaveCount(0);
 });
 
-test('an empty `other` clause blocks the save until it is filled', async ({ page }) => {
+test('an ICU message with an empty field is not saved until every field is filled', async ({ page }) => {
   const xml = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="msgs">{count, plural, one {# message} other {# messages}}</string>\n</resources>`;
   await page.goto('/');
   await page.click('#header-right-drawer-btn');

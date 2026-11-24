@@ -377,7 +377,7 @@ export const UI_STRINGS: Record<string, { en: string; ar: string }> = {
   "icu_text_part": { en: "Text outside the block", ar: "نص خارج الكتلة" },
   "not_saved_the_translation_was": { en: "Not saved. The translation was corrected automatically, review it and press Save again:", ar: "لم يُحفظ النص. صحّحتُ الترجمة تلقائياً، راجعها ثم اضغط حفظ مرة أخرى:" },
   "not_saved_some_errors_could": { en: "Not saved. Some errors could not be fixed automatically, press Save again to ignore them:", ar: "لم يُحفظ النص. توجد أخطاء لم أستطع إصلاحها، اضغط حفظ مرة أخرى لتجاهلها:" },
-  "not_saved_empty_other": { en: "Not saved. Fill in the 'other' clause to save the translation:", ar: "لم يُحفظ النص. املأ فرع 'other' ليتم حفظ الترجمة:" },
+  "not_saved_icu_incomplete": { en: "Not saved. Translate every field of the message to save it:", ar: "لم يُحفظ النص. يجب ترجمة كل حقول الرسالة ليتم حفظها:" },
   "not_saved_line_breaks_differ": { en: "Not saved. The translation must have exactly the same number of line breaks as the source:", ar: "لم يُحفظ النص. يجب أن يتطابق عدد الأسطر الجديدة مع الأصل تمامًا:" },
   "not_saved_fix_problems": { en: "Not saved. Fix the problems below:", ar: "لم يُحفظ النص. صحّح المشاكل التالية:" },
   "icu_hash_warning": {

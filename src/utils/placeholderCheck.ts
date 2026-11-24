@@ -2431,15 +2431,24 @@ export function getIcuStructureIssues(item: ResourceItem, targetLocale?: string)
   return [...structureIssues, ...quoteIssues];
 }
 
-/** Variables of the plural / select blocks (any depth) whose `other` body is empty while the source's is not. */
-function emptyOtherVariables(fields: IcuField[]): string[] {
+/**
+ * The fields (any depth) the translator left empty although the source has text there: a clause
+ * body, or a text run outside a block. A category the target language adds (`added`) is optional,
+ * and a field whose source is blank (formatting whitespace, an empty source branch) is not required.
+ * Entries read `{count}: other` for a clause and `text` for a text run.
+ */
+function emptyRequiredFields(fields: IcuField[]): string[] {
   const out: string[] = [];
   for (const field of fields) {
-    if (field.kind !== 'block') continue;
+    if (field.kind === 'text') {
+      if (field.value.trim() === '' && field.sourceValue.trim() !== '') out.push('text');
+      continue;
+    }
     for (const clause of field.clauses) {
-      if (clause.children) out.push(...emptyOtherVariables(clause.children));
-      if (clause.selector === 'other' && clauseHasContent(clause) === false && clause.sourceValue.trim() !== '') {
-        out.push(field.name);
+      if (clause.children) {
+        out.push(...emptyRequiredFields(clause.children));
+      } else if (!clause.added && clause.value.trim() === '' && clause.sourceValue.trim() !== '') {
+        out.push(`{${field.name}}: ${clause.selector}`);
       }
     }
   }
@@ -2447,13 +2456,11 @@ function emptyOtherVariables(fields: IcuField[]): string[] {
 }
 
 /**
- * An ICU block whose `other` body is empty in a translation that has text. `other` is the
- * fallback every count without its own clause uses, so an empty one shows nothing for those counts
- * (a translator who filled only `one`, say): the message is incomplete, so the editor refuses to
- * save it until `other` is filled. Untranslated (empty) targets and blocks whose source `other` is
- * empty too are not flagged.
+ * A translation that fills only some of the fields of an ICU message: it must keep the source's
+ * shape, so either every field is translated or the string is not saved. Untranslated (empty)
+ * targets are not flagged, and neither are categories the target language adds.
  */
-export function getIcuEmptyOtherIssues(item: ResourceItem, targetLocale?: string): QaIssue[] {
+export function getIcuIncompleteIssues(item: ResourceItem, targetLocale?: string): QaIssue[] {
   const parts: Array<{ source: string; target: string; subKey?: string }> = [];
   if (item.type === 'string') {
     parts.push({ source: item.source || '', target: item.target || '' });
@@ -2469,19 +2476,19 @@ export function getIcuEmptyOtherIssues(item: ResourceItem, targetLocale?: string
     if (!p.target.trim() || !p.source.includes('{')) continue;
     const model = getIcuFieldModel(p.source, p.target, targetLocale);
     if (!model) continue;
-    const variables = Array.from(new Set(emptyOtherVariables(model)));
-    if (variables.length === 0) continue;
+    const missing = Array.from(new Set(emptyRequiredFields(model)));
+    if (missing.length === 0) continue;
     const prefix = p.subKey ? `${p.subKey}: ` : '';
-    const list = variables.map((v) => `{${v}}`).join(', ');
+    const list = missing.join(', ');
     issues.push({
-      id: `${item.id}_${p.subKey || 'main'}_empty_other`,
+      id: `${item.id}_${p.subKey || 'main'}_icu_incomplete`,
       itemId: item.id,
       itemName: item.name,
       subKey: p.subKey,
       category: 'placeholder',
       severity: 'error',
-      messageEn: `${prefix}The 'other' clause is empty in ${list}. Fill it in: counts without their own clause would show nothing.`,
-      messageAr: `${prefix}فرع 'other' فارغ في ${list}. يجب ملؤه، فالأعداد التي ليس لها فرع خاص بها ستظهر فارغة.`,
+      messageEn: `${prefix}Some fields are empty (${list}). Translate every field, or none of them will be saved.`,
+      messageAr: `${prefix}بعض الحقول فارغة (${list}). يجب ترجمة كل الحقول، وإلا فلن يُحفظ أي منها.`,
       tokens: [],
     });
   }
