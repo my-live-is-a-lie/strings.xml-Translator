@@ -2135,7 +2135,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                       type="button"
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => handleClonePluralSource(box.text)}
-                      className="mt-1.5 ps-1.5 pe-1 py-1 rounded-md text-slate-500 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-[#1C2330] transition cursor-pointer shrink-0"
+                      className={`${startsRtl(box.text) ? 'mt-1.5' : 'mt-[21px] sm:mt-[25px]'} ps-1.5 pe-1 py-1 rounded-md text-slate-500 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-[#1C2330] transition cursor-pointer shrink-0`}
                       title={t('clone_source_to_translation')}
                     >
                       <svg className="w-4 h-4" viewBox="3 2 19 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

@@ -785,6 +785,10 @@ test('plural clone and paste act on the picked form only, and hint when none is 
     const box = (await page.getByTestId(`plural-source-label-${q}`).locator('xpath=..').boundingBox())!;
     expect(box.x + box.width - (label.x + label.width)).toBeLessThan(20);
     expect(await page.getByTestId(`plural-source-label-${q}`).evaluate((e) => getComputedStyle(e).textAlign)).toBe('right');
+    // Clone button sits at the same level as the copy button
+    const cl = (await page.locator(`#weblate-clone-source-${q}-btn`).boundingBox())!;
+    const cp = (await page.getByTestId(`plural-source-copy-${q}`).boundingBox())!;
+    expect(Math.abs((cl.y + cl.height / 2) - (cp.y + cp.height / 2))).toBeLessThan(2.5);
   }
   if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/plural-source-forms.png` });
 
@@ -1028,6 +1032,10 @@ test('plural source labels sit opposite the source text direction', async ({ pag
     const lb = (await page.getByTestId(`plural-source-label-${q}`).boundingBox())!;
     const cb = (await page.getByTestId(`plural-source-copy-${q}`).boundingBox())!;
     expect(Math.abs((lb.y + lb.height / 2) - (cb.y + cb.height / 2))).toBeLessThan(6);
+    // Clone button sits at the same level as the copy button
+    const cl2 = (await page.locator(`#weblate-clone-source-${q}-btn`).boundingBox())!;
+    const cb2 = (await page.getByTestId(`plural-source-copy-${q}`).boundingBox())!;
+    expect(Math.abs((cl2.y + cl2.height / 2) - (cb2.y + cb2.height / 2))).toBeLessThan(2.5);
     expect(lb.x).toBeGreaterThan(cb.x);
   }
   if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/plural-source-forms-rtl.png` });
