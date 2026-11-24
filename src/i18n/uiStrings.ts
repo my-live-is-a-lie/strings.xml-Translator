@@ -363,6 +363,7 @@ export const UI_STRINGS: Record<string, { en: string; ar: string }> = {
   "multiple_spaces_detected_between_words": { en: "Multiple spaces detected between words", ar: "مسافات متتالية زائدة بين الكلمات" },
   "fix_spaces": { en: "Fix spaces", ar: "إصلاح المسافات" },
   "type_translation_here": { en: "Type translation here...", ar: "اكتب الترجمة هنا..." },
+  "item_number": { en: "Item %1$s", ar: "العنصر %1$s" },
   "item": { en: "Item [%1$s]", ar: "العنصر [%1$s]" },
   "translate_item": { en: "Translate item %1$s...", ar: "ترجمة العنصر %1$s..." },
   "copy_translation_text": { en: "Copy translation text", ar: "نسخ نص الترجمة" },
@@ -377,6 +378,10 @@ export const UI_STRINGS: Record<string, { en: string; ar: string }> = {
   "icu_text_part": { en: "Text outside the block", ar: "نص خارج الكتلة" },
   "not_saved_the_translation_was": { en: "Not saved. The translation was corrected automatically, review it and press Save again:", ar: "لم يُحفظ النص. صحّحتُ الترجمة تلقائياً، راجعها ثم اضغط حفظ مرة أخرى:" },
   "not_saved_some_errors_could": { en: "Not saved. Some errors could not be fixed automatically, press Save again to ignore them:", ar: "لم يُحفظ النص. توجد أخطاء لم أستطع إصلاحها، اضغط حفظ مرة أخرى لتجاهلها:" },
+  "not_saved_array_incomplete": { en: "Not saved. Translate every item of the array to save it:", ar: "لم يُحفظ النص. يجب ترجمة كل عناصر المصفوفة ليتم حفظها:" },
+  "not_saved_icu_incomplete": { en: "Not saved. Translate every field of the message to save it:", ar: "لم يُحفظ النص. يجب ترجمة كل حقول الرسالة ليتم حفظها:" },
+  "array_pick_item_first": { en: "Click the item you want first.", ar: "اضغط على العنصر المطلوب أولًا." },
+  "plural_pick_form_first": { en: "Click the plural form you want first.", ar: "اضغط على الصيغة المطلوبة أولًا." },
   "not_saved_line_breaks_differ": { en: "Not saved. The translation must have exactly the same number of line breaks as the source:", ar: "لم يُحفظ النص. يجب أن يتطابق عدد الأسطر الجديدة مع الأصل تمامًا:" },
   "not_saved_fix_problems": { en: "Not saved. Fix the problems below:", ar: "لم يُحفظ النص. صحّح المشاكل التالية:" },
   "icu_hash_warning": {

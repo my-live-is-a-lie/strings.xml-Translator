@@ -28,6 +28,7 @@ import {
   type IcuField,
   type IcuFieldPath,
   getIcuStructureIssues,
+  getIcuIncompleteIssues,
   repairItemQuoteMarks,
   getItemQaIssues,
   getLineBreakIssues,
@@ -751,6 +752,151 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   };
 
   // Clone source directly to target (Weblate clone action - updates local draft only)
+  // The plural form the translator picked by clicking into it: the focused one, else the last
+  // one clicked in this entry. Clone and paste act on that form only; with none picked they do
+  // nothing and show a hint.
+  // 'clone': the next click on a form fills it with its source; 'paste': a hint only (the click
+  // selects the form, then paste is pressed again). A click anywhere else cancels the mode.
+  const [pluralPick, setPluralPick] = useState<null | 'clone' | 'paste' | 'clear'>(null);
+  const pluralPickHint = pluralPick !== null;
+  // The hint floats just under the strings-list/filters bar (or the header) so it stays visible while scrolling
+  const [pickHintTop, setPickHintTop] = useState(0);
+  // Without the list/filters bar (desktop) the hint sticks in the flow above the fields instead of floating over them
+  const [pickHintSticky, setPickHintSticky] = useState(false);
+  const pickHintRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!pluralPickHint) return;
+    const measure = () => {
+      const bar = document.getElementById('mobile-drawer-btn')?.parentElement?.parentElement;
+      const barRect = bar && bar.getBoundingClientRect();
+      const header = document.querySelector('header')?.getBoundingClientRect();
+      if (barRect && barRect.height > 0) {
+        setPickHintSticky(false);
+        setPickHintTop(Math.max(0, Math.round(barRect.bottom) + 4));
+        return;
+      }
+      setPickHintSticky(true);
+      let el: HTMLElement | null = pickHintRef.current?.parentElement ?? null;
+      let scroller: HTMLElement | null = null;
+      while (el) {
+        const oy = getComputedStyle(el).overflowY;
+        if (oy === 'auto' || oy === 'scroll' || oy === 'hidden') { scroller = el; break; }
+        el = el.parentElement;
+      }
+      setPickHintTop(scroller ? 4 : Math.max(0, Math.round(header?.bottom ?? 0) + 4));
+    };
+    measure();
+    window.addEventListener('scroll', measure, true);
+    window.addEventListener('resize', measure);
+    return () => {
+      window.removeEventListener('scroll', measure, true);
+      window.removeEventListener('resize', measure);
+    };
+  }, [pluralPickHint]);
+  // Only a form that has the caret right now counts as picked. The clone button keeps the focus
+  // (see its mousedown handler), so pressing it does not drop the pick; tapping elsewhere does.
+  const pickedPluralQuantity = (): string | undefined => {
+    const refs = pluralTextareaRefs.current;
+    return Object.keys(refs).find((q) => refs[q] && refs[q] === document.activeElement);
+  };
+  const showPluralPickHint = (kind: 'clone' | 'paste' | 'clear') => setPluralPick(kind);
+  // Same rule for a string-array: only the item that has the caret counts; delete picks one item
+  const pickedArrayIndex = (): number | undefined => {
+    const refs = arrayTextareaRefs.current;
+    const key = Object.keys(refs).find((i) => refs[Number(i)] && refs[Number(i)] === document.activeElement);
+    return key === undefined ? undefined : Number(key);
+  };
+  const clearArrayItem = (index: number) => {
+    if (draftItem.type !== 'array') return;
+    const items = draftItem.items.map((ai) => (ai.index === index ? { ...ai, target: '' } : ai));
+    const anyFilled = items.some((ai) => ai.target.trim() !== '');
+    updateDraftItem({
+      ...draftItem,
+      items,
+      status: anyFilled ? draftItem.status : 'untranslated',
+      translationSource: anyFilled ? draftItem.translationSource : undefined,
+    });
+  };
+  const cloneArrayItem = (index: number) => {
+    if (draftItem.type !== 'array') return;
+    const items = draftItem.items.map((ai) => (ai.index === index ? { ...ai, target: ai.source } : ai));
+    updateDraftItem({
+      ...draftItem,
+      items,
+      status: draftItem.status === 'untranslated' ? 'translated' : draftItem.status,
+      translationSource: 'manual',
+    });
+  };
+  const [copiedArrayIdx, setCopiedArrayIdx] = useState<number | null>(null);
+  const copyArrayItemSource = (index: number, text: string) => {
+    void copyTextToClipboard(text);
+    setCopiedArrayIdx(index);
+    setTimeout(() => setCopiedArrayIdx((c) => (c === index ? null : c)), 2000);
+  };
+
+  const cloneSourceIntoPluralForm = (qty: string) => {
+    if (draftItem.type !== 'plural') return;
+    const updated: PluralStringItem = {
+      ...draftItem,
+      items: normalizedPluralItems.map((pi) => (pi.quantity === qty ? { ...pi, target: pi.source } : pi)),
+      status: draftItem.status === 'untranslated' ? 'translated' : draftItem.status,
+      translationSource: 'manual',
+    };
+    updateDraftItem(updated);
+  };
+
+  const clearPluralForm = (qty: string) => {
+    if (draftItem.type !== 'plural') return;
+    const items = normalizedPluralItems.map((pi) => (pi.quantity === qty ? { ...pi, target: '' } : pi));
+    const anyFilled = items.some((pi) => pi.target.trim() !== '');
+    updateDraftItem({
+      ...draftItem,
+      items,
+      status: anyFilled ? draftItem.status : 'untranslated',
+      translationSource: anyFilled ? draftItem.translationSource : undefined,
+    });
+  };
+
+  // While the mode is on: a press on a form field picks it (clone fills it), a press anywhere else cancels
+  useEffect(() => {
+    if (!pluralPick) return;
+    // A press only counts as a tap: a drag/scroll (movement or pointercancel) leaves the mode on
+    let start: { x: number; y: number; target: EventTarget | null; id: number } | null = null;
+    const onPointerDown = (e: PointerEvent) => {
+      if (!start) start = { x: e.clientX, y: e.clientY, target: e.target, id: e.pointerId };
+    };
+    const onPointerMove = (e: PointerEvent) => {
+      if (start && e.pointerId === start.id && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 10) start = null;
+    };
+    const onPointerCancel = () => {
+      start = null;
+    };
+    const onPointerUp = (e: PointerEvent) => {
+      if (!start || e.pointerId !== start.id) return;
+      const target = start.target;
+      start = null;
+      const refs = pluralTextareaRefs.current;
+      const qty = Object.keys(refs).find((q) => refs[q] && target instanceof Node && refs[q]!.contains(target));
+      const arefs = arrayTextareaRefs.current;
+      const aKey = Object.keys(arefs).find((i) => arefs[Number(i)] && target instanceof Node && arefs[Number(i)]!.contains(target));
+      setPluralPick(null);
+      if (qty && pluralPick === 'clone') cloneSourceIntoPluralForm(qty);
+      if (qty && pluralPick === 'clear') clearPluralForm(qty);
+      if (aKey !== undefined && pluralPick === 'clear') clearArrayItem(Number(aKey));
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('pointermove', onPointerMove, true);
+    document.addEventListener('pointercancel', onPointerCancel, true);
+    document.addEventListener('pointerup', onPointerUp, true);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      document.removeEventListener('pointermove', onPointerMove, true);
+      document.removeEventListener('pointercancel', onPointerCancel, true);
+      document.removeEventListener('pointerup', onPointerUp, true);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pluralPick, draftItem, normalizedPluralItems]);
+
   const handleCloneSourceToTarget = () => {
     if (draftItem.type === 'string') {
       const updated: SingleStringItem = {
@@ -761,13 +907,13 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       };
       updateDraftItem(updated);
     } else if (draftItem.type === 'plural') {
-      const updated: PluralStringItem = {
-        ...draftItem,
-        items: normalizedPluralItems.map((pi) => ({ ...pi, target: pi.source })),
-        status: 'translated',
-        translationSource: 'manual',
-      };
-      updateDraftItem(updated);
+      const qty = pickedPluralQuantity();
+      if (!qty) {
+        showPluralPickHint('clone');
+        return;
+      }
+      setPluralPick(null);
+      cloneSourceIntoPluralForm(qty);
     } else if (draftItem.type === 'array') {
       const updated: ArrayStringItem = {
         ...draftItem,
@@ -1193,12 +1339,13 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       const hasActiveLineMarker = Boolean(
         focusedQty || (activeMarker?.fieldType === 'plural' && activeMarker.quantity)
       );
-      const targetQty =
-        focusedQty ||
-        activeMarker?.quantity ||
-        lastCursorRef.current?.quantity ||
-        normalizedPluralItems[0]?.quantity;
-      if (!targetQty) return;
+      // Only a form with the caret right now counts; a form picked earlier does not
+      const targetQty = focusedQty;
+      if (!targetQty || !normalizedPluralItems.some((pi) => pi.quantity === targetQty)) {
+        showPluralPickHint('paste');
+        return;
+      }
+      setPluralPick(null);
 
       const pluralEntry = normalizedPluralItems.find((pi) => pi.quantity === targetQty);
       if (!pluralEntry) return;
@@ -1443,12 +1590,23 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     return false;
   }, [autoCorrect, draftItem, targetLang, updateDraftItem, withHiddenEdges]);
 
+  // Every field of an ICU message must be translated or none is saved: a partly filled message
+  // does not keep the source's shape (and an empty `other` blanks every count without its own
+  // clause). A hard guard, like a damaged block, until the empty fields are filled.
+  const blockIfIcuIncomplete = React.useCallback((): boolean => {
+    const issues = getIcuIncompleteIssues(toStoredItem(withHiddenEdges(draftItem)), targetLang);
+    if (issues.length === 0) return false;
+    setSaveGuard({ notes: [], remaining: issues, hard: true, itemId: item.id });
+    return true;
+  }, [draftItem, item.id, targetLang, withHiddenEdges]);
+
   // The line-break message follows the text as it is edited and disappears once the counts match
   const liveBreakIssues = React.useMemo(
     () => (saveGuard?.hard && saveGuard.itemId === item.id
       ? [
           ...getLineBreakIssues(toStoredItem(withHiddenEdges(draftItem)), targetLang),
           ...getIcuStructureIssues(toStoredItem(withHiddenEdges(draftItem)), targetLang),
+          ...getIcuIncompleteIssues(toStoredItem(withHiddenEdges(draftItem)), targetLang),
         ]
       : []),
     [saveGuard, item.id, draftItem, targetLang, withHiddenEdges]
@@ -1476,7 +1634,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
 
   // Save without continuing (حفظ بدون متابعة / Save & Stay)
   const handleSaveWithoutContinuing = React.useCallback(() => {
-    if (blockIfNothingTyped() || blockIfLineBreaksDiffer() || blockIfIcuBroken() || blockIfNeedsFix()) return;
+    if (blockIfNothingTyped() || blockIfLineBreaksDiffer() || blockIfIcuBroken() || blockIfIcuIncomplete() || blockIfNeedsFix()) return;
     // Saving settles the string: the old source text (diff) is no longer shown
     const savedItem = { ...buildSavedItemFromDraft(draftItem), previousSources: undefined };
     const undoDeletesText = savedItem.translationSource === 'ai' && item.status === 'untranslated';
@@ -1485,7 +1643,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     onUpdateTranslation(savedItem, undoDeletesText ? { undoDeletesText: true } : undefined);
     setShowSavedFeedback(true);
     setTimeout(() => setShowSavedFeedback(false), 2000);
-  }, [blockIfNothingTyped, blockIfLineBreaksDiffer, blockIfIcuBroken, blockIfNeedsFix, buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation]);
+  }, [blockIfNothingTyped, blockIfLineBreaksDiffer, blockIfIcuBroken, blockIfNeedsFix, blockIfIcuIncomplete, buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation]);
 
   // Save and continue (حفظ ومتابعة / Save & Continue)
   const handleSaveAndContinue = React.useCallback(() => {
@@ -1493,7 +1651,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       onNavigateNext(); // nothing typed: nothing is saved, just continue
       return;
     }
-    if (blockIfLineBreaksDiffer() || blockIfIcuBroken() || blockIfNeedsFix()) return;
+    if (blockIfLineBreaksDiffer() || blockIfIcuBroken() || blockIfIcuIncomplete() || blockIfNeedsFix()) return;
     // Saving settles the string: the old source text (diff) is no longer shown
     const savedItem = { ...buildSavedItemFromDraft(draftItem), previousSources: undefined };
     const undoDeletesText = savedItem.translationSource === 'ai' && item.status === 'untranslated';
@@ -1501,7 +1659,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     setDraftState(freshDraftState(savedItem));
     onUpdateTranslation(savedItem, undoDeletesText ? { undoDeletesText: true } : undefined);
     onNavigateNext();
-  }, [isNothingTyped, blockIfLineBreaksDiffer, blockIfIcuBroken, blockIfNeedsFix, buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation, onNavigateNext]);
+  }, [isNothingTyped, blockIfLineBreaksDiffer, blockIfIcuBroken, blockIfNeedsFix, blockIfIcuIncomplete, buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation, onNavigateNext]);
 
   // Editor keyboard shortcuts for Undo/Redo and Ctrl+Enter (Save & Continue)
   useEffect(() => {
@@ -1737,19 +1895,21 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     if (draftItem.type === 'string') {
       handleSingleTextChange('');
     } else if (draftItem.type === 'plural') {
-      updateDraftItem({
-        ...draftItem,
-        items: normalizedPluralItems.map((pi) => ({ ...pi, target: '' })),
-        status: 'untranslated',
-        translationSource: undefined,
-      });
+      const qty = pickedPluralQuantity();
+      if (!qty) {
+        showPluralPickHint('clear');
+        return;
+      }
+      setPluralPick(null);
+      clearPluralForm(qty);
     } else if (draftItem.type === 'array') {
-      updateDraftItem({
-        ...draftItem,
-        items: draftItem.items.map((ai) => ({ ...ai, target: '' })),
-        status: 'untranslated',
-        translationSource: undefined,
-      });
+      const idx = pickedArrayIndex();
+      if (idx === undefined) {
+        showPluralPickHint('clear');
+        return;
+      }
+      setPluralPick(null);
+      clearArrayItem(idx);
     }
   };
 
@@ -1794,6 +1954,24 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       });
     }
   };
+
+  const pickHintNode = (
+                pluralPickHint && (
+                  <div
+                    data-testid="plural-pick-hint"
+                    role="status"
+                    ref={pickHintRef}
+                    style={{ top: pickHintTop }}
+                    className={`${pickHintSticky ? 'sticky' : 'fixed inset-x-3 mx-auto max-w-md'} z-40 rounded-lg border px-3 py-1.5 text-center text-xs font-medium shadow-lg backdrop-blur ${
+                      pluralPick === 'clear'
+                        ? 'border-red-400/60 bg-red-100/95 text-red-800 dark:bg-red-950/90 dark:text-red-200'
+                        : 'border-sky-400/50 bg-sky-100/95 text-sky-800 dark:bg-sky-950/90 dark:text-sky-200'
+                    }`}
+                  >
+                    {t(draftItem.type === 'array' ? 'array_pick_item_first' : 'plural_pick_form_first')}
+                  </div>
+                )
+  );
 
   const effectiveCanUndo = draftPast.length > 0 || canUndo;
   const effectiveCanRedo = draftFuture.length > 0 || canRedo;
@@ -1913,11 +2091,14 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               </span>
             </div>
 
-            {/* Source Display Box with Clone & Copy Icons */}
+            {/* A string-array has no combined source box (it would show the first item only): each item carries its own source line */}
+            {draftItem.type !== 'array' && (
+            <>
             <div dir="ltr" className="flex items-start gap-1">
               {/* Clone icon button (Weblate clone to target — matches screenshot) */}
               <button
                 id="weblate-clone-to-target-btn"
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={handleCloneSourceToTarget}
                 className="mt-1.5 ps-1.5 pe-1 py-1 rounded-md text-slate-500 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-[#1C2330] transition cursor-pointer shrink-0"
                 title={t('clone_source_to_translation')}
@@ -1962,6 +2143,8 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                 </span>
               </div>
             </div>
+            </>
+            )}
 
             <SourceChangeDiff item={item} isAr={isAr} />
 
@@ -2211,6 +2394,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             {/* Plural Support (if plural string) with Visual Typing Mistake Indicator */}
             {draftItem.type === 'plural' && (
               <div className="space-y-2">
+                {pickHintNode}
                 {normalizedPluralItems.map((pi, pIdx) => (
                   <div key={pi.quantity} className="space-y-1">
                     {(barField ? barField === `plural:${pi.quantity}` : pIdx === 0) && shortcutBar}
@@ -2277,7 +2461,14 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                           ? `ترجمة صيغة ${pi.quantity} (${pluralLabels[pi.quantity] || pi.quantity})...`
                           : `Translate ${pi.quantity} form (${pluralLabels[pi.quantity] || pi.quantity})...`
                       }
-                      containerClassName="rounded-lg bg-slate-100/90 dark:bg-[#0E121A] border border-slate-200/90 dark:border-transparent"
+                      enableSwipeResize={!pluralPick}
+                      containerClassName={
+                        pluralPick === 'clear'
+                          ? 'rounded-lg border border-transparent !bg-red-500/25 cursor-pointer'
+                          : pluralPick
+                          ? 'rounded-lg border border-transparent !bg-[color-mix(in_srgb,var(--accent-primary)_25%,transparent)] cursor-pointer'
+                          : 'rounded-lg bg-slate-100/90 dark:bg-[#0E121A] border border-slate-200/90 dark:border-transparent'
+                      }
                       backdropClassName="border-0 border-b-2 border-transparent px-3.5 pt-1.5 pb-3 text-xs sm:text-sm leading-relaxed"
                       className="px-3.5 pt-1.5 pb-3 text-xs sm:text-sm leading-relaxed rounded-lg border-0 border-b-2 border-[var(--accent-primary)]/30 focus:border-[var(--accent-primary)] text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none transition-colors duration-300 resize-none overflow-hidden block"
                     />
@@ -2289,19 +2480,46 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             {/* Array Support (if array string) with Visual Typing Mistake Indicator */}
             {draftItem.type === 'array' && (
               <div className="space-y-2">
+                {pickHintNode}
                 {draftItem.items.map((ai, aIdx) => (
                   <div key={ai.index} className="space-y-1">
                     {(barField ? barField === `array:${ai.index}` : aIdx === 0) && shortcutBar}
-                    <div className="flex items-center justify-between text-xs">
-                      <span data-i18n className="font-mono font-semibold text-[#1EB996]">
-                        {t('item', ai.index)}
-                      </span>
-                      <span className="app-source-font text-slate-500 dark:text-slate-300 text-[11px] truncate max-w-xs">
+                    <div dir="ltr" className="flex items-start justify-between gap-2 text-xs">
+                      <span data-testid={`array-source-${ai.index}`} className="app-source-font text-slate-600 dark:text-slate-300 text-[11px] sm:text-xs break-words whitespace-pre-line min-w-0">
                         {renderSourceWithSyntaxHighlights(ai.source, {
                           fieldType: 'array',
                           index: ai.index,
                         })}
                       </span>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => copyArrayItemSource(ai.index, ai.source)}
+                        className="p-0.5 rounded-md text-slate-500 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-[#1C2330] transition cursor-pointer"
+                        title={t('copy_english_source_text')}
+                        data-testid={`array-copy-${ai.index}`}
+                      >
+                        {copiedArrayIdx === ai.index ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        </button>
+                        <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => cloneArrayItem(ai.index)}
+                        className="p-0.5 rounded-md text-slate-500 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-[#1C2330] transition cursor-pointer"
+                        title={t('clone_source_to_translation')}
+                        data-testid={`array-clone-${ai.index}`}
+                      >
+                        <svg className="w-3.5 h-3.5" viewBox="3 2 19 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M10 11V8.5A1.5 1.5 0 0 1 11.5 7h7A1.5 1.5 0 0 1 20 8.5v10a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 10 18.5V17" />
+                          <path d="M15 4H6.5A1.5 1.5 0 0 0 5 5.5v7A1.5 1.5 0 0 0 6.5 14H15" />
+                          <path d="m12.5 11.5 2.5 2.5-2.5 2.5" />
+                        </svg>
+                        </button>
+                        <span data-i18n className="font-mono font-semibold text-[#1EB996]">
+                          {t('item_number', ai.index + 1)}
+                        </span>
+                      </div>
                     </div>
                     <HighlightedTextarea
                       rows={1}
@@ -2343,9 +2561,14 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                         applyAutoClose(e.currentTarget, ai.target, `array:${ai.index}`, (v) => handleArrayItemChange(ai.index, v));
                       }}
                       placeholder={
-                        t('translate_item', ai.index)
+                        t('translate_item', ai.index + 1)
                       }
-                      containerClassName="rounded-lg bg-slate-100/90 dark:bg-[#0E121A] border border-slate-200/90 dark:border-transparent"
+                      enableSwipeResize={!pluralPick}
+                      containerClassName={
+                        pluralPick === 'clear'
+                          ? 'rounded-lg border border-transparent !bg-red-500/25 cursor-pointer'
+                          : 'rounded-lg bg-slate-100/90 dark:bg-[#0E121A] border border-slate-200/90 dark:border-transparent'
+                      }
                       backdropClassName="border-0 border-b-2 border-transparent px-3.5 pt-1.5 pb-3 text-xs sm:text-sm leading-relaxed"
                       className="px-3.5 pt-1.5 pb-3 text-xs sm:text-sm leading-relaxed rounded-lg border-0 border-b-2 border-[var(--accent-primary)]/30 focus:border-[var(--accent-primary)] text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none transition-colors duration-300 resize-none overflow-hidden block"
                     />
@@ -2524,6 +2747,8 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                     : liveSaveGuard.hard
                     ? liveSaveGuard.remaining.some((i) => i.id.endsWith('_linebreaks'))
                       ? t('not_saved_line_breaks_differ')
+                      : liveSaveGuard.remaining.every((i) => i.id.endsWith('_icu_incomplete'))
+                      ? t(draftItem.type === 'array' ? 'not_saved_array_incomplete' : 'not_saved_icu_incomplete')
                       : t('not_saved_fix_problems')
                     : liveSaveGuard.notes.length > 0
                     ? t('not_saved_the_translation_was')

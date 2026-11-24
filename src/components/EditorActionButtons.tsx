@@ -149,6 +149,7 @@ export const EditorActionButtons: React.FC<EditorActionButtonsProps> = ({
           type="button"
           {...gesture}
           onContextMenu={(e) => e.preventDefault()}
+          onMouseDown={(e) => e.preventDefault()}
           style={{ ...RESIZE_STYLE, ['--ex' as string]: `${iconExtra}px` }}
           onClick={onClear}
           title={t('clear_translation_field')}

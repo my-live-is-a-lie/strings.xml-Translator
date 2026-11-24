@@ -1,5 +1,6 @@
 import { ResourceItem } from '../types';
 import { countLineBreaks, hasMidLineDoubleSpaces } from './newlines';
+import { normalizePluralsForLanguage } from './xmlParser';
 import { PLURAL_CATEGORY_ORDER, getCldrPluralCategories } from './pluralCategories';
 
 // ICU MessageFormat argument types that carry sub-message clauses in braces
@@ -2429,6 +2430,109 @@ export function getIcuStructureIssues(item: ResourceItem, targetLocale?: string)
     });
 
   return [...structureIssues, ...quoteIssues];
+}
+
+/**
+ * The fields (any depth) the translator left empty although the source has text there: a clause
+ * body, or a text run outside a block. A category the target language adds (`added`) is optional,
+ * and a field whose source is blank (formatting whitespace, an empty source branch) is not required.
+ * Entries read `{count}: other` for a clause and `text` for a text run.
+ */
+function emptyRequiredFields(fields: IcuField[]): string[] {
+  const out: string[] = [];
+  for (const field of fields) {
+    if (field.kind === 'text') {
+      if (field.value.trim() === '' && field.sourceValue.trim() !== '') out.push('text');
+      continue;
+    }
+    for (const clause of field.clauses) {
+      if (clause.children) {
+        out.push(...emptyRequiredFields(clause.children));
+      } else if (!clause.added && clause.value.trim() === '' && clause.sourceValue.trim() !== '') {
+        out.push(`{${field.name}}: ${clause.selector}`);
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * A translation that fills only some of the fields of an ICU message: it must keep the source's
+ * shape, so either every field is translated or the string is not saved. Untranslated (empty)
+ * targets are not flagged, and neither are categories the target language adds.
+ */
+export function getIcuIncompleteIssues(item: ResourceItem, targetLocale?: string): QaIssue[] {
+  const parts: Array<{ source: string; target: string; subKey?: string }> = [];
+  if (item.type === 'string') {
+    parts.push({ source: item.source || '', target: item.target || '' });
+  } else if (item.type === 'plural') {
+    for (const q of item.items || []) parts.push({ source: q.source || '', target: q.target || '', subKey: q.quantity });
+  } else if (item.type === 'array') {
+    for (const el of item.items || []) {
+      parts.push({ source: el.source || '', target: el.target || '', subKey: `#${(el.index ?? 0) + 1}` });
+    }
+  }
+  const issues: QaIssue[] = [];
+  // A `<plurals>` resource: the editor shows every category of the target language, so once any
+  // quantity is translated all of them must be (Android lint's MissingQuantity, and `other` is the
+  // fallback for every count). Nothing translated stays saveable as untranslated.
+  if (item.type === 'plural') {
+    const shown = (normalizePluralsForLanguage([item], targetLocale || 'ar')[0] as typeof item).items || [];
+    const anyFilled = shown.some((q) => (q.target || '').trim() !== '');
+    const empty = shown.filter((q) => (q.target || '').trim() === '').map((q) => q.quantity);
+    if (anyFilled && empty.length > 0) {
+      issues.push({
+        id: `${item.id}_main_icu_incomplete`,
+        itemId: item.id,
+        itemName: item.name,
+        category: 'placeholder',
+        severity: 'error',
+        messageEn: `Some quantities are empty (${empty.join(', ')}). Translate every quantity, or none of them will be saved.`,
+        messageAr: `بعض الصيغ فارغة (${empty.join(', ')}). يجب ترجمة كل الصيغ، وإلا فلن يُحفظ أي منها.`,
+        tokens: [],
+      });
+    }
+  }
+  // A `string-array`: every element is translated or none is saved (Android lint's InconsistentArrays
+  // flags a translation whose element count differs from the source). Nothing translated stays saveable.
+  if (item.type === 'array') {
+    const els = (item.items || []).filter((el) => (el.source || '').trim() !== '');
+    const anyFilled = els.some((el) => (el.target || '').trim() !== '');
+    const empty = els.filter((el) => (el.target || '').trim() === '').map((el) => `#${(el.index ?? 0) + 1}`);
+    if (anyFilled && empty.length > 0) {
+      issues.push({
+        id: `${item.id}_main_icu_incomplete`,
+        itemId: item.id,
+        itemName: item.name,
+        category: 'placeholder',
+        severity: 'error',
+        messageEn: `Some items are empty (${empty.join(', ')}). Translate every item, or none of them will be saved.`,
+        messageAr: `بعض العناصر فارغة (${empty.join(', ')}). يجب ترجمة كل العناصر، وإلا فلن يُحفظ أي منها.`,
+        tokens: [],
+      });
+    }
+  }
+  for (const p of parts) {
+    if (!p.target.trim() || !p.source.includes('{')) continue;
+    const model = getIcuFieldModel(p.source, p.target, targetLocale);
+    if (!model) continue;
+    const missing = Array.from(new Set(emptyRequiredFields(model)));
+    if (missing.length === 0) continue;
+    const prefix = p.subKey ? `${p.subKey}: ` : '';
+    const list = missing.join(', ');
+    issues.push({
+      id: `${item.id}_${p.subKey || 'main'}_icu_incomplete`,
+      itemId: item.id,
+      itemName: item.name,
+      subKey: p.subKey,
+      category: 'placeholder',
+      severity: 'error',
+      messageEn: `${prefix}Some fields are empty (${list}). Translate every field, or none of them will be saved.`,
+      messageAr: `${prefix}بعض الحقول فارغة (${list}). يجب ترجمة كل الحقول، وإلا فلن يُحفظ أي منها.`,
+      tokens: [],
+    });
+  }
+  return issues;
 }
 
 /**

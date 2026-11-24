@@ -757,3 +757,243 @@ test('plural categories follow the target language, not Arabic', async ({ page }
   await expect(page.getByTestId('icu-field-0:1')).toBeVisible();
   await expect(page.getByTestId('icu-field-0:2')).toHaveCount(0);
 });
+
+test('plural clone and paste act on the picked form only, and hint when none is picked', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  const xml = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <plurals name="files">\n        <item quantity="one">%d file</item>\n        <item quantity="other">%d files</item>\n    </plurals>\n</resources>`;
+  await page.goto('/');
+  await page.click('#header-right-drawer-btn');
+  await page.click('#drawer-import-btn');
+  await page.fill('#import-project-name', 'Test App');
+  await page.getByRole('button', { name: /لصق نص XML|Paste XML/ }).click();
+  await page.locator('textarea').last().fill(xml);
+  await page.locator('select').first().selectOption('ar');
+  await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
+
+  const fields = page.locator('textarea:visible');
+  const count = await fields.count();
+  const hint = page.getByTestId('plural-pick-hint');
+
+  // Nothing picked: clone fills nothing and shows the hint
+  await page.click('#weblate-clone-to-target-btn');
+  await expect(hint).toBeVisible();
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/plural-pick-hint.png` });
+  for (let i = 0; i < count; i++) await expect(fields.nth(i)).toHaveValue('');
+
+  // Clone mode is on: a press anywhere else cancels it, and nothing is filled
+  await page.locator('[data-src-text]').click();
+  await expect(hint).toHaveCount(0);
+  for (let i = 0; i < count; i++) await expect(fields.nth(i)).toHaveValue('');
+
+  // Clone mode, then a click on a form fills that form only
+  await page.click('#weblate-clone-to-target-btn');
+  await expect(hint).toBeVisible();
+  const highlighted = (i: number) => fields.nth(i).locator('xpath=ancestor::div[contains(@class,"cursor-pointer")]').count();
+  expect(await highlighted(1)).toBeGreaterThan(0);
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/plural-pick-mode.png` });
+  await fields.nth(1).click();
+  expect(await highlighted(1)).toBe(0);
+  await expect(fields.nth(1)).toHaveValue('%d file');
+  for (let i = 0; i < count; i++) if (i !== 1) await expect(fields.nth(i)).toHaveValue('');
+  await expect(hint).toHaveCount(0);
+
+  // A form clicked earlier but left again (focus moved away) is no longer picked: clone shows the hint
+  await fields.nth(0).click();
+  await page.locator('[data-src-text]').click();
+  await page.click('#weblate-clone-to-target-btn');
+  await expect(hint).toBeVisible();
+  await page.locator('[data-src-text]').click();
+  await expect(hint).toHaveCount(0);
+  await expect(fields.nth(0)).toHaveValue('');
+
+  // With a form already picked, clone fills it straight away
+  await fields.nth(count - 1).click();
+  await page.click('#weblate-clone-to-target-btn');
+  await expect(fields.nth(count - 1)).toHaveValue('%d files');
+  await expect(hint).toHaveCount(0);
+
+  // Paste with a form clicked earlier but not focused now: hint and highlight, nothing written
+  await page.evaluate(() => navigator.clipboard.writeText('نص ملصوق'));
+  await fields.nth(0).click();
+  await page.locator('[data-src-text]').click();
+  await page.click('#paste-target-text-btn');
+  await expect(hint).toBeVisible();
+  await expect(fields.nth(0)).toHaveValue('');
+  await page.locator('[data-src-text]').click();
+  await expect(hint).toHaveCount(0);
+
+  // Paste goes to the picked form only
+  await page.evaluate(() => navigator.clipboard.writeText('نص ملصوق'));
+  await fields.nth(2).click();
+  await page.click('#paste-target-text-btn');
+  await expect(fields.nth(2)).toHaveValue('نص ملصوق');
+  await expect(fields.nth(1)).toHaveValue('%d file');
+  await expect(fields.nth(0)).toHaveValue('');
+
+  // Delete follows the same rule: nothing focused -> hint, a click on a form clears that form only
+  await fields.nth(1).click();
+  await page.click('#weblate-quick-delete-btn');
+  await expect(fields.nth(1)).toHaveValue('');
+  await expect(fields.nth(2)).toHaveValue('نص ملصوق');
+  await page.locator('[data-src-text]').click();
+  await page.click('#weblate-quick-delete-btn');
+  await expect(hint).toBeVisible();
+  expect(await highlighted(2)).toBeGreaterThan(0);
+  // The resize capsule is hidden during pick mode
+  await expect(page.locator('[data-resize-handle]:visible')).toHaveCount(0);
+  // Delete pick mode is red
+  await expect(hint).toHaveClass(/red/);
+  expect(await fields.nth(2).locator('xpath=ancestor::div[contains(@class,"bg-red-500")]').count()).toBeGreaterThan(0);
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/plural-pick-delete-red.png` });
+  // A drag (scroll) must not cancel the mode
+  const box = (await page.locator('[data-src-text]').boundingBox())!;
+  await page.mouse.move(box.x + 5, box.y + 5);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 5, box.y + 60, { steps: 5 });
+  await page.mouse.up();
+  await expect(hint).toBeVisible();
+  await fields.nth(2).click();
+  await expect(fields.nth(2)).toHaveValue('');
+  await expect(hint).toHaveCount(0);
+});
+
+test('an ICU message with an empty field is not saved until every field is filled', async ({ page }) => {
+  const xml = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="msgs">{count, plural, one {# message} other {# messages}}</string>\n</resources>`;
+  await page.goto('/');
+  await page.click('#header-right-drawer-btn');
+  await page.click('#drawer-import-btn');
+  await page.fill('#import-project-name', 'Test App');
+  await page.getByRole('button', { name: /لصق نص XML|Paste XML/ }).click();
+  await page.locator('textarea').last().fill(xml);
+  await page.locator('select').first().selectOption('hi');
+  await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
+
+  // Only `one` is filled: `other` stays empty and the save is refused, every time
+  await page.getByTestId('icu-field-0:0').fill('# संदेश');
+  const warning = page.getByText(/other/).filter({ hasText: /\{count\}/ });
+  await page.click('#weblate-save-stay-btn');
+  await expect(warning).toBeVisible();
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/empty-other-block.png` });
+  await page.click('#weblate-save-stay-btn');
+  await expect(warning).toBeVisible();
+
+  // Filling `other` clears the message and the save goes through
+  await page.getByTestId('icu-field-0:1').fill('# संदेश');
+  await expect(warning).toHaveCount(0);
+  await page.click('#weblate-save-stay-btn');
+  await expect(warning).toHaveCount(0);
+  await expect(page.getByText(/100%|\(1\/1\)/).first()).toBeVisible();
+});
+
+test('a <plurals> resource with any empty quantity is not saved', async ({ page }) => {
+  const xml = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <plurals name="files">\n        <item quantity="one">%d file</item>\n        <item quantity="other">%d files</item>\n    </plurals>\n</resources>`;
+  await page.goto('/');
+  await page.click('#header-right-drawer-btn');
+  await page.click('#drawer-import-btn');
+  await page.fill('#import-project-name', 'Test App');
+  await page.getByRole('button', { name: /لصق نص XML|Paste XML/ }).click();
+  await page.locator('textarea').last().fill(xml);
+  await page.locator('select').first().selectOption('hi');
+  await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
+
+  const fields = page.locator('textarea:visible');
+  await fields.first().fill('%d फ़ाइल');
+  const warning = page.getByText(/Some quantities are empty|بعض الصيغ فارغة/);
+  await page.click('#weblate-save-stay-btn');
+  await expect(warning).toBeVisible();
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/plural-empty-other.png` });
+  await page.click('#weblate-save-stay-btn');
+  await expect(warning).toBeVisible();
+
+  await fields.nth(1).fill('%d फ़ाइलें');
+  await expect(warning).toHaveCount(0);
+  await page.click('#weblate-save-stay-btn');
+  await expect(warning).toHaveCount(0);
+  await expect(page.getByText(/100%|\(1\/1\)/).first()).toBeVisible();
+});
+
+test('a <string-array> with any empty item is not saved', async ({ page }) => {
+  const xml = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string-array name="choices">\n        <item>First</item>\n        <item>Second</item>\n    </string-array>\n</resources>`;
+  await page.goto('/');
+  await page.click('#header-right-drawer-btn');
+  await page.click('#drawer-import-btn');
+  await page.fill('#import-project-name', 'Test App');
+  await page.getByRole('button', { name: /لصق نص XML|Paste XML/ }).click();
+  await page.locator('textarea').last().fill(xml);
+  await page.locator('select').first().selectOption('hi');
+  await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
+
+  const fields = page.locator('textarea:visible');
+  await fields.first().fill('पहला');
+  const warning = page.getByText(/Some items are empty|بعض العناصر فارغة/);
+  await page.click('#weblate-save-stay-btn');
+  await expect(warning).toBeVisible();
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/array-empty-item.png` });
+  await page.click('#weblate-save-stay-btn');
+  await expect(warning).toBeVisible();
+
+  await fields.nth(1).fill('दूसरा');
+  await expect(warning).toHaveCount(0);
+  await page.click('#weblate-save-stay-btn');
+  await expect(warning).toHaveCount(0);
+  await expect(page.getByText(/100%|\(1\/1\)/).first()).toBeVisible();
+});
+
+test('string-array: per-item source line, copy and clone, and delete picks one item', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  const xml = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string-array name="choices">\n        <item>First choice</item>\n        <item>Second choice</item>\n        <item>Third choice</item>\n    </string-array>\n</resources>`;
+  await page.goto('/');
+  await page.click('#header-right-drawer-btn');
+  await page.click('#drawer-import-btn');
+  await page.fill('#import-project-name', 'Test App');
+  await page.getByRole('button', { name: /لصق نص XML|Paste XML/ }).click();
+  await page.locator('textarea').last().fill(xml);
+  await page.locator('select').first().selectOption('hi');
+  await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
+
+  const fields = page.locator('textarea:visible');
+  const hint = page.getByTestId('plural-pick-hint');
+  // No combined source box; every item shows its own source line, also after typing
+  await expect(page.locator('[data-src-text]')).toHaveCount(0);
+  await expect(page.getByTestId('array-source-0')).toContainText('First choice');
+  await expect(page.getByTestId('array-source-2')).toContainText('Third choice');
+
+  // Per-item clone fills that item only; copy puts its source on the clipboard
+  await page.getByTestId('array-clone-1').click();
+  await expect(fields.nth(1)).toHaveValue('Second choice');
+  await expect(fields.nth(0)).toHaveValue('');
+  await expect(fields.nth(2)).toHaveValue('');
+  await page.getByTestId('array-copy-2').click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('Third choice');
+  await expect(page.getByTestId('array-source-1')).toContainText('Second choice');
+
+  await fields.nth(0).fill('पहला');
+  await fields.nth(2).fill('तीसरा');
+  await page.locator('[data-src-text], [data-key-name]').first().click();
+
+  // Delete with nothing focused: red hint and tint, capsules hidden, tap outside cancels
+  await page.click('#weblate-quick-delete-btn');
+  await expect(hint).toBeVisible();
+  await expect(hint).toHaveClass(/red/);
+  await expect(page.locator('[data-resize-handle]:visible')).toHaveCount(0);
+  expect(await fields.nth(0).locator('xpath=ancestor::div[contains(@class,"bg-red-500")]').count()).toBeGreaterThan(0);
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/array-delete-pick.png` });
+  await page.locator('[data-key-name]').click();
+  await expect(hint).toHaveCount(0);
+  for (const [i, v] of ['पहला', 'Second choice', 'तीसरा'].entries()) await expect(fields.nth(i)).toHaveValue(v);
+
+  // Delete, then a click on item 2 clears that item only
+  await page.click('#weblate-quick-delete-btn');
+  await expect(hint).toBeVisible();
+  await fields.nth(1).click();
+  await expect(fields.nth(1)).toHaveValue('');
+  await expect(fields.nth(0)).toHaveValue('पहला');
+  await expect(fields.nth(2)).toHaveValue('तीसरा');
+  await expect(hint).toHaveCount(0);
+
+  // With an item focused, delete clears it straight away
+  await fields.nth(2).click();
+  await page.click('#weblate-quick-delete-btn');
+  await expect(fields.nth(2)).toHaveValue('');
+  await expect(fields.nth(0)).toHaveValue('पहला');
+});
