@@ -2145,10 +2145,29 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                       </svg>
                     </button>
                     <div dir="ltr" className="kb-src flex-1 min-h-[38px] px-3 py-1.5 rounded-lg bg-slate-100/90 dark:bg-[#141822] border border-slate-200/90 dark:border-[#283140]">
+                      {startsRtl(box.text) ? (
+                        // RTL source: the label is on the copy button's side, so it sits beside the button on one row
+                        <div dir="ltr" className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => copyPluralSource(box.quantity, box.text)}
+                            className="shrink-0 p-0.5 rounded-md text-slate-500 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-[#202736] transition cursor-pointer"
+                            title={t('copy_english_source_text')}
+                            data-testid={`plural-source-copy-${box.quantity}`}
+                          >
+                            {copiedPluralSource === box.quantity ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                          </button>
+                          <div dir="ltr" data-testid={`plural-source-label-${box.quantity}`} className={`text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-100 ${startsRtl(box.text) ? 'text-left' : 'text-right'}`}>
+                        {t(box.quantity === 'one' ? 'plural_source_singular' : 'plural_source_plural')}
+                      </div>
+                        </div>
+                      ) : (
                       <div dir="ltr" data-testid={`plural-source-label-${box.quantity}`} className={`text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-100 ${startsRtl(box.text) ? 'text-left' : 'text-right'}`}>
                         {t(box.quantity === 'one' ? 'plural_source_singular' : 'plural_source_plural')}
                       </div>
+                      )}
                       <span dir="auto" {...(bIdx === 0 ? { 'data-src-text': '' } : {})} data-testid={`plural-source-${box.quantity}`} data-src-raw={box.text} className="block text-xs sm:text-sm font-normal text-slate-800 dark:text-slate-100 select-text break-words whitespace-pre-line leading-relaxed">
+                        {!startsRtl(box.text) && (
                         <button
                           type="button"
                           onClick={() => copyPluralSource(box.quantity, box.text)}
@@ -2158,6 +2177,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                         >
                           {copiedPluralSource === box.quantity ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
                         </button>
+                        )}
                         {renderSourceWithSyntaxHighlights(box.text)}
                       </span>
                     </div>

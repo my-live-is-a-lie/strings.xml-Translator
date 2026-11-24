@@ -1024,6 +1024,11 @@ test('plural source labels sit opposite the source text direction', async ({ pag
   await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
   for (const q of ['one', 'other']) {
     expect(await page.getByTestId(`plural-source-label-${q}`).evaluate((e) => getComputedStyle(e).textAlign)).toBe('left');
+    // RTL source: the label is beside the copy button on the same row, not under it
+    const lb = (await page.getByTestId(`plural-source-label-${q}`).boundingBox())!;
+    const cb = (await page.getByTestId(`plural-source-copy-${q}`).boundingBox())!;
+    expect(Math.abs((lb.y + lb.height / 2) - (cb.y + cb.height / 2))).toBeLessThan(6);
+    expect(lb.x).toBeGreaterThan(cb.x);
   }
   if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/plural-source-forms-rtl.png` });
 });
