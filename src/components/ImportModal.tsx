@@ -61,6 +61,16 @@ function localizeRepairIssue(issue: RepairIssue, t: Translate): string {
       return issue.stringName
         ? t('repair_malformed_entry_named', tagWord, issue.stringName)
         : t('repair_malformed_entry_unnamed', tagWord);
+    case 'mixed-placeholders': {
+      const base = t('repair_mixed_placeholders', name, issue.params?.printf ?? '', issue.params?.icu ?? '');
+      return issue.resourceType === 'array' && issue.itemQualifier !== undefined
+        ? `${base} ${t('repair_location_array', String(Number(issue.itemQualifier) + 1))}`
+        : base;
+    }
+    case 'unterminated-icu-quote':
+      return issue.resourceType === 'array' && issue.itemQualifier !== undefined
+        ? t('repair_unterminated_icu_quote_array', name, String(Number(issue.itemQualifier) + 1))
+        : t('repair_unterminated_icu_quote', name);
     case 'missing-name':
       return t('repair_missing_name', tagWord);
     default:

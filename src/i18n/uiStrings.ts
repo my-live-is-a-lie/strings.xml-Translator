@@ -462,8 +462,8 @@ export const UI_STRINGS: Record<string, { en: string; ar: string }> = {
   // instead of failing the whole file.
   "import_report_not_imported": { en: "Not imported", ar: "لم يتم استيرادها" },
   "import_report_not_imported_note": {
-    en: "These specific entries couldn't be read as valid XML (or have no name), so they were left out — everything else was imported normally. Check the source file to fix them.",
-    ar: "تعذّرت قراءة هذه العناصر كـXML صالح (أو لا تحمل اسمًا)، لذا تم استبعادها — وبقية الملف تم استيرادها بشكل طبيعي. راجع الملف المصدر لإصلاحها.",
+    en: "These specific entries couldn't be read as valid XML, have no name, or have an unclosed ICU quote, so they were left out — everything else was imported normally. Check the source file to fix them.",
+    ar: "تعذّرت قراءة هذه العناصر كـXML صالح، أو لا تحمل اسمًا، أو فيها اقتباس ICU غير مُغلق، لذا تم استبعادها — وبقية الملف تم استيرادها بشكل طبيعي. راجع الملف المصدر لإصلاحها.",
   },
   "repair_malformed_entry_named": {
     en: "The <%1$s> named \"%2$s\" doesn't have a matching closing tag (or uses a misspelled one), so it can't be read as valid XML.",
@@ -476,6 +476,18 @@ export const UI_STRINGS: Record<string, { en: string; ar: string }> = {
   "import_report_entry_excerpt": {
     en: "Entry excerpt",
     ar: "مقتطف من العنصر",
+  },
+  "repair_mixed_placeholders": {
+    en: "\"%1$s\" mixes %2$s and %3$s placeholders in one value. That's sometimes intended, but check that the app fills both kinds.",
+    ar: "يخلط \"%1$s\" بين العناصر النائبة ⁦%2$s⁩ و⁦%3$s⁩ في نص واحد. قد يكون ذلك مقصودًا، لكن تأكد أن التطبيق يملأ النوعين.",
+  },
+  "repair_unterminated_icu_quote": {
+    en: "\"%1$s\" has an ICU quote (an apostrophe before { or }) that is never closed, so it can't be used as a message.",
+    ar: "يحتوي \"%1$s\" على اقتباس ICU (علامة ⁦'⁩ قبل ⁦{⁩ أو ⁦}⁩) لا يُغلق أبدًا، لذا لا يمكن استخدامه كرسالة.",
+  },
+  "repair_unterminated_icu_quote_array": {
+    en: "Item #%2$s of the array \"%1$s\" has an ICU quote (an apostrophe before { or }) that is never closed, so the whole array was left out.",
+    ar: "في عنصر المصفوفة رقم %2$s من \"%1$s\" اقتباس ICU (علامة ⁦'⁩ قبل ⁦{⁩ أو ⁦}⁩) لا يُغلق أبدًا، لذا تم استبعاد المصفوفة كاملة.",
   },
   "repair_missing_name": {
     en: "A <%1$s> has no \"name\" attribute, so it can't be imported.",

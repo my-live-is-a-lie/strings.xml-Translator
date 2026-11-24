@@ -115,7 +115,7 @@ function findMatchingBrace(text: string, openIndex: number): number {
  * the formatted number. ICU `'...'` quoted literals are skipped, so a brace
  * inside them is literal text, not structure.
  */
-function extractBraceTokens(text: string, inPluralClause: boolean): string[] {
+export function extractBraceTokens(text: string, inPluralClause: boolean): string[] {
   const tokens: string[] = [];
   let i = 0;
   while (i < text.length) {

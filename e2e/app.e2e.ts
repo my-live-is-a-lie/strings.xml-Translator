@@ -575,3 +575,19 @@ test('the # warning is shown without blocking the save, and never replaces a rea
   await page.getByRole('button', { name: /التالي|Next/ }).first().click();
   await expect(warning).toHaveCount(0);
 });
+
+test('import report: an unterminated ICU quote is left out and a mixed-placeholder value is flagged for review', async ({ page }) => {
+  const xml = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="greeting">Hello</string>\n    <string name="mixed">Hi %1$s, you have {count} new items</string>\n    <string name="broken_quote">'{username} said hi</string>\n</resources>`;
+  await page.goto('/');
+  await page.click('#header-right-drawer-btn');
+  await page.click('#drawer-import-btn');
+  await page.getByRole('button', { name: /لصق نص XML|Paste XML/ }).click();
+  await page.locator('textarea').last().fill(xml);
+  await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
+
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('mixed');
+  await expect(dialog).toContainText('broken_quote');
+  await expect(dialog).toContainText('%1$s');
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/import-report-${process.env.SHOT_NAME ?? 'ar'}.png` });
+});
