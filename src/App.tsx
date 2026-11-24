@@ -346,7 +346,9 @@ export default function App() {
         const detectedAppName = existingAppName || extractAppNameFromItems(baseOrigItems) || extractAppNameFromItems(project.items);
         const updatedFile: StoredXmlFile = {
           id: project.id,
-          name: project.sourceFileName || project.name || 'strings.xml',
+          // The typed project name is the file's name in the files window, so it is written once
+          // and every later export is named after it without retyping.
+          name: project.name || project.sourceFileName || 'strings.xml',
           appName: detectedAppName,
           importedAt: existingIndex >= 0 ? prev[existingIndex].importedAt : Date.now(),
           lastModified: Date.now(),

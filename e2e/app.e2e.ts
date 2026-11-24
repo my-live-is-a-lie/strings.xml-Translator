@@ -619,6 +619,37 @@ test('import requires a project name and suggests it from the file, skipping str
   await expect(page.locator('#string-item-greeting')).toBeVisible();
 });
 
+test('the typed project name is saved as the file name and names later exports', async ({ page }) => {
+  const xml = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="greeting">Hello</string>\n</resources>`;
+  await page.goto('/');
+  await page.click('#header-right-drawer-btn');
+  await page.click('#drawer-import-btn');
+  await page.locator('input[type=file]').first().setInputFiles({ name: 'strings.xml', mimeType: 'text/xml', buffer: Buffer.from(xml) });
+  await page.fill('#import-project-name', 'MyApp');
+  await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
+  await expect(page.locator('#string-item-greeting')).toBeVisible();
+
+  // Files are stored once they have edits, so make one and let the debounced save run.
+  await page.locator('textarea').first().fill('مرحباً');
+  await page.keyboard.press('Control+Enter');
+  await page.waitForTimeout(1200);
+
+  // The projects window lists the file under the typed project name, not strings.xml.
+  await page.click('#header-files-menu-btn');
+  const filesDialog = page.getByRole('dialog', { name: /المشاريع|Projects/ }).last();
+  await expect(filesDialog).toContainText('MyApp');
+  await expect(filesDialog.getByTitle('strings.xml')).toHaveCount(0);
+  await page.click('#close-files-modal-btn');
+
+  // After a reload the stored project still exports under the saved name. This file is clean,
+  // so there is no placeholder warning to acknowledge.
+  await page.reload();
+  await page.click('#header-right-drawer-btn');
+  await page.click('#drawer-export-btn');
+  const [download] = await Promise.all([page.waitForEvent('download'), page.click('#export-save-btn')]);
+  expect(download.suggestedFilename()).toBe('MyApp-values-ar.zip');
+});
+
 test('import report: an unterminated ICU quote is left out and a mixed-placeholder value is flagged for review', async ({ page }) => {
   const xml = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="greeting">Hello</string>\n    <string name="mixed">Hi %1$s, you have {count} new items</string>\n    <string name="broken_quote">'{username} said hi</string>\n</resources>`;
   await page.goto('/');
