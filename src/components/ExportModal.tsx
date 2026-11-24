@@ -1,16 +1,17 @@
 import React, { useState, useMemo } from 'react';
-import { X, Download, Copy, Check, Sliders, Filter, ShieldAlert, ChevronDown } from 'lucide-react';
+import { X, Download, Share2, Copy, Check, Sliders, Filter, ShieldAlert, ChevronDown } from 'lucide-react';
 import { useDialog } from '../utils/useDialog';
 import { FilterStatus, SourceFilter, TranslationProject } from '../types';
 import { copyTextToClipboard } from '../utils/storage';
 import { analyzeProjectQa } from '../utils/placeholderCheck';
 import {
   generateAndroidXml,
-  downloadXmlFile,
   ExportOptions,
   defaultExportOptions,
   filterProjectItems,
 } from '../utils/xmlExporter';
+import { exportZipName, makeZipBlob } from '../utils/multiLang';
+import { saveToDevice, shareFile } from '../utils/saveFile';
 import { useT } from '../i18n/i18n';
 
 interface ExportModalProps {
@@ -74,6 +75,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const itemsToExport = options.onlyMatchingFilter ? filteredItems : project.items;
 
   // Wrong or missing placeholders (%s, %1$d, tags) crash or garble the app at runtime, so exporting them needs a deliberate OK
+  // 'documents' = in the device Documents folder, 'download' = a browser download; the share sheet is its own feedback
+  const [saveState, setSaveState] = useState<'idle' | 'working' | 'documents' | 'download' | 'error' | 'share-error'>('idle');
   const [allowBroken, setAllowBroken] = useState(false);
   const blockingIssues = useMemo(
     () =>
@@ -91,10 +94,40 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
   if (!isOpen) return null;
 
+  const makeZip = () => makeZipBlob([{ path: 'strings.xml', content: generatedXml }]);
+
+  const zipName = exportZipName(project);
+
+  const runSave = async (action: 'save' | 'share') => {
+    if (exportBlocked || saveState === 'working') return;
+    setSaveState('working');
+    try {
+      const blob = await makeZip();
+      if (action === 'save') {
+        const where = await saveToDevice(blob, zipName);
+        // Falling back to the share sheet needs no status line; the sheet itself is the feedback.
+        setSaveState(where === 'shared' ? 'idle' : where);
+      } else {
+        // A browser that cannot share the file downloads it instead; the share sheet needs no status line.
+        const outcome = await shareFile(blob, zipName);
+        setSaveState(outcome === 'downloaded' ? 'download' : 'idle');
+      }
+    } catch (err) {
+      // Dismissing the share UI is never an error.
+      if ((err as { name?: string } | null)?.name === 'AbortError') {
+        setSaveState('idle');
+        return;
+      }
+      setSaveState(action === 'share' ? 'share-error' : 'error');
+    }
+  };
+
   const handleDownload = () => {
-    if (exportBlocked) return;
-    const filename = `strings.xml`;
-    downloadXmlFile(generatedXml, filename);
+    void runSave('save');
+  };
+
+  const handleShare = () => {
+    void runSave('share');
   };
 
   const handleCopy = () => {
@@ -414,36 +447,62 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           </div>
         )}
 
-        <div className="p-6 pt-4 flex items-center justify-between">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition cursor-pointer"
-          >
-            {tb('close')}
-          </button>
+        <div className="p-6 pt-4">
+          {(saveState === 'documents' || saveState === 'download' || saveState === 'error' || saveState === 'share-error') && (
+            <p
+              role="status"
+              className={`mb-2 text-xs ${
+                saveState === 'error' || saveState === 'share-error' ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
+              }`}
+            >
+              {saveState === 'documents' && t('saved_to_documents', zipName)}
+              {saveState === 'download' && t('downloaded_zip', zipName)}
+              {saveState === 'error' && t('could_not_save_zip')}
+              {saveState === 'share-error' && t('could_not_share_zip')}
+            </p>
+          )}
+          <div className="flex items-center justify-between">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition cursor-pointer"
+            >
+              {tb('close')}
+            </button>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleCopy}
-              disabled={exportBlocked}
-              className="disabled:opacity-40 disabled:pointer-events-none inline-flex items-center gap-1.5 px-4 py-2 rounded-full border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-200 transition cursor-pointer m3-state-layer"
-            >
-              {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>
-                {copied
-                  ? t('copied_2')
-                  : t('copy_xml')}
-              </span>
-            </button>
-            <button
-              onClick={handleDownload}
-              disabled={exportBlocked}
-              aria-disabled={exportBlocked}
-              className="disabled:opacity-40 disabled:pointer-events-none inline-flex items-center gap-1.5 px-5 py-2.5 rounded-full bg-[#0B57D0] hover:bg-[#0842A0] dark:bg-[#A8C7FA] dark:hover:bg-[#82AAFA] text-white dark:text-[#062E6F] text-xs font-semibold shadow-xs transition cursor-pointer m3-state-layer"
-            >
-              <Download className="w-4 h-4" />
-              <span data-i18n>{t('download_strings_xml')}</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleCopy}
+                disabled={exportBlocked}
+                className="disabled:opacity-40 disabled:pointer-events-none inline-flex items-center gap-1.5 px-4 py-2 rounded-full border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-200 transition cursor-pointer m3-state-layer"
+              >
+                {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>
+                  {copied
+                    ? t('copied_2')
+                    : t('copy_xml')}
+                </span>
+              </button>
+              <button
+                onClick={handleShare}
+                disabled={exportBlocked || saveState === 'working'}
+                id="export-share-btn"
+                aria-label={t('share')}
+                title={t('share')}
+                className="disabled:opacity-40 disabled:pointer-events-none inline-flex items-center justify-center w-9 h-9 rounded-full border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 transition cursor-pointer m3-state-layer"
+              >
+                <Share2 className="w-4 h-4" />
+              </button>
+              <button
+                onClick={handleDownload}
+                disabled={exportBlocked || saveState === 'working'}
+                aria-disabled={exportBlocked || saveState === 'working'}
+                id="export-save-btn"
+                className="disabled:opacity-40 disabled:pointer-events-none inline-flex items-center gap-1.5 px-5 py-2.5 rounded-full bg-[#0B57D0] hover:bg-[#0842A0] dark:bg-[#A8C7FA] dark:hover:bg-[#82AAFA] text-white dark:text-[#062E6F] text-xs font-semibold shadow-xs transition cursor-pointer m3-state-layer"
+              >
+                <Download className="w-4 h-4" />
+                <span data-i18n>{t('save')}</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
