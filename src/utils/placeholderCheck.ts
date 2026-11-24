@@ -2480,7 +2480,7 @@ export function getIcuEmptyOtherIssues(item: ResourceItem, targetLocale?: string
       category: 'placeholder',
       severity: 'warning',
       messageEn: `${prefix}The 'other' clause is empty in ${list}. Counts without their own clause will show nothing. Save again to keep it anyway.`,
-      messageAr: `${prefix}فرع 'other' فاضي في ${list}. الأعداد اللي ملهاش فرع خاص بيها هتظهر فاضية. اضغط حفظ تاني لو عايز تحفظه كده.`,
+      messageAr: `${prefix}فرع 'other' فارغ في ${list}. الأعداد التي ليس لها فرع خاص بها ستظهر فارغة. اضغط حفظ مرة أخرى لحفظه كما هو.`,
       tokens: [],
     });
   }
