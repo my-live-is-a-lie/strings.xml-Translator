@@ -859,6 +859,26 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     });
   };
 
+  // Clears every form of the plural, or every item of the array, in one step (undo restores them)
+  const clearAllFields = () => {
+    setPluralPick(null);
+    if (draftItem.type === 'plural') {
+      updateDraftItem({
+        ...draftItem,
+        items: normalizedPluralItems.map((pi) => ({ ...pi, target: '' })),
+        status: 'untranslated',
+        translationSource: undefined,
+      });
+    } else if (draftItem.type === 'array') {
+      updateDraftItem({
+        ...draftItem,
+        items: draftItem.items.map((ai) => ({ ...ai, target: '' })),
+        status: 'untranslated',
+        translationSource: undefined,
+      });
+    }
+  };
+
   // While the mode is on: a press on a form field picks it (clone fills it), a press anywhere else cancels
   useEffect(() => {
     if (!pluralPick) return;
@@ -877,6 +897,8 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       if (!start || e.pointerId !== start.id) return;
       const target = start.target;
       start = null;
+      // The "delete all" button inside the hint handles its own click
+      if (target instanceof Node && pickHintRef.current?.contains(target)) return;
       const refs = pluralTextareaRefs.current;
       const qty = Object.keys(refs).find((q) => refs[q] && target instanceof Node && refs[q]!.contains(target));
       const arefs = arrayTextareaRefs.current;
@@ -2002,7 +2024,17 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                         : 'border-sky-400/50 bg-sky-100/95 text-sky-800 dark:bg-sky-950/90 dark:text-sky-200'
                     }`}
                   >
-                    {t(draftItem.type === 'array' ? 'array_pick_item_first' : 'plural_pick_form_first')}
+                    <div>{t(draftItem.type === 'array' ? 'array_pick_item_first' : 'plural_pick_form_first')}</div>
+                    {pluralPick === 'clear' && (
+                      <button
+                        type="button"
+                        data-testid="plural-delete-all"
+                        onClick={clearAllFields}
+                        className="mt-1.5 w-full rounded-md border border-red-500/60 bg-red-600 px-3 py-1 text-xs font-semibold text-white hover:bg-red-700 active:bg-red-800 transition cursor-pointer"
+                      >
+                        {t('delete_all_fields')}
+                      </button>
+                    )}
                   </div>
                 )
   );
