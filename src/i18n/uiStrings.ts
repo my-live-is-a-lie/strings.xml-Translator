@@ -381,6 +381,7 @@ export const UI_STRINGS: Record<string, { en: string; ar: string }> = {
   "not_saved_array_incomplete": { en: "Not saved. Translate every item of the array to save it:", ar: "لم يُحفظ النص. يجب ترجمة كل عناصر المصفوفة ليتم حفظها:" },
   "not_saved_icu_incomplete": { en: "Not saved. Translate every field of the message to save it:", ar: "لم يُحفظ النص. يجب ترجمة كل حقول الرسالة ليتم حفظها:" },
   "array_pick_item_first": { en: "Click the item you want first.", ar: "اضغط على العنصر المطلوب أولًا." },
+  "delete_all_fields": { en: "Delete all", ar: "حذف الكل" },
   "plural_source_singular": { en: "Singular", ar: "مفرد" },
   "plural_source_plural": { en: "Plural", ar: "الجمع" },
   "plural_pick_form_first": { en: "Click the plural form you want first.", ar: "اضغط على الصيغة المطلوبة أولًا." },

@@ -49,4 +49,13 @@ test('string-array on a touch screen: item tools and delete pick by tap', async 
   await expect(fields.nth(2)).toHaveValue('');
   await expect(fields.nth(0)).toHaveValue('First choice');
   await expect(page.getByTestId('plural-pick-hint')).toHaveCount(0);
+
+  // "Delete all" by tap clears every item (nothing focused, so delete shows the hint)
+  await page.locator('[data-key-name]').tap();
+  await page.locator('#weblate-quick-delete-btn').tap();
+  await expect(page.getByTestId('plural-delete-all')).toBeVisible();
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/delete-all-mobile.png` });
+  await page.getByTestId('plural-delete-all').tap();
+  for (let i = 0; i < 3; i++) await expect(fields.nth(i)).toHaveValue('');
+  await expect(page.getByTestId('plural-pick-hint')).toHaveCount(0);
 });

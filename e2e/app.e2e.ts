@@ -873,6 +873,18 @@ test('plural clone and paste act on the picked form only, and hint when none is 
   await fields.nth(2).click();
   await expect(fields.nth(2)).toHaveValue('');
   await expect(hint).toHaveCount(0);
+
+  // "Delete all" under the delete hint clears every form at once
+  await fields.nth(1).fill('واحد');
+  await fields.nth(2).fill('اثنان');
+  await page.locator('[data-src-text]').click();
+  await page.click('#weblate-quick-delete-btn');
+  await expect(page.getByTestId('plural-delete-all')).toBeVisible();
+  await expect(page.getByTestId('plural-delete-all')).toHaveText(/حذف الكل|Delete all/);
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/delete-all-plural.png` });
+  await page.getByTestId('plural-delete-all').click();
+  for (let i = 0; i < count; i++) await expect(fields.nth(i)).toHaveValue('');
+  await expect(hint).toHaveCount(0);
 });
 
 test('an ICU message with an empty field is not saved until every field is filled', async ({ page }) => {
@@ -1008,6 +1020,18 @@ test('string-array: per-item source line, copy and clone, and delete picks one i
   await expect(fields.nth(0)).toHaveValue('पहला');
   await expect(fields.nth(2)).toHaveValue('तीसरा');
   await expect(hint).toHaveCount(0);
+
+  // "Delete all" under the delete hint clears every item
+  await page.locator('[data-key-name]').click();
+  await page.click('#weblate-quick-delete-btn');
+  await expect(page.getByTestId('plural-delete-all')).toBeVisible();
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/delete-all-array.png` });
+  await page.getByTestId('plural-delete-all').click();
+  for (let i = 0; i < 3; i++) await expect(fields.nth(i)).toHaveValue('');
+  await expect(hint).toHaveCount(0);
+  await fields.nth(0).fill('पहला');
+  await fields.nth(2).fill('तीसरा');
+  await page.locator('[data-key-name]').click();
 
   // With an item focused, delete clears it straight away
   await fields.nth(2).click();
