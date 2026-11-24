@@ -2049,22 +2049,14 @@ export function usesHashWithoutClauseNumber(source: string, target: string, targ
 }
 
 /**
- * The ICU structural errors of an item: a translation that breaks an ICU block throws at
- * runtime (`String.format` / `MessageFormat`), the same reason a line-break mismatch is
- * unsaveable. The translation pipeline already refuses to produce such a reply; this is
- * the matching gate for text the user types or pastes, so what the app will not generate
- * it will not save either. Only strings whose source actually contains an ICU block are
- * reported, so ordinary placeholder repair is unaffected.
- */
-/**
- * Note: `skipQuotedLiteral` (used by the brace parser) treats a `'` before `{`, `}`, `|` or `#` as the start of a
- * quoted literal, while this function only looks at `{` and `}`. The two are kept separate on purpose; the
- * difference only matters for a `'` right before `|` or `#`.
- *
  * ICU apostrophe quoting: '' is a literal apostrophe, and a single ' right before { or } opens
  * quoted literal text that must be closed by another single '. An unterminated quote makes
  * MessageFormat throw at runtime, so the save gate blocks it. A ' before any other character
  * is just a literal apostrophe (ICU's lenient rule), so normal contractions never flag.
+ *
+ * Note: `skipQuotedLiteral` (used by the brace parser) treats a `'` before `{`, `}`, `|` or `#` as the start of a
+ * quoted literal, while this function only looks at `{` and `}`. The two are kept separate on purpose; the
+ * difference only matters for a `'` right before `|` or `#`.
  */
 export function hasUnterminatedIcuQuote(text: string): boolean {
   if (!text || text.indexOf("'") === -1) return false;
@@ -2241,6 +2233,14 @@ export function repairItemQuoteMarks(item: ResourceItem): { item: ResourceItem; 
   return { item, changed: false };
 }
 
+/**
+ * The ICU structural errors of an item: a translation that breaks an ICU block throws at
+ * runtime (`String.format` / `MessageFormat`), the same reason a line-break mismatch is
+ * unsaveable. The translation pipeline already refuses to produce such a reply; this is
+ * the matching gate for text the user types or pastes, so what the app will not generate
+ * it will not save either. Only strings whose source actually contains an ICU block are
+ * reported, so ordinary placeholder repair is unaffected.
+ */
 export function getIcuStructureIssues(item: ResourceItem, targetLocale?: string): QaIssue[] {
   const parts: Array<{ source: string; target: string; subKey?: string }> = [];
   if (item.type === 'string') {

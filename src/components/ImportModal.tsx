@@ -26,6 +26,14 @@ type Translate = (key: string, ...args: unknown[]) => string;
 // Falls back to that English message only for a category this UI doesn't know how to phrase yet
 // (in practice: raw parser errors, which have no stable wording to translate).
 
+/** ICU review findings with one message key, shared by the source report and the merged translation file. */
+const ICU_REVIEW_KEY_BY_KIND: Record<string, string> = {
+  'unmatched-brace': 'repair_unmatched_brace',
+  'suspect-icu-keyword': 'repair_suspect_icu_keyword',
+  'missing-other-branch': 'repair_missing_other_branch',
+  'duplicate-icu-category': 'repair_duplicate_icu_category',
+};
+
 function localizeRepairIssue(issue: RepairIssue, t: Translate): string {
   const count = issue.params?.count ?? '';
   const name = issue.stringName ?? issue.params?.name ?? '';
@@ -66,24 +74,20 @@ function localizeRepairIssue(issue: RepairIssue, t: Translate): string {
       const kind = String(issue.params?.kind ?? '');
       const detail = issue.params?.detail ?? '';
       const arg = issue.params?.arg ?? '';
-      const reuse: Record<string, string> = {
-        'unmatched-brace': 'repair_unmatched_brace',
-        'suspect-icu-keyword': 'repair_suspect_icu_keyword',
-        'duplicate-icu-category': 'repair_duplicate_icu_category',
-      };
       const own: Record<string, string> = {
         'unterminated-icu-quote': 'repair_target_unterminated_icu_quote',
         'unbalanced-icu-block': 'repair_target_unbalanced_icu_block',
         'unknown-icu-keyword': 'repair_target_unknown_icu_keyword',
         'missing-other-branch': 'repair_target_missing_other_branch',
+        'escaped-apostrophe-quote': 'repair_target_escaped_apostrophe_quote',
       };
       const body =
         kind === 'mixed-placeholders'
           ? t('repair_mixed_placeholders', name, issue.params?.printf ?? '', issue.params?.icu ?? '')
           : own[kind]
             ? t(own[kind], name, detail, arg)
-            : reuse[kind]
-              ? t(reuse[kind], name, detail, arg)
+            : ICU_REVIEW_KEY_BY_KIND[kind]
+              ? t(ICU_REVIEW_KEY_BY_KIND[kind], name, detail, arg)
               : issue.message;
       const where =
         issue.resourceType === 'array' && issue.itemQualifier !== undefined
@@ -93,6 +97,16 @@ function localizeRepairIssue(issue: RepairIssue, t: Translate): string {
     }
     case 'mixed-placeholders': {
       const base = t('repair_mixed_placeholders', name, issue.params?.printf ?? '', issue.params?.icu ?? '');
+      return issue.resourceType === 'array' && issue.itemQualifier !== undefined
+        ? `${base} ${t('repair_location_array', String(Number(issue.itemQualifier) + 1))}`
+        : base;
+    }
+    case 'escaped-apostrophe-quote':
+    case 'icu-exclusion-failed': {
+      const base = t(
+        issue.category === 'escaped-apostrophe-quote' ? 'repair_escaped_apostrophe_quote' : 'repair_icu_exclusion_failed',
+        name
+      );
       return issue.resourceType === 'array' && issue.itemQualifier !== undefined
         ? `${base} ${t('repair_location_array', String(Number(issue.itemQualifier) + 1))}`
         : base;
@@ -113,13 +127,7 @@ function localizeRepairIssue(issue: RepairIssue, t: Translate): string {
     case 'suspect-icu-keyword':
     case 'missing-other-branch':
     case 'duplicate-icu-category': {
-      const key = {
-        'unmatched-brace': 'repair_unmatched_brace',
-        'suspect-icu-keyword': 'repair_suspect_icu_keyword',
-        'missing-other-branch': 'repair_missing_other_branch',
-        'duplicate-icu-category': 'repair_duplicate_icu_category',
-      }[issue.category];
-      const base = t(key, name, issue.params?.detail ?? '', issue.params?.arg ?? '');
+      const base = t(ICU_REVIEW_KEY_BY_KIND[issue.category], name, issue.params?.detail ?? '', issue.params?.arg ?? '');
       return issue.resourceType === 'array' && issue.itemQualifier !== undefined
         ? `${base} ${t('repair_location_array', String(Number(issue.itemQualifier) + 1))}`
         : base;

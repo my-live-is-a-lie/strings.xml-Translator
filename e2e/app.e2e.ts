@@ -613,3 +613,21 @@ test('import report: ICU structure findings on the source and on the merged tran
   await expect(dialog).toContainText('ملف الترجمة الذي أضفته');
   if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/import-report-4b4c.png` });
 });
+
+test('import report: an escaped apostrophe before a brace is listed for review and the string is still imported', async ({ page }) => {
+  const source = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="greeting">Hello</string>\n    <string name="escaped_quote">Hello \\'{name}</string>\n</resources>`;
+  const target = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="greeting">مرحبا</string>\n    <string name="escaped_quote">مرحبا \\'{name}</string>\n</resources>`;
+  await page.goto('/');
+  await page.click('#header-right-drawer-btn');
+  await page.click('#drawer-import-btn');
+  const inputs = page.locator('input[type=file]');
+  await inputs.nth(0).setInputFiles({ name: 'strings.xml', mimeType: 'text/xml', buffer: Buffer.from(source) });
+  await inputs.nth(1).setInputFiles({ name: 'strings-ar.xml', mimeType: 'text/xml', buffer: Buffer.from(target) });
+  await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
+
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('escaped_quote');
+  await expect(dialog).toContainText('مُهرَّبة');
+  await expect(dialog).toContainText('ملف الترجمة الذي أضفته');
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/import-report-escaped-apos.png` });
+});

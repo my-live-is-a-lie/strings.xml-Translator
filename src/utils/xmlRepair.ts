@@ -547,22 +547,32 @@ function excludeMalformedEntries(
  * author spelled it out as a literal apostrophe, so it must never be read as the start of an ICU quote.
  */
 const NEUTRAL_APOSTROPHE = '\u0001';
-export function decodeBodyForIcuChecks(body: string): string {
+export function decodeBodyForIcuChecks(body: string, escapedApostropheAsQuote = false): string {
   return body
     .replace(/<\/?[a-zA-Z][^>]*>/g, '')
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
     .replace(/\\(u[0-9a-fA-F]{4}|[\s\S])|&(apos|quot|lt|gt|amp|#39|#x27);/g, (_m, esc: string | undefined, ent: string | undefined) => {
       if (ent !== undefined) {
         return ent === 'apos' || ent === '#39' || ent === '#x27'
-          ? NEUTRAL_APOSTROPHE
+          ? escapedApostropheAsQuote ? "'" : NEUTRAL_APOSTROPHE
           : { quot: '"', lt: '<', gt: '>', amp: '&' }[ent] ?? '';
       }
-      if (esc === "'") return NEUTRAL_APOSTROPHE;
+      if (esc === "'") return escapedApostropheAsQuote ? "'" : NEUTRAL_APOSTROPHE;
       if (esc === 'n') return '\n';
       if (esc === 't') return '\t';
       if (esc!.length > 1) return String.fromCharCode(parseInt(esc!.slice(1), 16));
       return esc!;
     });
+}
+
+/**
+ * Review-only: true when the value only looks fine because an escaped apostrophe (`\\'`, `&apos;`, `&#39;`) was
+ * read as a plain character, but the editor's own save check (`hasUnterminatedIcuQuote`, which sees the raw
+ * text) would treat it as the start of an ICU quote, e.g. `Hello \\'{name}`. Whether that matters depends on
+ * whether the app formats the value with ICU at run time, so it is reported and never excluded.
+ */
+export function hasEscapedApostropheIcuQuote(body: string): boolean {
+  return !hasUnterminatedIcuQuote(decodeBodyForIcuChecks(body)) && hasUnterminatedIcuQuote(decodeBodyForIcuChecks(body, true));
 }
 
 // A printf-style placeholder (`%1$s`, `%s`, `%d`, `%.2f`). `%%` is a literal percent and is removed first. A
@@ -581,13 +591,6 @@ export function findMixedPlaceholders(decoded: string): { printf: string; icu: s
   return icu ? { printf, icu } : null;
 }
 
-/**
- * Case #14: a resource whose decoded value has an unterminated ICU quote (a `'` right before `{` or `}` that is
- * never closed) can't be rendered by an ICU MessageFormat engine, so it is excluded like a malformed entry:
- * only after the rest of the file is confirmed to parse, and verified by re-parsing the result. A
- * `<string-array>` is excluded as a whole — dropping one item would silently renumber the ones after it.
- * `<plurals>` items are plain text per quantity, not ICU, and are never checked.
- */
 /** The first reason (if any) a decoded value can't be used as an ICU message: an unterminated quote (#14), or a
  *  clearly-ICU block with unbalanced braces (#13) or a misspelled keyword (#15). */
 function blockingIcuProblem(body: string): { category: string; detail?: string } | null {
@@ -597,9 +600,17 @@ function blockingIcuProblem(body: string): { category: string; detail?: string }
   return f ? { category: f.kind, detail: f.detail } : null;
 }
 
-function excludeUnterminatedIcuQuotes(
+/**
+ * Case #14 (and the blocking ICU cases #13 and #15 that share this path): a resource whose decoded value can't
+ * be rendered by an ICU MessageFormat engine is excluded like a malformed entry: only after the rest of the file
+ * is confirmed to parse, and verified by re-parsing the result. A `<string-array>` is excluded as a whole,
+ * because dropping one item would silently renumber the ones after it. `<plurals>` items are plain text per
+ * quantity, not ICU, and are never checked.
+ */
+export function excludeUnterminatedIcuQuotes(
   text: string,
-  issue: IssueFactory
+  issue: IssueFactory,
+  reparse: (candidate: string) => { errors: unknown[] } = parseAndroidXml
 ): { text: string; issues: RepairIssue[] } {
   const scannable = blankComments(text);
   const found: Array<{ start: number; end: number; issue: RepairIssue }> = [];
@@ -670,7 +681,24 @@ function excludeUnterminatedIcuQuotes(
     }
     candidate = candidate.slice(0, start) + candidate.slice(end);
   }
-  if (parseAndroidXml(candidate).errors.length > 0) return { text, issues: [] };
+  if (reparse(candidate).errors.length > 0) {
+    // The cleaned-up file doesn't re-parse, so nothing is removed. Say so instead of importing silently.
+    return {
+      text,
+      issues: found
+        .slice()
+        .reverse()
+        .map((f) =>
+          issue(
+            'review',
+            'icu-exclusion-failed',
+            `"${f.issue.stringName}" can't be used as an ICU message but could not be left out safely, so it was imported as written.`,
+            f.issue.stringName,
+            { resourceType: f.issue.resourceType, itemQualifier: f.issue.itemQualifier, params: { problem: f.issue.category } }
+          )
+        ),
+    };
+  }
   return { text: candidate, issues: found.reverse().map((f) => f.issue) };
 }
 
@@ -719,6 +747,7 @@ export function checkTargetFileIcu(rawTarget: string): RepairIssue[] {
     if (hasUnterminatedIcuQuote(decoded)) {
       add(name, 'unterminated-icu-quote', extras, { detail: '', arg: '' });
     } else {
+      if (hasEscapedApostropheIcuQuote(body)) add(name, 'escaped-apostrophe-quote', extras, { detail: '', arg: '' });
       for (const f of findIcuFindings(decoded)) {
         const key = `${f.kind}|${f.arg ?? ''}|${f.detail}`;
         if (seen.has(key)) continue;
@@ -835,6 +864,17 @@ export function repairAndroidXml(raw: string): RepairResult {
   // already handled (the entry is gone from `text`), so only review-tier findings can show up here.
   function checkIcuStructure(name: string, body: string, extras: Partial<IssueExtras> = {}) {
     const seen = new Set<string>();
+    if (hasEscapedApostropheIcuQuote(body)) {
+      reviewIssues.push(
+        issue(
+          'review',
+          'escaped-apostrophe-quote',
+          `"${name}" has an escaped apostrophe right before "{" or "}". Android reads it as a plain apostrophe, but the editor's ICU check would read it as an ICU quote.`,
+          name,
+          extras
+        )
+      );
+    }
     for (const f of findIcuFindings(decodeBodyForIcuChecks(body))) {
       if (f.blocking) continue;
       const key = `${f.kind}|${f.arg ?? ''}|${f.detail}`;

@@ -4,6 +4,8 @@ import {
   repairAndroidXml,
   isEntryExclusion,
   checkTargetFileIcu,
+  excludeUnterminatedIcuQuotes,
+  hasEscapedApostropheIcuQuote,
   applyReviewDecisions,
   RESOURCE_TYPE_BY_TAG,
   RESOURCE_TAG_BY_TYPE,
@@ -728,5 +730,73 @@ describe('issue #33 phase 4c: merged target file is reported, never excluded', (
     expect(checkTargetFileIcu(wrap(`  <string name="a">{n, plural, one {#} other {#}}</string>`))).toEqual([]);
     expect(checkTargetFileIcu(wrap(`  <plurals name="p">\n    <item quantity="one">'{x</item>\n    <item quantity="other">y</item>\n  </plurals>`))).toEqual([]);
     expect(checkTargetFileIcu('<resources><string name="a">oops</resources>')).toEqual([]);
+  });
+});
+
+describe('escaped apostrophe before { or } is a Review note, never an exclusion', () => {
+  const found = (r: ReturnType<typeof repairAndroidXml>) => r.reviewIssues.filter((i) => i.category === 'escaped-apostrophe-quote');
+
+  it('flags \\\' before { as review and keeps the string', () => {
+    const r = repairAndroidXml(wrap(`  <string name="a">Hello \\'{name}</string>\n  <string name="b">fine</string>`));
+    expect(r.blockingIssues).toEqual([]);
+    expect(r.parsed.items.map((i) => i.name)).toEqual(['a', 'b']);
+    expect(found(r)).toHaveLength(1);
+    expect(found(r)[0]).toMatchObject({ tier: 'review', stringName: 'a', resourceType: 'string' });
+  });
+
+  it('flags &apos; and &#39; before { or }', () => {
+    const r = repairAndroidXml(wrap(`  <string name="a">Hi &apos;{name}</string>\n  <string name="b">Hi &#39;{name}</string>\n  <string name="c">x &apos;}</string>`));
+    expect(found(r).map((i) => i.stringName)).toEqual(['a', 'b', 'c']);
+    expect(r.blockingIssues).toEqual([]);
+  });
+
+  it('does not flag an escaped apostrophe elsewhere, or a closed pair', () => {
+    const r = repairAndroidXml(wrap(`  <string name="a">It\\'s {name}</string>\n  <string name="b">\\'{x\\'}</string>\n  <string name="c">it&apos;s fine</string>`));
+    expect(found(r)).toEqual([]);
+  });
+
+  it('does not add a second note when the raw quote is already blocking', () => {
+    const r = repairAndroidXml(wrap(`  <string name="a">'{x</string>\n  <string name="b">ok</string>`));
+    expect(found(r)).toEqual([]);
+    expect(r.blockingIssues.map((i) => i.category)).toEqual(['unterminated-icu-quote']);
+  });
+
+  it('reports the array item position', () => {
+    const r = repairAndroidXml(wrap(`  <string-array name="arr">\n    <item>ok</item>\n    <item>Hi \\'{n}</item>\n  </string-array>`));
+    expect(found(r)[0]).toMatchObject({ stringName: 'arr', resourceType: 'array', itemQualifier: '1' });
+  });
+
+  it('is reported for the translation file too, as review', () => {
+    const issues = checkTargetFileIcu(wrap(`  <string name="a">Hello \\'{name}</string>`));
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ tier: 'review', category: 'target-icu', params: { kind: 'escaped-apostrophe-quote' } });
+  });
+
+  it('helper: only true when the escape is what hides the quote', () => {
+    expect(hasEscapedApostropheIcuQuote("Hello \\'{name}")).toBe(true);
+    expect(hasEscapedApostropheIcuQuote("it\\'s")).toBe(false);
+    expect(hasEscapedApostropheIcuQuote("'{x")).toBe(false);
+  });
+});
+
+describe('excludeUnterminatedIcuQuotes: exclusion that cannot be verified', () => {
+  const makeFactory = (): Parameters<typeof excludeUnterminatedIcuQuotes>[1] => {
+    let n = 0;
+    return (tier, category, message, stringName, extras) => ({ id: `t_${++n}`, tier, category, message, stringName, ...extras });
+  };
+
+  it('reports a Review issue instead of importing silently when the result does not re-parse', () => {
+    const text = wrap(`  <string name="bad">'{x</string>\n  <string name="ok">hi</string>`);
+    const out = excludeUnterminatedIcuQuotes(text, makeFactory(), () => ({ errors: [{}] }));
+    expect(out.text).toBe(text);
+    expect(out.issues).toHaveLength(1);
+    expect(out.issues[0]).toMatchObject({ tier: 'review', category: 'icu-exclusion-failed', stringName: 'bad', params: { problem: 'unterminated-icu-quote' } });
+  });
+
+  it('still excludes normally when the result re-parses', () => {
+    const text = wrap(`  <string name="bad">'{x</string>\n  <string name="ok">hi</string>`);
+    const out = excludeUnterminatedIcuQuotes(text, makeFactory());
+    expect(out.text).not.toContain('bad');
+    expect(out.issues[0]).toMatchObject({ tier: 'blocking', category: 'unterminated-icu-quote' });
   });
 });

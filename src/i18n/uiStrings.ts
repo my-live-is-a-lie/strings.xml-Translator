@@ -509,6 +509,18 @@ export const UI_STRINGS: Record<string, { en: string; ar: string }> = {
     en: "In \"%1$s\", \"%2$s\" is not a known ICU keyword for the block on %3$s. Check the spelling.",
     ar: "في \"%1$s\"، الكلمة ⁦\"%2$s\"⁩ ليست كلمة ICU معروفة للكتلة الخاصة بـ⁦%3$s⁩. راجع الإملاء.",
   },
+  "repair_escaped_apostrophe_quote": {
+    en: "\"%1$s\" has an escaped apostrophe right before { or }. Android reads it as a plain apostrophe, but the editor's ICU check reads it as an ICU quote and will not save it as is. It was imported as written.",
+    ar: "يحتوي \"%1$s\" على علامة ⁦'⁩ مُهرَّبة قبل ⁦{⁩ أو ⁦}⁩. يقرؤها Android كعلامة عادية، لكن فحص ICU في المحرر يقرؤها كاقتباس ICU ولن يحفظها كما هي. تم استيراده كما هو.",
+  },
+  "repair_target_escaped_apostrophe_quote": {
+    en: "\"%1$s\" has an escaped apostrophe right before { or }. Android reads it as a plain apostrophe, but the editor's ICU check reads it as an ICU quote. It was kept as is.",
+    ar: "يحتوي \"%1$s\" على علامة ⁦'⁩ مُهرَّبة قبل ⁦{⁩ أو ⁦}⁩. يقرؤها Android كعلامة عادية، لكن فحص ICU في المحرر يقرؤها كاقتباس ICU. تم الإبقاء عليه كما هو.",
+  },
+  "repair_icu_exclusion_failed": {
+    en: "\"%1$s\" can't be used as an ICU message, but it could not be left out safely, so it was imported as written. Check it in the source file.",
+    ar: "لا يصلح \"%1$s\" كرسالة ICU، لكن تعذّر استبعاده بأمان فتم استيراده كما هو. راجعه في الملف المصدر.",
+  },
   "repair_missing_other_branch": {
     en: "In \"%1$s\", the %2$s block for %3$s has no \"other\" branch. ICU requires it, so this must be fixed in the source file: without it the message fails to render.",
     ar: "في \"%1$s\"، كتلة ⁦%2$s⁩ الخاصة بـ⁦%3$s⁩ بلا فرع ⁦\"other\"⁩. هذا الفرع إلزامي في ICU، لذا يجب إصلاحه في الملف المصدر وإلا فشل عرض الرسالة.",
