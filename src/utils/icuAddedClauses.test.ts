@@ -59,4 +59,18 @@ describe('empty categories the editor adds are shown, but never saved', () => {
     const saved = save(SRC, '{n, plural, one {# رسالة} other {# رسائل}}', 'ar');
     expect(saved).not.toMatch(/\{\s*\}/);
   });
+
+  it('case D: a category the translator filled, saved and then cleared is dropped, not kept as an empty branch', () => {
+    const saved = '{n, plural, one {# رسالة} two {اثنان} other {# رسائل}}';
+    const model = getIcuFieldModel(SRC, saved, 'ar')!;
+    const twoIndex = (model[0] as { clauses: Array<{ selector: string }> }).clauses.findIndex((c) => c.selector === 'two');
+    expect(assembleIcuFields(setIcuClauseValue(model, 0, twoIndex, ''))).toBe('{n, plural, one {# رسالة} other {# رسائل}}');
+  });
+
+  it('a category that is in the source stays even when cleared', () => {
+    const src = '{n, plural, one {# f} two {# t} other {# fs}}';
+    const model = getIcuFieldModel(src, '{n, plural, one {a} two {b} other {c}}', 'ar')!;
+    const i = (model[0] as { clauses: Array<{ selector: string }> }).clauses.findIndex((c) => c.selector === 'two');
+    expect(assembleIcuFields(setIcuClauseValue(model, 0, i, ''))).toBe('{n, plural, one {a} two {} other {c}}');
+  });
 });

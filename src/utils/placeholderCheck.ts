@@ -763,7 +763,14 @@ function buildIcuFieldModel(source: string, target: string): IcuField[] | null {
         const value = targetIsEmpty
           ? (isStructuralText(clause.value) ? clause.value : '')
           : clause.value;
-        return attachChildren({ ...clause, value, sourceValue });
+        // A plural category the source does not have: while empty it is not saved either
+        // (a saved `two {}` would render blank), so clearing a category the translator added
+        // removes it instead of leaving an empty branch.
+        const pluralLike = field.type === 'plural' || field.type === 'selectordinal';
+        const absentInSource =
+          !targetIsEmpty && pluralLike && !!src && !clause.selector.startsWith('=') && clause.selector !== 'other' &&
+          !src.clauses.some((c) => c.selector === clause.selector);
+        return attachChildren({ ...clause, value, sourceValue, ...(absentInSource ? { added: true } : {}) });
       }),
     };
   });
