@@ -363,6 +363,7 @@ export const UI_STRINGS: Record<string, { en: string; ar: string }> = {
   "multiple_spaces_detected_between_words": { en: "Multiple spaces detected between words", ar: "مسافات متتالية زائدة بين الكلمات" },
   "fix_spaces": { en: "Fix spaces", ar: "إصلاح المسافات" },
   "type_translation_here": { en: "Type translation here...", ar: "اكتب الترجمة هنا..." },
+  "item_number": { en: "Item %1$s", ar: "العنصر %1$s" },
   "item": { en: "Item [%1$s]", ar: "العنصر [%1$s]" },
   "translate_item": { en: "Translate item %1$s...", ar: "ترجمة العنصر %1$s..." },
   "copy_translation_text": { en: "Copy translation text", ar: "نسخ نص الترجمة" },

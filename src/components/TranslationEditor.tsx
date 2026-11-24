@@ -2484,11 +2484,15 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                 {draftItem.items.map((ai, aIdx) => (
                   <div key={ai.index} className="space-y-1">
                     {(barField ? barField === `array:${ai.index}` : aIdx === 0) && shortcutBar}
-                    <div dir="ltr" className="flex items-center gap-1 text-xs">
-                      <span data-i18n className="font-mono font-semibold text-[#1EB996]">
-                        {t('item', ai.index)}
+                    <div dir="ltr" className="flex items-start justify-between gap-2 text-xs">
+                      <span data-testid={`array-source-${ai.index}`} className="app-source-font text-slate-600 dark:text-slate-300 text-[11px] sm:text-xs break-words whitespace-pre-line min-w-0">
+                        {renderSourceWithSyntaxHighlights(ai.source, {
+                          fieldType: 'array',
+                          index: ai.index,
+                        })}
                       </span>
-                      <button
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
                         type="button"
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => copyArrayItemSource(ai.index, ai.source)}
@@ -2497,8 +2501,8 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                         data-testid={`array-copy-${ai.index}`}
                       >
                         {copiedArrayIdx === ai.index ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                      </button>
-                      <button
+                        </button>
+                        <button
                         type="button"
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => cloneArrayItem(ai.index)}
@@ -2511,13 +2515,11 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                           <path d="M15 4H6.5A1.5 1.5 0 0 0 5 5.5v7A1.5 1.5 0 0 0 6.5 14H15" />
                           <path d="m12.5 11.5 2.5 2.5-2.5 2.5" />
                         </svg>
-                      </button>
-                    </div>
-                    <div dir="ltr" data-testid={`array-source-${ai.index}`} className="app-source-font text-slate-600 dark:text-slate-300 text-[11px] sm:text-xs break-words whitespace-pre-line">
-                      {renderSourceWithSyntaxHighlights(ai.source, {
-                        fieldType: 'array',
-                        index: ai.index,
-                      })}
+                        </button>
+                        <span data-i18n className="font-mono font-semibold text-[#1EB996]">
+                          {t('item_number', ai.index + 1)}
+                        </span>
+                      </div>
                     </div>
                     <HighlightedTextarea
                       rows={1}
@@ -2559,7 +2561,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                         applyAutoClose(e.currentTarget, ai.target, `array:${ai.index}`, (v) => handleArrayItemChange(ai.index, v));
                       }}
                       placeholder={
-                        t('translate_item', ai.index)
+                        t('translate_item', ai.index + 1)
                       }
                       enableSwipeResize={!pluralPick}
                       containerClassName={
