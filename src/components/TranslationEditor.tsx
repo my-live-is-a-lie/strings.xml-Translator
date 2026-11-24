@@ -1243,6 +1243,13 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
 
   // Copy link / XML key
   // Copy English source
+  // The label sits on the side opposite the source text's writing direction (first strong letter decides)
+  const startsRtl = (text: string): boolean => {
+    // Placeholders (%d, %1$s, {count}) and tags are not words: they do not decide the direction
+    const words = text.replace(/%(?:\d+\$)?[-+ 0#]*\d*(?:\.\d+)?[a-zA-Z%]/g, ' ').replace(/\{[^}]*\}/g, ' ').replace(/<[^>]*>/g, ' ');
+    const m = words.match(/[\p{L}]/u);
+    return !!m && /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/.test(m[0]);
+  };
   // Plural entries always show the singular and plural source texts, whatever forms the target language has
   const pluralSourceBoxes: Array<{ quantity: 'one' | 'other'; text: string }> =
     draftItem.type === 'plural'
@@ -2138,7 +2145,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                       </svg>
                     </button>
                     <div dir="ltr" className="kb-src flex-1 min-h-[38px] px-3 py-1.5 rounded-lg bg-slate-100/90 dark:bg-[#141822] border border-slate-200/90 dark:border-[#283140]">
-                      <div dir="rtl" data-testid={`plural-source-label-${box.quantity}`} className="text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-100 text-start">
+                      <div dir="ltr" data-testid={`plural-source-label-${box.quantity}`} className={`text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-100 ${startsRtl(box.text) ? 'text-left' : 'text-right'}`}>
                         {t(box.quantity === 'one' ? 'plural_source_singular' : 'plural_source_plural')}
                       </div>
                       <span dir="auto" {...(bIdx === 0 ? { 'data-src-text': '' } : {})} data-testid={`plural-source-${box.quantity}`} data-src-raw={box.text} className="block text-xs sm:text-sm font-normal text-slate-800 dark:text-slate-100 select-text break-words whitespace-pre-line leading-relaxed">

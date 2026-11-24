@@ -779,6 +779,13 @@ test('plural clone and paste act on the picked form only, and hint when none is 
   await expect(page.getByTestId('plural-source-other')).toContainText('%d files');
   await expect(page.getByTestId('plural-source-label-one')).toHaveText(/مفرد|Singular/);
   await expect(page.getByTestId('plural-source-label-other')).toHaveText(/الجمع|Plural/);
+  // The label sits on the right of its box (opposite the English text direction), the same on every screen size
+  for (const q of ['one', 'other']) {
+    const label = (await page.getByTestId(`plural-source-label-${q}`).boundingBox())!;
+    const box = (await page.getByTestId(`plural-source-label-${q}`).locator('xpath=..').boundingBox())!;
+    expect(box.x + box.width - (label.x + label.width)).toBeLessThan(20);
+    expect(await page.getByTestId(`plural-source-label-${q}`).evaluate((e) => getComputedStyle(e).textAlign)).toBe('right');
+  }
   if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/plural-source-forms.png` });
 
   // Nothing picked: clone fills nothing and shows the hint
@@ -1003,4 +1010,20 @@ test('string-array: per-item source line, copy and clone, and delete picks one i
   await page.click('#weblate-quick-delete-btn');
   await expect(fields.nth(2)).toHaveValue('');
   await expect(fields.nth(0)).toHaveValue('पहला');
+});
+
+test('plural source labels sit opposite the source text direction', async ({ page }) => {
+  const xml = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <plurals name="files">\n        <item quantity="one">%d ملف</item>\n        <item quantity="other">%d ملفات</item>\n    </plurals>\n</resources>`;
+  await page.goto('/');
+  await page.click('#header-right-drawer-btn');
+  await page.click('#drawer-import-btn');
+  await page.fill('#import-project-name', 'Test App');
+  await page.getByRole('button', { name: /لصق نص XML|Paste XML/ }).click();
+  await page.locator('textarea').last().fill(xml);
+  await page.locator('select').first().selectOption('hi');
+  await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
+  for (const q of ['one', 'other']) {
+    expect(await page.getByTestId(`plural-source-label-${q}`).evaluate((e) => getComputedStyle(e).textAlign)).toBe('left');
+  }
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/plural-source-forms-rtl.png` });
 });
