@@ -470,6 +470,12 @@ export interface IcuClauseField {
    * message, `children` is only its editable decomposition.
    */
   children?: IcuField[];
+  /**
+   * True for a category the target language uses but the message lacks, which the editor adds empty as a
+   * field to fill in. Such a clause is left out of the saved string while it is empty (`omitAddedEmptyClauses`):
+   * ICU renders a present but empty branch as nothing, while a missing one falls back to `other`.
+   */
+  added?: boolean;
 }
 
 /** A top-level ICU block. Only the clause bodies are editable; the structure is `frame`. */
@@ -580,8 +586,9 @@ function clauseHasContent(clause: IcuClauseField): boolean {
  * instead of the ones the source happens to carry. Explicit `=N` clauses and `other` are kept;
  * a category the language does not use is dropped only while it is empty, so existing
  * translations keyed by another category stay; a missing category is added empty, with the
- * matching source text (or the `other` text) as its reference. A block that already matches
- * is returned unchanged, so an untouched message still round-trips byte for byte.
+ * `other` body as its reference. A block that already matches is returned unchanged, so an
+ * untouched message still round-trips byte for byte. An added category left empty is not saved
+ * (see `omitAddedEmptyClauses`).
  */
 export function adaptIcuModelToLocale(fields: IcuField[], locale: string): IcuField[] {
   return fields.map((field) => {
@@ -594,11 +601,8 @@ export function adaptIcuModelToLocale(fields: IcuField[], locale: string): IcuFi
         return children === clause.children ? clause : { ...clause, children, value: assembleIcuFields(children) };
       }),
     };
-    if (block.clauses.some((c, i) => c !== field.clauses[i])) {
-      // keep the identity check below honest: nested adaptation counts as a change
-    } else {
-      block = field;
-    }
+    // Nothing nested changed: keep the original object, so the identity checks below stay meaningful.
+    if (block.clauses.every((c, i) => c === field.clauses[i])) block = field;
     if (field.type !== 'plural' && field.type !== 'selectordinal') return block;
     const cats = getCldrPluralCategories(locale, field.type === 'plural' ? 'cardinal' : 'ordinal');
     if (!cats) return block;
@@ -613,24 +617,39 @@ export function adaptIcuModelToLocale(fields: IcuField[], locale: string): IcuFi
       const existing = sel(cat);
       if (existing && keep(existing)) ordered.push(existing);
       else if (!existing && cats.includes(cat)) {
-        const ref = (cat === 'one' ? sel('one') : undefined) ?? otherClause ?? named[0];
-        ordered.push({ selector: cat, value: '', sourceValue: ref?.sourceValue ?? '' });
+        const ref = otherClause ?? named[0];
+        ordered.push({ selector: cat, value: '', sourceValue: ref?.sourceValue ?? '', added: true });
       }
     }
     for (const c of named) if (!ordered.includes(c) && keep(c)) ordered.push(c); // unknown keywords stay
     const same =
       ordered.length === block.clauses.length && ordered.every((c, i) => c === block.clauses[i]);
     if (same) return block;
-    const sep = block.frame.length > 2 ? block.frame[1] : null;
-    const last = block.frame[block.frame.length - 1];
-    const withSelector = (tail: string, selector: string) => tail.replace(SELECTOR_TAIL, `${selector}$2{`);
-    const frame = [withSelector(block.frame[0], ordered[0].selector)];
-    for (let k = 1; k < ordered.length; k++) {
-      frame.push(sep !== null ? withSelector(sep, ordered[k].selector) : `} ${ordered[k].selector} {`);
-    }
-    frame.push(last);
-    return { ...block, clauses: ordered, frame };
+    return blockWithClauses(block, ordered);
   });
+}
+
+/** Rebuilds a block's frame for a new clause list: each selector is rewritten, the text around it kept. */
+function blockWithClauses(block: IcuBlockField, clauses: IcuClauseField[]): IcuBlockField {
+  const sep = block.frame.length > 2 ? block.frame[1] : null;
+  const last = block.frame[block.frame.length - 1];
+  const withSelector = (tail: string, selector: string) => tail.replace(SELECTOR_TAIL, `${selector}$2{`);
+  const frame = [withSelector(block.frame[0], clauses[0].selector)];
+  for (let k = 1; k < clauses.length; k++) {
+    frame.push(sep !== null ? withSelector(sep, clauses[k].selector) : `} ${clauses[k].selector} {`);
+  }
+  frame.push(last);
+  return { ...block, clauses, frame };
+}
+
+/**
+ * The block without the categories the editor added and the translator has left empty. ICU renders a
+ * present but empty branch as nothing (a saved `two {}` shows a blank for 2), while a missing category falls
+ * back to `other`. Empty branches the message already had stay: the fields view is derived from them.
+ */
+function omitAddedEmptyClauses(block: IcuBlockField): IcuBlockField {
+  const kept = block.clauses.filter((c) => !(c.added && !c.children && c.value.trim() === ''));
+  return kept.length === block.clauses.length || kept.length === 0 ? block : blockWithClauses(block, kept);
 }
 
 function buildIcuFieldModel(source: string, target: string): IcuField[] | null {
@@ -871,9 +890,10 @@ export function assembleIcuFields(fields: IcuField[]): string {
   return fields
     .map((field) => {
       if (field.kind === 'text') return field.value;
-      let out = field.frame[0];
-      field.clauses.forEach((clause, k) => {
-        out += clause.value + field.frame[k + 1];
+      const block = omitAddedEmptyClauses(field);
+      let out = block.frame[0];
+      block.clauses.forEach((clause, k) => {
+        out += clause.value + block.frame[k + 1];
       });
       return out;
     })
@@ -1038,9 +1058,6 @@ function getPluralCategoriesForLocale(
 // by `extractBraceTokens` for `plural`/`selectordinal` blocks
 // (`plural:one`, `selectordinal:one`, ...). A `select` key named `one` is
 // emitted as `select:one`, so it is never confused with a plural category.
-
-// Canonical CLDR order for plural categories, so reported lists are
-// deterministic instead of depending on the runtime's `pluralCategories` order.
 
 // ---------------------------------------------------------------------------
 // Structural (tree-based) ICU comparison.

@@ -519,7 +519,8 @@ test('ICU branch editor: fields view edits each clause, raw view shows the same 
   // the raw view shows exactly the reassembled string
   await page.getByTestId('icu-view-raw').click();
   const box = page.locator('textarea#weblate-translation-input');
-  await expect(box).toHaveValue('{count, plural, zero {} one {# رسالة} two {} few {} many {} other {# رسائل}}');
+  // the empty categories the editor shows are not saved: ICU would render an empty branch as nothing
+  await expect(box).toHaveValue('{count, plural, one {# رسالة} other {# رسائل}}');
 
   // a broken block typed in raw mode is still blocked by the save gate
   await box.fill('{count, plural, one {# رسالة} other {# رسائل}');

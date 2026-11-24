@@ -40,16 +40,18 @@ describe('plural categories follow the target language', () => {
     expect(cats(m)).toEqual(['=0', 'one', 'other']);
   });
 
-  it('produces valid assembled text with added categories', () => {
+  it('shows the added categories as fields, but the assembled text leaves them out while empty', () => {
     const m = adaptIcuModelToLocale(getIcuFieldModel(EN_SOURCE, '')!, 'ar');
-    expect(assembleIcuFields(m)).toBe('{n, plural, zero {} one {} two {} few {} many {} other {}}');
+    expect(cats(m)).toEqual(['zero', 'one', 'two', 'few', 'many', 'other']);
+    expect(assembleIcuFields(m)).toBe('{n, plural, one {} other {}}');
   });
 
   it('adapts a plural nested in a select', () => {
     const src = '{g, select, male {{n, plural, one {a} other {b}}} other {x}}';
     const out = assembleIcuFields(getIcuFieldModel(src, '', 'ar')!);
-    expect(out).toContain('zero {}');
-    expect(out).toContain('many {}');
+    expect(out).not.toContain('zero {}');
+    expect(out).not.toContain('many {}');
+    expect(out).toContain('one {}');
   });
 
   it('Android plurals: Hindi gets one/other, stale empty Arabic forms are dropped, typed ones stay', () => {
