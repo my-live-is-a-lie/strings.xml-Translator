@@ -280,7 +280,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   };
   const [copiedTarget, setCopiedTarget] = useState(false);
   const [showSavedFeedback, setShowSavedFeedback] = useState(false);
-  const [saveGuard, setSaveGuard] = useState<{ notes: FixNote[]; remaining: QaIssue[]; empty?: boolean; hard?: boolean; warnOnly?: boolean; itemId?: string } | null>(null);
+  const [saveGuard, setSaveGuard] = useState<{ notes: FixNote[]; remaining: QaIssue[]; empty?: boolean; hard?: boolean; itemId?: string } | null>(null);
   const ackedIssuesRef = useRef('');
 
   // Suggestion loading state
@@ -1444,22 +1444,12 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     return false;
   }, [autoCorrect, draftItem, targetLang, updateDraftItem, withHiddenEdges]);
 
-  // An empty `other` clause is saveable but shows nothing for the counts that fall back to it:
-  // warn once, and save on the confirming press (the same confirm-once flow as blockIfNeedsFix).
-  const ackedEmptyOtherRef = useRef('');
+  // An empty `other` clause leaves every count without its own clause blank, so the message is
+  // incomplete: refuse the save (a hard guard, like a damaged block) until `other` is filled.
   const blockIfIcuOtherEmpty = React.useCallback((): boolean => {
     const issues = getIcuEmptyOtherIssues(toStoredItem(withHiddenEdges(draftItem)), targetLang);
-    if (issues.length === 0) {
-      ackedEmptyOtherRef.current = '';
-      return false;
-    }
-    const key = `${item.id}|${issues.map((i) => i.id).join(';')}`;
-    if (ackedEmptyOtherRef.current === key) {
-      setSaveGuard((g) => (g?.warnOnly ? null : g));
-      return false;
-    }
-    ackedEmptyOtherRef.current = key;
-    setSaveGuard({ notes: [], remaining: issues, warnOnly: true });
+    if (issues.length === 0) return false;
+    setSaveGuard({ notes: [], remaining: issues, hard: true, itemId: item.id });
     return true;
   }, [draftItem, item.id, targetLang, withHiddenEdges]);
 
@@ -1469,6 +1459,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       ? [
           ...getLineBreakIssues(toStoredItem(withHiddenEdges(draftItem)), targetLang),
           ...getIcuStructureIssues(toStoredItem(withHiddenEdges(draftItem)), targetLang),
+          ...getIcuEmptyOtherIssues(toStoredItem(withHiddenEdges(draftItem)), targetLang),
         ]
       : []),
     [saveGuard, item.id, draftItem, targetLang, withHiddenEdges]
@@ -1496,7 +1487,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
 
   // Save without continuing (حفظ بدون متابعة / Save & Stay)
   const handleSaveWithoutContinuing = React.useCallback(() => {
-    if (blockIfNothingTyped() || blockIfLineBreaksDiffer() || blockIfIcuBroken() || blockIfNeedsFix() || blockIfIcuOtherEmpty()) return;
+    if (blockIfNothingTyped() || blockIfLineBreaksDiffer() || blockIfIcuBroken() || blockIfIcuOtherEmpty() || blockIfNeedsFix()) return;
     // Saving settles the string: the old source text (diff) is no longer shown
     const savedItem = { ...buildSavedItemFromDraft(draftItem), previousSources: undefined };
     const undoDeletesText = savedItem.translationSource === 'ai' && item.status === 'untranslated';
@@ -1513,7 +1504,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       onNavigateNext(); // nothing typed: nothing is saved, just continue
       return;
     }
-    if (blockIfLineBreaksDiffer() || blockIfIcuBroken() || blockIfNeedsFix() || blockIfIcuOtherEmpty()) return;
+    if (blockIfLineBreaksDiffer() || blockIfIcuBroken() || blockIfIcuOtherEmpty() || blockIfNeedsFix()) return;
     // Saving settles the string: the old source text (diff) is no longer shown
     const savedItem = { ...buildSavedItemFromDraft(draftItem), previousSources: undefined };
     const undoDeletesText = savedItem.translationSource === 'ai' && item.status === 'untranslated';
@@ -2544,9 +2535,9 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                     : liveSaveGuard.hard
                     ? liveSaveGuard.remaining.some((i) => i.id.endsWith('_linebreaks'))
                       ? t('not_saved_line_breaks_differ')
+                      : liveSaveGuard.remaining.every((i) => i.id.endsWith('_empty_other'))
+                      ? t('not_saved_empty_other')
                       : t('not_saved_fix_problems')
-                    : liveSaveGuard.warnOnly
-                    ? t('not_saved_empty_other')
                     : liveSaveGuard.notes.length > 0
                     ? t('not_saved_the_translation_was')
                     : t('not_saved_some_errors_could')}

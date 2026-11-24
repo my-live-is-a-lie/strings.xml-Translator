@@ -12,7 +12,7 @@ describe('getIcuEmptyOtherIssues', () => {
   it('warns when only `one` is filled and `other` is empty', () => {
     const issues = getIcuEmptyOtherIssues(str('{count, plural, one {# رسالة} other {}}'), 'ar');
     expect(issues).toHaveLength(1);
-    expect(issues[0].severity).toBe('warning');
+    expect(issues[0].severity).toBe('error');
     expect(issues[0].messageEn).toContain('{count}');
   });
 

@@ -758,7 +758,7 @@ test('plural categories follow the target language, not Arabic', async ({ page }
   await expect(page.getByTestId('icu-field-0:2')).toHaveCount(0);
 });
 
-test('an empty `other` clause warns once, then saves on the second press', async ({ page }) => {
+test('an empty `other` clause blocks the save until it is filled', async ({ page }) => {
   const xml = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="msgs">{count, plural, one {# message} other {# messages}}</string>\n</resources>`;
   await page.goto('/');
   await page.click('#header-right-drawer-btn');
@@ -769,18 +769,19 @@ test('an empty `other` clause warns once, then saves on the second press', async
   await page.locator('select').first().selectOption('hi');
   await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
 
-  // Only `one` is filled: `other` stays empty
+  // Only `one` is filled: `other` stays empty and the save is refused, every time
   await page.getByTestId('icu-field-0:0').fill('# संदेश');
+  const warning = page.getByText(/other/).filter({ hasText: /\{count\}/ });
   await page.click('#weblate-save-stay-btn');
-  const warning = page.getByText(/other|other'/).filter({ hasText: /\{count\}/ });
   await expect(warning).toBeVisible();
-  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/empty-other-warning.png` });
-  // The confirming press saves it as typed
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/empty-other-block.png` });
   await page.click('#weblate-save-stay-btn');
-  await expect(warning).toHaveCount(0);
+  await expect(warning).toBeVisible();
 
-  // Filling `other` too gives no warning at all
+  // Filling `other` clears the message and the save goes through
   await page.getByTestId('icu-field-0:1').fill('# संदेश');
+  await expect(warning).toHaveCount(0);
   await page.click('#weblate-save-stay-btn');
   await expect(warning).toHaveCount(0);
+  await expect(page.getByText(/100%|\(1\/1\)/).first()).toBeVisible();
 });

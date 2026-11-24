@@ -2447,10 +2447,11 @@ function emptyOtherVariables(fields: IcuField[]): string[] {
 }
 
 /**
- * Non-blocking warning: an ICU block whose `other` body is empty in a translation that has text.
- * `other` is the fallback every count without its own clause uses, so an empty one shows nothing
- * for those counts (a translator who filled only `one`, say). It stays saveable on purpose: the
- * editor warns once and saves on the confirming press. Untranslated (empty) targets are not flagged.
+ * An ICU block whose `other` body is empty in a translation that has text. `other` is the
+ * fallback every count without its own clause uses, so an empty one shows nothing for those counts
+ * (a translator who filled only `one`, say): the message is incomplete, so the editor refuses to
+ * save it until `other` is filled. Untranslated (empty) targets and blocks whose source `other` is
+ * empty too are not flagged.
  */
 export function getIcuEmptyOtherIssues(item: ResourceItem, targetLocale?: string): QaIssue[] {
   const parts: Array<{ source: string; target: string; subKey?: string }> = [];
@@ -2478,9 +2479,9 @@ export function getIcuEmptyOtherIssues(item: ResourceItem, targetLocale?: string
       itemName: item.name,
       subKey: p.subKey,
       category: 'placeholder',
-      severity: 'warning',
-      messageEn: `${prefix}The 'other' clause is empty in ${list}. Counts without their own clause will show nothing. Save again to keep it anyway.`,
-      messageAr: `${prefix}فرع 'other' فارغ في ${list}. الأعداد التي ليس لها فرع خاص بها ستظهر فارغة. اضغط حفظ مرة أخرى لحفظه كما هو.`,
+      severity: 'error',
+      messageEn: `${prefix}The 'other' clause is empty in ${list}. Fill it in: counts without their own clause would show nothing.`,
+      messageAr: `${prefix}فرع 'other' فارغ في ${list}. يجب ملؤه، فالأعداد التي ليس لها فرع خاص بها ستظهر فارغة.`,
       tokens: [],
     });
   }
