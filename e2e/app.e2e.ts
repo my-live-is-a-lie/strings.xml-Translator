@@ -786,7 +786,7 @@ test('an ICU message with an empty field is not saved until every field is fille
   await expect(page.getByText(/100%|\(1\/1\)/).first()).toBeVisible();
 });
 
-test('a <plurals> resource with an empty other quantity is not saved', async ({ page }) => {
+test('a <plurals> resource with any empty quantity is not saved', async ({ page }) => {
   const xml = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <plurals name="files">\n        <item quantity="one">%d file</item>\n        <item quantity="other">%d files</item>\n    </plurals>\n</resources>`;
   await page.goto('/');
   await page.click('#header-right-drawer-btn');
@@ -799,7 +799,7 @@ test('a <plurals> resource with an empty other quantity is not saved', async ({ 
 
   const fields = page.locator('textarea:visible');
   await fields.first().fill('%d फ़ाइल');
-  const warning = page.getByText(/'other'/).filter({ hasText: /quantity|صيغة/ });
+  const warning = page.getByText(/Some quantities are empty|بعض الصيغ فارغة/);
   await page.click('#weblate-save-stay-btn');
   await expect(warning).toBeVisible();
   if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/plural-empty-other.png` });

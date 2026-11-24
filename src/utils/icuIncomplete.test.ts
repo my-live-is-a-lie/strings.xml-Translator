@@ -55,23 +55,32 @@ describe('getIcuIncompleteIssues', () => {
     expect(getIcuIncompleteIssues(str('مرحبا', 'Hello'), 'ar')).toEqual([]);
   });
 
-  it('flags a <plurals> resource whose other quantity is empty', () => {
+  it('flags a <plurals> resource with any quantity of the target language empty', () => {
     const item = {
       id: 'p', name: 'p', type: 'plural', status: 'translated',
       items: [
         { quantity: 'one', source: 'a', target: 'x' },
-        { quantity: 'two', source: 'a', target: 'y' },
-        { quantity: 'other', source: 'b', target: '' },
+        { quantity: 'other', source: 'b', target: 'z' },
       ],
     } as unknown as ResourceItem;
-    expect(getIcuIncompleteIssues(item, 'ar')).toHaveLength(1);
+    const issues = getIcuIncompleteIssues(item, 'ar');
+    expect(issues).toHaveLength(1);
+    expect(issues[0].messageEn).toContain('few');
   });
 
-  it('passes a <plurals> resource with other filled, or nothing translated', () => {
-    const mk = (o: string, one: string) =>
+  it('flags a <plurals> resource whose other is empty (Hindi: one and other only)', () => {
+    const item = {
+      id: 'p', name: 'p', type: 'plural', status: 'translated',
+      items: [{ quantity: 'one', source: 'a', target: 'x' }, { quantity: 'other', source: 'b', target: '' }],
+    } as unknown as ResourceItem;
+    expect(getIcuIncompleteIssues(item, 'hi')).toHaveLength(1);
+  });
+
+  it('passes a <plurals> resource with all quantities filled, or nothing translated', () => {
+    const mk = (t: string) =>
       ({ id: 'p', name: 'p', type: 'plural', status: 'translated', items: [
-        { quantity: 'one', source: 'a', target: one }, { quantity: 'other', source: 'b', target: o } ] }) as unknown as ResourceItem;
-    expect(getIcuIncompleteIssues(mk('z', 'x'), 'ar')).toEqual([]);
-    expect(getIcuIncompleteIssues(mk('', ''), 'ar')).toEqual([]);
+        { quantity: 'one', source: 'a', target: t }, { quantity: 'other', source: 'b', target: t } ] }) as unknown as ResourceItem;
+    expect(getIcuIncompleteIssues(mk('x'), 'hi')).toEqual([]);
+    expect(getIcuIncompleteIssues(mk(''), 'ar')).toEqual([]);
   });
 });

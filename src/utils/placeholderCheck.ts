@@ -1,5 +1,6 @@
 import { ResourceItem } from '../types';
 import { countLineBreaks, hasMidLineDoubleSpaces } from './newlines';
+import { normalizePluralsForLanguage } from './xmlParser';
 import { PLURAL_CATEGORY_ORDER, getCldrPluralCategories } from './pluralCategories';
 
 // ICU MessageFormat argument types that carry sub-message clauses in braces
@@ -2472,21 +2473,22 @@ export function getIcuIncompleteIssues(item: ResourceItem, targetLocale?: string
     }
   }
   const issues: QaIssue[] = [];
-  // A `<plurals>` resource: `other` is the fallback of every count without its own quantity (and
-  // Android lint's MissingQuantity), so once any quantity is translated `other` must be too.
+  // A `<plurals>` resource: the editor shows every category of the target language, so once any
+  // quantity is translated all of them must be (Android lint's MissingQuantity, and `other` is the
+  // fallback for every count). Nothing translated stays saveable as untranslated.
   if (item.type === 'plural') {
-    const quantities = item.items || [];
-    const anyFilled = quantities.some((q) => (q.target || '').trim() !== '');
-    const other = quantities.find((q) => q.quantity === 'other');
-    if (anyFilled && (!other || (other.target || '').trim() === '')) {
+    const shown = (normalizePluralsForLanguage([item], targetLocale || 'ar')[0] as typeof item).items || [];
+    const anyFilled = shown.some((q) => (q.target || '').trim() !== '');
+    const empty = shown.filter((q) => (q.target || '').trim() === '').map((q) => q.quantity);
+    if (anyFilled && empty.length > 0) {
       issues.push({
         id: `${item.id}_main_icu_incomplete`,
         itemId: item.id,
         itemName: item.name,
         category: 'placeholder',
         severity: 'error',
-        messageEn: "The 'other' quantity is empty. Translate it, or none of the quantities will be saved.",
-        messageAr: "صيغة 'other' فارغة. يجب ترجمتها، وإلا فلن يُحفظ أي من الصيغ.",
+        messageEn: `Some quantities are empty (${empty.join(', ')}). Translate every quantity, or none of them will be saved.`,
+        messageAr: `بعض الصيغ فارغة (${empty.join(', ')}). يجب ترجمة كل الصيغ، وإلا فلن يُحفظ أي منها.`,
         tokens: [],
       });
     }
