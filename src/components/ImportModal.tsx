@@ -6,6 +6,7 @@ import { mergeTargetXml, normalizePluralsForLanguage, parseAndroidXml, ParsedXml
 import {
   applyReviewDecisions,
   applySilentFixes,
+  checkTargetFileIcu,
   isEntryExclusion,
   isFixableIssue,
   repairAndroidXml,
@@ -24,6 +25,14 @@ type Translate = (key: string, ...args: unknown[]) => string;
 // positional `%1$s` placeholders (handled by `t`) rather than a second, hand-rolled `{name}` syntax.
 // Falls back to that English message only for a category this UI doesn't know how to phrase yet
 // (in practice: raw parser errors, which have no stable wording to translate).
+
+/** ICU review findings with one message key, shared by the source report and the merged translation file. */
+const ICU_REVIEW_KEY_BY_KIND: Record<string, string> = {
+  'unmatched-brace': 'repair_unmatched_brace',
+  'suspect-icu-keyword': 'repair_suspect_icu_keyword',
+  'missing-other-branch': 'repair_missing_other_branch',
+  'duplicate-icu-category': 'repair_duplicate_icu_category',
+};
 
 function localizeRepairIssue(issue: RepairIssue, t: Translate): string {
   const count = issue.params?.count ?? '';
@@ -61,6 +70,68 @@ function localizeRepairIssue(issue: RepairIssue, t: Translate): string {
       return issue.stringName
         ? t('repair_malformed_entry_named', tagWord, issue.stringName)
         : t('repair_malformed_entry_unnamed', tagWord);
+    case 'target-icu': {
+      const kind = String(issue.params?.kind ?? '');
+      const detail = issue.params?.detail ?? '';
+      const arg = issue.params?.arg ?? '';
+      const own: Record<string, string> = {
+        'unterminated-icu-quote': 'repair_target_unterminated_icu_quote',
+        'unbalanced-icu-block': 'repair_target_unbalanced_icu_block',
+        'unknown-icu-keyword': 'repair_target_unknown_icu_keyword',
+        'missing-other-branch': 'repair_target_missing_other_branch',
+        'escaped-apostrophe-quote': 'repair_target_escaped_apostrophe_quote',
+      };
+      const body =
+        kind === 'mixed-placeholders'
+          ? t('repair_mixed_placeholders', name, issue.params?.printf ?? '', issue.params?.icu ?? '')
+          : own[kind]
+            ? t(own[kind], name, detail, arg)
+            : ICU_REVIEW_KEY_BY_KIND[kind]
+              ? t(ICU_REVIEW_KEY_BY_KIND[kind], name, detail, arg)
+              : issue.message;
+      const where =
+        issue.resourceType === 'array' && issue.itemQualifier !== undefined
+          ? ` ${t('repair_location_array', String(Number(issue.itemQualifier) + 1))}`
+          : '';
+      return `${t('repair_target_prefix')} ${body}${where}`;
+    }
+    case 'mixed-placeholders': {
+      const base = t('repair_mixed_placeholders', name, issue.params?.printf ?? '', issue.params?.icu ?? '');
+      return issue.resourceType === 'array' && issue.itemQualifier !== undefined
+        ? `${base} ${t('repair_location_array', String(Number(issue.itemQualifier) + 1))}`
+        : base;
+    }
+    case 'escaped-apostrophe-quote':
+    case 'icu-exclusion-failed': {
+      const base = t(
+        issue.category === 'escaped-apostrophe-quote' ? 'repair_escaped_apostrophe_quote' : 'repair_icu_exclusion_failed',
+        name
+      );
+      return issue.resourceType === 'array' && issue.itemQualifier !== undefined
+        ? `${base} ${t('repair_location_array', String(Number(issue.itemQualifier) + 1))}`
+        : base;
+    }
+    case 'unterminated-icu-quote':
+      return issue.resourceType === 'array' && issue.itemQualifier !== undefined
+        ? t('repair_unterminated_icu_quote_array', name, String(Number(issue.itemQualifier) + 1))
+        : t('repair_unterminated_icu_quote', name);
+    case 'unbalanced-icu-block':
+    case 'unknown-icu-keyword': {
+      const key = issue.category === 'unbalanced-icu-block' ? 'repair_unbalanced_icu_block' : 'repair_unknown_icu_keyword';
+      const base = t(key, name, issue.params?.detail ?? '');
+      return issue.resourceType === 'array' && issue.itemQualifier !== undefined
+        ? `${base} ${t('repair_location_array', String(Number(issue.itemQualifier) + 1))} ${t('repair_array_left_out')}`
+        : base;
+    }
+    case 'unmatched-brace':
+    case 'suspect-icu-keyword':
+    case 'missing-other-branch':
+    case 'duplicate-icu-category': {
+      const base = t(ICU_REVIEW_KEY_BY_KIND[issue.category], name, issue.params?.detail ?? '', issue.params?.arg ?? '');
+      return issue.resourceType === 'array' && issue.itemQualifier !== undefined
+        ? `${base} ${t('repair_location_array', String(Number(issue.itemQualifier) + 1))}`
+        : base;
+    }
     case 'missing-name':
       return t('repair_missing_name', tagWord);
     default:
@@ -249,7 +320,13 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     // Phase 1 of issue #25: a pre-pass that silently fixes what's purely mechanical, flags
     // anything needing a human decision, and reports anything it can't safely import — instead
     // of today's all-or-nothing behavior, where one malformed tag fails the whole import.
-    const result = repairAndroidXml(xmlToParse);
+    const sourceResult = repairAndroidXml(xmlToParse);
+    // Issue #33 (4c): the optional translation file is only *reported on* (review tier, never excluded).
+    const targetIssues = targetFile?.content && activeTab === 'upload' ? checkTargetFileIcu(targetFile.content) : [];
+    const result: RepairResult =
+      targetIssues.length > 0
+        ? { ...sourceResult, reviewIssues: [...sourceResult.reviewIssues, ...targetIssues] }
+        : sourceResult;
 
     // Phase 3: a parse error, or a file with nothing importable at all (possibly *because* every entry in
     // it turned out to be malformed/nameless — see result.blockingIssues in that case), still rejects the

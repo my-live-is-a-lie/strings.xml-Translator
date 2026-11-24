@@ -1,4 +1,6 @@
 import { parseAndroidXml, ParsedXmlResult } from './xmlParser';
+import { extractBraceTokens, hasUnterminatedIcuQuote } from './placeholderCheck';
+import { findIcuFindings, IcuFinding } from './icuSourceChecks';
 
 /**
  * The import-repair system (see issue #25): a pre-pass that runs before `parseAndroidXml` on a
@@ -15,10 +17,13 @@ import { parseAndroidXml, ParsedXmlResult } from './xmlParser';
  * `<plurals>` or `<string-array>` (unclosed, mismatched, or missing its `name` attribute) is
  * excluded and reported, instead of failing the whole file — see `excludeMalformedEntries`.
  *
- * Deliberately out of scope so far (tracked as follow-up work in #25): ICU-grammar-level checks
- * (unbalanced `{}`, a missing mandatory `other` branch, a misspelled `plural`/`select` keyword, an
- * unterminated ICU quote, mixed placeholder systems) and a bare `<`/`>` inside a value. Those need
- * a real ICU-aware / tolerant-XML checker, which is a different kind of tool than the text-level
+ * Issue #33 (phase 4) adds ICU-level checks on each `<string>` / `<string-array>` value (never on `<plurals>`
+ * quantity bodies), always on the Android-decoded text: an unterminated ICU quote, unbalanced braces in a clearly
+ * ICU block and a misspelled `plural`/`select` keyword are blocking (the entry is excluded); a missing `other`
+ * branch, a repeated clause key, a lone `{`, a doubtful keyword and mixed printf/`{name}` placeholders are review
+ * (informational). The optional translation file merged at import time gets the same checks, review-only, and is
+ * never excluded or edited (see `checkTargetFileIcu`). Still out of scope: a bare `<`/`>` inside a value. That
+ * needs a real tolerant-XML checker, which is a different kind of tool than the text-level
  * heuristics here, and are tracked as a further phase. A duplicate resource name is detected but
  * has no safe fix to propose (renaming or merging one of them isn't a decision this tool can
  * make), so it stays informational-only for now.
@@ -534,10 +539,250 @@ function excludeMalformedEntries(
   return { text: candidate, malformedEntryIssues, missingNameIssues };
 }
 
+/**
+ * Issue #33 (phase 4a): turns a raw resource body into the text the ICU checks should look at. Android
+ * markup and escapes are not ICU syntax, so they are removed or decoded first: inline tags (`<b>`) are
+ * dropped, CDATA is unwrapped, and `\\x` escapes plus XML entities are decoded. An *escaped* apostrophe
+ * (`\\'`, `&apos;`, `&#39;`) is deliberately replaced with a neutral character instead of a real `'`: the
+ * author spelled it out as a literal apostrophe, so it must never be read as the start of an ICU quote.
+ */
+const NEUTRAL_APOSTROPHE = '\u0001';
+export function decodeBodyForIcuChecks(body: string, escapedApostropheAsQuote = false): string {
+  return body
+    .replace(/<\/?[a-zA-Z][^>]*>/g, '')
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+    .replace(/\\(u[0-9a-fA-F]{4}|[\s\S])|&(apos|quot|lt|gt|amp|#39|#x27);/g, (_m, esc: string | undefined, ent: string | undefined) => {
+      if (ent !== undefined) {
+        return ent === 'apos' || ent === '#39' || ent === '#x27'
+          ? escapedApostropheAsQuote ? "'" : NEUTRAL_APOSTROPHE
+          : { quot: '"', lt: '<', gt: '>', amp: '&' }[ent] ?? '';
+      }
+      if (esc === "'") return escapedApostropheAsQuote ? "'" : NEUTRAL_APOSTROPHE;
+      if (esc === 'n') return '\n';
+      if (esc === 't') return '\t';
+      if (esc!.length > 1) return String.fromCharCode(parseInt(esc!.slice(1), 16));
+      return esc!;
+    });
+}
+
+/**
+ * Review-only: true when the value only looks fine because an escaped apostrophe (`\\'`, `&apos;`, `&#39;`) was
+ * read as a plain character, but the editor's own save check (`hasUnterminatedIcuQuote`, which sees the raw
+ * text) would treat it as the start of an ICU quote, e.g. `Hello \\'{name}`. Whether that matters depends on
+ * whether the app formats the value with ICU at run time, so it is reported and never excluded.
+ */
+export function hasEscapedApostropheIcuQuote(body: string): boolean {
+  return !hasUnterminatedIcuQuote(decodeBodyForIcuChecks(body)) && hasUnterminatedIcuQuote(decodeBodyForIcuChecks(body, true));
+}
+
+// A printf-style placeholder (`%1$s`, `%s`, `%d`, `%.2f`). `%%` is a literal percent and is removed first. A
+// bare `%x` (no `n$` position) only counts for s/d/f and only when it doesn't follow a digit, so "20%off" or
+// "100%d" style prose isn't read as a placeholder; the positional form `%1$o` etc. is always unambiguous.
+const PRINTF_POSITIONAL = /%\d+\$[-#+0,(]*\d*(?:\.\d+)?[a-zA-Z]/;
+const PRINTF_BARE = /(?<![\d%])%[-#+0,(]*\d*(?:\.\d+)?[sdf]/;
+
+/** Case #18: returns the first printf placeholder and the first `{name}`/`{0}` argument (or plural/select block) when one text uses both. */
+export function findMixedPlaceholders(decoded: string): { printf: string; icu: string } | null {
+  if (!decoded.includes('%') || !decoded.includes('{')) return null;
+  const noPercents = decoded.replace(/%%/g, '');
+  const printf = (PRINTF_POSITIONAL.exec(noPercents) ?? PRINTF_BARE.exec(noPercents))?.[0];
+  if (!printf) return null;
+  const tokens = extractBraceTokens(decoded, false);
+  // A simple `{name}` / `{0}` argument, or the opening of a plural/select/selectordinal block (its token is
+  // `{arg:type}`), which is ICU too: `{n, plural, one {%1$s file} other {%1$s files}}` still mixes both systems.
+  const simple = tokens.find((tok) => /^\{[a-zA-Z0-9_-]+\}$/.test(tok));
+  const block = tokens.map((tok) => /^\{([a-zA-Z0-9_-]+):(plural|select|selectordinal)\}$/.exec(tok)).find(Boolean);
+  const icu = simple ?? (block ? `{${block[1]}, ${block[2]}, …}` : undefined);
+  return icu ? { printf, icu } : null;
+}
+
+/** The first reason (if any) a decoded value can't be used as an ICU message: an unterminated quote (#14), or a
+ *  clearly-ICU block with unbalanced braces (#13) or a misspelled keyword (#15). */
+function blockingIcuProblem(body: string): { category: string; detail?: string } | null {
+  const decoded = decodeBodyForIcuChecks(body);
+  if (hasUnterminatedIcuQuote(decoded)) return { category: 'unterminated-icu-quote' };
+  const f = findIcuFindings(decoded).find((x) => x.blocking);
+  return f ? { category: f.kind, detail: f.detail } : null;
+}
+
+/**
+ * Case #14 (and the blocking ICU cases #13 and #15 that share this path): a resource whose decoded value can't
+ * be rendered by an ICU MessageFormat engine is excluded like a malformed entry: only after the rest of the file
+ * is confirmed to parse, and verified by re-parsing the result. A `<string-array>` is excluded as a whole,
+ * because dropping one item would silently renumber the ones after it. `<plurals>` items are plain text per
+ * quantity, not ICU, and are never checked.
+ */
+export function excludeUnterminatedIcuQuotes(
+  text: string,
+  issue: IssueFactory,
+  reparse: (candidate: string) => { errors: unknown[] } = parseAndroidXml
+): { text: string; issues: RepairIssue[] } {
+  const scannable = blankComments(text);
+  const found: Array<{ start: number; end: number; issue: RepairIssue }> = [];
+  const excerptOf = (chunk: string) => {
+    const collapsed = chunk.replace(/\s+/g, ' ').trim();
+    return collapsed.length > 80 ? `${collapsed.slice(0, 80)}…` : collapsed;
+  };
+
+  for (const m of validBodyMatches(scannable, STRING_BODY)) {
+    const [bodyStart, bodyEnd] = m.indices![2];
+    const body = text.slice(bodyStart, bodyEnd);
+    const problem = blockingIcuProblem(body);
+    if (!problem) continue;
+    found.push({
+      start: m.index!,
+      end: m.index! + m[0].length,
+      issue: issue(
+        'blocking',
+        problem.category,
+        `"${m[1]}" can't be used as an ICU message (${problem.category}): "${excerptOf(body)}"`,
+        m[1],
+        { resourceType: 'string', params: { excerpt: excerptOf(body), ...(problem.detail ? { detail: problem.detail } : {}) } }
+      ),
+    });
+  }
+  for (const block of validBodyMatches(scannable, STRING_ARRAY_BLOCK)) {
+    const blockBodyStart = block.indices![2][0];
+    let index = 0;
+    for (const item of block[2].matchAll(ARRAY_ITEM)) {
+      const [s, e] = item.indices![1];
+      const body = text.slice(blockBodyStart + s, blockBodyStart + e);
+      const problem = blockingIcuProblem(body);
+      if (problem) {
+        found.push({
+          start: block.index!,
+          end: block.index! + block[0].length,
+          issue: issue(
+            'blocking',
+            problem.category,
+            `Item #${index + 1} of "${block[1]}" can't be used as an ICU message (${problem.category}): "${excerptOf(body)}"`,
+            block[1],
+            {
+              resourceType: 'array',
+              itemQualifier: String(index),
+              params: { excerpt: excerptOf(body), ...(problem.detail ? { detail: problem.detail } : {}) },
+            }
+          ),
+        });
+        break; // one report per array: the whole array is excluded
+      }
+      index += 1;
+    }
+  }
+  if (found.length === 0) return { text, issues: [] };
+  // A file that doesn't parse is reported as a whole-file error elsewhere; nothing here is trustworthy yet.
+  if (parseAndroidXml(text).errors.length > 0) return { text, issues: [] };
+
+  found.sort((a, b) => b.start - a.start);
+  let candidate = text;
+  for (const f of found) {
+    let { start, end } = f;
+    // Also remove the line's indentation and newline when the excised resource was alone on its line.
+    const lineStart = candidate.lastIndexOf('\n', start - 1) + 1;
+    const lineEnd = candidate.indexOf('\n', end);
+    if (candidate.slice(lineStart, start).trim() === '' && lineEnd !== -1 && candidate.slice(end, lineEnd).trim() === '') {
+      start = lineStart;
+      end = lineEnd + 1;
+    }
+    candidate = candidate.slice(0, start) + candidate.slice(end);
+  }
+  if (reparse(candidate).errors.length > 0) {
+    // The cleaned-up file doesn't re-parse, so nothing is removed. Say so instead of importing silently.
+    return {
+      text,
+      issues: found
+        .slice()
+        .reverse()
+        .map((f) =>
+          issue(
+            'review',
+            'icu-exclusion-failed',
+            `"${f.issue.stringName}" can't be used as an ICU message but could not be left out safely, so it was imported as written.`,
+            f.issue.stringName,
+            { resourceType: f.issue.resourceType, itemQualifier: f.issue.itemQualifier, params: { problem: f.issue.category } }
+          )
+        ),
+    };
+  }
+  return { text: candidate, issues: found.reverse().map((f) => f.issue) };
+}
+
+function describeIcuFinding(name: string, f: IcuFinding): string {
+  switch (f.kind) {
+    case 'unmatched-brace':
+      return `"${name}" has a "{" that is never closed (${f.detail}).`;
+    case 'suspect-icu-keyword':
+      return `"${name}": "${f.detail}" in {${f.arg}, ${f.detail}, ...} isn't a known ICU keyword.`;
+    case 'missing-other-branch':
+      return `"${name}": the ${f.detail} block for "${f.arg}" has no mandatory "other" branch.`;
+    default:
+      return `"${name}": the "${f.detail}" branch is repeated in the block for "${f.arg}".`;
+  }
+}
+
+/**
+ * Issue #33 phase 4c: the optional translation file that is merged in at import time gets the same ICU checks
+ * as the source, but EVERYTHING is a `review` issue and nothing is ever excluded: those are the user's own
+ * translations, and silently dropping one would lose their work. It only reports. The issue category is always
+ * `target-icu` and `params.kind` carries the underlying finding (e.g. `unterminated-icu-quote`,
+ * `unbalanced-icu-block`, `mixed-placeholders`). Plural quantity bodies are skipped, like for the source.
+ * The file is read after the same mechanical clean-up the merge itself applies.
+ */
+export function checkTargetFileIcu(rawTarget: string): RepairIssue[] {
+  const text = applySilentFixes(rawTarget).text;
+  if (parseAndroidXml(text).errors.length > 0) return []; // nothing from it is merged either
+  const scannable = blankComments(text);
+  const out: RepairIssue[] = [];
+  let seq = 0;
+  const add = (name: string, kind: string, extras: Partial<IssueExtras>, params: Record<string, number | string>) => {
+    seq += 1;
+    out.push({
+      id: `target_${seq}`,
+      tier: 'review',
+      category: 'target-icu',
+      message: `In the translation file, "${name}": ${kind}.`,
+      stringName: name,
+      ...extras,
+      params: { kind, ...params },
+    });
+  };
+  const check = (name: string, body: string, extras: Partial<IssueExtras>) => {
+    const decoded = decodeBodyForIcuChecks(body);
+    const seen = new Set<string>();
+    if (hasUnterminatedIcuQuote(decoded)) {
+      add(name, 'unterminated-icu-quote', extras, { detail: '', arg: '' });
+    } else {
+      if (hasEscapedApostropheIcuQuote(body)) add(name, 'escaped-apostrophe-quote', extras, { detail: '', arg: '' });
+      for (const f of findIcuFindings(decoded)) {
+        const key = `${f.kind}|${f.arg ?? ''}|${f.detail}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        add(name, f.kind, extras, { detail: f.detail, arg: f.arg ?? '' });
+      }
+    }
+    const mixed = findMixedPlaceholders(decoded);
+    if (mixed) add(name, 'mixed-placeholders', extras, { printf: mixed.printf, icu: mixed.icu });
+  };
+  for (const m of validBodyMatches(scannable, STRING_BODY)) {
+    const [a, b] = m.indices![2];
+    check(m[1], text.slice(a, b), { resourceType: 'string' });
+  }
+  for (const block of validBodyMatches(scannable, STRING_ARRAY_BLOCK)) {
+    const base = block.indices![2][0];
+    let index = 0;
+    for (const item of block[2].matchAll(ARRAY_ITEM)) {
+      const [a, b] = item.indices![1];
+      check(block[1], text.slice(base + a, base + b), { resourceType: 'array', itemQualifier: String(index) });
+      index += 1;
+    }
+  }
+  return out;
+}
+
 /** Blocking categories that describe one excluded entry rather than the whole file. The Import Report shows
  *  these as its read-only "Not imported" section and still lets the import continue; any *other* blocking
  *  issue keeps rejecting the whole file. Defined next to where they're produced so the two can't drift. */
-const ENTRY_EXCLUSION_CATEGORIES: ReadonlySet<string> = new Set(['malformed-entry', 'missing-name']);
+const ENTRY_EXCLUSION_CATEGORIES: ReadonlySet<string> = new Set(['malformed-entry', 'missing-name', 'unterminated-icu-quote', 'unbalanced-icu-block', 'unknown-icu-keyword']);
 
 export function isEntryExclusion(issue: RepairIssue): boolean {
   return issue.tier === 'blocking' && ENTRY_EXCLUSION_CATEGORIES.has(issue.category);
@@ -554,7 +799,9 @@ export function repairAndroidXml(raw: string): RepairResult {
   const reviewIssues: RepairIssue[] = [];
   const blockingIssues: RepairIssue[] = [];
 
-  const { text, malformedEntryIssues, missingNameIssues } = excludeMalformedEntries(afterSilentFixes, issue);
+  const { text: afterMalformed, malformedEntryIssues, missingNameIssues } = excludeMalformedEntries(afterSilentFixes, issue);
+  // Issue #33 (4a): unterminated ICU quotes. Runs on the already-cleaned text so every later range stays exact.
+  const { text, issues: icuQuoteIssues } = excludeUnterminatedIcuQuotes(afterMalformed, issue);
   // An undefined entity that only appeared inside an excluded entry is gone along with it; reporting it
   // anyway would list, under "Not imported", a problem that no longer exists in the imported file.
   const undefinedEntities = undefinedBeforeExclusion.filter((name) => text.includes(`&${name};`));
@@ -601,6 +848,52 @@ export function repairAndroidXml(raw: string): RepairResult {
     );
   }
 
+  // Issue #33 (4a), case #18: a value mixing printf placeholders (`%s`) with `{name}` arguments. Common in real
+  // files and often intentional, so it is informational only (no suggested fix), never blocking.
+  function checkMixedPlaceholders(name: string, body: string, extras: Partial<IssueExtras> = {}) {
+    const mixed = findMixedPlaceholders(decodeBodyForIcuChecks(body));
+    if (!mixed) return;
+    reviewIssues.push(
+      issue(
+        'review',
+        'mixed-placeholders',
+        `"${name}" mixes printf-style (${mixed.printf}) and brace-style (${mixed.icu}) placeholders in one value.`,
+        name,
+        { ...extras, params: { printf: mixed.printf, icu: mixed.icu } }
+      )
+    );
+  }
+
+  // Issue #33 (4b): non-blocking ICU findings for one value: a lone `{`, a keyword that may be a typo, a
+  // missing mandatory `other`, a repeated clause key. Informational (no suggested fix). Blocking findings were
+  // already handled (the entry is gone from `text`), so only review-tier findings can show up here.
+  function checkIcuStructure(name: string, body: string, extras: Partial<IssueExtras> = {}) {
+    const seen = new Set<string>();
+    if (hasEscapedApostropheIcuQuote(body)) {
+      reviewIssues.push(
+        issue(
+          'review',
+          'escaped-apostrophe-quote',
+          `"${name}" has an escaped apostrophe right before "{" or "}". Android reads it as a plain apostrophe, but the editor's ICU check would read it as an ICU quote.`,
+          name,
+          extras
+        )
+      );
+    }
+    for (const f of findIcuFindings(decodeBodyForIcuChecks(body))) {
+      if (f.blocking) continue;
+      const key = `${f.kind}|${f.arg ?? ''}|${f.detail}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      reviewIssues.push(
+        issue('review', f.kind, describeIcuFinding(name, f), name, {
+          ...extras,
+          params: { detail: f.detail, arg: f.arg ?? '' },
+        })
+      );
+    }
+  }
+
   function reportDuplicates(seenNames: Map<string, number>, resourceType: RepairIssue['resourceType'], noun: string) {
     for (const [name, count] of seenNames) {
       if (count > 1) {
@@ -621,6 +914,8 @@ export function repairAndroidXml(raw: string): RepairResult {
     seenStringNames.set(name, (seenStringNames.get(name) || 0) + 1);
     const [bodyStart, bodyEnd] = match.indices![2];
     checkApostrophes(name, text.slice(bodyStart, bodyEnd), bodyStart, { resourceType: 'string' });
+    checkMixedPlaceholders(name, text.slice(bodyStart, bodyEnd), { resourceType: 'string' });
+    checkIcuStructure(name, text.slice(bodyStart, bodyEnd), { resourceType: 'string' });
   }
   reportDuplicates(seenStringNames, 'string', '<string>');
 
@@ -650,6 +945,8 @@ export function repairAndroidXml(raw: string): RepairResult {
       const bodyStart = blockBodyStart + item.indices![1][0];
       const bodyEnd = blockBodyStart + item.indices![1][1];
       checkApostrophes(name, text.slice(bodyStart, bodyEnd), bodyStart, { resourceType: 'array', itemQualifier: String(index) });
+      checkMixedPlaceholders(name, text.slice(bodyStart, bodyEnd), { resourceType: 'array', itemQualifier: String(index) });
+      checkIcuStructure(name, text.slice(bodyStart, bodyEnd), { resourceType: 'array', itemQualifier: String(index) });
       index += 1;
     }
   }
@@ -680,7 +977,7 @@ export function repairAndroidXml(raw: string): RepairResult {
   // either array is non-empty. Reported even if every entry in the file turned out to be one of these (see
   // the no-strings check below) — "here's specifically what was wrong" is strictly more useful than silence.
   if (parsed.errors.length === 0) {
-    blockingIssues.push(...malformedEntryIssues, ...missingNameIssues);
+    blockingIssues.push(...malformedEntryIssues, ...missingNameIssues, ...icuQuoteIssues);
   }
   // A well-formed file with nothing importable (e.g. an empty <resources/>, or one where every entry was
   // excluded above) would otherwise pass every check, show the report, and then fail only after the user

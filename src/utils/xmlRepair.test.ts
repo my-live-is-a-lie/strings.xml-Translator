@@ -2,6 +2,11 @@
 import { describe, it, expect } from 'vitest';
 import {
   repairAndroidXml,
+  isEntryExclusion,
+  checkTargetFileIcu,
+  excludeUnterminatedIcuQuotes,
+  findMixedPlaceholders,
+  hasEscapedApostropheIcuQuote,
   applyReviewDecisions,
   RESOURCE_TYPE_BY_TAG,
   RESOURCE_TAG_BY_TYPE,
@@ -503,5 +508,340 @@ describe('RESOURCE_TYPE_BY_TAG / RESOURCE_TAG_BY_TYPE', () => {
     for (const [tag, kind] of Object.entries(RESOURCE_TYPE_BY_TAG)) {
       expect(RESOURCE_TAG_BY_TYPE[kind]).toBe(tag);
     }
+  });
+});
+
+describe('issue #33 phase 4a: unterminated ICU quote (#14)', () => {
+  const cats = (r: ReturnType<typeof repairAndroidXml>) => r.blockingIssues.map((i) => i.category);
+
+  it('excludes a string whose quote before { never closes and keeps the rest', () => {
+    const r = repairAndroidXml(wrap(`  <string name="bad">'{username} said hi</string>\n  <string name="ok">hello</string>`));
+    expect(cats(r)).toEqual(['unterminated-icu-quote']);
+    expect(r.blockingIssues[0]).toMatchObject({ stringName: 'bad', resourceType: 'string' });
+    expect(r.fixedXml).not.toContain('bad');
+    expect(r.parsed.items.map((i) => i.name)).toEqual(['ok']);
+    expect(r.reviewIssues.some((i) => i.stringName === 'bad')).toBe(false);
+  });
+
+  it('is an entry exclusion, not a whole-file rejection', () => {
+    const r = repairAndroidXml(wrap(`  <string name="bad">'{x</string>\n  <string name="ok">hi</string>`));
+    expect(isEntryExclusion(r.blockingIssues[0])).toBe(true);
+  });
+
+  it('does not flag contractions or a properly closed quote', () => {
+    const r = repairAndroidXml(wrap(`  <string name="a">it's and don't {name}</string>\n  <string name="b">Type '{' to open, '}' to close</string>\n  <string name="c">It''s {n}</string>`));
+    expect(cats(r)).toEqual([]);
+  });
+
+  it('does not treat an escaped apostrophe before { as an ICU quote', () => {
+    const r = repairAndroidXml(wrap(`  <string name="a">Say \\'{name}</string>\n  <string name="b">Say &apos;{name}</string>\n  <string name="c">Say &#39;{name}</string>`));
+    expect(cats(r)).toEqual([]);
+  });
+
+  it('ignores <plurals> item bodies', () => {
+    const r = repairAndroidXml(wrap(`  <plurals name="p">\n    <item quantity="one">'{one</item>\n    <item quantity="other">'{other</item>\n  </plurals>\n  <string name="ok">x</string>`));
+    expect(cats(r)).toEqual([]);
+  });
+
+  it('excludes the whole array when one item has an open quote', () => {
+    const r = repairAndroidXml(wrap(`  <string-array name="arr">\n    <item>a</item>\n    <item>'{b</item>\n    <item>c</item>\n  </string-array>\n  <string name="ok">x</string>`));
+    expect(r.blockingIssues).toHaveLength(1);
+    expect(r.blockingIssues[0]).toMatchObject({ resourceType: 'array', itemQualifier: '1', stringName: 'arr' });
+    expect(r.parsed.items.map((i) => i.name)).toEqual(['ok']);
+  });
+
+  it('ignores a commented-out entry', () => {
+    const r = repairAndroidXml(wrap(`  <!-- <string name="old">'{x</string> -->\n  <string name="ok">x</string>`));
+    expect(cats(r)).toEqual([]);
+  });
+
+  it('leaves a file with every entry broken as no-strings', () => {
+    const r = repairAndroidXml(wrap(`  <string name="bad">'{x</string>`));
+    expect(cats(r)).toEqual(expect.arrayContaining(['unterminated-icu-quote', 'no-strings']));
+  });
+});
+
+describe('issue #33 phase 4a: mixed placeholder systems (#18)', () => {
+  const mixed = (r: ReturnType<typeof repairAndroidXml>) => r.reviewIssues.filter((i) => i.category === 'mixed-placeholders');
+
+  it('reports %s together with {name} as an informational review issue', () => {
+    const r = repairAndroidXml(wrap(`  <string name="m">Hi %1$s, you have {count} items</string>`));
+    const found = mixed(r);
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({ tier: 'review', stringName: 'm', params: { printf: '%1$s', icu: '{count}' } });
+    expect(found[0].suggestedFix).toBeUndefined();
+    expect(found[0].range).toBeUndefined();
+  });
+
+  it('reports a mixed array item with its index', () => {
+    const r = repairAndroidXml(wrap(`  <string-array name="a">\n    <item>ok</item>\n    <item>%s {x}</item>\n  </string-array>`));
+    expect(mixed(r)[0]).toMatchObject({ resourceType: 'array', itemQualifier: '1' });
+  });
+
+  it('does not flag a single placeholder system', () => {
+    const r = repairAndroidXml(wrap(`  <string name="a">Hi %1$s, %2$d left</string>\n  <string name="b">Hi {name}, {n} left</string>\n  <string name="c">100%% done {n}</string>\n  <string name="d">20%off {n}</string>`));
+    expect(mixed(r)).toHaveLength(0);
+  });
+
+  it('does not flag a brace-free ICU-less %s, or a quoted literal brace', () => {
+    const r = repairAndroidXml(wrap(`  <string name="a">%s '{literal}'</string>`));
+    expect(mixed(r)).toHaveLength(0);
+  });
+
+  it('skips <plurals> item bodies', () => {
+    const r = repairAndroidXml(wrap(`  <plurals name="p">\n    <item quantity="one">%d {x}</item>\n    <item quantity="other">%d {x}</item>\n  </plurals>`));
+    expect(mixed(r)).toHaveLength(0);
+  });
+
+  it('does not stop the import or change fixedXml', () => {
+    const xml = wrap(`  <string name="m">Hi %s {n}</string>`);
+    const r = repairAndroidXml(xml);
+    expect(r.blockingIssues).toEqual([]);
+    expect(r.fixedXml).toBe(xml);
+  });
+});
+
+describe('issue #33 phase 4b: ICU structure checks on the source', () => {
+  const blocking = (r: ReturnType<typeof repairAndroidXml>) => r.blockingIssues.map((i) => `${i.category}:${i.stringName}`);
+  const review = (r: ReturnType<typeof repairAndroidXml>, cat: string) => r.reviewIssues.filter((i) => i.category === cat);
+  const ok = `  <string name="ok">fine</string>`;
+
+  it('#13 excludes a clear ICU block that never closes, keeps the rest', () => {
+    const r = repairAndroidXml(wrap(`  <string name="n">{count, plural, one {# item} other {# items}</string>\n${ok}`));
+    expect(blocking(r)).toEqual(['unbalanced-icu-block:n']);
+    expect(r.parsed.items.map((i) => i.name)).toEqual(['ok']);
+  });
+
+  it('#13 excludes a block missing an inner close too', () => {
+    const r = repairAndroidXml(wrap(`  <string name="n">{count, plural, one {# item other {# items}}</string>\n${ok}`));
+    expect(blocking(r)).toEqual(['unbalanced-icu-block:n']);
+  });
+
+  it('#13 does not touch a stray } in prose such as a smiley', () => {
+    const r = repairAndroidXml(wrap(`  <string name="a">Thanks :-}</string>\n  <string name="b">Use } to close</string>`));
+    expect(r.blockingIssues).toEqual([]);
+    expect(r.reviewIssues.filter((i) => i.category === 'unmatched-brace')).toEqual([]);
+  });
+
+  it('#13 only reviews a lone { that is not ICU-shaped', () => {
+    const r = repairAndroidXml(wrap(`  <string name="a">Hello {name</string>\n  <string name="b">function() {</string>`));
+    expect(r.blockingIssues).toEqual([]);
+    expect(review(r, 'unmatched-brace').map((i) => i.stringName)).toEqual(['a']);
+  });
+
+  it('#15 excludes a keyword one or two edits from plural/select', () => {
+    const r = repairAndroidXml(wrap(`  <string name="p">{count, plurall, one {# a} other {# b}}</string>\n  <string name="s">{g, selct, male {He} other {They}}</string>\n${ok}`));
+    expect(blocking(r)).toEqual(['unknown-icu-keyword:p', 'unknown-icu-keyword:s']);
+  });
+
+  it('#15 only reviews a far-off keyword that still has clause structure', () => {
+    const r = repairAndroidXml(wrap(`  <string name="p">{x, banana, one {a} other {b}}</string>`));
+    expect(r.blockingIssues).toEqual([]);
+    const r2 = repairAndroidXml(wrap(`  <string name="p">{x, banana, one {a} other {b}}</string>\n${ok}`));
+    expect(r2.blockingIssues).toEqual([]);
+    expect(review(r2, 'suspect-icu-keyword')).toHaveLength(1);
+  });
+
+  it('#15 never flags valid types, skeletons, choice or plain prose pairs', () => {
+    const r = repairAndroidXml(wrap([
+      `  <string name="a">{0, number, #,##0.00}</string>`,
+      `  <string name="b">{p, number, ::currency/USD}</string>`,
+      `  <string name="c">{d, date, short}</string>`,
+      `  <string name="d">{n, choice, 0#none|1#one|1&lt;many}</string>`,
+      `  <string name="e">{red, green}</string>`,
+      `  <string name="f">{n, ordinal}</string>`,
+    ].join('\n')));
+    expect(r.blockingIssues).toEqual([]);
+    expect(r.reviewIssues).toEqual([]);
+  });
+
+  it('#16 reviews a plural/select with no other, including a nested one', () => {
+    const r = repairAndroidXml(wrap([
+      `  <string name="a">{count, plural, one {# item}}</string>`,
+      `  <string name="b">{g, select, male {{n, plural, one {x} other {y}}} female {z}}</string>`,
+      ok,
+    ].join('\n')));
+    expect(r.blockingIssues).toEqual([]);
+    const found = review(r, 'missing-other-branch');
+    expect(found.map((i) => `${i.stringName}:${i.params?.arg}`)).toEqual(['a:count', 'b:g']);
+    expect(found[0].suggestedFix).toBeUndefined();
+  });
+
+  it('#16 does not require other inside <plurals> items or when other exists', () => {
+    const r = repairAndroidXml(wrap(`  <plurals name="p">\n    <item quantity="one">{x, select, a {b}}</item>\n    <item quantity="other">y</item>\n  </plurals>\n  <string name="s">{c, plural, one {#} other {#}}</string>`));
+    expect(r.reviewIssues).toEqual([]);
+  });
+
+  it('#17 reviews a repeated clause key', () => {
+    const r = repairAndroidXml(wrap(`  <string name="a">{c, plural, one {#} other {x} other {y}}</string>`));
+    const found = review(r, 'duplicate-icu-category');
+    expect(found).toHaveLength(1);
+    expect(found[0].params).toMatchObject({ detail: 'other', arg: 'c' });
+  });
+
+  it('does not flag normal valid ICU, offsets, nested blocks, quoted braces or escaped apostrophes', () => {
+    const r = repairAndroidXml(wrap([
+      `  <string name="a">{n, plural, offset:1 =0 {none} one {# more} other {# more}}</string>`,
+      `  <string name="b">{g, select, male {{n, plural, one {a} other {b}}} other {c}}</string>`,
+      `  <string name="c">Say '{'hi'}' and it''s {name}</string>`,
+      `  <string name="d">Don\\'t {n, plural, one {x} other {y}}</string>`,
+      `  <string name="e">{n, selectordinal, one {#st} two {#nd} few {#rd} other {#th}}</string>`,
+    ].join('\n')));
+    expect(r.blockingIssues).toEqual([]);
+    // (the raw-apostrophe review on `c` is the pre-existing check, not an ICU finding)
+    expect(r.reviewIssues.map((i) => i.category)).toEqual(['unescaped-apostrophe']);
+  });
+
+  it('excludes the whole array for a blocking array item', () => {
+    const r = repairAndroidXml(wrap(`  <string-array name="arr">\n    <item>a</item>\n    <item>{n, plural, one {x}</item>\n  </string-array>\n${ok}`));
+    expect(r.blockingIssues).toHaveLength(1);
+    expect(r.blockingIssues[0]).toMatchObject({ category: 'unbalanced-icu-block', resourceType: 'array', itemQualifier: '1' });
+    expect(r.parsed.items.map((i) => i.name)).toEqual(['ok']);
+  });
+
+  it('ignores <plurals> bodies for blocking checks', () => {
+    const r = repairAndroidXml(wrap(`  <plurals name="p">\n    <item quantity="one">{n, plurall, one {x}</item>\n    <item quantity="other">y</item>\n  </plurals>`));
+    expect(r.blockingIssues).toEqual([]);
+  });
+});
+
+describe('issue #33 phase 4c: merged target file is reported, never excluded', () => {
+  it('turns every finding into a review issue and does not modify anything', () => {
+    const target = wrap([
+      `  <string name="a">'{x said</string>`,
+      `  <string name="b">{count, plurall, one {#} other {#}}</string>`,
+      `  <string name="c">{count, plural, one {#}</string>`,
+      `  <string name="d">{count, plural, one {#}}</string>`,
+      `  <string name="e">Hi %s {n}</string>`,
+      `  <string name="f">fine</string>`,
+    ].join('\n'));
+    const issues = checkTargetFileIcu(target);
+    expect(issues.every((i) => i.tier === 'review' && i.category === 'target-icu')).toBe(true);
+    expect(issues.map((i) => `${i.stringName}:${i.params?.kind}`)).toEqual([
+      'a:unterminated-icu-quote',
+      'b:unknown-icu-keyword',
+      'c:unbalanced-icu-block',
+      'd:missing-other-branch',
+      'e:mixed-placeholders',
+    ]);
+    expect(issues.every((i) => i.range === undefined && i.suggestedFix === undefined)).toBe(true);
+  });
+
+  it('reports nothing for a clean target, skips plurals bodies and an unparseable file', () => {
+    expect(checkTargetFileIcu(wrap(`  <string name="a">{n, plural, one {#} other {#}}</string>`))).toEqual([]);
+    expect(checkTargetFileIcu(wrap(`  <plurals name="p">\n    <item quantity="one">'{x</item>\n    <item quantity="other">y</item>\n  </plurals>`))).toEqual([]);
+    expect(checkTargetFileIcu('<resources><string name="a">oops</resources>')).toEqual([]);
+  });
+});
+
+describe('escaped apostrophe before { or } is a Review note, never an exclusion', () => {
+  const found = (r: ReturnType<typeof repairAndroidXml>) => r.reviewIssues.filter((i) => i.category === 'escaped-apostrophe-quote');
+
+  it('flags \\\' before { as review and keeps the string', () => {
+    const r = repairAndroidXml(wrap(`  <string name="a">Hello \\'{name}</string>\n  <string name="b">fine</string>`));
+    expect(r.blockingIssues).toEqual([]);
+    expect(r.parsed.items.map((i) => i.name)).toEqual(['a', 'b']);
+    expect(found(r)).toHaveLength(1);
+    expect(found(r)[0]).toMatchObject({ tier: 'review', stringName: 'a', resourceType: 'string' });
+  });
+
+  it('flags &apos; and &#39; before { or }', () => {
+    const r = repairAndroidXml(wrap(`  <string name="a">Hi &apos;{name}</string>\n  <string name="b">Hi &#39;{name}</string>\n  <string name="c">x &apos;}</string>`));
+    expect(found(r).map((i) => i.stringName)).toEqual(['a', 'b', 'c']);
+    expect(r.blockingIssues).toEqual([]);
+  });
+
+  it('does not flag an escaped apostrophe elsewhere, or a closed pair', () => {
+    const r = repairAndroidXml(wrap(`  <string name="a">It\\'s {name}</string>\n  <string name="b">\\'{x\\'}</string>\n  <string name="c">it&apos;s fine</string>`));
+    expect(found(r)).toEqual([]);
+  });
+
+  it('does not add a second note when the raw quote is already blocking', () => {
+    const r = repairAndroidXml(wrap(`  <string name="a">'{x</string>\n  <string name="b">ok</string>`));
+    expect(found(r)).toEqual([]);
+    expect(r.blockingIssues.map((i) => i.category)).toEqual(['unterminated-icu-quote']);
+  });
+
+  it('reports the array item position', () => {
+    const r = repairAndroidXml(wrap(`  <string-array name="arr">\n    <item>ok</item>\n    <item>Hi \\'{n}</item>\n  </string-array>`));
+    expect(found(r)[0]).toMatchObject({ stringName: 'arr', resourceType: 'array', itemQualifier: '1' });
+  });
+
+  it('is reported for the translation file too, as review', () => {
+    const issues = checkTargetFileIcu(wrap(`  <string name="a">Hello \\'{name}</string>`));
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ tier: 'review', category: 'target-icu', params: { kind: 'escaped-apostrophe-quote' } });
+  });
+
+  it('helper: only true when the escape is what hides the quote', () => {
+    expect(hasEscapedApostropheIcuQuote("Hello \\'{name}")).toBe(true);
+    expect(hasEscapedApostropheIcuQuote("it\\'s")).toBe(false);
+    expect(hasEscapedApostropheIcuQuote("'{x")).toBe(false);
+  });
+});
+
+describe('excludeUnterminatedIcuQuotes: exclusion that cannot be verified', () => {
+  const makeFactory = (): Parameters<typeof excludeUnterminatedIcuQuotes>[1] => {
+    let n = 0;
+    return (tier, category, message, stringName, extras) => ({ id: `t_${++n}`, tier, category, message, stringName, ...extras });
+  };
+
+  it('reports a Review issue instead of importing silently when the result does not re-parse', () => {
+    const text = wrap(`  <string name="bad">'{x</string>\n  <string name="ok">hi</string>`);
+    const out = excludeUnterminatedIcuQuotes(text, makeFactory(), () => ({ errors: [{}] }));
+    expect(out.text).toBe(text);
+    expect(out.issues).toHaveLength(1);
+    expect(out.issues[0]).toMatchObject({ tier: 'review', category: 'icu-exclusion-failed', stringName: 'bad', params: { problem: 'unterminated-icu-quote' } });
+  });
+
+  it('still excludes normally when the result re-parses', () => {
+    const text = wrap(`  <string name="bad">'{x</string>\n  <string name="ok">hi</string>`);
+    const out = excludeUnterminatedIcuQuotes(text, makeFactory());
+    expect(out.text).not.toContain('bad');
+    expect(out.issues[0]).toMatchObject({ tier: 'blocking', category: 'unterminated-icu-quote' });
+  });
+});
+
+describe('#18: printf placeholders mixed with a plural/select block', () => {
+  const mixed = (body: string) => findMixedPlaceholders(body);
+
+  it('flags %1$s inside a plural clause', () => {
+    expect(mixed('{count, plural, one {%1$s has # file} other {%1$s has # files}}')).toEqual({ printf: '%1$s', icu: '{count, plural, …}' });
+  });
+
+  it('flags printf next to a select or selectordinal block, in or outside a clause', () => {
+    expect(mixed('{g, select, male {He %s} other {They}}')?.icu).toBe('{g, select, …}');
+    expect(mixed('{n, selectordinal, one {#st %d} other {#th}}')?.icu).toBe('{n, selectordinal, …}');
+    expect(mixed('%s: {n, plural, one {a} other {b}}')?.printf).toBe('%s');
+  });
+
+  it('prefers a simple {name} argument when there is one', () => {
+    expect(mixed('%s {who} {n, plural, one {a} other {b}}')?.icu).toBe('{who}');
+  });
+
+  it('does not flag a plural/select block without printf', () => {
+    expect(mixed('{count, plural, one {# item} other {# items}}')).toBeNull();
+    expect(mixed('{n, plural, one {# percent: 5%} other {5% of #}}')).toBeNull();
+    expect(mixed('{g, select, male {He} other {They}}')).toBeNull();
+  });
+
+  it('does not flag literal percents or a non-plural format type', () => {
+    expect(mixed('{n, plural, one {100%% sure} other {100%% sure}}')).toBeNull();
+    expect(mixed('{n, number, percent} %s')).toBeNull();
+    expect(mixed('{n, plural, one {20%off} other {#}}')).toBeNull();
+  });
+
+  it('keeps the old behavior for the cases that were already decided', () => {
+    expect(mixed('Item 2%s {x}')).toBeNull();
+    expect(mixed('%%s is literal, {x}')).toBeNull();
+    expect(mixed('Hi %1$s, you have {count} new items')?.icu).toBe('{count}');
+  });
+
+  it('is reported by the import check as a Review issue', () => {
+    const r = repairAndroidXml(wrap(`  <string name="a">{count, plural, one {%1$s has # file} other {%1$s has # files}}</string>\n  <string name="b">{count, plural, one {# file} other {# files}}</string>`));
+    expect(r.blockingIssues).toEqual([]);
+    const m = r.reviewIssues.filter((i) => i.category === 'mixed-placeholders');
+    expect(m).toHaveLength(1);
+    expect(m[0]).toMatchObject({ tier: 'review', stringName: 'a', params: { printf: '%1$s', icu: '{count, plural, …}' } });
   });
 });

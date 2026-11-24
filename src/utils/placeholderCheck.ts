@@ -6,12 +6,12 @@ import { countLineBreaks, hasMidLineDoubleSpaces } from './newlines';
 // `number`, `date`, `time`, `duration`, `spellout` and `ordinal` only take a
 // simple style keyword with no nested braces, so they don't need clause parsing.
 const ICU_PLURAL_LIKE_FORMAT_TYPES = new Set(['plural', 'selectordinal']);
-const ICU_CLAUSE_FORMAT_TYPES = new Set(['plural', 'select', 'selectordinal']);
+export const ICU_CLAUSE_FORMAT_TYPES = new Set(['plural', 'select', 'selectordinal']);
 
 // Every format type ICU MessageFormat accepts. A `{word, word}` pair whose
 // second word is not one of these is not an ICU argument at all (e.g. plain
 // text such as `{red, green}`), so it must not yield a `{word}` placeholder.
-const ICU_FORMAT_TYPES = new Set([
+export const ICU_FORMAT_TYPES = new Set([
   'number',
   'date',
   'time',
@@ -50,7 +50,7 @@ function stripBidiControls(text: string): string {
  * plain apostrophe. Used by both the brace-balance check and the parser so
  * the two agree on what is literal text and what is structure.
  */
-function skipQuotedLiteral(text: string, i: number): number {
+export function skipQuotedLiteral(text: string, i: number): number {
   if (text[i] !== "'") return -1;
   const next = text[i + 1];
   if (next === "'") return i + 2; // escaped apostrophe: a literal `'`
@@ -77,7 +77,7 @@ function skipQuotedLiteral(text: string, i: number): number {
  * instead of stopping at the first `}` found. Braces inside an ICU quoted
  * literal (`'...'`) are literal text, so they are skipped.
  */
-function findMatchingBrace(text: string, openIndex: number): number {
+export function findMatchingBrace(text: string, openIndex: number): number {
   let depth = 0;
   let i = openIndex;
   while (i < text.length) {
@@ -115,7 +115,7 @@ function findMatchingBrace(text: string, openIndex: number): number {
  * the formatted number. ICU `'...'` quoted literals are skipped, so a brace
  * inside them is literal text, not structure.
  */
-function extractBraceTokens(text: string, inPluralClause: boolean): string[] {
+export function extractBraceTokens(text: string, inPluralClause: boolean): string[] {
   const tokens: string[] = [];
   let i = 0;
   while (i < text.length) {
@@ -2049,18 +2049,14 @@ export function usesHashWithoutClauseNumber(source: string, target: string, targ
 }
 
 /**
- * The ICU structural errors of an item: a translation that breaks an ICU block throws at
- * runtime (`String.format` / `MessageFormat`), the same reason a line-break mismatch is
- * unsaveable. The translation pipeline already refuses to produce such a reply; this is
- * the matching gate for text the user types or pastes, so what the app will not generate
- * it will not save either. Only strings whose source actually contains an ICU block are
- * reported, so ordinary placeholder repair is unaffected.
- */
-/**
  * ICU apostrophe quoting: '' is a literal apostrophe, and a single ' right before { or } opens
  * quoted literal text that must be closed by another single '. An unterminated quote makes
  * MessageFormat throw at runtime, so the save gate blocks it. A ' before any other character
  * is just a literal apostrophe (ICU's lenient rule), so normal contractions never flag.
+ *
+ * Note: `skipQuotedLiteral` (used by the brace parser) treats a `'` before `{`, `}`, `|` or `#` as the start of a
+ * quoted literal, while this function only looks at `{` and `}`. The two are kept separate on purpose; the
+ * difference only matters for a `'` right before `|` or `#`.
  */
 export function hasUnterminatedIcuQuote(text: string): boolean {
   if (!text || text.indexOf("'") === -1) return false;
@@ -2237,6 +2233,14 @@ export function repairItemQuoteMarks(item: ResourceItem): { item: ResourceItem; 
   return { item, changed: false };
 }
 
+/**
+ * The ICU structural errors of an item: a translation that breaks an ICU block throws at
+ * runtime (`String.format` / `MessageFormat`), the same reason a line-break mismatch is
+ * unsaveable. The translation pipeline already refuses to produce such a reply; this is
+ * the matching gate for text the user types or pastes, so what the app will not generate
+ * it will not save either. Only strings whose source actually contains an ICU block are
+ * reported, so ordinary placeholder repair is unaffected.
+ */
 export function getIcuStructureIssues(item: ResourceItem, targetLocale?: string): QaIssue[] {
   const parts: Array<{ source: string; target: string; subKey?: string }> = [];
   if (item.type === 'string') {
