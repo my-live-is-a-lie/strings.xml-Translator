@@ -67,11 +67,27 @@ test('export is blocked on placeholder errors until the user acknowledges them',
   await loadSample(page);
   await openDrawer(page);
   await page.click('#drawer-export-btn');
-  const download = page.locator('button:has-text("strings.xml")').last();
+  const download = page.locator('#export-save-btn');
   await expect(page.locator('#export-allow-broken')).toBeVisible();
   await expect(download).toBeDisabled();
   await page.locator('#export-allow-broken').check();
   await expect(download).toBeEnabled();
+});
+
+test('exports a zip named <project>-values-<lang> containing strings.xml', async ({ page }) => {
+  await openAppWithProvider(page);
+  await loadSample(page);
+  await openDrawer(page);
+  await page.click('#drawer-export-btn');
+  // The sample has placeholder warnings that block export until acknowledged.
+  await page.locator('#export-allow-broken').check();
+  const [download] = await Promise.all([page.waitForEvent('download'), page.click('#export-save-btn')]);
+  expect(download.suggestedFilename()).toBe('XML_Translator-values-ar.zip');
+  const dir = mkdtempSync(join(tmpdir(), 'zip-'));
+  const zipPath = join(dir, 'out.zip');
+  await download.saveAs(zipPath);
+  const listing = execFileSync('unzip', ['-Z1', zipPath]).toString().split('\n').filter((l) => l && !l.endsWith('/'));
+  expect(listing).toEqual(['strings.xml']);
 });
 
 test('updating the source file keeps translations and reports what changed', async ({ page }) => {

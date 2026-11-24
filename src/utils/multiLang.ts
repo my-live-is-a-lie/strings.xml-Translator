@@ -55,11 +55,27 @@ export function xmlForLanguage(project: TranslationProject, items: ResourceItem[
   return generateAndroidXml(items, { ...defaultExportOptions, fallbackToSource: false }, project);
 }
 
-/** Packs files into a ZIP and starts the download. jszip is loaded on demand so it is not part of the main bundle. */
-export async function downloadZip(files: Array<{ path: string; content: string }>, zipName: string): Promise<void> {
+/** File-system-safe base for exported file names: strips a trailing .xml and replaces unsafe characters. */
+export function safeFileBase(name: string): string {
+  const cleaned = name.trim().replace(/\.xml$/i, '').replace(/[^\p{L}\p{N}._-]+/gu, '_');
+  return cleaned || 'strings';
+}
+
+/** Zip name for the single-language export: <project>-values-<lang>.zip, with strings.xml inside. */
+export function exportZipName(project: TranslationProject): string {
+  const raw = project.name?.trim() || project.sourceFileName || 'strings';
+  return `${safeFileBase(raw)}-${valuesDirFor(project.targetLang)}.zip`;
+}
+
+/** Packs files into a ZIP blob. jszip is loaded on demand so it is not part of the main bundle. */
+export async function makeZipBlob(files: Array<{ path: string; content: string }>): Promise<Blob> {
   const { default: JSZip } = await import('jszip');
   const zip = new JSZip();
   for (const f of files) zip.file(f.path, f.content);
-  const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
-  await saveFile(blob, zipName);
+  return zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+}
+
+/** Packs files into a ZIP and starts the download. jszip is loaded on demand so it is not part of the main bundle. */
+export async function downloadZip(files: Array<{ path: string; content: string }>, zipName: string): Promise<void> {
+  await saveFile(await makeZipBlob(files), zipName);
 }

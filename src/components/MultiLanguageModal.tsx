@@ -4,7 +4,7 @@ import { ResourceItem, TranslationProject } from '../types';
 import { SUPPORTED_LANGUAGES, getArabicLanguageName } from '../utils/languages';
 import { bulkTranslateItems, getActiveProviderId, getAllTranslationProviders, withTranslationProvider } from '../utils/translator';
 import { getProviderDisplayName } from './ProvidersPanel';
-import { blankItems, downloadZip, itemsForLanguage, needsTranslation, valuesDirFor, xmlForLanguage } from '../utils/multiLang';
+import { blankItems, downloadZip, itemsForLanguage, needsTranslation, safeFileBase, valuesDirFor, xmlForLanguage } from '../utils/multiLang';
 import { useDialog } from '../utils/useDialog';
 import { useT } from '../i18n/i18n';
 
@@ -112,7 +112,7 @@ export const MultiLanguageModal: React.FC<MultiLanguageModalProps> = ({
         path: `${valuesDirFor(code)}/strings.xml`,
         content: xmlForLanguage(project, results[code]),
       }));
-      await downloadZip(files, `${(project.name || 'strings').replace(/[^\w.-]+/g, '_')}-translations.zip`);
+      await downloadZip(files, `${safeFileBase(project.name || 'strings')}-translations.zip`);
     } finally {
       setZipping(false);
     }

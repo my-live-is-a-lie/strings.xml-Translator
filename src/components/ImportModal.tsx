@@ -174,6 +174,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   const [pastedXml, setPastedXml] = useState('');
   const [targetLang, setTargetLang] = useState('ar');
   const [projectName, setProjectName] = useState('XML Translator');
+  // Once the user types a project name, picking a file no longer overwrites it.
+  const projectNameTouched = useRef(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [pendingReport, setPendingReport] = useState<{ result: RepairResult; fileName: string } | null>(null);
   // Phase 2 of issue #25: which fixable review issues (by id) the user has opted to apply. A fixable
@@ -236,6 +238,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     reader.onload = (ev) => {
       const text = ev.target?.result as string;
       setSourceFile({ name: file.name, content: text });
+      // The file name (without .xml) becomes the project name, so exports can be named after it.
+      if (!projectNameTouched.current) setProjectName(file.name.replace(/\.xml$/i, ''));
       setErrorMsg(null);
     };
     reader.readAsText(file);
@@ -462,7 +466,10 @@ export const ImportModal: React.FC<ImportModalProps> = ({
               <input
                 type="text"
                 value={projectName}
-                onChange={(e) => setProjectName(e.target.value)}
+                onChange={(e) => {
+                  projectNameTouched.current = true;
+                  setProjectName(e.target.value);
+                }}
                 placeholder={t('e_g_my_app_strings')}
                 className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-[#0B57D0] focus:ring-2 focus:ring-[#0B57D0]/20 transition"
               />
