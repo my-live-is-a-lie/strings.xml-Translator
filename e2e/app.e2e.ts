@@ -511,14 +511,15 @@ test('ICU branch editor: fields view edits each clause, raw view shows the same 
   await expect(page.locator('textarea#weblate-translation-input')).toHaveCount(0);
 
   // typing in the clause fields rebuilds the whole message
-  await page.getByTestId('icu-field-0:0').fill('# رسالة');
-  await page.getByTestId('icu-field-0:1').fill('# رسائل');
+  // (the default target is Arabic, so the plural block has the six Arabic categories)
+  await page.getByTestId('icu-field-0:1').fill('# رسالة');
+  await page.getByTestId('icu-field-0:5').fill('# رسائل');
   await page.click('#weblate-save-stay-btn');
 
   // the raw view shows exactly the reassembled string
   await page.getByTestId('icu-view-raw').click();
   const box = page.locator('textarea#weblate-translation-input');
-  await expect(box).toHaveValue('{count, plural, one {# رسالة} other {# رسائل}}');
+  await expect(box).toHaveValue('{count, plural, zero {} one {# رسالة} two {} few {} many {} other {# رسائل}}');
 
   // a broken block typed in raw mode is still blocked by the save gate
   await box.fill('{count, plural, one {# رسالة} other {# رسائل}');
@@ -530,7 +531,7 @@ test('ICU branch editor: fields view edits each clause, raw view shows the same 
   // the raw view of a repaired block can go back to the fields view
   await box.fill('{count, plural, one {# رسالة} other {# رسائل}}');
   await page.getByTestId('icu-view-fields').click();
-  await expect(page.getByTestId('icu-field-0:1')).toHaveValue('# رسائل');
+  await expect(page.getByTestId('icu-field-0:1')).toHaveValue('# رسالة');
 });
 
 test('the # warning is shown without blocking the save, and never replaces a real refusal', async ({ page }) => {
@@ -547,13 +548,14 @@ test('the # warning is shown without blocking the save, and never replaces a rea
   await expect(warning).toHaveCount(0);
 
   // type an Arabic plural that spells one/two out: the number is still shown in few/many/other
-  await page.getByTestId('icu-field-0:0').fill('# رسالة');
-  await page.getByTestId('icu-field-0:1').fill('# رسائل');
+  // (the default target is Arabic, so the plural block has the six Arabic categories)
+  await page.getByTestId('icu-field-0:1').fill('# رسالة');
+  await page.getByTestId('icu-field-0:5').fill('# رسائل');
   await expect(warning).toHaveCount(0);
 
   // a clause that drops the number entirely: the warning appears, and it is not an error
-  await page.getByTestId('icu-field-0:0').fill('رسالة');
-  await page.getByTestId('icu-field-0:1').fill('رسائل');
+  await page.getByTestId('icu-field-0:1').fill('رسالة');
+  await page.getByTestId('icu-field-0:5').fill('رسائل');
   await expect(warning).toBeVisible();
   await expect(warning).toHaveAttribute('role', 'status');
 
@@ -630,4 +632,19 @@ test('import report: an escaped apostrophe before a brace is listed for review a
   await expect(dialog).toContainText('مُهرَّبة');
   await expect(dialog).toContainText('ملف الترجمة الذي أضفته');
   if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/import-report-escaped-apos.png` });
+});
+
+test('plural categories follow the target language, not Arabic', async ({ page }) => {
+  const xml = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="msgs">{count, plural, one {# message} other {# messages}}</string>\n    <plurals name="files">\n        <item quantity="one">%d file</item>\n        <item quantity="other">%d files</item>\n    </plurals>\n</resources>`;
+  await page.goto('/');
+  await page.click('#header-right-drawer-btn');
+  await page.click('#drawer-import-btn');
+  await page.getByRole('button', { name: /لصق نص XML|Paste XML/ }).click();
+  await page.locator('textarea').last().fill(xml);
+  await page.locator('select').first().selectOption('hi');
+  await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
+
+  // Hindi uses one and other only: two fields, never the six Arabic categories
+  await expect(page.getByTestId('icu-field-0:1')).toBeVisible();
+  await expect(page.getByTestId('icu-field-0:2')).toHaveCount(0);
 });

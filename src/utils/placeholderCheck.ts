@@ -1,5 +1,6 @@
 import { ResourceItem } from '../types';
 import { countLineBreaks, hasMidLineDoubleSpaces } from './newlines';
+import { PLURAL_CATEGORY_ORDER, getCldrPluralCategories } from './pluralCategories';
 
 // ICU MessageFormat argument types that carry sub-message clauses in braces
 // (e.g. `{count, plural, one {...} other {...}}`). Other ICU types such as
@@ -562,7 +563,77 @@ function buildIcuFields(text: string): IcuField[] | null {
  * source's structure with every body empty. Anything else (no block, or a broken one) is null.
  * A clause body that itself contains a block stays one opaque value.
  */
-export function getIcuFieldModel(source: string, target: string): IcuField[] | null {
+export function getIcuFieldModel(source: string, target: string, targetLocale?: string): IcuField[] | null {
+  const model = buildIcuFieldModel(source, target);
+  return model && targetLocale ? adaptIcuModelToLocale(model, targetLocale) : model;
+}
+
+const SELECTOR_TAIL = /([=\w-]+)(\s*)\{$/;
+
+/** True when a clause holds text the user (or a translation) wrote. */
+function clauseHasContent(clause: IcuClauseField): boolean {
+  return clause.children ? !icuFieldsAreEmpty(clause.children) : clause.value.trim() !== '';
+}
+
+/**
+ * Gives every plural / selectordinal block the categories its target language uses (CLDR),
+ * instead of the ones the source happens to carry. Explicit `=N` clauses and `other` are kept;
+ * a category the language does not use is dropped only while it is empty, so existing
+ * translations keyed by another category stay; a missing category is added empty, with the
+ * matching source text (or the `other` text) as its reference. A block that already matches
+ * is returned unchanged, so an untouched message still round-trips byte for byte.
+ */
+export function adaptIcuModelToLocale(fields: IcuField[], locale: string): IcuField[] {
+  return fields.map((field) => {
+    if (field.kind !== 'block') return field;
+    let block: IcuBlockField = {
+      ...field,
+      clauses: field.clauses.map((clause) => {
+        if (!clause.children) return clause;
+        const children = adaptIcuModelToLocale(clause.children, locale);
+        return children === clause.children ? clause : { ...clause, children, value: assembleIcuFields(children) };
+      }),
+    };
+    if (block.clauses.some((c, i) => c !== field.clauses[i])) {
+      // keep the identity check below honest: nested adaptation counts as a change
+    } else {
+      block = field;
+    }
+    if (field.type !== 'plural' && field.type !== 'selectordinal') return block;
+    const cats = getCldrPluralCategories(locale, field.type === 'plural' ? 'cardinal' : 'ordinal');
+    if (!cats) return block;
+    const keep = (c: IcuClauseField) =>
+      c.selector.startsWith('=') || c.selector === 'other' || cats.includes(c.selector) || clauseHasContent(c);
+    const explicit = block.clauses.filter((c) => c.selector.startsWith('=') && keep(c));
+    const named = block.clauses.filter((c) => !c.selector.startsWith('='));
+    const otherClause = named.find((c) => c.selector === 'other');
+    const ordered: IcuClauseField[] = [...explicit];
+    const sel = (cat: string) => named.find((c) => c.selector === cat);
+    for (const cat of PLURAL_CATEGORY_ORDER) {
+      const existing = sel(cat);
+      if (existing && keep(existing)) ordered.push(existing);
+      else if (!existing && cats.includes(cat)) {
+        const ref = (cat === 'one' ? sel('one') : undefined) ?? otherClause ?? named[0];
+        ordered.push({ selector: cat, value: '', sourceValue: ref?.sourceValue ?? '' });
+      }
+    }
+    for (const c of named) if (!ordered.includes(c) && keep(c)) ordered.push(c); // unknown keywords stay
+    const same =
+      ordered.length === block.clauses.length && ordered.every((c, i) => c === block.clauses[i]);
+    if (same) return block;
+    const sep = block.frame.length > 2 ? block.frame[1] : null;
+    const last = block.frame[block.frame.length - 1];
+    const withSelector = (tail: string, selector: string) => tail.replace(SELECTOR_TAIL, `${selector}$2{`);
+    const frame = [withSelector(block.frame[0], ordered[0].selector)];
+    for (let k = 1; k < ordered.length; k++) {
+      frame.push(sep !== null ? withSelector(sep, ordered[k].selector) : `} ${ordered[k].selector} {`);
+    }
+    frame.push(last);
+    return { ...block, clauses: ordered, frame };
+  });
+}
+
+function buildIcuFieldModel(source: string, target: string): IcuField[] | null {
   const sourceFields = buildIcuFields(source);
   const targetIsEmpty = target.trim() === '';
   const targetFields = targetIsEmpty ? null : buildIcuFields(target);
@@ -970,7 +1041,6 @@ function getPluralCategoriesForLocale(
 
 // Canonical CLDR order for plural categories, so reported lists are
 // deterministic instead of depending on the runtime's `pluralCategories` order.
-const PLURAL_CATEGORY_ORDER = ['zero', 'one', 'two', 'few', 'many', 'other'];
 
 // ---------------------------------------------------------------------------
 // Structural (tree-based) ICU comparison.
