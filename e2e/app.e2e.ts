@@ -788,7 +788,11 @@ test('plural clone and paste act on the picked form only, and hint when none is 
   // Clone mode, then a click on a form fills that form only
   await page.click('#weblate-clone-to-target-btn');
   await expect(hint).toBeVisible();
+  const highlighted = (i: number) => fields.nth(i).locator('xpath=ancestor::div[contains(@class,"border-2")]').count();
+  expect(await highlighted(1)).toBeGreaterThan(0);
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/plural-pick-mode.png` });
   await fields.nth(1).click();
+  expect(await highlighted(1)).toBe(0);
   await expect(fields.nth(1)).toHaveValue('%d file');
   for (let i = 0; i < count; i++) if (i !== 1) await expect(fields.nth(i)).toHaveValue('');
   await expect(hint).toHaveCount(0);
@@ -808,6 +812,16 @@ test('plural clone and paste act on the picked form only, and hint when none is 
   await expect(fields.nth(count - 1)).toHaveValue('%d files');
   await expect(hint).toHaveCount(0);
 
+  // Paste with a form clicked earlier but not focused now: hint and highlight, nothing written
+  await page.evaluate(() => navigator.clipboard.writeText('نص ملصوق'));
+  await fields.nth(0).click();
+  await page.locator('[data-src-text]').click();
+  await page.click('#paste-target-text-btn');
+  await expect(hint).toBeVisible();
+  await expect(fields.nth(0)).toHaveValue('');
+  await page.locator('[data-src-text]').click();
+  await expect(hint).toHaveCount(0);
+
   // Paste goes to the picked form only
   await page.evaluate(() => navigator.clipboard.writeText('نص ملصوق'));
   await fields.nth(2).click();
@@ -815,4 +829,17 @@ test('plural clone and paste act on the picked form only, and hint when none is 
   await expect(fields.nth(2)).toHaveValue('نص ملصوق');
   await expect(fields.nth(1)).toHaveValue('%d file');
   await expect(fields.nth(0)).toHaveValue('');
+
+  // Delete follows the same rule: nothing focused -> hint, a click on a form clears that form only
+  await fields.nth(1).click();
+  await page.click('#weblate-quick-delete-btn');
+  await expect(fields.nth(1)).toHaveValue('');
+  await expect(fields.nth(2)).toHaveValue('نص ملصوق');
+  await page.locator('[data-src-text]').click();
+  await page.click('#weblate-quick-delete-btn');
+  await expect(hint).toBeVisible();
+  expect(await highlighted(2)).toBeGreaterThan(0);
+  await fields.nth(2).click();
+  await expect(fields.nth(2)).toHaveValue('');
+  await expect(hint).toHaveCount(0);
 });

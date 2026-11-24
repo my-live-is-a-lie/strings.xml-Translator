@@ -756,7 +756,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   // nothing and show a hint.
   // 'clone': the next click on a form fills it with its source; 'paste': a hint only (the click
   // selects the form, then paste is pressed again). A click anywhere else cancels the mode.
-  const [pluralPick, setPluralPick] = useState<null | 'clone' | 'paste'>(null);
+  const [pluralPick, setPluralPick] = useState<null | 'clone' | 'paste' | 'clear'>(null);
   const pluralPickHint = pluralPick !== null;
   // Only a form that has the caret right now counts as picked. The clone button keeps the focus
   // (see its mousedown handler), so pressing it does not drop the pick; tapping elsewhere does.
@@ -764,7 +764,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     const refs = pluralTextareaRefs.current;
     return Object.keys(refs).find((q) => refs[q] && refs[q] === document.activeElement);
   };
-  const showPluralPickHint = (kind: 'clone' | 'paste') => setPluralPick(kind);
+  const showPluralPickHint = (kind: 'clone' | 'paste' | 'clear') => setPluralPick(kind);
 
   const cloneSourceIntoPluralForm = (qty: string) => {
     if (draftItem.type !== 'plural') return;
@@ -777,6 +777,18 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     updateDraftItem(updated);
   };
 
+  const clearPluralForm = (qty: string) => {
+    if (draftItem.type !== 'plural') return;
+    const items = normalizedPluralItems.map((pi) => (pi.quantity === qty ? { ...pi, target: '' } : pi));
+    const anyFilled = items.some((pi) => pi.target.trim() !== '');
+    updateDraftItem({
+      ...draftItem,
+      items,
+      status: anyFilled ? draftItem.status : 'untranslated',
+      translationSource: anyFilled ? draftItem.translationSource : undefined,
+    });
+  };
+
   // While the mode is on: a press on a form field picks it (clone fills it), a press anywhere else cancels
   useEffect(() => {
     if (!pluralPick) return;
@@ -785,6 +797,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       const qty = Object.keys(refs).find((q) => refs[q] && e.target instanceof Node && refs[q]!.contains(e.target));
       setPluralPick(null);
       if (qty && pluralPick === 'clone') cloneSourceIntoPluralForm(qty);
+      if (qty && pluralPick === 'clear') clearPluralForm(qty);
     };
     document.addEventListener('pointerdown', onPointerDown, true);
     return () => document.removeEventListener('pointerdown', onPointerDown, true);
@@ -1233,10 +1246,8 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       const hasActiveLineMarker = Boolean(
         focusedQty || (activeMarker?.fieldType === 'plural' && activeMarker.quantity)
       );
-      const targetQty =
-        focusedQty ||
-        activeMarker?.quantity ||
-        (lastCursorRef.current?.fieldType === 'plural' ? lastCursorRef.current.quantity : undefined);
+      // Only a form with the caret right now counts; a form picked earlier does not
+      const targetQty = focusedQty;
       if (!targetQty || !normalizedPluralItems.some((pi) => pi.quantity === targetQty)) {
         showPluralPickHint('paste');
         return;
@@ -1780,12 +1791,13 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     if (draftItem.type === 'string') {
       handleSingleTextChange('');
     } else if (draftItem.type === 'plural') {
-      updateDraftItem({
-        ...draftItem,
-        items: normalizedPluralItems.map((pi) => ({ ...pi, target: '' })),
-        status: 'untranslated',
-        translationSource: undefined,
-      });
+      const qty = pickedPluralQuantity();
+      if (!qty) {
+        showPluralPickHint('clear');
+        return;
+      }
+      setPluralPick(null);
+      clearPluralForm(qty);
     } else if (draftItem.type === 'array') {
       updateDraftItem({
         ...draftItem,
@@ -2330,7 +2342,11 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                           ? `ترجمة صيغة ${pi.quantity} (${pluralLabels[pi.quantity] || pi.quantity})...`
                           : `Translate ${pi.quantity} form (${pluralLabels[pi.quantity] || pi.quantity})...`
                       }
-                      containerClassName="rounded-lg bg-slate-100/90 dark:bg-[#0E121A] border border-slate-200/90 dark:border-transparent"
+                      containerClassName={
+                        pluralPick
+                          ? 'rounded-lg border-2 border-[var(--accent-primary)] bg-[color-mix(in_srgb,var(--accent-primary)_16%,transparent)] shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent-primary)_30%,transparent)] cursor-pointer'
+                          : 'rounded-lg bg-slate-100/90 dark:bg-[#0E121A] border border-slate-200/90 dark:border-transparent'
+                      }
                       backdropClassName="border-0 border-b-2 border-transparent px-3.5 pt-1.5 pb-3 text-xs sm:text-sm leading-relaxed"
                       className="px-3.5 pt-1.5 pb-3 text-xs sm:text-sm leading-relaxed rounded-lg border-0 border-b-2 border-[var(--accent-primary)]/30 focus:border-[var(--accent-primary)] text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none transition-colors duration-300 resize-none overflow-hidden block"
                     />
