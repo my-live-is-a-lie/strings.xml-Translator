@@ -13,6 +13,7 @@ test('plural clone on a touch screen: hint, pick by tap, stale pick ignored', as
   const fields = page.locator('textarea:visible');
   await page.locator('#weblate-clone-to-target-btn').tap();
   await expect(page.getByTestId('plural-pick-hint')).toBeVisible();
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/plural-pick-mobile.png` });
   await fields.nth(1).tap();
   await expect(fields.nth(1)).toHaveValue('%d file');
   await expect(fields.nth(0)).toHaveValue('');

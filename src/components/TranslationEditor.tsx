@@ -758,6 +758,25 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   // selects the form, then paste is pressed again). A click anywhere else cancels the mode.
   const [pluralPick, setPluralPick] = useState<null | 'clone' | 'paste' | 'clear'>(null);
   const pluralPickHint = pluralPick !== null;
+  // The hint floats just under the strings-list/filters bar (or the header) so it stays visible while scrolling
+  const [pickHintTop, setPickHintTop] = useState(0);
+  useEffect(() => {
+    if (!pluralPickHint) return;
+    const measure = () => {
+      const bar = document.getElementById('mobile-drawer-btn')?.parentElement?.parentElement;
+      const barRect = bar && bar.getBoundingClientRect();
+      const header = document.querySelector('header')?.getBoundingClientRect();
+      const bottom = barRect && barRect.height > 0 ? barRect.bottom : header ? header.bottom : 0;
+      setPickHintTop(Math.max(0, Math.round(bottom) + 4));
+    };
+    measure();
+    window.addEventListener('scroll', measure, true);
+    window.addEventListener('resize', measure);
+    return () => {
+      window.removeEventListener('scroll', measure, true);
+      window.removeEventListener('resize', measure);
+    };
+  }, [pluralPickHint]);
   // Only a form that has the caret right now counts as picked. The clone button keeps the focus
   // (see its mousedown handler), so pressing it does not drop the pick; tapping elsewhere does.
   const pickedPluralQuantity = (): string | undefined => {
@@ -2293,11 +2312,12 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                   <div
                     data-testid="plural-pick-hint"
                     role="status"
-                    className={
+                    style={{ top: pickHintTop }}
+                    className={`fixed inset-x-3 z-40 mx-auto max-w-md rounded-lg border px-3 py-1.5 text-center text-xs font-medium shadow-lg backdrop-blur ${
                       pluralPick === 'clear'
-                        ? 'rounded-lg border border-red-400/50 bg-red-500/10 px-3 py-1.5 text-xs text-red-700 dark:text-red-300'
-                        : 'rounded-lg border border-sky-400/40 bg-sky-500/10 px-3 py-1.5 text-xs text-sky-700 dark:text-sky-300'
-                    }
+                        ? 'border-red-400/60 bg-red-100/95 text-red-800 dark:bg-red-950/90 dark:text-red-200'
+                        : 'border-sky-400/50 bg-sky-100/95 text-sky-800 dark:bg-sky-950/90 dark:text-sky-200'
+                    }`}
                   >
                     {t('plural_pick_form_first')}
                   </div>
@@ -2370,9 +2390,9 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                       }
                       containerClassName={
                         pluralPick === 'clear'
-                          ? 'rounded-lg border-2 border-red-500 bg-red-500/15 shadow-[0_0_0_3px_rgba(239,68,68,0.3)] cursor-pointer'
+                          ? 'rounded-lg border border-transparent !bg-red-500/25 cursor-pointer'
                           : pluralPick
-                          ? 'rounded-lg border-2 border-[var(--accent-primary)] bg-[color-mix(in_srgb,var(--accent-primary)_16%,transparent)] shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent-primary)_30%,transparent)] cursor-pointer'
+                          ? 'rounded-lg border border-transparent !bg-[color-mix(in_srgb,var(--accent-primary)_25%,transparent)] cursor-pointer'
                           : 'rounded-lg bg-slate-100/90 dark:bg-[#0E121A] border border-slate-200/90 dark:border-transparent'
                       }
                       backdropClassName="border-0 border-b-2 border-transparent px-3.5 pt-1.5 pb-3 text-xs sm:text-sm leading-relaxed"
