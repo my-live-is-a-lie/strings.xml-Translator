@@ -760,14 +760,29 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   const pluralPickHint = pluralPick !== null;
   // The hint floats just under the strings-list/filters bar (or the header) so it stays visible while scrolling
   const [pickHintTop, setPickHintTop] = useState(0);
+  // Without the list/filters bar (desktop) the hint sticks in the flow above the fields instead of floating over them
+  const [pickHintSticky, setPickHintSticky] = useState(false);
+  const pickHintRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!pluralPickHint) return;
     const measure = () => {
       const bar = document.getElementById('mobile-drawer-btn')?.parentElement?.parentElement;
       const barRect = bar && bar.getBoundingClientRect();
       const header = document.querySelector('header')?.getBoundingClientRect();
-      const bottom = barRect && barRect.height > 0 ? barRect.bottom : header ? header.bottom : 0;
-      setPickHintTop(Math.max(0, Math.round(bottom) + 4));
+      if (barRect && barRect.height > 0) {
+        setPickHintSticky(false);
+        setPickHintTop(Math.max(0, Math.round(barRect.bottom) + 4));
+        return;
+      }
+      setPickHintSticky(true);
+      let el: HTMLElement | null = pickHintRef.current?.parentElement ?? null;
+      let scroller: HTMLElement | null = null;
+      while (el) {
+        const oy = getComputedStyle(el).overflowY;
+        if ((oy === 'auto' || oy === 'scroll') && el.scrollHeight > el.clientHeight) { scroller = el; break; }
+        el = el.parentElement;
+      }
+      setPickHintTop(scroller ? 4 : Math.max(0, Math.round(header?.bottom ?? 0) + 4));
     };
     measure();
     window.addEventListener('scroll', measure, true);
@@ -2312,8 +2327,9 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                   <div
                     data-testid="plural-pick-hint"
                     role="status"
+                    ref={pickHintRef}
                     style={{ top: pickHintTop }}
-                    className={`fixed inset-x-3 z-40 mx-auto max-w-md rounded-lg border px-3 py-1.5 text-center text-xs font-medium shadow-lg backdrop-blur ${
+                    className={`${pickHintSticky ? 'sticky' : 'fixed inset-x-3 mx-auto max-w-md'} z-40 rounded-lg border px-3 py-1.5 text-center text-xs font-medium shadow-lg backdrop-blur ${
                       pluralPick === 'clear'
                         ? 'border-red-400/60 bg-red-100/95 text-red-800 dark:bg-red-950/90 dark:text-red-200'
                         : 'border-sky-400/50 bg-sky-100/95 text-sky-800 dark:bg-sky-950/90 dark:text-sky-200'
