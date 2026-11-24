@@ -25,3 +25,27 @@ test('plural clone on a touch screen: hint, pick by tap, stale pick ignored', as
   await page.locator('#weblate-clone-to-target-btn').tap();
   await expect(page.getByTestId('plural-pick-hint')).toBeVisible();
 });
+
+test('string-array on a touch screen: item tools and delete pick by tap', async ({ page }) => {
+  const xml = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string-array name="choices">\n        <item>First choice</item>\n        <item>Second choice</item>\n        <item>Third choice</item>\n    </string-array>\n</resources>`;
+  await page.goto('/');
+  await page.click('#header-right-drawer-btn');
+  await page.click('#drawer-import-btn');
+  await page.fill('#import-project-name', 'T');
+  await page.getByRole('button', { name: /لصق نص XML|Paste XML/ }).click();
+  await page.locator('textarea').last().fill(xml);
+  await page.locator('select').first().selectOption('hi');
+  await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
+  const fields = page.locator('textarea:visible');
+  await page.getByTestId('array-clone-0').tap();
+  await page.getByTestId('array-clone-2').tap();
+  await expect(fields.nth(0)).toHaveValue('First choice');
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/array-mobile.png` });
+  await page.locator('#weblate-quick-delete-btn').tap();
+  await expect(page.getByTestId('plural-pick-hint')).toBeVisible();
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/array-mobile-delete.png` });
+  await fields.nth(2).tap();
+  await expect(fields.nth(2)).toHaveValue('');
+  await expect(fields.nth(0)).toHaveValue('First choice');
+  await expect(page.getByTestId('plural-pick-hint')).toHaveCount(0);
+});

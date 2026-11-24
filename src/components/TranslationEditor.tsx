@@ -780,7 +780,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       let scroller: HTMLElement | null = null;
       while (el) {
         const oy = getComputedStyle(el).overflowY;
-        if ((oy === 'auto' || oy === 'scroll') && el.scrollHeight > el.clientHeight) { scroller = el; break; }
+        if (oy === 'auto' || oy === 'scroll' || oy === 'hidden') { scroller = el; break; }
         el = el.parentElement;
       }
       setPickHintTop(scroller ? 4 : Math.max(0, Math.round(header?.bottom ?? 0) + 4));
@@ -800,6 +800,39 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     return Object.keys(refs).find((q) => refs[q] && refs[q] === document.activeElement);
   };
   const showPluralPickHint = (kind: 'clone' | 'paste' | 'clear') => setPluralPick(kind);
+  // Same rule for a string-array: only the item that has the caret counts; delete picks one item
+  const pickedArrayIndex = (): number | undefined => {
+    const refs = arrayTextareaRefs.current;
+    const key = Object.keys(refs).find((i) => refs[Number(i)] && refs[Number(i)] === document.activeElement);
+    return key === undefined ? undefined : Number(key);
+  };
+  const clearArrayItem = (index: number) => {
+    if (draftItem.type !== 'array') return;
+    const items = draftItem.items.map((ai) => (ai.index === index ? { ...ai, target: '' } : ai));
+    const anyFilled = items.some((ai) => ai.target.trim() !== '');
+    updateDraftItem({
+      ...draftItem,
+      items,
+      status: anyFilled ? draftItem.status : 'untranslated',
+      translationSource: anyFilled ? draftItem.translationSource : undefined,
+    });
+  };
+  const cloneArrayItem = (index: number) => {
+    if (draftItem.type !== 'array') return;
+    const items = draftItem.items.map((ai) => (ai.index === index ? { ...ai, target: ai.source } : ai));
+    updateDraftItem({
+      ...draftItem,
+      items,
+      status: draftItem.status === 'untranslated' ? 'translated' : draftItem.status,
+      translationSource: 'manual',
+    });
+  };
+  const [copiedArrayIdx, setCopiedArrayIdx] = useState<number | null>(null);
+  const copyArrayItemSource = (index: number, text: string) => {
+    void copyTextToClipboard(text);
+    setCopiedArrayIdx(index);
+    setTimeout(() => setCopiedArrayIdx((c) => (c === index ? null : c)), 2000);
+  };
 
   const cloneSourceIntoPluralForm = (qty: string) => {
     if (draftItem.type !== 'plural') return;
@@ -844,9 +877,12 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       start = null;
       const refs = pluralTextareaRefs.current;
       const qty = Object.keys(refs).find((q) => refs[q] && target instanceof Node && refs[q]!.contains(target));
+      const arefs = arrayTextareaRefs.current;
+      const aKey = Object.keys(arefs).find((i) => arefs[Number(i)] && target instanceof Node && arefs[Number(i)]!.contains(target));
       setPluralPick(null);
       if (qty && pluralPick === 'clone') cloneSourceIntoPluralForm(qty);
       if (qty && pluralPick === 'clear') clearPluralForm(qty);
+      if (aKey !== undefined && pluralPick === 'clear') clearArrayItem(Number(aKey));
     };
     document.addEventListener('pointerdown', onPointerDown, true);
     document.addEventListener('pointermove', onPointerMove, true);
@@ -1867,12 +1903,13 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       setPluralPick(null);
       clearPluralForm(qty);
     } else if (draftItem.type === 'array') {
-      updateDraftItem({
-        ...draftItem,
-        items: draftItem.items.map((ai) => ({ ...ai, target: '' })),
-        status: 'untranslated',
-        translationSource: undefined,
-      });
+      const idx = pickedArrayIndex();
+      if (idx === undefined) {
+        showPluralPickHint('clear');
+        return;
+      }
+      setPluralPick(null);
+      clearArrayItem(idx);
     }
   };
 
@@ -1917,6 +1954,24 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       });
     }
   };
+
+  const pickHintNode = (
+                pluralPickHint && (
+                  <div
+                    data-testid="plural-pick-hint"
+                    role="status"
+                    ref={pickHintRef}
+                    style={{ top: pickHintTop }}
+                    className={`${pickHintSticky ? 'sticky' : 'fixed inset-x-3 mx-auto max-w-md'} z-40 rounded-lg border px-3 py-1.5 text-center text-xs font-medium shadow-lg backdrop-blur ${
+                      pluralPick === 'clear'
+                        ? 'border-red-400/60 bg-red-100/95 text-red-800 dark:bg-red-950/90 dark:text-red-200'
+                        : 'border-sky-400/50 bg-sky-100/95 text-sky-800 dark:bg-sky-950/90 dark:text-sky-200'
+                    }`}
+                  >
+                    {t(draftItem.type === 'array' ? 'array_pick_item_first' : 'plural_pick_form_first')}
+                  </div>
+                )
+  );
 
   const effectiveCanUndo = draftPast.length > 0 || canUndo;
   const effectiveCanRedo = draftFuture.length > 0 || canRedo;
@@ -2036,7 +2091,9 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               </span>
             </div>
 
-            {/* Source Display Box with Clone & Copy Icons */}
+            {/* A string-array has no combined source box (it would show the first item only): each item carries its own source line */}
+            {draftItem.type !== 'array' && (
+            <>
             <div dir="ltr" className="flex items-start gap-1">
               {/* Clone icon button (Weblate clone to target — matches screenshot) */}
               <button
@@ -2086,6 +2143,8 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                 </span>
               </div>
             </div>
+            </>
+            )}
 
             <SourceChangeDiff item={item} isAr={isAr} />
 
@@ -2335,21 +2394,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             {/* Plural Support (if plural string) with Visual Typing Mistake Indicator */}
             {draftItem.type === 'plural' && (
               <div className="space-y-2">
-                {pluralPickHint && (
-                  <div
-                    data-testid="plural-pick-hint"
-                    role="status"
-                    ref={pickHintRef}
-                    style={{ top: pickHintTop }}
-                    className={`${pickHintSticky ? 'sticky' : 'fixed inset-x-3 mx-auto max-w-md'} z-40 rounded-lg border px-3 py-1.5 text-center text-xs font-medium shadow-lg backdrop-blur ${
-                      pluralPick === 'clear'
-                        ? 'border-red-400/60 bg-red-100/95 text-red-800 dark:bg-red-950/90 dark:text-red-200'
-                        : 'border-sky-400/50 bg-sky-100/95 text-sky-800 dark:bg-sky-950/90 dark:text-sky-200'
-                    }`}
-                  >
-                    {t('plural_pick_form_first')}
-                  </div>
-                )}
+                {pickHintNode}
                 {normalizedPluralItems.map((pi, pIdx) => (
                   <div key={pi.quantity} className="space-y-1">
                     {(barField ? barField === `plural:${pi.quantity}` : pIdx === 0) && shortcutBar}
@@ -2435,19 +2480,44 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             {/* Array Support (if array string) with Visual Typing Mistake Indicator */}
             {draftItem.type === 'array' && (
               <div className="space-y-2">
+                {pickHintNode}
                 {draftItem.items.map((ai, aIdx) => (
                   <div key={ai.index} className="space-y-1">
                     {(barField ? barField === `array:${ai.index}` : aIdx === 0) && shortcutBar}
-                    <div className="flex items-center justify-between text-xs">
+                    <div dir="ltr" className="flex items-center gap-1 text-xs">
                       <span data-i18n className="font-mono font-semibold text-[#1EB996]">
                         {t('item', ai.index)}
                       </span>
-                      <span className="app-source-font text-slate-500 dark:text-slate-300 text-[11px] truncate max-w-xs">
-                        {renderSourceWithSyntaxHighlights(ai.source, {
-                          fieldType: 'array',
-                          index: ai.index,
-                        })}
-                      </span>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => copyArrayItemSource(ai.index, ai.source)}
+                        className="p-0.5 rounded-md text-slate-500 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-[#1C2330] transition cursor-pointer"
+                        title={t('copy_english_source_text')}
+                        data-testid={`array-copy-${ai.index}`}
+                      >
+                        {copiedArrayIdx === ai.index ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      </button>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => cloneArrayItem(ai.index)}
+                        className="p-0.5 rounded-md text-slate-500 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-[#1C2330] transition cursor-pointer"
+                        title={t('clone_source_to_translation')}
+                        data-testid={`array-clone-${ai.index}`}
+                      >
+                        <svg className="w-3.5 h-3.5" viewBox="3 2 19 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M10 11V8.5A1.5 1.5 0 0 1 11.5 7h7A1.5 1.5 0 0 1 20 8.5v10a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 10 18.5V17" />
+                          <path d="M15 4H6.5A1.5 1.5 0 0 0 5 5.5v7A1.5 1.5 0 0 0 6.5 14H15" />
+                          <path d="m12.5 11.5 2.5 2.5-2.5 2.5" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div dir="ltr" data-testid={`array-source-${ai.index}`} className="app-source-font text-slate-600 dark:text-slate-300 text-[11px] sm:text-xs break-words whitespace-pre-line">
+                      {renderSourceWithSyntaxHighlights(ai.source, {
+                        fieldType: 'array',
+                        index: ai.index,
+                      })}
                     </div>
                     <HighlightedTextarea
                       rows={1}
@@ -2491,7 +2561,12 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                       placeholder={
                         t('translate_item', ai.index)
                       }
-                      containerClassName="rounded-lg bg-slate-100/90 dark:bg-[#0E121A] border border-slate-200/90 dark:border-transparent"
+                      enableSwipeResize={!pluralPick}
+                      containerClassName={
+                        pluralPick === 'clear'
+                          ? 'rounded-lg border border-transparent !bg-red-500/25 cursor-pointer'
+                          : 'rounded-lg bg-slate-100/90 dark:bg-[#0E121A] border border-slate-200/90 dark:border-transparent'
+                      }
                       backdropClassName="border-0 border-b-2 border-transparent px-3.5 pt-1.5 pb-3 text-xs sm:text-sm leading-relaxed"
                       className="px-3.5 pt-1.5 pb-3 text-xs sm:text-sm leading-relaxed rounded-lg border-0 border-b-2 border-[var(--accent-primary)]/30 focus:border-[var(--accent-primary)] text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none transition-colors duration-300 resize-none overflow-hidden block"
                     />

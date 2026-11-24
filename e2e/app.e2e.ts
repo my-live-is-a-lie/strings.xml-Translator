@@ -938,3 +938,62 @@ test('a <string-array> with any empty item is not saved', async ({ page }) => {
   await expect(warning).toHaveCount(0);
   await expect(page.getByText(/100%|\(1\/1\)/).first()).toBeVisible();
 });
+
+test('string-array: per-item source line, copy and clone, and delete picks one item', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  const xml = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string-array name="choices">\n        <item>First choice</item>\n        <item>Second choice</item>\n        <item>Third choice</item>\n    </string-array>\n</resources>`;
+  await page.goto('/');
+  await page.click('#header-right-drawer-btn');
+  await page.click('#drawer-import-btn');
+  await page.fill('#import-project-name', 'Test App');
+  await page.getByRole('button', { name: /لصق نص XML|Paste XML/ }).click();
+  await page.locator('textarea').last().fill(xml);
+  await page.locator('select').first().selectOption('hi');
+  await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
+
+  const fields = page.locator('textarea:visible');
+  const hint = page.getByTestId('plural-pick-hint');
+  // No combined source box; every item shows its own source line, also after typing
+  await expect(page.locator('[data-src-text]')).toHaveCount(0);
+  await expect(page.getByTestId('array-source-0')).toContainText('First choice');
+  await expect(page.getByTestId('array-source-2')).toContainText('Third choice');
+
+  // Per-item clone fills that item only; copy puts its source on the clipboard
+  await page.getByTestId('array-clone-1').click();
+  await expect(fields.nth(1)).toHaveValue('Second choice');
+  await expect(fields.nth(0)).toHaveValue('');
+  await expect(fields.nth(2)).toHaveValue('');
+  await page.getByTestId('array-copy-2').click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('Third choice');
+  await expect(page.getByTestId('array-source-1')).toContainText('Second choice');
+
+  await fields.nth(0).fill('पहला');
+  await fields.nth(2).fill('तीसरा');
+  await page.locator('[data-src-text], [data-key-name]').first().click();
+
+  // Delete with nothing focused: red hint and tint, capsules hidden, tap outside cancels
+  await page.click('#weblate-quick-delete-btn');
+  await expect(hint).toBeVisible();
+  await expect(hint).toHaveClass(/red/);
+  await expect(page.locator('[data-resize-handle]:visible')).toHaveCount(0);
+  expect(await fields.nth(0).locator('xpath=ancestor::div[contains(@class,"bg-red-500")]').count()).toBeGreaterThan(0);
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/array-delete-pick.png` });
+  await page.locator('[data-key-name]').click();
+  await expect(hint).toHaveCount(0);
+  for (const [i, v] of ['पहला', 'Second choice', 'तीसरा'].entries()) await expect(fields.nth(i)).toHaveValue(v);
+
+  // Delete, then a click on item 2 clears that item only
+  await page.click('#weblate-quick-delete-btn');
+  await expect(hint).toBeVisible();
+  await fields.nth(1).click();
+  await expect(fields.nth(1)).toHaveValue('');
+  await expect(fields.nth(0)).toHaveValue('पहला');
+  await expect(fields.nth(2)).toHaveValue('तीसरा');
+  await expect(hint).toHaveCount(0);
+
+  // With an item focused, delete clears it straight away
+  await fields.nth(2).click();
+  await page.click('#weblate-quick-delete-btn');
+  await expect(fields.nth(2)).toHaveValue('');
+  await expect(fields.nth(0)).toHaveValue('पहला');
+});
