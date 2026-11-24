@@ -304,6 +304,10 @@ export const ImportModal: React.FC<ImportModalProps> = ({
       lastModified: Date.now(),
     };
 
+    // The next import starts from its own file name, not from this project's typed name.
+    projectNameTouched.current = false;
+    setProjectName('');
+    setNameMissing(false);
     onImportComplete(newProject);
     onClose();
   };

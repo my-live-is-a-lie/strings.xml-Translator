@@ -632,6 +632,23 @@ test('import requires a project name and suggests it from the file, skipping str
   await expect(page.locator('#string-item-greeting')).toBeVisible();
 });
 
+test('a second import in the same session takes its name from its own file', async ({ page }) => {
+  const xml = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="greeting">Hello</string>\n</resources>`;
+  await page.goto('/');
+  await page.click('#header-right-drawer-btn');
+  await page.click('#drawer-import-btn');
+  await page.locator('input[type=file]').first().setInputFiles({ name: 'strings.xml', mimeType: 'text/xml', buffer: Buffer.from(xml) });
+  await page.fill('#import-project-name', 'AppA');
+  await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
+  await expect(page.locator('#string-item-greeting')).toBeVisible();
+
+  // The name typed for the first project must not carry over to the second file.
+  await page.click('#header-right-drawer-btn');
+  await page.click('#drawer-import-btn');
+  await page.locator('input[type=file]').first().setInputFiles({ name: 'OtherApp.xml', mimeType: 'text/xml', buffer: Buffer.from(xml) });
+  await expect(page.locator('#import-project-name')).toHaveValue('OtherApp');
+});
+
 test('the typed project name is saved as the file name and names later exports', async ({ page }) => {
   const xml = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="greeting">Hello</string>\n</resources>`;
   await page.goto('/');
