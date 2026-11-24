@@ -28,6 +28,7 @@ import {
   type IcuField,
   type IcuFieldPath,
   getIcuStructureIssues,
+  getIcuEmptyOtherIssues,
   repairItemQuoteMarks,
   getItemQaIssues,
   getLineBreakIssues,
@@ -279,7 +280,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   };
   const [copiedTarget, setCopiedTarget] = useState(false);
   const [showSavedFeedback, setShowSavedFeedback] = useState(false);
-  const [saveGuard, setSaveGuard] = useState<{ notes: FixNote[]; remaining: QaIssue[]; empty?: boolean; hard?: boolean; itemId?: string } | null>(null);
+  const [saveGuard, setSaveGuard] = useState<{ notes: FixNote[]; remaining: QaIssue[]; empty?: boolean; hard?: boolean; warnOnly?: boolean; itemId?: string } | null>(null);
   const ackedIssuesRef = useRef('');
 
   // Suggestion loading state
@@ -1443,6 +1444,25 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     return false;
   }, [autoCorrect, draftItem, targetLang, updateDraftItem, withHiddenEdges]);
 
+  // An empty `other` clause is saveable but shows nothing for the counts that fall back to it:
+  // warn once, and save on the confirming press (the same confirm-once flow as blockIfNeedsFix).
+  const ackedEmptyOtherRef = useRef('');
+  const blockIfIcuOtherEmpty = React.useCallback((): boolean => {
+    const issues = getIcuEmptyOtherIssues(toStoredItem(withHiddenEdges(draftItem)), targetLang);
+    if (issues.length === 0) {
+      ackedEmptyOtherRef.current = '';
+      return false;
+    }
+    const key = `${item.id}|${issues.map((i) => i.id).join(';')}`;
+    if (ackedEmptyOtherRef.current === key) {
+      setSaveGuard((g) => (g?.warnOnly ? null : g));
+      return false;
+    }
+    ackedEmptyOtherRef.current = key;
+    setSaveGuard({ notes: [], remaining: issues, warnOnly: true });
+    return true;
+  }, [draftItem, item.id, targetLang, withHiddenEdges]);
+
   // The line-break message follows the text as it is edited and disappears once the counts match
   const liveBreakIssues = React.useMemo(
     () => (saveGuard?.hard && saveGuard.itemId === item.id
@@ -1476,7 +1496,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
 
   // Save without continuing (حفظ بدون متابعة / Save & Stay)
   const handleSaveWithoutContinuing = React.useCallback(() => {
-    if (blockIfNothingTyped() || blockIfLineBreaksDiffer() || blockIfIcuBroken() || blockIfNeedsFix()) return;
+    if (blockIfNothingTyped() || blockIfLineBreaksDiffer() || blockIfIcuBroken() || blockIfNeedsFix() || blockIfIcuOtherEmpty()) return;
     // Saving settles the string: the old source text (diff) is no longer shown
     const savedItem = { ...buildSavedItemFromDraft(draftItem), previousSources: undefined };
     const undoDeletesText = savedItem.translationSource === 'ai' && item.status === 'untranslated';
@@ -1485,7 +1505,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     onUpdateTranslation(savedItem, undoDeletesText ? { undoDeletesText: true } : undefined);
     setShowSavedFeedback(true);
     setTimeout(() => setShowSavedFeedback(false), 2000);
-  }, [blockIfNothingTyped, blockIfLineBreaksDiffer, blockIfIcuBroken, blockIfNeedsFix, buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation]);
+  }, [blockIfNothingTyped, blockIfLineBreaksDiffer, blockIfIcuBroken, blockIfNeedsFix, blockIfIcuOtherEmpty, buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation]);
 
   // Save and continue (حفظ ومتابعة / Save & Continue)
   const handleSaveAndContinue = React.useCallback(() => {
@@ -1493,7 +1513,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       onNavigateNext(); // nothing typed: nothing is saved, just continue
       return;
     }
-    if (blockIfLineBreaksDiffer() || blockIfIcuBroken() || blockIfNeedsFix()) return;
+    if (blockIfLineBreaksDiffer() || blockIfIcuBroken() || blockIfNeedsFix() || blockIfIcuOtherEmpty()) return;
     // Saving settles the string: the old source text (diff) is no longer shown
     const savedItem = { ...buildSavedItemFromDraft(draftItem), previousSources: undefined };
     const undoDeletesText = savedItem.translationSource === 'ai' && item.status === 'untranslated';
@@ -1501,7 +1521,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     setDraftState(freshDraftState(savedItem));
     onUpdateTranslation(savedItem, undoDeletesText ? { undoDeletesText: true } : undefined);
     onNavigateNext();
-  }, [isNothingTyped, blockIfLineBreaksDiffer, blockIfIcuBroken, blockIfNeedsFix, buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation, onNavigateNext]);
+  }, [isNothingTyped, blockIfLineBreaksDiffer, blockIfIcuBroken, blockIfNeedsFix, blockIfIcuOtherEmpty, buildSavedItemFromDraft, draftItem, item.status, onUpdateTranslation, onNavigateNext]);
 
   // Editor keyboard shortcuts for Undo/Redo and Ctrl+Enter (Save & Continue)
   useEffect(() => {
@@ -2525,6 +2545,8 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                     ? liveSaveGuard.remaining.some((i) => i.id.endsWith('_linebreaks'))
                       ? t('not_saved_line_breaks_differ')
                       : t('not_saved_fix_problems')
+                    : liveSaveGuard.warnOnly
+                    ? t('not_saved_empty_other')
                     : liveSaveGuard.notes.length > 0
                     ? t('not_saved_the_translation_was')
                     : t('not_saved_some_errors_could')}

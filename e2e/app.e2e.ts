@@ -757,3 +757,30 @@ test('plural categories follow the target language, not Arabic', async ({ page }
   await expect(page.getByTestId('icu-field-0:1')).toBeVisible();
   await expect(page.getByTestId('icu-field-0:2')).toHaveCount(0);
 });
+
+test('an empty `other` clause warns once, then saves on the second press', async ({ page }) => {
+  const xml = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="msgs">{count, plural, one {# message} other {# messages}}</string>\n</resources>`;
+  await page.goto('/');
+  await page.click('#header-right-drawer-btn');
+  await page.click('#drawer-import-btn');
+  await page.fill('#import-project-name', 'Test App');
+  await page.getByRole('button', { name: /لصق نص XML|Paste XML/ }).click();
+  await page.locator('textarea').last().fill(xml);
+  await page.locator('select').first().selectOption('hi');
+  await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
+
+  // Only `one` is filled: `other` stays empty
+  await page.getByTestId('icu-field-0:0').fill('# संदेश');
+  await page.click('#weblate-save-stay-btn');
+  const warning = page.getByText(/other|other'/).filter({ hasText: /\{count\}/ });
+  await expect(warning).toBeVisible();
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/empty-other-warning.png` });
+  // The confirming press saves it as typed
+  await page.click('#weblate-save-stay-btn');
+  await expect(warning).toHaveCount(0);
+
+  // Filling `other` too gives no warning at all
+  await page.getByTestId('icu-field-0:1').fill('# संदेश');
+  await page.click('#weblate-save-stay-btn');
+  await expect(warning).toHaveCount(0);
+});

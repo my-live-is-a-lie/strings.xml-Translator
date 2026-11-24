@@ -2431,6 +2431,62 @@ export function getIcuStructureIssues(item: ResourceItem, targetLocale?: string)
   return [...structureIssues, ...quoteIssues];
 }
 
+/** Variables of the plural / select blocks (any depth) whose `other` body is empty while the source's is not. */
+function emptyOtherVariables(fields: IcuField[]): string[] {
+  const out: string[] = [];
+  for (const field of fields) {
+    if (field.kind !== 'block') continue;
+    for (const clause of field.clauses) {
+      if (clause.children) out.push(...emptyOtherVariables(clause.children));
+      if (clause.selector === 'other' && clauseHasContent(clause) === false && clause.sourceValue.trim() !== '') {
+        out.push(field.name);
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Non-blocking warning: an ICU block whose `other` body is empty in a translation that has text.
+ * `other` is the fallback every count without its own clause uses, so an empty one shows nothing
+ * for those counts (a translator who filled only `one`, say). It stays saveable on purpose: the
+ * editor warns once and saves on the confirming press. Untranslated (empty) targets are not flagged.
+ */
+export function getIcuEmptyOtherIssues(item: ResourceItem, targetLocale?: string): QaIssue[] {
+  const parts: Array<{ source: string; target: string; subKey?: string }> = [];
+  if (item.type === 'string') {
+    parts.push({ source: item.source || '', target: item.target || '' });
+  } else if (item.type === 'plural') {
+    for (const q of item.items || []) parts.push({ source: q.source || '', target: q.target || '', subKey: q.quantity });
+  } else if (item.type === 'array') {
+    for (const el of item.items || []) {
+      parts.push({ source: el.source || '', target: el.target || '', subKey: `#${(el.index ?? 0) + 1}` });
+    }
+  }
+  const issues: QaIssue[] = [];
+  for (const p of parts) {
+    if (!p.target.trim() || !p.source.includes('{')) continue;
+    const model = getIcuFieldModel(p.source, p.target, targetLocale);
+    if (!model) continue;
+    const variables = Array.from(new Set(emptyOtherVariables(model)));
+    if (variables.length === 0) continue;
+    const prefix = p.subKey ? `${p.subKey}: ` : '';
+    const list = variables.map((v) => `{${v}}`).join(', ');
+    issues.push({
+      id: `${item.id}_${p.subKey || 'main'}_empty_other`,
+      itemId: item.id,
+      itemName: item.name,
+      subKey: p.subKey,
+      category: 'placeholder',
+      severity: 'warning',
+      messageEn: `${prefix}The 'other' clause is empty in ${list}. Counts without their own clause will show nothing. Save again to keep it anyway.`,
+      messageAr: `${prefix}فرع 'other' فاضي في ${list}. الأعداد اللي ملهاش فرع خاص بيها هتظهر فاضية. اضغط حفظ تاني لو عايز تحفظه كده.`,
+      tokens: [],
+    });
+  }
+  return issues;
+}
+
 /**
  * Whether any part of an item (`string`, a `plurals` clause, an array element) writes `#` in its
  * source and lost it from the matching target block. Used for the non-blocking warning line.
