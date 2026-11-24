@@ -792,15 +792,37 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   // While the mode is on: a press on a form field picks it (clone fills it), a press anywhere else cancels
   useEffect(() => {
     if (!pluralPick) return;
+    // A press only counts as a tap: a drag/scroll (movement or pointercancel) leaves the mode on
+    let start: { x: number; y: number; target: EventTarget | null; id: number } | null = null;
     const onPointerDown = (e: PointerEvent) => {
+      if (!start) start = { x: e.clientX, y: e.clientY, target: e.target, id: e.pointerId };
+    };
+    const onPointerMove = (e: PointerEvent) => {
+      if (start && e.pointerId === start.id && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 10) start = null;
+    };
+    const onPointerCancel = () => {
+      start = null;
+    };
+    const onPointerUp = (e: PointerEvent) => {
+      if (!start || e.pointerId !== start.id) return;
+      const target = start.target;
+      start = null;
       const refs = pluralTextareaRefs.current;
-      const qty = Object.keys(refs).find((q) => refs[q] && e.target instanceof Node && refs[q]!.contains(e.target));
+      const qty = Object.keys(refs).find((q) => refs[q] && target instanceof Node && refs[q]!.contains(target));
       setPluralPick(null);
       if (qty && pluralPick === 'clone') cloneSourceIntoPluralForm(qty);
       if (qty && pluralPick === 'clear') clearPluralForm(qty);
     };
     document.addEventListener('pointerdown', onPointerDown, true);
-    return () => document.removeEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('pointermove', onPointerMove, true);
+    document.addEventListener('pointercancel', onPointerCancel, true);
+    document.addEventListener('pointerup', onPointerUp, true);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      document.removeEventListener('pointermove', onPointerMove, true);
+      document.removeEventListener('pointercancel', onPointerCancel, true);
+      document.removeEventListener('pointerup', onPointerUp, true);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pluralPick, draftItem, normalizedPluralItems]);
 
@@ -2271,7 +2293,11 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                   <div
                     data-testid="plural-pick-hint"
                     role="status"
-                    className="rounded-lg border border-sky-400/40 bg-sky-500/10 px-3 py-1.5 text-xs text-sky-700 dark:text-sky-300"
+                    className={
+                      pluralPick === 'clear'
+                        ? 'rounded-lg border border-red-400/50 bg-red-500/10 px-3 py-1.5 text-xs text-red-700 dark:text-red-300'
+                        : 'rounded-lg border border-sky-400/40 bg-sky-500/10 px-3 py-1.5 text-xs text-sky-700 dark:text-sky-300'
+                    }
                   >
                     {t('plural_pick_form_first')}
                   </div>
@@ -2343,7 +2369,9 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                           : `Translate ${pi.quantity} form (${pluralLabels[pi.quantity] || pi.quantity})...`
                       }
                       containerClassName={
-                        pluralPick
+                        pluralPick === 'clear'
+                          ? 'rounded-lg border-2 border-red-500 bg-red-500/15 shadow-[0_0_0_3px_rgba(239,68,68,0.3)] cursor-pointer'
+                          : pluralPick
                           ? 'rounded-lg border-2 border-[var(--accent-primary)] bg-[color-mix(in_srgb,var(--accent-primary)_16%,transparent)] shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent-primary)_30%,transparent)] cursor-pointer'
                           : 'rounded-lg bg-slate-100/90 dark:bg-[#0E121A] border border-slate-200/90 dark:border-transparent'
                       }
