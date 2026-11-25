@@ -17,21 +17,38 @@ export function providerSupportsThinking(type: ProviderEngineType | string): boo
   return type === 'gemini';
 }
 
-// Per-key cache: listing models is a network call, and the picker reopens often.
-const modelListCache = new Map<string, Promise<string[]>>();
-
 /**
- * The models a provider key can call. Asks the provider's model-list endpoint (Gemini has one);
- * falls back to the static candidate list when the key or network fails, so the picker still opens.
+ * A tiny external store for model lists: reading the snapshot kicks off the provider's list-models
+ * call once per key (the result is cached), and subscribers are notified when it lands. This keeps
+ * the picker free of effect-driven fetches. Falls back to the static candidate list when the
+ * endpoint fails, so the picker still opens.
  */
-export function fetchProviderModels(type: ProviderEngineType | string, apiKey: string): Promise<string[]> {
-  if (type !== 'gemini') return Promise.resolve([]);
-  const cacheKey = apiKey.trim();
-  const cached = modelListCache.get(cacheKey);
-  if (cached) return cached;
-  const pending = listGeminiModels(cacheKey).then((models) =>
-    models.length ? models : [...GEMINI_MODEL_CANDIDATES]
-  );
-  modelListCache.set(cacheKey, pending);
-  return pending;
+type ModelListEntry = 'loading' | string[];
+const modelListStore = new Map<string, ModelListEntry>();
+const modelListListeners = new Set<() => void>();
+
+export function subscribeModelLists(onChange: () => void): () => void {
+  modelListListeners.add(onChange);
+  return () => {
+    modelListListeners.delete(onChange);
+  };
+}
+
+export function getProviderModelsSnapshot(
+  type: ProviderEngineType | string,
+  apiKey: string | undefined
+): ModelListEntry | null {
+  if (type !== 'gemini' || !apiKey?.trim()) return null;
+  const storeKey = `${type}:${apiKey.trim()}`;
+  const hit = modelListStore.get(storeKey);
+  if (hit) return hit;
+  modelListStore.set(storeKey, 'loading');
+  listGeminiModels(apiKey)
+    .then((models) => (models.length ? models : [...GEMINI_MODEL_CANDIDATES]))
+    .catch(() => [...GEMINI_MODEL_CANDIDATES])
+    .then((models) => {
+      modelListStore.set(storeKey, models);
+      modelListListeners.forEach((cb) => cb());
+    });
+  return 'loading';
 }

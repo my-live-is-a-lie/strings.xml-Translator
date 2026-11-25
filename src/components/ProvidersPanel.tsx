@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useDialog } from '../utils/useDialog';
 import { createPortal } from 'react-dom';
 import { AlertCircle, Check, CheckCircle2, ChevronDown, Cpu, KeyRound, Loader2, Pencil, Plus, Trash2, X } from 'lucide-react';
@@ -22,9 +22,10 @@ import { useT, tg } from '../i18n/i18n';
 import { SecretField } from './SecretField';
 import { textDirection } from '../utils/direction';
 import {
-  fetchProviderModels,
+  getProviderModelsSnapshot,
   providerSupportsModelChoice,
   providerSupportsThinking,
+  subscribeModelLists,
   THINKING_LEVELS,
 } from '../utils/providerModels';
 
@@ -76,11 +77,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   const [editApiSecret, setEditApiSecret] = useState('');
   const [editFolderId, setEditFolderId] = useState('');
   const [isTestingEditKey, setIsTestingEditKey] = useState(false);
-  // Model / thinking pickers (providers that support them, e.g. Gemini)
-  const [editModel, setEditModel] = useState('');
-  const [editThinking, setEditThinking] = useState('auto');
-  const [editModelChoices, setEditModelChoices] = useState<string[]>([]);
-  const [editModelsLoading, setEditModelsLoading] = useState(false);
+
   const [editTestResult, setEditTestResult] = useState<ProviderTestResult | null>(null);
   const editNameInputRef = useRef<HTMLInputElement | null>(null);
   const editTestAbortRef = useRef<{ controller: AbortController; cancelled: boolean } | null>(null);
@@ -204,11 +201,6 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
       setNewApiKey('');
       setNewApiSecret('');
       setNewFolderId('');
-      // Providers with a model/thinking choice (Gemini) get their pickers opened right away,
-      // so the choices are saved with the provider the key was just verified for.
-      if (providerSupportsModelChoice(detectedType) || providerSupportsThinking(detectedType)) {
-        handleStartEditProvider(added);
-      }
     }
   };
 
@@ -231,17 +223,6 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
     }
     setEditFolderId(prov.folderId || '');
     setEditTestResult(null);
-    setEditModel(prov.model || '');
-    setEditThinking(prov.thinkingLevel || 'auto');
-    setEditModelChoices([]);
-    if (providerSupportsModelChoice(prov.type) && prov.apiKey) {
-      setEditModelsLoading(true);
-      fetchProviderModels(prov.type, prov.apiKey)
-        .then((models) => {
-          setEditModelChoices((current) => (editingProviderId === prov.id || current.length === 0 ? models : current));
-        })
-        .finally(() => setEditModelsLoading(false));
-    }
     setTimeout(() => {
       editNameInputRef.current?.focus();
     }, 60);
@@ -276,8 +257,6 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
       updateCustomProvider(prov.id, {
         name: trimmedName,
         type: targetEngine,
-        model: editModel,
-        thinkingLevel: editThinking === 'auto' ? '' : editThinking,
       });
       refresh();
       setEditingProviderId(null);
@@ -302,8 +281,6 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
       updateCustomProvider(prov.id, {
         name: trimmedName,
         apiKey: combinedKey,
-        model: editModel,
-        thinkingLevel: editThinking === 'auto' ? '' : editThinking,
         type: detectedType,
         folderId: detectedType === 'yandex' || detectedType === 'libretranslate' ? editedFolderId : '',
       });
@@ -328,6 +305,25 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   const activeProviderObj =
     providersList.find((p) => p.id === selectedProviderId) || providersList[0];
   const providerLabel = (prov?: TranslationProviderConfig) => getProviderDisplayName(prov, isAr);
+
+  // The pickers under the provider button edit the ACTIVE provider. Its model list comes from the
+  // provider's list-models endpoint (cached external store; static fallback inside).
+  const activeProviderType = activeProviderObj?.type;
+  const activeProviderKey = activeProviderObj?.apiKey;
+  const modelListResult = useSyncExternalStore(subscribeModelLists, () =>
+    getProviderModelsSnapshot(activeProviderType ?? '', activeProviderKey)
+  );
+  const modelChoices = Array.isArray(modelListResult) ? modelListResult : [];
+  const activeModelsLoading = modelListResult === 'loading';
+
+  const saveActiveModelChoice = (model: string, thinkingLevel: string) => {
+    if (!activeProviderObj || activeProviderObj.isBuiltIn) return;
+    updateCustomProvider(activeProviderObj.id, {
+      model,
+      thinkingLevel: thinkingLevel === 'auto' ? '' : thinkingLevel,
+    });
+    refresh();
+  };
 
   return (
     <>
@@ -357,6 +353,81 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
               }`}
             />
           </button>
+
+          {activeProviderObj &&
+            !activeProviderObj.isBuiltIn &&
+            (providerSupportsModelChoice(activeProviderObj.type) ||
+              providerSupportsThinking(activeProviderObj.type)) && (
+              <div
+                className={`flex flex-col gap-2 px-3 pb-3 pt-2.5 ${
+                  providersPanelOpen ? 'border-b' : ''
+                } border-slate-200/80 dark:border-[#2A3244]`}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex gap-2">
+                  {providerSupportsModelChoice(activeProviderObj.type) && (
+                    <div className="flex flex-col gap-1 flex-1 min-w-0">
+                      <label
+                        htmlFor="active-provider-model-select"
+                        className="text-[10px] font-semibold text-slate-600 dark:text-slate-300"
+                      >
+                        {t('model')}
+                      </label>
+                      <select
+                        id="active-provider-model-select"
+                        dir="ltr"
+                        value={activeProviderObj.model || ''}
+                        onChange={(e) =>
+                          saveActiveModelChoice(e.target.value, activeProviderObj.thinkingLevel || 'auto')
+                        }
+                        className="w-full px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
+                      >
+                        <option value="">
+                          {activeModelsLoading ? '…' : t('model_auto_recommended')}
+                        </option>
+                        {modelChoices.map((m) => (
+                          <option key={m} value={m}>
+                            {m}
+                          </option>
+                        ))}
+                        {activeProviderObj.model && !modelChoices.includes(activeProviderObj.model) && (
+                          <option value={activeProviderObj.model}>{activeProviderObj.model}</option>
+                        )}
+                      </select>
+                    </div>
+                  )}
+                  {providerSupportsThinking(activeProviderObj.type) && (
+                    <div className="flex flex-col gap-1 flex-1 min-w-0">
+                      <label
+                        htmlFor="active-provider-thinking-select"
+                        className="text-[10px] font-semibold text-slate-600 dark:text-slate-300"
+                      >
+                        {t('thinking_power')}
+                      </label>
+                      <select
+                        id="active-provider-thinking-select"
+                        value={activeProviderObj.thinkingLevel || 'auto'}
+                        onChange={(e) => saveActiveModelChoice(activeProviderObj.model || '', e.target.value)}
+                        className="w-full px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
+                      >
+                        <option value="auto">{t('thinking_auto')}</option>
+                        {THINKING_LEVELS.map((level) => (
+                          <option key={level} value={level}>
+                            {level === 'minimal'
+                              ? t('thinking_minimal')
+                              : level === 'low'
+                                ? t('thinking_low')
+                                : level === 'medium'
+                                  ? t('thinking_medium')
+                                  : t('thinking_high')}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
           {providersPanelOpen && (
             <div className="p-3 flex flex-col gap-3 border-t border-slate-200/80 dark:border-[#2A3244]">
@@ -532,74 +603,6 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                 className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
                               />
                             </div>
-
-                            {(providerSupportsModelChoice(prov.type) || providerSupportsThinking(prov.type)) && (
-                              <div className="flex flex-col gap-2 rounded-lg border border-slate-200/80 dark:border-[#2A3244] bg-slate-50/60 dark:bg-[#161C29] p-2">
-                                <span data-i18n className="text-[10px] font-semibold text-slate-600 dark:text-slate-300">
-                                  {t('pick_model_and_thinking')}
-                                </span>
-                                <div className="flex gap-2">
-                                  {providerSupportsModelChoice(prov.type) && (
-                                    <div className="flex flex-col gap-1 flex-1 min-w-0">
-                                      <label
-                                        htmlFor="edit-provider-model-select"
-                                        className="text-[10px] font-semibold text-slate-600 dark:text-slate-300"
-                                      >
-                                        {t('model')}
-                                      </label>
-                                      <select
-                                        id="edit-provider-model-select"
-                                        dir="ltr"
-                                        value={editModel}
-                                        onChange={(e) => setEditModel(e.target.value)}
-                                        className="w-full px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
-                                      >
-                                        <option value="">
-                                          {editModelsLoading ? '…' : t('model_auto_recommended')}
-                                        </option>
-                                        {editModelChoices.map((m) => (
-                                          <option key={m} value={m}>
-                                            {m}
-                                          </option>
-                                        ))}
-                                        {editModel && !editModelChoices.includes(editModel) && (
-                                          <option value={editModel}>{editModel}</option>
-                                        )}
-                                      </select>
-                                    </div>
-                                  )}
-                                  {providerSupportsThinking(prov.type) && (
-                                    <div className="flex flex-col gap-1 flex-1 min-w-0">
-                                      <label
-                                        htmlFor="edit-provider-thinking-select"
-                                        className="text-[10px] font-semibold text-slate-600 dark:text-slate-300"
-                                      >
-                                        {t('thinking_power')}
-                                      </label>
-                                      <select
-                                        id="edit-provider-thinking-select"
-                                        value={editThinking}
-                                        onChange={(e) => setEditThinking(e.target.value)}
-                                        className="w-full px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
-                                      >
-                                        <option value="auto">{t('thinking_auto')}</option>
-                                        {THINKING_LEVELS.map((level) => (
-                                          <option key={level} value={level}>
-                                            {level === 'minimal'
-                                              ? t('thinking_minimal')
-                                              : level === 'low'
-                                                ? t('thinking_low')
-                                                : level === 'medium'
-                                                  ? t('thinking_medium')
-                                                  : t('thinking_high')}
-                                          </option>
-                                        ))}
-                                      </select>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            )}
 
                             {(prov.type === 'lara' ||
                               inferEngineFromName(editProviderName, 'auto') === 'lara') && (
