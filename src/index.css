@@ -897,3 +897,51 @@ html.dark .tv-bg { box-shadow: none; }
   background-color: #2b2e35;
   color: rgb(241 245 249); /* slate-100 */
 }
+
+/* Accent binding for the remaining hardcoded green/blue utility classes (ring, outline, borders and tints with opacity, hover/focus text) */
+.accent-\[\#0B57D0\] { accent-color: var(--accent-primary) !important; }
+.accent-\[\#1EB996\] { accent-color: var(--accent-primary) !important; }
+.bg-\[\#0B57D0\]\/10 { background-color: color-mix(in srgb, var(--accent-primary) 10%, transparent) !important; }
+.bg-\[\#0B57D0\]\/5 { background-color: color-mix(in srgb, var(--accent-primary) 5%, transparent) !important; }
+.bg-\[\#1EB996\]\/12 { background-color: color-mix(in srgb, var(--accent-primary) 12%, transparent) !important; }
+.bg-\[\#1EB996\]\/15 { background-color: color-mix(in srgb, var(--accent-primary) 15%, transparent) !important; }
+.border-\[\#0B57D0\] { border-color: var(--accent-primary) !important; }
+.border-\[\#0B57D0\]\/40 { border-color: color-mix(in srgb, var(--accent-primary) 40%, transparent) !important; }
+.border-\[\#1EB996\]\/25 { border-color: color-mix(in srgb, var(--accent-primary) 25%, transparent) !important; }
+.border-\[\#1EB996\]\/30 { border-color: color-mix(in srgb, var(--accent-primary) 30%, transparent) !important; }
+.border-\[\#1EB996\]\/40 { border-color: color-mix(in srgb, var(--accent-primary) 40%, transparent) !important; }
+.border-\[\#1EB996\]\/50 { border-color: color-mix(in srgb, var(--accent-primary) 50%, transparent) !important; }
+.dark .dark\:bg-\[\#0842A0\] { background-color: var(--accent-hover) !important; }
+.dark .dark\:bg-\[\#0842A0\]\/70 { background-color: color-mix(in srgb, var(--accent-hover) 70%, transparent) !important; }
+.dark .dark\:bg-\[\#1EB996\]\/15 { background-color: color-mix(in srgb, var(--accent-primary) 15%, transparent) !important; }
+.dark .dark\:bg-\[\#1EB996\]\/20 { background-color: color-mix(in srgb, var(--accent-primary) 20%, transparent) !important; }
+.dark .dark\:bg-\[\#1EB996\]\/5 { background-color: color-mix(in srgb, var(--accent-primary) 5%, transparent) !important; }
+.dark .dark\:bg-\[\#A8C7FA\]\/10 { background-color: color-mix(in srgb, var(--accent-primary) 10%, transparent) !important; }
+.dark .dark\:border-\[\#1EB996\] { border-color: var(--accent-primary) !important; }
+.dark .dark\:border-\[\#A8C7FA\] { border-color: var(--accent-primary) !important; }
+.dark .dark\:border-\[\#A8C7FA\]\/40 { border-color: color-mix(in srgb, var(--accent-primary) 40%, transparent) !important; }
+.dark .dark\:focus-visible\:outline-\[\#A8C7FA\]:focus-visible { outline-color: var(--accent-primary) !important; }
+.dark .dark\:focus-within\:ring-\[\#A8C7FA\]:focus-within { --tw-ring-color: var(--accent-primary) !important; }
+.dark .dark\:focus\:border-\[\#A8C7FA\]:focus { border-color: var(--accent-primary) !important; }
+.dark .dark\:hover\:bg-\[\#1EB996\]\/25:hover { background-color: color-mix(in srgb, var(--accent-primary) 25%, transparent) !important; }
+.dark .dark\:hover\:border-\[\#A8C7FA\]:hover { border-color: var(--accent-primary) !important; }
+.dark .dark\:hover\:text-\[\#1EB996\]:hover { color: var(--accent-primary) !important; }
+.dark .dark\:ring-\[\#1EB996\]\/30 { --tw-ring-color: color-mix(in srgb, var(--accent-primary) 30%, transparent) !important; }
+.dark .dark\:ring-\[\#A8C7FA\]\/30 { --tw-ring-color: color-mix(in srgb, var(--accent-primary) 30%, transparent) !important; }
+.focus-visible\:outline-\[\#0B57D0\]:focus-visible { outline-color: var(--accent-primary) !important; }
+.focus-within\:ring-\[\#0B57D0\]:focus-within { --tw-ring-color: var(--accent-primary) !important; }
+.focus-within\:ring-\[\#1EB996\]:focus-within { --tw-ring-color: var(--accent-primary) !important; }
+.focus\:border-\[\#0B57D0\]:focus { border-color: var(--accent-primary) !important; }
+.focus\:ring-\[\#0B57D0\]:focus { --tw-ring-color: var(--accent-primary) !important; }
+.focus\:ring-\[\#0B57D0\]\/20:focus { --tw-ring-color: color-mix(in srgb, var(--accent-primary) 20%, transparent) !important; }
+.focus\:ring-\[\#1EB996\]\/30:focus { --tw-ring-color: color-mix(in srgb, var(--accent-primary) 30%, transparent) !important; }
+.focus\:ring-\[\#1EB996\]\/40:focus { --tw-ring-color: color-mix(in srgb, var(--accent-primary) 40%, transparent) !important; }
+.hover\:bg-\[\#0B57D0\]\/20:hover { background-color: color-mix(in srgb, var(--accent-primary) 20%, transparent) !important; }
+.hover\:bg-\[\#1EB996\]\/10:hover { background-color: color-mix(in srgb, var(--accent-primary) 10%, transparent) !important; }
+.hover\:bg-\[\#1EB996\]\/20:hover { background-color: color-mix(in srgb, var(--accent-primary) 20%, transparent) !important; }
+.hover\:border-\[\#0B57D0\]:hover { border-color: var(--accent-primary) !important; }
+.hover\:border-\[\#1EB996\]\/40:hover { border-color: color-mix(in srgb, var(--accent-primary) 40%, transparent) !important; }
+.hover\:text-\[\#1EB996\]:hover { color: var(--accent-primary) !important; }
+.ring-\[\#0B57D0\]\/30 { --tw-ring-color: color-mix(in srgb, var(--accent-primary) 30%, transparent) !important; }
+.ring-\[\#1EB996\]\/30 { --tw-ring-color: color-mix(in srgb, var(--accent-primary) 30%, transparent) !important; }
+.ring-\[\#1EB996\]\/40 { --tw-ring-color: color-mix(in srgb, var(--accent-primary) 40%, transparent) !important; }
