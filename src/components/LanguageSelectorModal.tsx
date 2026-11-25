@@ -23,6 +23,8 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
   const dialogRef = useDialog(isOpen, onClose);
   const codeRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState('');
+  const [searchFocused, setSearchFocused] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
   const [customCode, setCustomCode] = useState('');
   const [customName, setCustomName] = useState('');
   const [customLanguages, setCustomLanguages] = useState(getCustomTargetLocales);
@@ -87,9 +89,20 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
           <button type="button" aria-label={t('close')} onClick={onClose} className="p-1.5 rounded-full text-slate-400 hover:bg-slate-100 dark:hover:bg-[#202736] cursor-pointer"><X className="w-5 h-5" /></button>
         </div>
         <div className="p-4 pb-3 border-b border-slate-100 dark:border-[#242D3D] shrink-0">
-          <div className="flex items-center bg-slate-100 dark:bg-[#121620] rounded-2xl px-3.5 py-2 ring-1 ring-slate-200/80 dark:ring-[#2A3448] focus-within:ring-2 focus-within:ring-[#1EB996]">
-            <Search className="w-4 h-4 text-slate-400 me-2 shrink-0" />
-            <input type="search" aria-label={t('search_by_language_name_or')} placeholder={t('search_by_language_name_or')} value={search} onChange={(e) => setSearch(e.target.value)} className="min-w-0 w-full text-xs bg-transparent text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none" />
+          <div className="flex items-center bg-slate-100 dark:bg-[#121620] rounded-2xl focus-within:rounded-md transition-[border-radius] px-3.5 py-2 ring-1 ring-slate-200/80 dark:ring-[#2A3448] focus-within:ring-2 focus-within:ring-[#1EB996]">
+            {searchFocused || search ? (
+              <button
+                type="button"
+                aria-label={search ? (isAr ? 'مسح النص' : 'Clear search') : (isAr ? 'إغلاق البحث' : 'Close search')}
+                // keep the field focused while the button is pressed
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => { if (search) { setSearch(''); searchRef.current?.focus(); } else { onClose(); } }}
+                className="me-2 shrink-0 -ms-1 p-0.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+              ><X className="w-4 h-4" /></button>
+            ) : (
+              <button type="button" tabIndex={-1} aria-hidden="true" onClick={() => searchRef.current?.focus()} className="me-2 shrink-0 -ms-1 p-0.5 text-slate-400 cursor-pointer"><Search className="w-4 h-4" /></button>
+            )}
+            <input ref={searchRef} type="search" aria-label={t('search_by_language_name_or')} placeholder={t('search_by_language_name_or')} value={search} onChange={(e) => setSearch(e.target.value)} onFocus={() => setSearchFocused(true)} onBlur={() => setSearchFocused(false)} className="min-w-0 w-full text-xs bg-transparent text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none [&::-webkit-search-cancel-button]:appearance-none" />
           </div>
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-1">
@@ -98,7 +111,7 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
             const isSelected = currentLang.toLowerCase() === lang.code.toLowerCase();
             const isCustom = customLanguages.some((l) => l.code === lang.code);
             return (
-              <div key={lang.code} data-locale={lang.code} className={`rounded-2xl border ${isSelected ? 'bg-[#1EB996]/15 text-[#1EB996] border-[#1EB996]/40 dark:bg-[#1EB996]/20' : 'border-transparent text-slate-800 dark:text-slate-200'}`}>
+              <div key={lang.code} data-locale={lang.code} className={`rounded-2xl border ${isSelected ? 'bg-slate-100 text-slate-900 border-transparent dark:bg-[#1B222C] dark:text-white dark:border-transparent' : 'border-transparent text-slate-800 dark:text-slate-200'}`}>
                 <div className="flex items-center gap-1 pe-2">
                   <button type="button" onClick={() => handleSelect(lang)} aria-pressed={isSelected} className="flex-1 min-w-0 text-start px-3.5 py-2.5 rounded-2xl hover:bg-slate-100/60 dark:hover:bg-white/5 transition cursor-pointer flex items-center justify-between gap-3">
                     <span className="min-w-0 block">
@@ -113,7 +126,7 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
                   <button type="button" onClick={() => handleSelect(lang)} aria-label={`${isAr ? 'اختيار' : 'Select'} ${lang.name}`} className="flex items-center gap-2 shrink-0 py-2.5 ps-1 pe-1.5 cursor-pointer">
                     <span className="flex items-center gap-2 shrink-0">
                       <code dir="ltr" className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-slate-100 dark:bg-[#131722] text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-[#2C374A]">{lang.code}</code>
-                      {isSelected && <Check className="w-4 h-4 text-[#1EB996] stroke-[2.5]" />}
+                      {isSelected && <Check className="w-4 h-4 text-[var(--accent-primary)] stroke-[2.5]" />}
                     </span>
                   </button>
                 </div>
