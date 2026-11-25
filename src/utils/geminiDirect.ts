@@ -16,6 +16,16 @@ const GEMINI_TIMEOUT_MS = 30000;
 
 let workingModel: string | null = null;
 
+/**
+ * True when the key looks like an AI Studio Gemini key (classic `AIza...` or the newer `AQ.`
+ * format). Used so Auto-Detect can route such keys straight to the Gemini check: Google answers
+ * CORS requests from any origin, so Gemini is the one provider that verifies without the server.
+ */
+export const looksLikeGeminiKey = (key: string): boolean => {
+  const trimmed = key.trim();
+  return trimmed.startsWith('AIza') || trimmed.startsWith('AQ.');
+};
+
 class GeminiHttpError extends Error {
   constructor(
     message: string,

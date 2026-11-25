@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { geminiTranslateDirect, isModelUnavailableMessage } from '../src/utils/geminiDirect';
+import { geminiTranslateDirect, isModelUnavailableMessage, looksLikeGeminiKey } from '../src/utils/geminiDirect';
 
 const ok = (text: string) =>
   new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text }] } }] }), { status: 200 });
@@ -100,5 +100,21 @@ describe('gemini model fallback', () => {
     expect(await geminiTranslateDirect({ apiKey: 'k', sourceText: source, targetLang: 'ar' })).toBe(
       '{count, plural, one {# رسالة} other {# رسائل}}'
     );
+  });
+});
+
+describe('looksLikeGeminiKey', () => {
+  it('recognises AI Studio Gemini key shapes', () => {
+    expect(looksLikeGeminiKey('AIzaSyAbCdEfGhIjKlMnOpQrStUvWxYz1234567')).toBe(true);
+    expect(looksLikeGeminiKey('AQ.AbCdEfGh123')).toBe(true);
+    expect(looksLikeGeminiKey('  AIzaSyPadded  ')).toBe(true);
+  });
+
+  it('rejects other providers\' key shapes', () => {
+    expect(looksLikeGeminiKey('sk-proj-abc123')).toBe(false);
+    expect(looksLikeGeminiKey('AQVN0123456789')).toBe(false); // Yandex IAM
+    expect(looksLikeGeminiKey('trnsl.1.1.20240101T000000Z.abc')).toBe(false);
+    expect(looksLikeGeminiKey('abcdef123:fx')).toBe(false); // DeepL
+    expect(looksLikeGeminiKey('')).toBe(false);
   });
 });

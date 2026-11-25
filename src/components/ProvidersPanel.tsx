@@ -3,7 +3,7 @@ import { useDialog } from '../utils/useDialog';
 import { createPortal } from 'react-dom';
 import { AlertCircle, Check, CheckCircle2, ChevronDown, Cpu, KeyRound, Loader2, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { ENGINE_OPTIONS } from './headerOptions';
-import { testGeminiKeyDirect } from '../utils/geminiDirect';
+import { testGeminiKeyDirect, looksLikeGeminiKey } from '../utils/geminiDirect';
 import {
   TranslationProviderConfig,
   ProviderEngineType,
@@ -20,6 +20,7 @@ import {
 } from '../utils/translator';
 import { useT, tg } from '../i18n/i18n';
 import { SecretField } from './SecretField';
+import { textDirection } from '../utils/direction';
 
 export function getProviderDisplayName(prov: TranslationProviderConfig | undefined, isAr: boolean): string {
   if (!prov) return tg('google_translate');
@@ -129,7 +130,12 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
     folderId?: string,
     signal?: AbortSignal
   ): Promise<ProviderTestResult> =>
-    engine === 'gemini' ? testGeminiKeyDirect(key, signal) : testProviderApiKey(engine, key, folderId);
+    // Gemini verifies straight from the browser even on Auto-Detect when the key shape gives it
+    // away: without this, Auto-Detect + a Gemini key lands on the server path and fails wherever
+    // the server is unreachable (static web demo). Google allows CORS from any origin.
+    engine === 'gemini' || (engine === 'auto' && looksLikeGeminiKey(key))
+      ? testGeminiKeyDirect(key, signal)
+      : testProviderApiKey(engine, key, folderId);
 
   const handleTestAndAddProvider = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -435,18 +441,22 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                               <label data-i18n className="text-[10px] font-semibold text-slate-600 dark:text-slate-300">
                                 {t('edit_provider_name')}
                               </label>
-                              <div className="relative flex items-center">
+                              <div
+                                className="relative flex items-center"
+                                dir={textDirection(editProviderName)}
+                              >
                                 <input
                                   ref={editNameInputRef}
                                   type="text"
                                   autoComplete="off"
+                                  dir={textDirection(editProviderName)}
                                   value={editProviderName}
                                   onChange={(e) => setEditProviderName(e.target.value)}
                                   onKeyDown={(e) => e.stopPropagation()}
                                   onTouchStart={(e) => e.stopPropagation()}
                                   placeholder={t('provider_name')}
                                   required
-                                  className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
+                                  className="w-full px-2.5 pe-7 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
                                 />
                                 {editProviderName && (
                                   <button
@@ -663,12 +673,16 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                       >
                         {t('provider_name_type_or_swipe')}
                       </label>
-                      <div className="relative flex items-center">
+                      <div
+                        className="relative flex items-center"
+                        dir={textDirection(newProviderName)}
+                      >
                         <input
                           ref={providerNameInputRef}
                           id="provider-custom-name-input"
                           type="text"
                           autoComplete="off"
+                          dir={textDirection(newProviderName)}
                           value={newProviderName}
                           onChange={(e) => {
                             const val = e.target.value;
@@ -683,7 +697,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                           placeholder={
                             t('type_provider_name_e_g')
                           }
-                          className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
+                          className="w-full px-3 pe-9 py-2 rounded-lg bg-slate-50 dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
                         />
                         {newProviderName && (
                           <button
