@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fillAddedIcuClauses } from './icuSuggest';
+import { emptyAddedIcuCategories, fillAddedIcuClauses } from './icuSuggest';
 import { getIcuFieldModel } from './placeholderCheck';
 
 const SRC = '{count, plural, =0{No notifications} one{# notification} other{# notifications}}';
@@ -160,5 +160,19 @@ describe('suggest fills the plural categories the target language adds', () => {
       );
       expect(typeof one).toBe('string');
     });
+  });
+});
+
+describe('emptyAddedIcuCategories', () => {
+  const src = '{n, plural, one{# item} other{# items}}';
+  it('lists added categories that are still empty', () => {
+    expect(emptyAddedIcuCategories(src, '{n, plural, one{# عنصر} other{# عناصر}}', 'ar')).toEqual(['zero', 'two', 'few', 'many']);
+  });
+  it('lists a form left in English for a non-Latin target, and nothing when all is filled', () => {
+    expect(emptyAddedIcuCategories(src, '{n, plural, zero{# ص} one{# عنصر} two{# ص} few{# ص} many{# ص} other{# items}}', 'ar')).toEqual(['other']);
+    expect(emptyAddedIcuCategories(src, '{n, plural, zero{# ص} one{# عنصر} two{# ص} few{# ص} many{# ص} other{# عناصر}}', 'ar')).toEqual([]);
+  });
+  it('does not flag an unchanged form for a Latin-script target', () => {
+    expect(emptyAddedIcuCategories(src, '{n, plural, one{# item} other{# items}}', 'de')).toEqual([]);
   });
 });

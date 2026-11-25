@@ -110,3 +110,32 @@ async function translateTogether(
   }
   return { filled: out, failed };
 }
+
+const NON_LATIN_TARGETS = new Set([
+  'ar', 'fa', 'ur', 'he', 'ps', 'ku', 'ru', 'uk', 'bg', 'sr', 'mk', 'be', 'kk', 'mn', 'el', 'hy', 'ka',
+  'zh', 'ja', 'ko', 'hi', 'bn', 'th', 'ta', 'te', 'ml', 'kn', 'mr', 'gu', 'pa', 'ne', 'si', 'my', 'km', 'lo',
+]);
+
+/**
+ * The plural forms a suggestion left without a translation, so the editor can say so instead of
+ * leaving them silently empty: a category the target language adds that is still empty, and (for a
+ * target written in a non-Latin script) a form that still holds its English source text, which is
+ * what a failed request leaves behind. Returns the distinct selectors, in order.
+ */
+export function emptyAddedIcuCategories(source: string, text: string, targetLocale: string): string[] {
+  const model = getIcuFieldModel(source, text, targetLocale);
+  if (!model) return [];
+  const nonLatin = NON_LATIN_TARGETS.has(targetLocale.split('-')[0].toLowerCase());
+  const out: string[] = [];
+  for (const field of model) {
+    if (field.kind !== 'block') continue;
+    for (const clause of field.clauses) {
+      if (!QUANTITIES.includes(clause.selector) || out.includes(clause.selector)) continue;
+      const value = clause.value.trim();
+      const empty = clause.added && !value;
+      const keptSource = nonLatin && !clause.children && value !== '' && value === clause.sourceValue.trim() && /[A-Za-z]{3,}/.test(value);
+      if (empty || keptSource) out.push(clause.selector);
+    }
+  }
+  return out;
+}

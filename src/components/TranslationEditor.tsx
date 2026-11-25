@@ -1,5 +1,5 @@
 import { breakAfterUnderscores } from './keyBreaks';
-import { fillAddedIcuClauses } from '../utils/icuSuggest';
+import { emptyAddedIcuCategories, fillAddedIcuClauses } from '../utils/icuSuggest';
 import { SourceChangeBadge, SourceChangeDiff } from './SourceChangeDiff';
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
@@ -877,6 +877,8 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
         status: 'untranslated',
         translationSource: undefined,
       });
+    } else if (draftItem.type === 'string') {
+      handleSingleTextChange('');
     }
   };
 
@@ -904,7 +906,10 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       const qty = Object.keys(refs).find((q) => refs[q] && target instanceof Node && refs[q]!.contains(target));
       const arefs = arrayTextareaRefs.current;
       const aKey = Object.keys(arefs).find((i) => arefs[Number(i)] && target instanceof Node && arefs[Number(i)]!.contains(target));
+      const irefs = icuTextareaRefs.current;
+      const iKey = Object.keys(irefs).find((k) => irefs[k] && target instanceof Node && irefs[k]!.contains(target));
       setPluralPick(null);
+      if (iKey !== undefined && pluralPick === 'clear') handleIcuFieldChange(icuPathFromKey(iKey), '');
       if (qty && pluralPick === 'clone') cloneSourceIntoPluralForm(qty, pluralCloneText ?? undefined);
       if (qty && pluralPick === 'clear') clearPluralForm(qty);
       if (aKey !== undefined && pluralPick === 'clear') clearArrayItem(Number(aKey));
@@ -1670,6 +1675,8 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   );
   // Set when a suggestion was discarded because it would have damaged an ICU block.
   const [icuRejected, setIcuRejected] = useState(false);
+  // Plural categories a suggestion could not fill (the engine did not answer for them): shown as a warning
+  const [icuUnfilled, setIcuUnfilled] = useState<string[]>([]);
 
   const liveSaveGuard = saveGuard?.hard ? (liveBreakIssues.length > 0 ? { ...saveGuard, remaining: liveBreakIssues } : null) : saveGuard;
   // A non-blocking warning, separate from the save guard on purpose: it never becomes `hard`, it
@@ -1750,6 +1757,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   // Suggest translation (اقترح) — immediately fills the input box (draft) and allows Undo button to delete suggested text
   const handleSuggest = async () => {
     setIsSuggesting(true);
+    setIcuUnfilled([]);
 
     try {
       if (draftItem.type === 'string') {
@@ -1772,6 +1780,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               return isFillableSuggestion(r) ? r.text : null;
             }
           );
+          setIcuUnfilled(emptyAddedIcuCategories(draftItem.source, filledText, targetLang));
           const isNowEmpty = !filledText.trim();
           const updated: SingleStringItem = {
             ...draftItem,
@@ -1885,6 +1894,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               }
             );
             if (cancelled) return;
+            setIcuUnfilled(emptyAddedIcuCategories(item.source, filledText, targetLang));
             const updated: SingleStringItem = {
               ...item,
               target: filledText,
@@ -1977,7 +1987,17 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
 
   // Tools Actions
   const handleClearText = () => {
-    if (draftItem.type === 'string') {
+    if (draftItem.type === 'string' && icuFieldsActive) {
+      // Same as the plural forms: the field that has the caret is cleared, else the next tap picks one
+      const refs = icuTextareaRefs.current;
+      const focusedKey = Object.keys(refs).find((k) => refs[k] && refs[k] === document.activeElement);
+      if (focusedKey === undefined) {
+        showPluralPickHint('clear');
+        return;
+      }
+      setPluralPick(null);
+      handleIcuFieldChange(icuPathFromKey(focusedKey), '');
+    } else if (draftItem.type === 'string') {
       handleSingleTextChange('');
     } else if (draftItem.type === 'plural') {
       const qty = pickedPluralQuantity();
@@ -2056,7 +2076,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                           : 'border-sky-400/50 bg-sky-100/95 text-sky-800 dark:bg-sky-950/90 dark:text-sky-200'
                       }`}
                     >
-                      {t(draftItem.type === 'array' ? 'array_pick_item_first' : 'plural_pick_form_first')}
+                      {t(draftItem.type === 'array' ? 'array_pick_item_first' : draftItem.type === 'string' ? 'icu_pick_field_first' : 'plural_pick_form_first')}
                     </div>
                     {pluralPick === 'clear' && (
                       <button
@@ -2397,6 +2417,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             {/* ICU branch editor: one textarea per clause body and per text run outside the blocks */}
             {draftItem.type === 'string' && icuModel && icuFieldsActive && (
               <div className="space-y-2" data-testid="icu-fields">
+                {pickHintNode}
                 {(() => {
                   const renderLeafField = (leafPath: IcuFieldPath, value: string, inPlural: boolean) => {
                     const key = icuPathKey(leafPath);
@@ -2422,7 +2443,12 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                           // No ghost word prediction inside branch fields (usePrediction = false)
                           applyAutoClose(e.currentTarget, value, `icu:${key}`, (v) => handleIcuFieldChange(leafPath, v), false);
                         }}
-                        containerClassName="rounded-lg bg-slate-100/90 dark:bg-[#0E121A] border border-slate-200/90 dark:border-transparent"
+                        enableSwipeResize={!pluralPick}
+                        containerClassName={
+                          pluralPick === 'clear'
+                            ? 'rounded-lg border border-transparent !bg-red-500/25 cursor-pointer'
+                            : 'rounded-lg bg-slate-100/90 dark:bg-[#0E121A] border border-slate-200/90 dark:border-transparent'
+                        }
                         backdropClassName="border-0 border-b-2 border-transparent px-3.5 pt-1.5 pb-3 text-xs sm:text-sm leading-relaxed"
                         className="px-3.5 pt-1.5 pb-3 text-xs sm:text-sm leading-relaxed rounded-lg border-0 border-b-2 border-[var(--accent-primary)]/30 focus:border-[var(--accent-primary)] text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none transition-colors duration-300 resize-none overflow-hidden block"
                       />
@@ -2876,6 +2902,19 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               <div className="flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                 <span>{t('suggestion_rejected_icu')}</span>
+              </div>
+            </div>
+          )}
+
+          {icuUnfilled.length > 0 && (
+            <div
+              role="alert"
+              data-testid="icu-unfilled-warning"
+              className="mx-3 sm:mx-4 mb-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-200"
+            >
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{t('suggest_forms_incomplete', icuUnfilled.join('، '))}</span>
               </div>
             </div>
           )}
