@@ -1,15 +1,19 @@
 import type { ProviderEngineType } from './translator';
-import { GEMINI_MODEL_CANDIDATES, keepLatestGeneration, listGeminiModels } from './geminiDirect';
+import {
+  GEMINI_MODEL_CANDIDATES,
+  GeminiModelInfo,
+  listGeminiModels,
+  ModelProbeResult,
+  probeGeminiModel,
+} from './geminiDirect';
 
-/** Static fallback for the picker, trimmed the same way as the fetched list (latest generation only). */
-const FALLBACK_MODELS = (() => {
-  const fresh = keepLatestGeneration(GEMINI_MODEL_CANDIDATES);
-  return fresh.length ? fresh : [...GEMINI_MODEL_CANDIDATES];
-})();
-
-/** Thinking strengths a provider's picker can offer. 'auto' keeps the model's own default. */
-export const THINKING_LEVELS = ['minimal', 'low', 'medium', 'high'] as const;
-export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
+/**
+ * Static fallback for the picker when the list endpoint fails. `thinking: true` keeps the
+ * thinking picker visible; the runtime probe then decides which levels each model really accepts.
+ */
+const FALLBACK_MODELS: GeminiModelInfo[] = GEMINI_MODEL_CANDIDATES.filter((n) =>
+  /^gemini-\d/.test(n)
+).map((name) => ({ name, thinking: true }));
 
 /**
  * Which providers let the user pin a model and a thinking strength. Gemini does both; the other
@@ -23,22 +27,24 @@ export function providerSupportsThinking(type: ProviderEngineType | string): boo
   return type === 'gemini';
 }
 
+const listeners = new Set<() => void>();
+const notify = () => listeners.forEach((cb) => cb());
+
+export function subscribeModelLists(onChange: () => void): () => void {
+  listeners.add(onChange);
+  return () => {
+    listeners.delete(onChange);
+  };
+}
+
 /**
  * A tiny external store for model lists: reading the snapshot kicks off the provider's list-models
  * call once per key (the result is cached), and subscribers are notified when it lands. This keeps
  * the picker free of effect-driven fetches. Falls back to the static candidate list when the
  * endpoint fails, so the picker still opens.
  */
-type ModelListEntry = 'loading' | string[];
+type ModelListEntry = 'loading' | GeminiModelInfo[];
 const modelListStore = new Map<string, ModelListEntry>();
-const modelListListeners = new Set<() => void>();
-
-export function subscribeModelLists(onChange: () => void): () => void {
-  modelListListeners.add(onChange);
-  return () => {
-    modelListListeners.delete(onChange);
-  };
-}
 
 export function getProviderModelsSnapshot(
   type: ProviderEngineType | string,
@@ -54,7 +60,34 @@ export function getProviderModelsSnapshot(
     .catch(() => [...FALLBACK_MODELS])
     .then((models) => {
       modelListStore.set(storeKey, models);
-      modelListListeners.forEach((cb) => cb());
+      notify();
+    });
+  return 'loading';
+}
+
+/**
+ * Same store pattern for model probes: one parallel thinking-level probe per (key, model), cached,
+ * so the thinking picker can show only levels the model actually accepts and a pinned model is
+ * verified before it is saved, all without hardcoding anything about model versions.
+ */
+type ModelProbeEntry = 'loading' | ModelProbeResult;
+const modelProbeStore = new Map<string, ModelProbeEntry>();
+
+export function getModelProbeSnapshot(
+  type: ProviderEngineType | string,
+  apiKey: string | undefined,
+  model: string | undefined
+): ModelProbeEntry | null {
+  if (type !== 'gemini' || !apiKey?.trim() || !model?.trim()) return null;
+  const storeKey = `${type}:${apiKey.trim()}:${model.trim()}`;
+  const hit = modelProbeStore.get(storeKey);
+  if (hit) return hit;
+  modelProbeStore.set(storeKey, 'loading');
+  probeGeminiModel(apiKey, model)
+    .catch((): ModelProbeResult => ({ availability: 'unknown', levels: [] }))
+    .then((result) => {
+      modelProbeStore.set(storeKey, result);
+      notify();
     });
   return 'loading';
 }

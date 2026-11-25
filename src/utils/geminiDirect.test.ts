@@ -1,92 +1,25 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  geminiThinkingConfig,
-  geminiThinkingLevelsForModel,
-  keepLatestGeneration,
-  probeGeminiModel,
-} from './geminiDirect';
+import { geminiThinkingConfig, GEMINI_THINKING_LEVELS, probeGeminiModel } from './geminiDirect';
 
-describe('geminiThinkingLevelsForModel', () => {
-  it('matches the per-model table from the Gemini thinking docs', () => {
-    expect(geminiThinkingLevelsForModel('gemini-3-flash-preview')).toEqual([
-      'minimal',
-      'low',
-      'medium',
-      'high',
-    ]);
-    expect(geminiThinkingLevelsForModel('gemini-3.6-flash')).toEqual([
-      'minimal',
-      'low',
-      'medium',
-      'high',
-    ]);
-    // minimal is not supported on 3.8-flash
-    expect(geminiThinkingLevelsForModel('gemini-3.8-flash')).toEqual(['low', 'medium', 'high']);
-    expect(geminiThinkingLevelsForModel('gemini-3-pro-preview')).toEqual(['low', 'high']);
-    expect(geminiThinkingLevelsForModel('gemini-3.1-pro-preview')).toEqual([
-      'low',
-      'medium',
-      'high',
-    ]);
-    expect(geminiThinkingLevelsForModel('gemini-4-hydrogen')).toEqual([
-      'low',
-      'medium',
-      'high',
-      'xhigh',
-    ]);
+const ok = () =>
+  new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'Hi' }] } }] }), {
+    status: 200,
   });
-
-  it('gives unknown models the safe middle set', () => {
-    expect(geminiThinkingLevelsForModel('gemini-9-future')).toEqual(['low', 'medium', 'high']);
-    expect(geminiThinkingLevelsForModel(undefined)).toEqual(['low', 'medium', 'high']);
-  });
-});
+const err = (status: number, message: string) =>
+  new Response(JSON.stringify({ error: { message } }), { status });
 
 describe('geminiThinkingConfig', () => {
-  it('rejects a level the model does not support', () => {
-    expect(geminiThinkingConfig('gemini-3.8-flash', 'minimal')).toBeUndefined();
-    expect(geminiThinkingConfig('gemini-3.8-flash', 'low')).toEqual({ thinkingLevel: 'low' });
-    expect(geminiThinkingConfig('gemini-3-flash-preview', 'minimal')).toEqual({
-      thinkingLevel: 'minimal',
-    });
-    expect(geminiThinkingConfig('gemini-4-hydrogen', 'xhigh')).toEqual({ thinkingLevel: 'xhigh' });
+  it('sends any API enum level as thinkingLevel, regardless of model', () => {
+    for (const level of GEMINI_THINKING_LEVELS) {
+      expect(geminiThinkingConfig(level)).toEqual({ thinkingLevel: level });
+    }
   });
 
-  it('maps levels to a numeric budget on 2.5 and leaves auto alone', () => {
-    expect(geminiThinkingConfig('gemini-2.5-flash', 'low')).toEqual({ thinkingBudget: 1024 });
-    expect(geminiThinkingConfig('gemini-3.8-flash', 'auto')).toBeUndefined();
-  });
-});
-
-describe('keepLatestGeneration', () => {
-  it('keeps only the newest major generation the endpoint returned', () => {
-    expect(
-      keepLatestGeneration([
-        'gemini-3.8-flash',
-        'gemini-3-flash-preview',
-        'gemini-2.5-flash',
-        'gemini-2.5-flash-lite',
-        'gemini-1.5-flash',
-      ])
-    ).toEqual(['gemini-3.8-flash', 'gemini-3-flash-preview']);
-  });
-
-  it('drops versionless aliases (auto already races them)', () => {
-    expect(keepLatestGeneration(['gemini-flash-latest', 'gemini-3.8-flash'])).toEqual([
-      'gemini-3.8-flash',
-    ]);
-  });
-
-  it('falls back to the older generation when it is the only one listed', () => {
-    expect(keepLatestGeneration(['gemini-2.5-flash', 'gemini-2.5-pro'])).toEqual([
-      'gemini-2.5-flash',
-      'gemini-2.5-pro',
-    ]);
-  });
-
-  it('returns [] for an empty or alias-only list', () => {
-    expect(keepLatestGeneration([])).toEqual([]);
-    expect(keepLatestGeneration(['gemini-flash-latest'])).toEqual([]);
+  it('leaves the model default for auto/empty/unknown levels', () => {
+    expect(geminiThinkingConfig('auto')).toBeUndefined();
+    expect(geminiThinkingConfig(undefined)).toBeUndefined();
+    expect(geminiThinkingConfig('')).toBeUndefined();
+    expect(geminiThinkingConfig('ultra')).toBeUndefined();
   });
 });
 
@@ -95,37 +28,61 @@ describe('probeGeminiModel', () => {
     vi.unstubAllGlobals();
   });
 
-  it('returns ok when the model answers', async () => {
+  it('accepts every level the model answers, in parallel', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(ok());
+    vi.stubGlobal('fetch', fetchMock);
+    const result = await probeGeminiModel('key', 'gemini-x-flash');
+    expect(result.availability).toBe('ok');
+    expect(result.levels).toEqual([...GEMINI_THINKING_LEVELS]);
+    expect(fetchMock).toHaveBeenCalledTimes(GEMINI_THINKING_LEVELS.length);
+  });
+
+  it('drops levels the model rejects with a 400 about thinking', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'Hi' }] } }] }), {
-          status: 200,
-        })
-      )
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body || '{}'));
+        const level = body.generationConfig?.thinkingConfig?.thinkingLevel;
+        return level === 'minimal' || level === 'xhigh'
+          ? err(400, `Invalid value at thinking_config.thinking_level: ${level}`)
+          : ok();
+      })
     );
-    expect(await probeGeminiModel('key', 'gemini-3.8-flash')).toBe('ok');
+    const result = await probeGeminiModel('key', 'gemini-x-flash');
+    expect(result.availability).toBe('ok');
+    expect(result.levels).toEqual(['low', 'medium', 'high']);
   });
 
-  it('returns unavailable when the API says the model is retired (404)', async () => {
+  it('reports the model unavailable when every probe 404s', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ error: { message: 'models/gemini-2.5-flash is not found' } }), {
-          status: 404,
-        })
-      )
+      vi.fn().mockResolvedValue(err(404, 'models/gemini-old is not found'))
     );
-    expect(await probeGeminiModel('key', 'gemini-2.5-flash')).toBe('unavailable');
+    const result = await probeGeminiModel('key', 'gemini-old');
+    expect(result.availability).toBe('unavailable');
+    expect(result.levels).toEqual([]);
   });
 
-  it('returns unknown on rate limits and server errors so the pick is still saved', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 429 })));
-    expect(await probeGeminiModel('key', 'gemini-3.8-flash')).toBe('unknown');
+  it('keeps levels on transient errors so a rate limit hides nothing', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(err(429, 'quota exceeded')));
+    const result = await probeGeminiModel('key', 'gemini-x-flash');
+    expect(result.availability).toBe('unknown');
+    expect(result.levels).toEqual([...GEMINI_THINKING_LEVELS]);
   });
 
-  it('returns unknown on network failure', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
-    expect(await probeGeminiModel('key', 'gemini-3.8-flash')).toBe('unknown');
+  it('keeps a level whose probe failed over the network', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body || '{}'));
+        if (body.generationConfig?.thinkingConfig?.thinkingLevel === 'high') {
+          throw new Error('offline');
+        }
+        return ok();
+      })
+    );
+    const result = await probeGeminiModel('key', 'gemini-x-flash');
+    expect(result.availability).toBe('ok');
+    expect(result.levels).toContain('high');
   });
 });

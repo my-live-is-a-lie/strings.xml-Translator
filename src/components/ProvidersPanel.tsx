@@ -3,7 +3,7 @@ import { useDialog } from '../utils/useDialog';
 import { createPortal } from 'react-dom';
 import { AlertCircle, Check, CheckCircle2, ChevronDown, Cpu, KeyRound, Loader2, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { ENGINE_OPTIONS } from './headerOptions';
-import { testGeminiKeyDirect, looksLikeGeminiKey, probeGeminiModel } from '../utils/geminiDirect';
+import { testGeminiKeyDirect, looksLikeGeminiKey } from '../utils/geminiDirect';
 import {
   TranslationProviderConfig,
   ProviderEngineType,
@@ -22,12 +22,12 @@ import { useT, tg } from '../i18n/i18n';
 import { SecretField } from './SecretField';
 import { textDirection } from '../utils/direction';
 import {
+  getModelProbeSnapshot,
   getProviderModelsSnapshot,
   providerSupportsModelChoice,
   providerSupportsThinking,
   subscribeModelLists,
 } from '../utils/providerModels';
-import { geminiThinkingLevelsForModel } from '../utils/geminiDirect';
 
 export function getProviderDisplayName(prov: TranslationProviderConfig | undefined, isAr: boolean): string {
   if (!prov) return tg('google_translate');
@@ -319,54 +319,67 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   const [modelProbe, setModelProbe] = useState<'idle' | 'checking' | 'unavailable'>('idle');
   const modelProbeSeq = useRef(0);
 
-  // The thinking picker only offers the levels the pinned model accepts (per Google's thinking
-  // docs table); on 'auto' it follows the top model in the fetched list. A stored level that the
-  // current model rejects displays and saves as 'auto'.
-  const thinkingModelRef = activeProviderObj?.model || modelChoices[0] || '';
-  const thinkingLevels = activeProviderObj
-    ? geminiThinkingLevelsForModel(thinkingModelRef)
-    : [];
+  // The thinking picker only offers the levels the reference model (the pinned one, or the top of
+  // the fetched list on 'auto') actually accepted in a tiny runtime probe - nothing about model
+  // versions is hardcoded. A stored level the model rejected displays and saves as 'auto'.
+  const thinkingModelRef = activeProviderObj?.model || modelChoices[0]?.name || '';
+  const probeResult = useSyncExternalStore(subscribeModelLists, () =>
+    getModelProbeSnapshot(activeProviderType ?? '', activeProviderKey, thinkingModelRef || undefined)
+  );
+  const probeLoading = probeResult === 'loading';
+  const thinkingLevels = probeResult && probeResult !== 'loading' ? probeResult.levels : [];
   const storedThinking = activeProviderObj?.thinkingLevel || 'auto';
   const effectiveThinking =
-    storedThinking !== 'auto' && !thinkingLevels.includes(storedThinking) ? 'auto' : storedThinking;
+    storedThinking !== 'auto' && !probeLoading && !thinkingLevels.includes(storedThinking)
+      ? 'auto'
+      : storedThinking;
+  // The thinking picker hides when the endpoint said the reference model does not think at all.
+  const refModelInfo = modelChoices.find((m) => m.name === thinkingModelRef);
+  const showThinkingPicker = providerSupportsThinking(activeProviderObj?.type ?? '') &&
+    (refModelInfo ? refModelInfo.thinking : true);
 
   const saveActiveModelChoice = (model: string, thinkingLevel: string) => {
     if (!activeProviderObj || activeProviderObj.isBuiltIn) return;
     const providerId = activeProviderObj.id;
     const apiKey = activeProviderObj.apiKey;
-    // Switching models can invalidate the stored level (e.g. minimal exists on 3.6/3-flash but
-    // not on 3.8); a level the new model rejects falls back to 'auto'.
-    const levelForModel =
-      thinkingLevel !== 'auto' && model && !geminiThinkingLevelsForModel(model).includes(thinkingLevel)
-        ? 'auto'
-        : thinkingLevel;
-    const persist = () => {
+    const persist = (level: string) => {
       updateCustomProvider(providerId, {
         model,
-        thinkingLevel: levelForModel === 'auto' ? '' : levelForModel,
+        thinkingLevel: level === 'auto' ? '' : level,
       });
       refresh();
     };
-    // A pinned model is probed with a one-token call first: the list endpoint names models the
-    // key cannot actually run (other tiers, freshly retired), and picking one of those should say
-    // so instead of silently saving a choice that 404s on the next suggestion.
+    // A pinned model is probed before saving: the list endpoint names models the key cannot
+    // actually run (other tiers, freshly retired), and picking one of those should say so instead
+    // of silently saving a choice that 404s on the next suggestion. The probe also answers which
+    // thinking levels the new model accepts; a stored level it rejects falls back to 'auto'.
     if (model && activeProviderObj.type === 'gemini' && apiKey) {
       const seq = ++modelProbeSeq.current;
       setModelProbe('checking');
-      void probeGeminiModel(apiKey, model).then((availability) => {
+      // Kicks off the cached probe if it is not running yet.
+      getModelProbeSnapshot(activeProviderObj.type, apiKey, model);
+      const waitForProbe = () => {
+        const entry = getModelProbeSnapshot(activeProviderObj.type, apiKey, model);
+        if (entry === 'loading') {
+          window.setTimeout(waitForProbe, 150);
+          return;
+        }
         if (seq !== modelProbeSeq.current) return;
-        if (availability === 'unavailable') {
+        if (!entry || entry.availability === 'unavailable') {
           setModelProbe('unavailable');
           return;
         }
         setModelProbe('idle');
-        persist();
-      });
+        const levelForModel =
+          thinkingLevel !== 'auto' && !entry.levels.includes(thinkingLevel) ? 'auto' : thinkingLevel;
+        persist(levelForModel);
+      };
+      waitForProbe();
       return;
     }
     modelProbeSeq.current += 1;
     setModelProbe('idle');
-    persist();
+    persist(thinkingLevel);
   };
 
   return (
@@ -430,17 +443,18 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                           {activeModelsLoading ? '…' : t('model_auto_recommended')}
                         </option>
                         {modelChoices.map((m) => (
-                          <option key={m} value={m}>
-                            {m}
+                          <option key={m.name} value={m.name}>
+                            {m.name}
                           </option>
                         ))}
-                        {activeProviderObj.model && !modelChoices.includes(activeProviderObj.model) && (
-                          <option value={activeProviderObj.model}>{activeProviderObj.model}</option>
-                        )}
+                        {activeProviderObj.model &&
+                          !modelChoices.some((m) => m.name === activeProviderObj.model) && (
+                            <option value={activeProviderObj.model}>{activeProviderObj.model}</option>
+                          )}
                       </select>
                     </div>
                   )}
-                  {providerSupportsThinking(activeProviderObj.type) && (
+                  {showThinkingPicker && (
                     <div className="flex flex-col gap-1 flex-1 min-w-0">
                       <label
                         htmlFor="active-provider-thinking-select"
@@ -454,8 +468,10 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                         onChange={(e) => saveActiveModelChoice(activeProviderObj.model || '', e.target.value)}
                         className="w-full px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
                       >
-                        <option value="auto">{t('thinking_auto')}</option>
-                        {thinkingLevels.map((level) => (
+                        <option value="auto">
+                          {probeLoading ? '…' : t('thinking_auto')}
+                        </option>
+                        {thinkingLevels.map((level: string) => (
                           <option key={level} value={level}>
                             {level === 'minimal'
                               ? t('thinking_minimal')
