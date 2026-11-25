@@ -113,7 +113,7 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
                   <button type="button" onClick={() => handleSelect(lang)} aria-label={`${isAr ? 'اختيار' : 'Select'} ${lang.name}`} className="flex items-center gap-2 shrink-0 py-2.5 ps-1 pe-1.5 cursor-pointer">
                     <span className="flex items-center gap-2 shrink-0">
                       <code dir="ltr" className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-slate-100 dark:bg-[#131722] text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-[#2C374A]">{lang.code}</code>
-                      {isSelected && <Check className="w-4 h-4 text-amber-500 stroke-[2.5]" />}
+                      {isSelected && <Check className="w-4 h-4 text-[var(--accent-primary)] stroke-[2.5]" />}
                     </span>
                   </button>
                 </div>

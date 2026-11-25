@@ -33,7 +33,7 @@ export const DemoBanner: React.FC<DemoBannerProps> = ({ isAr, placement, classNa
         href={DOWNLOAD_URL}
         target="_blank"
         rel="noopener noreferrer"
-        className={`${placement === 'settings' ? 'flex-1 justify-center' : ''} inline-flex items-center gap-1.5 shrink-0 rounded-full bg-amber-500 px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-amber-600 transition`}
+        className={`${placement === 'settings' ? 'flex-1 justify-center' : ''} inline-flex items-center gap-1.5 shrink-0 rounded-full bg-[var(--accent-primary)] px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-[var(--accent-hover)] transition`}
       >
         <Download className="w-3.5 h-3.5" aria-hidden="true" />
         {isAr ? 'تحميل التطبيق' : 'Get the app'}
