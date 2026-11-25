@@ -98,7 +98,7 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
             const isSelected = currentLang.toLowerCase() === lang.code.toLowerCase();
             const isCustom = customLanguages.some((l) => l.code === lang.code);
             return (
-              <div key={lang.code} data-locale={lang.code} className={`rounded-2xl border ${isSelected ? 'bg-slate-100 text-slate-900 border-slate-300 dark:bg-[#1B222C] dark:text-white dark:border-black/40 shadow-md shadow-black/30' : 'border-transparent text-slate-800 dark:text-slate-200'}`}>
+              <div key={lang.code} data-locale={lang.code} className={`rounded-2xl border ${isSelected ? 'bg-slate-100 text-slate-900 border-transparent dark:bg-[#1B222C] dark:text-white dark:border-transparent' : 'border-transparent text-slate-800 dark:text-slate-200'}`}>
                 <div className="flex items-center gap-1 pe-2">
                   <button type="button" onClick={() => handleSelect(lang)} aria-pressed={isSelected} className="flex-1 min-w-0 text-start px-3.5 py-2.5 rounded-2xl hover:bg-slate-100/60 dark:hover:bg-white/5 transition cursor-pointer flex items-center justify-between gap-3">
                     <span className="min-w-0 block">
