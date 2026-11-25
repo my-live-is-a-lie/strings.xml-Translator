@@ -197,3 +197,15 @@ describe('nested blocks', () => {
     expect(out).toContain('two {ب #}');
   });
 });
+
+describe('selectordinal', () => {
+  it('drops English ordinal suffixes for an Arabic target without a request', async () => {
+    const src = 'You finished {p, selectordinal, one {#st} two {#nd} few {#rd} other {#th}}!';
+    const sug = 'لقد أنهيت {p, selectordinal, one {#st} two {#nd} few {#ثالث} other {#th}}!';
+    let calls = 0;
+    const out = await fillAddedIcuClauses(src, sug, 'ar', async () => (calls++, null), async () => (calls++, null));
+    expect(out).toBe('لقد أنهيت {p, selectordinal, one {#} two {#} few {#} other {#}}!');
+    expect(calls).toBe(0);
+    expect(emptyAddedIcuCategories(src, out, 'ar')).toEqual([]);
+  });
+});

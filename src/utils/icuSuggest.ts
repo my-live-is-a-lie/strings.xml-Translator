@@ -3,6 +3,10 @@ import type { IcuBlockField, IcuField } from './placeholderCheck';
 import { ARABIC_PLURAL_GLOSSARY } from './glossary';
 
 export type IcuQuantity = 'zero' | 'one' | 'two' | 'few' | 'many' | 'other';
+const NON_LATIN_TARGETS = new Set([
+  'ar', 'fa', 'ur', 'he', 'ps', 'ku', 'ru', 'uk', 'bg', 'sr', 'mk', 'be', 'kk', 'mn', 'el', 'hy', 'ka',
+  'zh', 'ja', 'ko', 'hi', 'bn', 'th', 'ta', 'te', 'ml', 'kn', 'mr', 'gu', 'pa', 'ne', 'si', 'my', 'km', 'lo',
+]);
 const QUANTITIES: readonly string[] = ['zero', 'one', 'two', 'few', 'many', 'other'];
 
 /**
@@ -56,6 +60,17 @@ async function fillFields(
         i === f && fl.kind === 'block' ? { ...fl, clauses: fl.clauses.map((c, j) => (j === k ? updated : c)) } : fl
       );
       changed = true;
+    }
+    // An English ordinal suffix ("#st", "#nd", "#th") has no translation. For a non-Latin target the
+    // suffix is dropped: every ordinal clause that is only "#" plus letters becomes a plain "#" (Arabic
+    // has one ordinal form, so the same text serves all the source's forms). No request is sent.
+    if (field.type === 'selectordinal' && NON_LATIN_TARGETS.has(targetLocale.split('-')[0].toLowerCase())) {
+      for (let k = 0; k < field.clauses.length; k++) {
+        const clause = field.clauses[k];
+        if (clause.children || !/^#[A-Za-z]{1,3}$/.test(clause.sourceValue.trim()) || clause.value === '#') continue;
+        model = setIcuClauseValue(model, f, k, '#');
+        changed = true;
+      }
     }
     const current = model[f] as IcuBlockField;
     const wanted: number[] = [];
@@ -136,10 +151,6 @@ async function translateTogether(
   return { filled: out, failed };
 }
 
-const NON_LATIN_TARGETS = new Set([
-  'ar', 'fa', 'ur', 'he', 'ps', 'ku', 'ru', 'uk', 'bg', 'sr', 'mk', 'be', 'kk', 'mn', 'el', 'hy', 'ka',
-  'zh', 'ja', 'ko', 'hi', 'bn', 'th', 'ta', 'te', 'ml', 'kn', 'mr', 'gu', 'pa', 'ne', 'si', 'my', 'km', 'lo',
-]);
 
 /**
  * The plural forms a suggestion left without a translation, so the editor can say so instead of
