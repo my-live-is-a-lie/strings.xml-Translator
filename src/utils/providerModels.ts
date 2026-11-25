@@ -6,6 +6,7 @@ import {
   ModelProbeResult,
   probeGeminiModel,
 } from './geminiDirect';
+import { getStoredItem, removeStoredItem, setStoredItem } from './storage';
 
 /**
  * Static fallback for the picker when the list endpoint fails. `thinking: true` keeps the
@@ -66,12 +67,87 @@ export function getProviderModelsSnapshot(
 }
 
 /**
- * Same store pattern for model probes: one parallel thinking-level probe per (key, model), cached,
- * so the thinking picker can show only levels the model actually accepts and a pinned model is
- * verified before it is saved, all without hardcoding anything about model versions.
+ * Same store pattern for model probes. Probing is lazy: only the model the user selected (or the
+ * one whose levels the thinking picker is showing) is probed, never the whole list. Results are
+ * cached per model name and key - never per provider record - and persisted with a 24h TTL, so
+ * deleting and re-adding the same key, or reloading the app, reuses the probe instead of
+ * re-running it.
  */
 type ModelProbeEntry = 'loading' | ModelProbeResult;
 const modelProbeStore = new Map<string, ModelProbeEntry>();
+
+const PROBE_TTL_MS = 24 * 60 * 60 * 1000;
+
+/** Short non-reversible tag so the cache key does not embed the API key itself. */
+function keyTag(apiKey: string): string {
+  let hash = 5381;
+  for (let i = 0; i < apiKey.length; i++) hash = ((hash << 5) + hash + apiKey.charCodeAt(i)) | 0;
+  return (hash >>> 0).toString(36);
+}
+
+/** Storage key for a persisted probe (exported for tests). */
+export const modelProbeCacheKey = (apiKey: string, model: string) =>
+  `model_probe_v1:${keyTag(apiKey)}:${model}`;
+
+function readCachedProbe(apiKey: string, model: string): ModelProbeResult | null {
+  const cacheKey = modelProbeCacheKey(apiKey, model);
+  try {
+    const raw = getStoredItem(cacheKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { availability?: string; levels?: unknown; at?: number };
+    if (
+      typeof parsed.at !== 'number' ||
+      Date.now() - parsed.at > PROBE_TTL_MS ||
+      !['ok', 'unavailable', 'unknown'].includes(String(parsed.availability)) ||
+      !Array.isArray(parsed.levels)
+    ) {
+      removeStoredItem(cacheKey);
+      return null;
+    }
+    return {
+      availability: parsed.availability as ModelProbeResult['availability'],
+      levels: parsed.levels.filter((l): l is string => typeof l === 'string'),
+      // Only definite results are ever persisted, so a well-formed entry is definite.
+      definite: true,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A definite key/account problem (invalid or expired key, exhausted quota) seen while a provider
+ * translated. Kept visible on the provider card until the provider succeeds again, so a dead key
+ * never silently falls back to the free engines. Session-scoped by design: the next successful
+ * call clears it.
+ */
+export type ProviderKeyProblem = 'expired-key' | 'invalid-key' | 'quota-exhausted';
+const providerRuntimeErrors = new Map<string, { kind: ProviderKeyProblem; at: number }>();
+// Stable snapshot for useSyncExternalStore: replaced (never mutated) on every change.
+let runtimeErrorsSnapshot: ReadonlyMap<string, { kind: ProviderKeyProblem; at: number }> =
+  providerRuntimeErrors;
+
+export function reportProviderKeyProblem(providerId: string, kind: ProviderKeyProblem): void {
+  providerRuntimeErrors.set(providerId, { kind, at: Date.now() });
+  runtimeErrorsSnapshot = new Map(providerRuntimeErrors);
+  notify();
+}
+
+export function clearProviderRuntimeError(providerId: string): void {
+  if (providerRuntimeErrors.delete(providerId)) {
+    runtimeErrorsSnapshot = new Map(providerRuntimeErrors);
+    notify();
+  }
+}
+
+export function getProviderRuntimeErrorsSnapshot(): ReadonlyMap<
+  string,
+  { kind: ProviderKeyProblem; at: number }
+> {
+  return runtimeErrorsSnapshot;
+}
+
+
 
 export function getModelProbeSnapshot(
   type: ProviderEngineType | string,
@@ -79,14 +155,30 @@ export function getModelProbeSnapshot(
   model: string | undefined
 ): ModelProbeEntry | null {
   if (type !== 'gemini' || !apiKey?.trim() || !model?.trim()) return null;
-  const storeKey = `${type}:${apiKey.trim()}:${model.trim()}`;
+  const key = apiKey.trim();
+  const name = model.trim();
+  const storeKey = `${type}:${key}:${name}`;
   const hit = modelProbeStore.get(storeKey);
   if (hit) return hit;
+  const cached = readCachedProbe(key, name);
+  if (cached) {
+    modelProbeStore.set(storeKey, cached);
+    return cached;
+  }
   modelProbeStore.set(storeKey, 'loading');
-  probeGeminiModel(apiKey, model)
-    .catch((): ModelProbeResult => ({ availability: 'unknown', levels: [] }))
+  probeGeminiModel(key, name)
+    .catch((): ModelProbeResult => ({ availability: 'unknown', levels: [], definite: false }))
     .then((result) => {
       modelProbeStore.set(storeKey, result);
+      // Only definite API answers are persisted: a result shaped by a transient key/network
+      // problem must never mark a working model for future sessions.
+      if (result.definite) {
+        try {
+          setStoredItem(modelProbeCacheKey(key, name), JSON.stringify({ ...result, at: Date.now() }));
+        } catch {
+          // Caching is best-effort; the in-memory entry already covers this session.
+        }
+      }
       notify();
     });
   return 'loading';

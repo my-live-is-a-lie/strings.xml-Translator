@@ -1,5 +1,25 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { geminiThinkingConfig, GEMINI_THINKING_LEVELS, probeGeminiModel } from './geminiDirect';
+import {
+  classifyGeminiKeyProblem,
+  geminiThinkingConfig,
+  GEMINI_THINKING_LEVELS,
+  probeGeminiModel,
+} from './geminiDirect';
+
+describe('classifyGeminiKeyProblem', () => {
+  it('names invalid keys and exhausted quota, but not plain rate limits', () => {
+    expect(classifyGeminiKeyProblem(401, 'API key not valid')).toBe('invalid-key');
+    expect(classifyGeminiKeyProblem(403, 'API key expired. Please renew the API key.')).toBe(
+      'expired-key'
+    );
+    expect(classifyGeminiKeyProblem(429, 'Quota exceeded for metric: generate_requests_per_model_per_day')).toBe(
+      'quota-exhausted'
+    );
+    expect(classifyGeminiKeyProblem(429, 'Quota exceeded for metric: generate_requests_per_model_per_minute')).toBeNull();
+    expect(classifyGeminiKeyProblem(404, 'models/x is not found')).toBeNull();
+    expect(classifyGeminiKeyProblem(500, 'internal')).toBeNull();
+  });
+});
 
 const ok = () =>
   new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'Hi' }] } }] }), {
@@ -34,6 +54,7 @@ describe('probeGeminiModel', () => {
     const result = await probeGeminiModel('key', 'gemini-x-flash');
     expect(result.availability).toBe('ok');
     expect(result.levels).toEqual([...GEMINI_THINKING_LEVELS]);
+    expect(result.definite).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(GEMINI_THINKING_LEVELS.length);
   });
 
@@ -61,6 +82,7 @@ describe('probeGeminiModel', () => {
     const result = await probeGeminiModel('key', 'gemini-old');
     expect(result.availability).toBe('unavailable');
     expect(result.levels).toEqual([]);
+    expect(result.definite).toBe(true);
   });
 
   it('keeps levels on transient errors so a rate limit hides nothing', async () => {
@@ -68,6 +90,7 @@ describe('probeGeminiModel', () => {
     const result = await probeGeminiModel('key', 'gemini-x-flash');
     expect(result.availability).toBe('unknown');
     expect(result.levels).toEqual([...GEMINI_THINKING_LEVELS]);
+    expect(result.definite).toBe(false);
   });
 
   it('keeps a level whose probe failed over the network', async () => {
@@ -84,5 +107,7 @@ describe('probeGeminiModel', () => {
     const result = await probeGeminiModel('key', 'gemini-x-flash');
     expect(result.availability).toBe('ok');
     expect(result.levels).toContain('high');
+    // one probe failed over the network, so the result is not definite and must not be cached
+    expect(result.definite).toBe(false);
   });
 });

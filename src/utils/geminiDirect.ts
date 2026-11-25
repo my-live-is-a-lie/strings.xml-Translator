@@ -31,11 +31,30 @@ export const looksLikeGeminiKey = (key: string): boolean => {
   return trimmed.startsWith('AIza') || trimmed.startsWith('AQ.');
 };
 
-class GeminiHttpError extends Error {
+/** Definite key/account problems the user must hear about, distinct from a plain rate limit. */
+export type GeminiKeyProblem = 'expired-key' | 'invalid-key' | 'quota-exhausted';
+
+/**
+ * Maps a Gemini error to a definite key problem: an expired key (403 saying so), 401 and other
+ * key-related 403s (invalid or restricted), and a 429 about daily quota or billing (exhausted
+ * credit). A plain 429 (per-minute rate limit) and model-specific 403s are NOT key problems.
+ */
+export function classifyGeminiKeyProblem(status: number, message: string): GeminiKeyProblem | null {
+  if (isModelUnavailableMessage(status, message)) return null;
+  if (status === 401) return 'invalid-key';
+  if (status === 403 && /key|permission|leaked|referer|ip address|disabled|expired/i.test(message)) {
+    return /expired|renew/i.test(message) ? 'expired-key' : 'invalid-key';
+  }
+  if (status === 429 && /per.?day|daily|billing|credit|account/i.test(message)) return 'quota-exhausted';
+  return null;
+}
+
+export class GeminiHttpError extends Error {
   constructor(
     message: string,
     readonly status: number,
-    readonly modelUnavailable: boolean
+    readonly modelUnavailable: boolean,
+    readonly keyProblem: GeminiKeyProblem | null = null
   ) {
     super(message);
   }
@@ -152,9 +171,17 @@ export interface ModelProbeResult {
   availability: ModelAvailability;
   /** Levels the model accepted (plus inconclusive probes kept, so a transient error hides nothing). */
   levels: string[];
+  /** Set when every probe reported the same definite key/account problem. */
+  keyProblem?: GeminiKeyProblem | null;
+  /**
+   * True only when every probe got a definite API answer (success, a 400 about the thinking
+   * parameter, or a 404 about the model). Transient failures (network, timeouts, 401/403, 429,
+   * 5xx) make the result indefinite: callers must not cache it or let it mark anything.
+   */
+  definite: boolean;
 }
 
-type LevelProbe = 'ok' | 'level-unsupported' | 'model-unavailable' | 'unknown';
+type LevelProbe = 'ok' | 'level-unsupported' | 'model-unavailable' | GeminiKeyProblem | 'unknown';
 
 /**
  * Probes a model with one tiny generateContent call per thinking level, in parallel: five calls,
@@ -199,6 +226,8 @@ export async function probeGeminiModel(
         debugIgnored('geminiDirect', err);
       }
       if (isModelUnavailableMessage(res.status, message)) return 'model-unavailable';
+      const keyProblem = classifyGeminiKeyProblem(res.status, message);
+      if (keyProblem) return keyProblem;
       if (res.status === 400 && /thinking/i.test(message)) return 'level-unsupported';
       return 'unknown';
     } catch {
@@ -208,15 +237,25 @@ export async function probeGeminiModel(
   const results = await Promise.all(
     GEMINI_THINKING_LEVELS.map(async (level) => [level, await probeLevel(level)] as const)
   );
+  // Key problems are definite about the key, not the model: they surface as keyProblem and keep
+  // the result indefinite so nothing about the model gets cached.
+  const isKeyProblem = (r: LevelProbe): r is GeminiKeyProblem =>
+    r === 'expired-key' || r === 'invalid-key' || r === 'quota-exhausted';
+  const keyProblem = results.every(([, r]) => isKeyProblem(r)) ? (results[0][1] as GeminiKeyProblem) : null;
+  const definite = results.every(
+    ([, r]) => r === 'ok' || r === 'level-unsupported' || r === 'model-unavailable'
+  );
   if (results.every(([, r]) => r === 'model-unavailable')) {
-    return { availability: 'unavailable', levels: [] };
+    return { availability: 'unavailable', levels: [], keyProblem: null, definite: true };
   }
   const availability: ModelAvailability = results.some(([, r]) => r === 'ok' || r === 'level-unsupported')
     ? 'ok'
     : 'unknown';
   return {
     availability,
-    levels: results.filter(([, r]) => r === 'ok' || r === 'unknown').map(([level]) => level),
+    levels: results.filter(([, r]) => r === 'ok' || r === 'unknown' || isKeyProblem(r)).map(([level]) => level),
+    keyProblem,
+    definite,
   };
 }
 
@@ -324,13 +363,33 @@ ${sourceText}`;
           : res.status === 429
             ? 'Gemini: تجاوزت حد الطلبات، حاول لاحقاً / Rate limit reached (HTTP 429)'
             : `Gemini: فشل الطلب / Request failed (HTTP ${res.status})`;
+      let apiMessage = '';
       try {
         const body = (await res.json()) as { error?: { message?: string } };
-        if (body?.error?.message) message = `Gemini: ${body.error.message}`;
+        apiMessage = body?.error?.message || '';
+        if (apiMessage) message = `Gemini: ${apiMessage}`;
       } catch (err) {
         debugIgnored('geminiDirect', err);
       }
-      throw new GeminiHttpError(message, res.status, isModelUnavailableMessage(res.status, message));
+      // A definite key problem gets one clear Arabic-first line, whatever Google's wording was:
+      // verification and suggestions both surface this message as-is.
+      const classified = classifyGeminiKeyProblem(res.status, apiMessage);
+      if (classified === 'expired-key') {
+        message =
+          'Gemini: انتهت صلاحية المفتاح، جدّده من Google AI Studio / The API key expired - renew it in Google AI Studio';
+      } else if (classified === 'invalid-key') {
+        message =
+          'Gemini: المفتاح غير صالح أو غير مفعّل / The API key is invalid or disabled';
+      } else if (classified === 'quota-exhausted') {
+        message =
+          'Gemini: انتهت حصة أو رصيد هذا المفتاح / This key\'s quota or credit is exhausted';
+      }
+      throw new GeminiHttpError(
+        message,
+        res.status,
+        isModelUnavailableMessage(res.status, apiMessage || message),
+        classified
+      );
     }
 
     const data = (await res.json()) as {
@@ -368,6 +427,7 @@ ${sourceText}`;
   const tried = new Set<string>();
   let structureError: GeminiStructureError | null = null;
   let transientError: unknown = null;
+  let keyProblemError: GeminiHttpError | null = null;
   const attempt = async (model: string, sig?: AbortSignal): Promise<string | null> => {
     if (tried.has(model)) return null;
     tried.add(model);
@@ -378,6 +438,9 @@ ${sourceText}`;
     } catch (err) {
       if (signal?.aborted) throw err; // the user cancelled: stop, don't fail over
       if (sig?.aborted) return null; // a sibling model won the race and aborted this one
+      // A definite key problem (invalid/expired key, exhausted quota) is remembered so the caller
+      // can surface it even when the failover hides it behind other models' failures.
+      if (err instanceof GeminiHttpError && err.keyProblem && !keyProblemError) keyProblemError = err;
       if (err instanceof GeminiHttpError && err.modelUnavailable) return null; // try the next model
       // A reply that breaks the ICU structure is worth retrying on another model too,
       // but the model itself works, so it stays the working model.
@@ -444,6 +507,9 @@ ${sourceText}`;
   const discovered = await raceModels(await discoverFlashModels(apiKey, signal));
   if (discovered !== null) return discovered;
   workingModel = null;
+  // Every model failed. A definite key problem outranks every other explanation: the user must
+  // fix the key or the quota, not hunt for a model.
+  if (keyProblemError) throw keyProblemError;
   // Reachable only when every model failed; surface the structural problem when that was
   // the reason, since "no model available" would send the user to check a working key.
   if (structureError) throw structureError;

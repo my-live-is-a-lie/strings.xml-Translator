@@ -24,6 +24,7 @@ import { textDirection } from '../utils/direction';
 import {
   getModelProbeSnapshot,
   getProviderModelsSnapshot,
+  getProviderRuntimeErrorsSnapshot,
   providerSupportsModelChoice,
   providerSupportsThinking,
   subscribeModelLists,
@@ -315,8 +316,12 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   );
   const modelChoices = Array.isArray(modelListResult) ? modelListResult : [];
   const activeModelsLoading = modelListResult === 'loading';
+  // Definite key/account problems (invalid key, exhausted quota) stick on the provider card.
+  const providerRuntimeErrors = useSyncExternalStore(subscribeModelLists, getProviderRuntimeErrorsSnapshot);
 
-  const [modelProbe, setModelProbe] = useState<'idle' | 'checking' | 'unavailable'>('idle');
+  const [modelProbe, setModelProbe] = useState<
+    'idle' | 'checking' | 'unavailable' | 'inconclusive' | 'expired-key' | 'invalid-key' | 'quota-exhausted'
+  >('idle');
   const modelProbeSeq = useRef(0);
 
   // The thinking picker only offers the levels the reference model (the pinned one, or the top of
@@ -369,7 +374,12 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
           setModelProbe('unavailable');
           return;
         }
-        setModelProbe('idle');
+        // A definite key problem (invalid/expired key, quota exhausted) is named in red; an
+        // inconclusive probe (transient key/network trouble) just notes the check did not run.
+        // Neither blocks the pick: only a model that provably cannot run is refused.
+        setModelProbe(
+          entry.keyProblem ?? (entry.availability === 'unknown' ? 'inconclusive' : 'idle')
+        );
         const levelForModel =
           thinkingLevel !== 'auto' && !entry.levels.includes(thinkingLevel) ? 'auto' : thinkingLevel;
         persist(levelForModel);
@@ -491,7 +501,10 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                 {modelProbe !== 'idle' && (
                   <div
                     className={`flex items-center gap-1.5 text-[10px] ${
-                      modelProbe === 'unavailable'
+                      modelProbe === 'unavailable' ||
+                      modelProbe === 'expired-key' ||
+                      modelProbe === 'invalid-key' ||
+                      modelProbe === 'quota-exhausted'
                         ? 'text-red-500 dark:text-red-400'
                         : 'text-slate-500 dark:text-slate-400'
                     }`}
@@ -504,7 +517,17 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                     ) : (
                       <>
                         <AlertCircle className="w-3 h-3 shrink-0" />
-                        <span>{t('model_not_available_on_plan')}</span>
+                        <span>
+                          {modelProbe === 'unavailable'
+                            ? t('model_not_available_on_plan')
+                            : modelProbe === 'expired-key'
+                              ? t('provider_key_expired')
+                              : modelProbe === 'invalid-key'
+                                ? t('provider_key_invalid')
+                                : modelProbe === 'quota-exhausted'
+                                  ? t('provider_quota_exhausted')
+                                  : t('model_check_inconclusive')}
+                        </span>
                       </>
                     )}
                   </div>
@@ -614,6 +637,19 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                             </div>
                           )}
                         </div>
+
+                        {providerRuntimeErrors.get(prov.id) && (
+                          <div className="flex items-center gap-1.5 mt-1.5 text-[10px] text-red-500 dark:text-red-400">
+                            <AlertCircle className="w-3 h-3 shrink-0" />
+                            <span>
+                              {providerRuntimeErrors.get(prov.id)?.kind === 'expired-key'
+                                ? t('provider_key_expired')
+                                : providerRuntimeErrors.get(prov.id)?.kind === 'invalid-key'
+                                  ? t('provider_key_invalid')
+                                  : t('provider_quota_exhausted')}
+                            </span>
+                          </div>
+                        )}
 
                         {/* Inline Edit Form for Custom Provider Name & API Key */}
                         {!prov.isBuiltIn && isEditing && (

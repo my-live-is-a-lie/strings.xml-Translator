@@ -15,7 +15,8 @@ import {
   isStorageInitialized,
   scheduleStoredWrite,
 } from './storage';
-import { geminiTranslateDirect } from './geminiDirect';
+import { GeminiHttpError, geminiTranslateDirect } from './geminiDirect';
+import { clearProviderRuntimeError, reportProviderKeyProblem } from './providerModels';
 import { fetchGoogleGtxRaw, fetchWithTimeout, providerHttpError } from '../shared/translateCore';
 import { directCallProviderWithKey, directTestProviderApiKey } from './directProviders';
 import { findClauseBodyOpens, hasMultilineIcuBlock, splitIcuBlocks, validatePlaceholders } from './placeholderCheck';
@@ -1303,11 +1304,18 @@ async function translateSingleSegmentUncached(
       const cleanedAi = stripMetadataLabels(translated, coreText);
       if (cleanedAi && !isPollutedTranslation(cleanedAi)) {
         const restored = postProcess(restoreSegmentSyntax(cleanedAi, tokens, usesEscapedDoubleQuotes));
-        if (!breaksIcuStructure(restored) && !changesLineBreaks(restored) && !isEchoReply(coreText, restored, baseLang))
+        if (!breaksIcuStructure(restored) && !changesLineBreaks(restored) && !isEchoReply(coreText, restored, baseLang)) {
+          clearProviderRuntimeError(activeProvider.id);
           return restored;
+        }
       }
     } catch (err) {
       logFallback('gemini', err);
+      // A definite key problem (invalid/expired key, exhausted quota) must not fall back to the
+      // free engines silently: it stays on the provider card until the key works again.
+      if (err instanceof GeminiHttpError && err.keyProblem) {
+        reportProviderKeyProblem(activeProvider.id, err.keyProblem);
+      }
     }
     return null;
   };
