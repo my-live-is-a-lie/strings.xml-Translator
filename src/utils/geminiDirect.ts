@@ -45,8 +45,26 @@ export function classifyGeminiKeyProblem(status: number, message: string): Gemin
   if (status === 403 && /key|permission|leaked|referer|ip address|disabled|expired/i.test(message)) {
     return /expired|renew/i.test(message) ? 'expired-key' : 'invalid-key';
   }
-  if (status === 429 && /per.?day|daily|billing|credit|account/i.test(message)) return 'quota-exhausted';
+  if (status === 429) {
+    // Model-scoped quota (per-model daily limit, e.g. limit 0 on the free tier) says something
+    // about THIS model on this plan, not about the key: it is not a key problem.
+    if (isModelQuotaMessage(status, message)) return null;
+    if (/per.?day|daily|billing|credit|account/i.test(message)) return 'quota-exhausted';
+  }
   return null;
+}
+
+/**
+ * True when a 429 is scoped to one model ("generate_requests_per_model_per_day, limit: 0, model:
+ * gemini-3.1-pro"): the model is not on this key's tier or its daily quota is used up. A
+ * per-minute variant is a plain rate limit and matches neither this nor the key problem.
+ */
+export function isModelQuotaMessage(status: number, message: string): boolean {
+  return (
+    status === 429 &&
+    !/per_?minute/i.test(message) &&
+    (/per_?model/i.test(message) || /model:\s*\S+/i.test(message))
+  );
 }
 
 export class GeminiHttpError extends Error {
@@ -54,7 +72,9 @@ export class GeminiHttpError extends Error {
     message: string,
     readonly status: number,
     readonly modelUnavailable: boolean,
-    readonly keyProblem: GeminiKeyProblem | null = null
+    readonly keyProblem: GeminiKeyProblem | null = null,
+    /** True when the failure was a model-scoped quota (per-model limit), not a key problem. */
+    readonly modelQuota: boolean = false
   ) {
     super(message);
   }
@@ -134,7 +154,12 @@ export async function listGeminiModels(apiKey: string, signal?: AbortSignal): Pr
     );
     if (!res.ok) return [];
     const data = (await res.json()) as {
-      models?: Array<{ name?: string; supportedGenerationMethods?: string[]; thinking?: boolean }>;
+      models?: Array<{
+        name?: string;
+        supportedGenerationMethods?: string[];
+        thinking?: boolean;
+        description?: string;
+      }>;
     };
     const version = (n: string) => Number((/gemini-(\d+(?:\.\d+)?)/.exec(n) || [])[1] || 0);
     const familyRank = (n: string) => {
@@ -146,12 +171,28 @@ export async function listGeminiModels(apiKey: string, signal?: AbortSignal): Pr
       .map((m) => ({
         name: (m.name as string).replace(/^models\//, ''),
         thinking: m.thinking !== false,
+        description: typeof m.description === 'string' ? m.description : '',
       }))
       .filter(
         (m) =>
           /^gemini-/.test(m.name) &&
-          !/(image|tts|live|audio|embedding|robotics|computer-use)/.test(m.name)
+          // "-latest" entries are aliases of the concrete version already in the list: keeping
+          // both would double the picker with pointers that drift without telling the user.
+          !/-latest$/.test(m.name) &&
+          // Name backstop for non-text-translation variants (image, speech, transcription,
+          // omni-modal...). The API marks no modality field, so the documented description is
+          // the structural signal below and this regex only catches what it misses.
+          !/(image|imagen|tts|live|audio|embedding|robotics|computer-use|transcribe|omni|veo|banana)/i.test(
+            m.name
+          ) &&
+          // The model resource's own description: exclude models documented as producing
+          // non-text output. Input words ("accepts audio/images") must NOT match - every
+          // multimodal text model takes those in.
+          !/generates?\s+(images?|audio|speech|video|music)|text-to-speech|image generation|audio generation|transcription|text\s+to\s+image/i.test(
+            m.description
+          )
       )
+      .map(({ name, thinking }) => ({ name, thinking }))
       .sort((a, b) => familyRank(a.name) - familyRank(b.name) || version(b.name) - version(a.name));
   } catch {
     return [];
@@ -174,6 +215,12 @@ export interface ModelProbeResult {
   /** Set when every probe reported the same definite key/account problem. */
   keyProblem?: GeminiKeyProblem | null;
   /**
+   * True when every probe hit a model-scoped quota (per-model daily limit, e.g. limit 0 on the
+   * free tier): the key is fine, this model is not on its tier or its daily quota is used up.
+   * Callers warn but keep the pick; never cached (the daily quota resets).
+   */
+  modelQuota?: boolean;
+  /**
    * True only when every probe got a definite API answer (success, a 400 about the thinking
    * parameter, or a 404 about the model). Transient failures (network, timeouts, 401/403, 429,
    * 5xx) make the result indefinite: callers must not cache it or let it mark anything.
@@ -181,7 +228,13 @@ export interface ModelProbeResult {
   definite: boolean;
 }
 
-type LevelProbe = 'ok' | 'level-unsupported' | 'model-unavailable' | GeminiKeyProblem | 'unknown';
+type LevelProbe =
+  | 'ok'
+  | 'level-unsupported'
+  | 'model-unavailable'
+  | 'model-quota'
+  | GeminiKeyProblem
+  | 'unknown';
 
 /**
  * Probes a model with one tiny generateContent call per thinking level, in parallel: five calls,
@@ -228,6 +281,7 @@ export async function probeGeminiModel(
       if (isModelUnavailableMessage(res.status, message)) return 'model-unavailable';
       const keyProblem = classifyGeminiKeyProblem(res.status, message);
       if (keyProblem) return keyProblem;
+      if (isModelQuotaMessage(res.status, message)) return 'model-quota';
       if (res.status === 400 && /thinking/i.test(message)) return 'level-unsupported';
       return 'unknown';
     } catch {
@@ -248,12 +302,27 @@ export async function probeGeminiModel(
   if (results.every(([, r]) => r === 'model-unavailable')) {
     return { availability: 'unavailable', levels: [], keyProblem: null, definite: true };
   }
+  // A model-scoped quota on every probe (per-model daily limit, e.g. limit 0 on the free tier)
+  // says this model is not on the key's tier right now - the key itself is fine. Keep the pick
+  // possible (availability 'unknown') but flag it so the UI warns, and never cache it: the daily
+  // quota resets and a per-minute spike looks identical except for the metric name.
+  if (results.every(([, r]) => r === 'model-quota')) {
+    return {
+      availability: 'unknown',
+      levels: results.map(([level]) => level),
+      keyProblem: null,
+      definite: false,
+      modelQuota: true,
+    };
+  }
   const availability: ModelAvailability = results.some(([, r]) => r === 'ok' || r === 'level-unsupported')
     ? 'ok'
     : 'unknown';
   return {
     availability,
-    levels: results.filter(([, r]) => r === 'ok' || r === 'unknown' || isKeyProblem(r)).map(([level]) => level),
+    levels: results
+      .filter(([, r]) => r === 'ok' || r === 'unknown' || r === 'model-quota' || isKeyProblem(r))
+      .map(([level]) => level),
     keyProblem,
     definite,
   };
@@ -384,11 +453,19 @@ ${sourceText}`;
         message =
           'Gemini: انتهت حصة أو رصيد هذا المفتاح / This key\'s quota or credit is exhausted';
       }
+      // A model-scoped quota (per-model daily limit, e.g. limit 0 on the free tier) names the
+      // model, not the key: say so, and never mark the provider card for it.
+      const modelQuota = isModelQuotaMessage(res.status, apiMessage);
+      if (modelQuota) {
+        message =
+          'Gemini: هذا النموذج غير متاح لخطتك حالياً - جرّب نموذجاً آخر / This model is not available for your plan right now - try another model';
+      }
       throw new GeminiHttpError(
         message,
         res.status,
         isModelUnavailableMessage(res.status, apiMessage || message),
-        classified
+        classified,
+        modelQuota
       );
     }
 
@@ -428,6 +505,7 @@ ${sourceText}`;
   let structureError: GeminiStructureError | null = null;
   let transientError: unknown = null;
   let keyProblemError: GeminiHttpError | null = null;
+  let modelQuotaError: GeminiHttpError | null = null;
   const attempt = async (model: string, sig?: AbortSignal): Promise<string | null> => {
     if (tried.has(model)) return null;
     tried.add(model);
@@ -441,6 +519,7 @@ ${sourceText}`;
       // A definite key problem (invalid/expired key, exhausted quota) is remembered so the caller
       // can surface it even when the failover hides it behind other models' failures.
       if (err instanceof GeminiHttpError && err.keyProblem && !keyProblemError) keyProblemError = err;
+      if (err instanceof GeminiHttpError && err.modelQuota && !modelQuotaError) modelQuotaError = err;
       if (err instanceof GeminiHttpError && err.modelUnavailable) return null; // try the next model
       // A reply that breaks the ICU structure is worth retrying on another model too,
       // but the model itself works, so it stays the working model.
@@ -510,6 +589,9 @@ ${sourceText}`;
   // Every model failed. A definite key problem outranks every other explanation: the user must
   // fix the key or the quota, not hunt for a model.
   if (keyProblemError) throw keyProblemError;
+  // A model-scoped quota on every model is more actionable than a generic transient failure:
+  // the key works, this model/tier does not. It never marks the provider card (no keyProblem).
+  if (modelQuotaError && !structureError) throw modelQuotaError;
   // Reachable only when every model failed; surface the structural problem when that was
   // the reason, since "no model available" would send the user to check a working key.
   if (structureError) throw structureError;

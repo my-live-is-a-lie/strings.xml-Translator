@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getModelProbeSnapshot, modelProbeCacheKey } from './providerModels';
+import { getModelProbeSnapshot, modelProbeCacheKey, peekModelProbe } from './providerModels';
 import { getStoredItem, removeStoredItem, setStoredItem } from './storage';
 
 const ok = () =>
@@ -71,5 +71,57 @@ describe('model probe cache', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(ok()));
     expect(getModelProbeSnapshot('gemini', 'badkey', 'gemini-bad-flash')).toBe('loading');
     cleanup('badkey', 'gemini-bad-flash');
+  });
+
+  it('persists a model-scoped quota so the unavailable group survives reloads', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            error: {
+              message:
+                'Quota exceeded for metric: generate_requests_per_model_per_day, limit: 0, model: gemini-p-pro',
+            },
+          }),
+          { status: 429 }
+        )
+      )
+    );
+    expect(getModelProbeSnapshot('gemini', 'quotakey', 'gemini-p-pro')).toBe('loading');
+    await vi.waitFor(() => {
+      expect(getModelProbeSnapshot('gemini', 'quotakey', 'gemini-p-pro')).not.toBe('loading');
+    });
+    const persisted = getStoredItem(modelProbeCacheKey('quotakey', 'gemini-p-pro'));
+    expect(persisted).toBeTruthy();
+    expect(JSON.parse(persisted as string).modelQuota).toBe(true);
+    // And a peek (no API call) reports the same group state.
+    const peeked = peekModelProbe('gemini', 'quotakey', 'gemini-p-pro');
+    expect(peeked?.modelQuota).toBe(true);
+    cleanup('quotakey', 'gemini-p-pro');
+  });
+
+  it('force re-probes a cached model and overwrites the group when it recovers', async () => {
+    setStoredItem(
+      modelProbeCacheKey('rekey', 'gemini-re-pro'),
+      JSON.stringify({ availability: 'unknown', levels: ['low'], modelQuota: true, at: Date.now() })
+    );
+    const fetchMock = vi.fn(async () => ok());
+    vi.stubGlobal('fetch', fetchMock);
+    // Without force the cache is served and nothing is called.
+    const cached = getModelProbeSnapshot('gemini', 'rekey', 'gemini-re-pro');
+    expect(cached && cached !== 'loading' ? cached.modelQuota : false).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
+    // With force the probe runs again and the recovered model is persisted as available.
+    expect(getModelProbeSnapshot('gemini', 'rekey', 'gemini-re-pro', { force: true })).toBe('loading');
+    await vi.waitFor(() => {
+      const snap = getModelProbeSnapshot('gemini', 'rekey', 'gemini-re-pro');
+      expect(snap && snap !== 'loading' ? snap.availability : '').toBe('ok');
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    const persisted = JSON.parse(getStoredItem(modelProbeCacheKey('rekey', 'gemini-re-pro')) as string);
+    expect(persisted.availability).toBe('ok');
+    expect(persisted.modelQuota).toBeFalsy();
+    cleanup('rekey', 'gemini-re-pro');
   });
 });

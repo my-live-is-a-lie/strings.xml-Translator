@@ -23,8 +23,10 @@ import { SecretField } from './SecretField';
 import { textDirection } from '../utils/direction';
 import {
   getModelProbeSnapshot,
+  getModelProbeStatesVersion,
   getProviderModelsSnapshot,
   getProviderRuntimeErrorsSnapshot,
+  peekModelProbe,
   providerSupportsModelChoice,
   providerSupportsThinking,
   subscribeModelLists,
@@ -316,11 +318,29 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   );
   const modelChoices = Array.isArray(modelListResult) ? modelListResult : [];
   const activeModelsLoading = modelListResult === 'loading';
+  // Re-render when any probe lands so the available/unavailable groups stay current.
+  useSyncExternalStore(subscribeModelLists, getModelProbeStatesVersion);
+  // Two groups in the picker: a model lands in "unavailable" only on a definite API answer
+  // (404-style unusable, or a model-scoped quota like a free-tier limit of 0) - transient
+  // failures never move anything. Picking one from there re-tests it.
+  const isUnavailableModel = (name: string): boolean => {
+    const probe = peekModelProbe(activeProviderType ?? '', activeProviderKey, name);
+    return !!probe && (probe.availability === 'unavailable' || probe.modelQuota === true);
+  };
+  const availableModels = modelChoices.filter((m) => !isUnavailableModel(m.name));
+  const unavailableModels = modelChoices.filter((m) => isUnavailableModel(m.name));
   // Definite key/account problems (invalid key, exhausted quota) stick on the provider card.
   const providerRuntimeErrors = useSyncExternalStore(subscribeModelLists, getProviderRuntimeErrorsSnapshot);
 
   const [modelProbe, setModelProbe] = useState<
-    'idle' | 'checking' | 'unavailable' | 'inconclusive' | 'expired-key' | 'invalid-key' | 'quota-exhausted'
+    | 'idle'
+    | 'checking'
+    | 'unavailable'
+    | 'inconclusive'
+    | 'expired-key'
+    | 'invalid-key'
+    | 'quota-exhausted'
+    | 'model-quota'
   >('idle');
   const modelProbeSeq = useRef(0);
 
@@ -361,10 +381,13 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
     if (model && activeProviderObj.type === 'gemini' && apiKey) {
       const seq = ++modelProbeSeq.current;
       setModelProbe('checking');
+      // A model picked from the unavailable group is an explicit re-test: bypass the cache so a
+      // recovered model moves back to "available" and a still-failing one stays put.
+      const force = isUnavailableModel(model);
       // Kicks off the cached probe if it is not running yet.
-      getModelProbeSnapshot(activeProviderObj.type, apiKey, model);
+      getModelProbeSnapshot(activeProviderObj.type, apiKey, model, { force });
       const waitForProbe = () => {
-        const entry = getModelProbeSnapshot(activeProviderObj.type, apiKey, model);
+        const entry = getModelProbeSnapshot(activeProviderObj.type, apiKey, model, { force });
         if (entry === 'loading') {
           window.setTimeout(waitForProbe, 150);
           return;
@@ -374,11 +397,14 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
           setModelProbe('unavailable');
           return;
         }
-        // A definite key problem (invalid/expired key, quota exhausted) is named in red; an
-        // inconclusive probe (transient key/network trouble) just notes the check did not run.
-        // Neither blocks the pick: only a model that provably cannot run is refused.
+        // A definite key problem (invalid/expired key, quota exhausted) is named in red; a
+        // model-scoped quota (this model not on the key's tier) warns in amber but keeps the
+        // pick; an inconclusive probe (transient key/network trouble) just notes the check did
+        // not run. Picking a different model re-probes and resets this state, so the warning
+        // clears as soon as a working model is picked.
         setModelProbe(
-          entry.keyProblem ?? (entry.availability === 'unknown' ? 'inconclusive' : 'idle')
+          entry.keyProblem ??
+            (entry.modelQuota ? 'model-quota' : entry.availability === 'unknown' ? 'inconclusive' : 'idle')
         );
         const levelForModel =
           thinkingLevel !== 'auto' && !entry.levels.includes(thinkingLevel) ? 'auto' : thinkingLevel;
@@ -452,11 +478,22 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                         <option value="">
                           {activeModelsLoading ? '…' : t('model_auto_recommended')}
                         </option>
-                        {modelChoices.map((m) => (
-                          <option key={m.name} value={m.name}>
-                            {m.name}
-                          </option>
-                        ))}
+                        <optgroup label={t('models_available')}>
+                          {availableModels.map((m) => (
+                            <option key={m.name} value={m.name}>
+                              {m.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                        {unavailableModels.length > 0 && (
+                          <optgroup label={t('models_unavailable')}>
+                            {unavailableModels.map((m) => (
+                              <option key={m.name} value={m.name}>
+                                {m.name}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
                         {activeProviderObj.model &&
                           !modelChoices.some((m) => m.name === activeProviderObj.model) && (
                             <option value={activeProviderObj.model}>{activeProviderObj.model}</option>
@@ -506,7 +543,9 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                       modelProbe === 'invalid-key' ||
                       modelProbe === 'quota-exhausted'
                         ? 'text-red-500 dark:text-red-400'
-                        : 'text-slate-500 dark:text-slate-400'
+                        : modelProbe === 'model-quota'
+                          ? 'text-amber-600 dark:text-amber-400'
+                          : 'text-slate-500 dark:text-slate-400'
                     }`}
                   >
                     {modelProbe === 'checking' ? (
@@ -526,7 +565,9 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                 ? t('provider_key_invalid')
                                 : modelProbe === 'quota-exhausted'
                                   ? t('provider_quota_exhausted')
-                                  : t('model_check_inconclusive')}
+                                  : modelProbe === 'model-quota'
+                                    ? t('model_quota_unavailable')
+                                    : t('model_check_inconclusive')}
                         </span>
                       </>
                     )}

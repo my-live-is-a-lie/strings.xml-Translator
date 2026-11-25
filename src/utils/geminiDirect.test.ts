@@ -3,6 +3,7 @@ import {
   classifyGeminiKeyProblem,
   geminiThinkingConfig,
   GEMINI_THINKING_LEVELS,
+  listGeminiModels,
   probeGeminiModel,
 } from './geminiDirect';
 
@@ -12,9 +13,20 @@ describe('classifyGeminiKeyProblem', () => {
     expect(classifyGeminiKeyProblem(403, 'API key expired. Please renew the API key.')).toBe(
       'expired-key'
     );
-    expect(classifyGeminiKeyProblem(429, 'Quota exceeded for metric: generate_requests_per_model_per_day')).toBe(
-      'quota-exhausted'
-    );
+    // Key/account-wide daily quota names the project or the account: that is a key problem.
+    expect(
+      classifyGeminiKeyProblem(429, 'Quota exceeded for metric: generate_requests_per_project_per_day')
+    ).toBe('quota-exhausted');
+    expect(
+      classifyGeminiKeyProblem(429, 'You exceeded your current quota, please check your plan and billing details')
+    ).toBe('quota-exhausted');
+    // A model-scoped daily quota (limit 0 on the free tier) says nothing about the key.
+    expect(
+      classifyGeminiKeyProblem(
+        429,
+        'Quota exceeded for metric: generativelanguage.googleapis.com/generate_requests_per_model_per_day, limit: 0, model: gemini-3.1-pro'
+      )
+    ).toBeNull();
     expect(classifyGeminiKeyProblem(429, 'Quota exceeded for metric: generate_requests_per_model_per_minute')).toBeNull();
     expect(classifyGeminiKeyProblem(404, 'models/x is not found')).toBeNull();
     expect(classifyGeminiKeyProblem(500, 'internal')).toBeNull();
@@ -91,6 +103,56 @@ describe('probeGeminiModel', () => {
     expect(result.availability).toBe('unknown');
     expect(result.levels).toEqual([...GEMINI_THINKING_LEVELS]);
     expect(result.definite).toBe(false);
+    expect(result.modelQuota).toBeFalsy();
+  });
+
+  it('flags a model-scoped quota (limit 0 per model) without blaming the key', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        err(
+          429,
+          'Quota exceeded for metric: generativelanguage.googleapis.com/generate_requests_per_model_per_day, limit: 0, model: gemini-3.1-pro'
+        )
+      )
+    );
+    const result = await probeGeminiModel('key', 'gemini-3.1-pro');
+    // The pick stays possible, the key is not blamed, and nothing definite is cached: the daily
+    // quota resets and a different model on the same key can work fine.
+    expect(result.availability).toBe('unknown');
+    expect(result.modelQuota).toBe(true);
+    expect(result.keyProblem).toBeNull();
+    expect(result.definite).toBe(false);
+    expect(result.levels).toEqual([...GEMINI_THINKING_LEVELS]);
+  });
+
+  it('treats a per-minute rate limit as transient, never as quota', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        err(429, 'Quota exceeded for metric: generate_requests_per_model_per_minute, limit: 25')
+      )
+    );
+    const result = await probeGeminiModel('key', 'gemini-x-flash');
+    expect(result.modelQuota).toBeFalsy();
+    expect(result.keyProblem).toBeNull();
+    expect(result.availability).toBe('unknown');
+  });
+
+  it('does not flag model-quota when any probe answers differently', async () => {
+    let calls = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        calls++;
+        return calls === 1
+          ? ok()
+          : err(429, 'Quota exceeded for metric: generate_requests_per_model_per_day, limit: 0, model: gemini-x-flash');
+      })
+    );
+    const result = await probeGeminiModel('key', 'gemini-x-flash');
+    expect(result.availability).toBe('ok');
+    expect(result.modelQuota).toBeFalsy();
   });
 
   it('keeps a level whose probe failed over the network', async () => {
@@ -109,5 +171,61 @@ describe('probeGeminiModel', () => {
     expect(result.levels).toContain('high');
     // one probe failed over the network, so the result is not definite and must not be cached
     expect(result.definite).toBe(false);
+  });
+});
+
+describe('listGeminiModels', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const model = (name: string, description = 'Text model') => ({
+    name: `models/${name}`,
+    supportedGenerationMethods: ['generateContent'],
+    thinking: true,
+    description,
+  });
+
+  it('keeps text models and drops non-text variants, aliases and audio/image models', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            models: [
+              model('gemini-3.1-flash'),
+              model('gemini-3.1-pro'),
+              model('gemini-2.5-flash', 'Fast multimodal model: accepts text, images and audio as input'),
+              model('gemini-3.5-transcribe', 'Transcribes audio to text'),
+              model('gemini-nano-banana-2.1', 'Generates images from text prompts'),
+              model('gemini-omni-2.0', 'Omni-modal with audio output'),
+              model('gemini-flash-latest'),
+              model('gemini-2.0-tts', 'Text to speech'),
+              model('gemini-robotics-er-1'),
+              { name: 'models/gemini-embedding-2', supportedGenerationMethods: ['embedContent'] },
+            ],
+          }),
+          { status: 200 }
+        )
+      )
+    );
+    const names = (await listGeminiModels('key')).map((m) => m.name);
+    expect(names).toContain('gemini-3.1-flash');
+    expect(names).toContain('gemini-3.1-pro');
+    // multimodal input must NOT drop a text-output model
+    expect(names).toContain('gemini-2.5-flash');
+    for (const dropped of [
+      'gemini-3.5-transcribe',
+      'gemini-nano-banana-2.1',
+      'gemini-omni-2.0',
+      'gemini-flash-latest',
+      'gemini-2.0-tts',
+      'gemini-robotics-er-1',
+      'gemini-embedding-2',
+    ]) {
+      expect(names).not.toContain(dropped);
+    }
+    // flash family first, newest version first
+    expect(names.indexOf('gemini-3.1-flash')).toBeLessThan(names.indexOf('gemini-3.1-pro'));
   });
 });

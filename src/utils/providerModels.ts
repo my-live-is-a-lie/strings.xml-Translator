@@ -94,7 +94,12 @@ function readCachedProbe(apiKey: string, model: string): ModelProbeResult | null
   try {
     const raw = getStoredItem(cacheKey);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as { availability?: string; levels?: unknown; at?: number };
+    const parsed = JSON.parse(raw) as {
+      availability?: string;
+      levels?: unknown;
+      modelQuota?: unknown;
+      at?: number;
+    };
     if (
       typeof parsed.at !== 'number' ||
       Date.now() - parsed.at > PROBE_TTL_MS ||
@@ -107,12 +112,35 @@ function readCachedProbe(apiKey: string, model: string): ModelProbeResult | null
     return {
       availability: parsed.availability as ModelProbeResult['availability'],
       levels: parsed.levels.filter((l): l is string => typeof l === 'string'),
-      // Only definite results are ever persisted, so a well-formed entry is definite.
-      definite: true,
+      modelQuota: parsed.modelQuota === true ? true : undefined,
+      // Only definite results (and model-scoped quota, which is definite about this model on
+      // this plan) are ever persisted, so a well-formed entry is definite.
+      definite: parsed.modelQuota === true ? false : true,
     };
   } catch {
     return null;
   }
+}
+
+/**
+ * Read-only view of a model's probe state for grouping the picker: returns the in-memory or
+ * persisted result without ever launching a probe. Unprobed models return null.
+ */
+export function peekModelProbe(
+  type: ProviderEngineType | string,
+  apiKey: string | undefined,
+  model: string | undefined
+): ModelProbeResult | null {
+  if (type !== 'gemini' || !apiKey?.trim() || !model?.trim()) return null;
+  const hit = modelProbeStore.get(`${type}:${apiKey.trim()}:${model.trim()}`);
+  if (hit && hit !== 'loading') return hit;
+  return readCachedProbe(apiKey.trim(), model.trim());
+}
+
+/** Bumped on every probe store change so pickers re-group as results land. */
+let probeStatesVersion = 0;
+export function getModelProbeStatesVersion(): number {
+  return probeStatesVersion;
 }
 
 /**
@@ -152,18 +180,22 @@ export function getProviderRuntimeErrorsSnapshot(): ReadonlyMap<
 export function getModelProbeSnapshot(
   type: ProviderEngineType | string,
   apiKey: string | undefined,
-  model: string | undefined
+  model: string | undefined,
+  opts?: { force?: boolean }
 ): ModelProbeEntry | null {
   if (type !== 'gemini' || !apiKey?.trim() || !model?.trim()) return null;
   const key = apiKey.trim();
   const name = model.trim();
   const storeKey = `${type}:${key}:${name}`;
-  const hit = modelProbeStore.get(storeKey);
-  if (hit) return hit;
-  const cached = readCachedProbe(key, name);
-  if (cached) {
-    modelProbeStore.set(storeKey, cached);
-    return cached;
+  // force re-runs the probe: picking a model from the unavailable group is an explicit re-test.
+  if (!opts?.force) {
+    const hit = modelProbeStore.get(storeKey);
+    if (hit) return hit;
+    const cached = readCachedProbe(key, name);
+    if (cached) {
+      modelProbeStore.set(storeKey, cached);
+      return cached;
+    }
   }
   modelProbeStore.set(storeKey, 'loading');
   probeGeminiModel(key, name)
@@ -171,14 +203,17 @@ export function getModelProbeSnapshot(
     .then((result) => {
       modelProbeStore.set(storeKey, result);
       // Only definite API answers are persisted: a result shaped by a transient key/network
-      // problem must never mark a working model for future sessions.
-      if (result.definite) {
+      // problem must never mark a working model for future sessions. A model-scoped quota is
+      // definite about this model on this plan, so it is persisted too and the unavailable
+      // group survives reloads within the same TTL.
+      if (result.definite || result.modelQuota) {
         try {
           setStoredItem(modelProbeCacheKey(key, name), JSON.stringify({ ...result, at: Date.now() }));
         } catch {
           // Caching is best-effort; the in-memory entry already covers this session.
         }
       }
+      probeStatesVersion++;
       notify();
     });
   return 'loading';
