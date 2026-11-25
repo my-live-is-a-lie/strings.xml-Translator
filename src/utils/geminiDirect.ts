@@ -13,6 +13,11 @@ export const GEMINI_MODEL_CANDIDATES = ['gemini-flash-latest', 'gemini-3.8-flash
 // High-demand spikes make a healthy model answer in 20s+ sometimes; the per-attempt timeout must
 // outlast that or every candidate times out one after another and verification always fails.
 const GEMINI_TIMEOUT_MS = 30000;
+// Candidates run hedged, not sequentially: the first model starts alone, and every HEDGE_DELAY_MS
+// another candidate joins in parallel. A hanging or overloaded model no longer serializes the wait
+// (before, 3 candidates x 30s timeout meant up to 90s+ before an answer that now takes the time of
+// the fastest model), and the extra calls only happen while no model has answered yet.
+const HEDGE_DELAY_MS = 4000;
 
 let workingModel: string | null = null;
 
@@ -96,7 +101,7 @@ Return ONLY the translated text without any metadata labels (never output "[تر
 Source string:
 ${sourceText}`;
 
-  const callModel = async (model: string): Promise<string> => {
+  const callModel = async (model: string, sig?: AbortSignal): Promise<string> => {
     const res = await fetchWithTimeout(
       `${API_ROOT}/models/${model}:generateContent`,
       {
@@ -112,7 +117,7 @@ ${sourceText}`;
         }),
       },
       GEMINI_TIMEOUT_MS,
-      signal
+      sig
     );
 
     if (!res.ok) {
@@ -166,15 +171,16 @@ ${sourceText}`;
   const tried = new Set<string>();
   let structureError: GeminiStructureError | null = null;
   let transientError: unknown = null;
-  const attempt = async (model: string): Promise<string | null> => {
+  const attempt = async (model: string, sig?: AbortSignal): Promise<string | null> => {
     if (tried.has(model)) return null;
     tried.add(model);
     try {
-      const out = await callModel(model);
+      const out = await callModel(model, sig);
       workingModel = model;
       return out;
     } catch (err) {
       if (signal?.aborted) throw err; // the user cancelled: stop, don't fail over
+      if (sig?.aborted) return null; // a sibling model won the race and aborted this one
       if (err instanceof GeminiHttpError && err.modelUnavailable) return null; // try the next model
       // A reply that breaks the ICU structure is worth retrying on another model too,
       // but the model itself works, so it stays the working model.
@@ -190,15 +196,56 @@ ${sourceText}`;
     }
   };
 
-  for (const model of [workingModel, ...GEMINI_MODEL_CANDIDATES]) {
-    if (!model) continue;
-    const out = await attempt(model);
-    if (out !== null) return out;
-  }
-  for (const model of await discoverFlashModels(apiKey, signal)) {
-    const out = await attempt(model);
-    if (out !== null) return out;
-  }
+  // Hedged race over untried models: first success wins and aborts the rest, a fatal error
+  // (bad key) rejects immediately, and a model that fails fast brings the next one in early.
+  // Resolves null when every model failed, leaving the recorded errors for the caller.
+  const raceModels = (models: Array<string | null>): Promise<string | null> => {
+    const fresh = models.filter((m): m is string => typeof m === 'string' && m.length > 0 && !tried.has(m));
+    if (!fresh.length) return Promise.resolve(null);
+    return new Promise<string | null>((resolve, reject) => {
+      const inner = new AbortController();
+      const timers: Array<ReturnType<typeof setTimeout>> = [];
+      let settled = false;
+      let launched = 0;
+      let pending = 0;
+      const finish = (fn: () => void) => {
+        if (settled) return;
+        settled = true;
+        timers.forEach(clearTimeout);
+        signal?.removeEventListener('abort', onAbort);
+        inner.abort();
+        fn();
+      };
+      const onAbort = () => finish(() => reject(new DOMException('Aborted', 'AbortError')));
+      const launchNext = () => {
+        if (settled || launched >= fresh.length) return;
+        const model = fresh[launched++];
+        pending++;
+        attempt(model, inner.signal).then(
+          (out) => {
+            if (out !== null) finish(() => resolve(out));
+            else {
+              pending--;
+              if (pending === 0 && launched >= fresh.length) finish(() => resolve(null));
+              else launchNext(); // failed fast: bring the next candidate in without waiting
+            }
+          },
+          (err) => finish(() => reject(err))
+        );
+      };
+      signal?.addEventListener('abort', onAbort);
+      launchNext();
+      for (let i = 1; i < fresh.length; i++) {
+        timers.push(setTimeout(launchNext, i * HEDGE_DELAY_MS));
+      }
+    });
+  };
+
+  const raced = await raceModels([workingModel, ...GEMINI_MODEL_CANDIDATES]);
+  if (raced !== null) return raced;
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+  const discovered = await raceModels(await discoverFlashModels(apiKey, signal));
+  if (discovered !== null) return discovered;
   workingModel = null;
   // Reachable only when every model failed; surface the structural problem when that was
   // the reason, since "no model available" would send the user to check a working key.

@@ -118,3 +118,41 @@ describe('looksLikeGeminiKey', () => {
     expect(looksLikeGeminiKey('')).toBe(false);
   });
 });
+
+describe('hedged model race', () => {
+  it('a hanging first model no longer blocks the whole call', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.includes('gemini-flash-latest')) return new Promise<Response>(() => {}); // hangs
+        return ok('مرحبا');
+      })
+    );
+    const start = Date.now();
+    const text = await geminiTranslateDirect({ apiKey: 'k', sourceText: 'Hello' });
+    const elapsed = Date.now() - start;
+    expect(text).toBe('مرحبا');
+    // hedged: answered by the second candidate after the 4s stagger, not after the 30s timeout
+    expect(elapsed).toBeLessThan(15000);
+  }, 20000);
+
+  it('a fast-failing model brings the next candidate in without waiting', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.includes('gemini-flash-latest')) return err(503, 'high demand');
+        return ok('مرحبا');
+      })
+    );
+    const start = Date.now();
+    expect(await geminiTranslateDirect({ apiKey: 'k', sourceText: 'Hello' })).toBe('مرحبا');
+    expect(Date.now() - start).toBeLessThan(3500); // no 4s hedge wait after a fast failure
+  });
+
+  it('a bad key fails fast without waiting out the timeout', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => err(403, 'API key not valid. Please pass a valid API key.')));
+    const start = Date.now();
+    await expect(geminiTranslateDirect({ apiKey: 'bad', sourceText: 'Hello' })).rejects.toThrow(/not valid|غير صالح/i);
+    expect(Date.now() - start).toBeLessThan(3500);
+  });
+});

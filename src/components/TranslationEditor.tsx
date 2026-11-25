@@ -299,6 +299,14 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
 
   // Suggestion loading state
   const [isSuggesting, setIsSuggesting] = useState(false);
+  // The Suggest run in flight. Aborted when another suggestion starts or the user moves to
+  // another string, so a late reply can never be filled into the new string's box.
+  const suggestAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    return () => {
+      suggestAbortRef.current?.abort();
+    };
+  }, [item.id]);
 
   // Local draft state so typing/pasting/suggesting in the input box is only saved when clicking Save & Continue or Save & Stay
   const [draftState, setDraftState] = useState<DraftState>(() => freshDraftState(item));
@@ -1769,6 +1777,9 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
 
   // Suggest translation (اقترح) — immediately fills the input box (draft) and allows Undo button to delete suggested text
   const handleSuggest = async () => {
+    suggestAbortRef.current?.abort();
+    const suggestAbort = new AbortController();
+    suggestAbortRef.current = suggestAbort;
     setIsSuggesting(true);
     setIcuUnfilled([]);
 
@@ -1777,7 +1788,8 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
         const icuAsk = makeIcuAsk(targetLang, targetLocaleName);
         // The added categories only depend on the source: ask for them while the main request runs
         void prefetchAddedIcuClauses(draftItem.source, targetLang, icuAsk.body, icuAsk.message);
-        const res = await suggestTranslation(draftItem.source, targetLang, targetLocaleName);
+        const res = await suggestTranslation(draftItem.source, targetLang, targetLocaleName, undefined, suggestAbort.signal);
+        if (suggestAbort.signal.aborted) return;
         setIcuRejected(suggestionRejectedForIcu(res));
         // A rejected suggestion hands back the unchanged source text; filling it would
         // show English as "translated", so leave the box and the status untouched.
@@ -1790,6 +1802,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             icuAsk.body,
             icuAsk.message
           );
+          if (suggestAbort.signal.aborted) return;
           setIcuUnfilled(emptyAddedIcuCategories(draftItem.source, filledText, targetLang));
           const isNowEmpty = !filledText.trim();
           const updated: SingleStringItem = {
@@ -1805,9 +1818,10 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
         const results = await Promise.all(
           normalizedPluralItems.map(async (pi) => ({
             pi,
-            res: await suggestTranslation(pi.source, targetLang, targetLocaleName, pi.quantity),
+            res: await suggestTranslation(pi.source, targetLang, targetLocaleName, pi.quantity, suggestAbort.signal),
           }))
         );
+        if (suggestAbort.signal.aborted) return;
         // Any rejected quantity is worth reporting: the others may have filled, so
         // without this the alert would stay silent while one form kept the source text.
         setIcuRejected(results.some(({ res }) => suggestionRejectedForIcu(res)));
@@ -1829,9 +1843,10 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
         const results = await Promise.all(
           draftItem.items.map(async (ai) => ({
             ai,
-            res: await suggestTranslation(ai.source, targetLang, targetLocaleName),
+            res: await suggestTranslation(ai.source, targetLang, targetLocaleName, undefined, suggestAbort.signal),
           }))
         );
+        if (suggestAbort.signal.aborted) return;
         setIcuRejected(results.some(({ res }) => suggestionRejectedForIcu(res)));
         const anyFilled = results.some(({ res }) => isFillableSuggestion(res));
         const updated = results.map(({ ai, res }) => ({
@@ -1849,9 +1864,14 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
         );
       }
     } catch (err) {
-      console.error('Translation error:', err);
+      // An abort (new suggestion, or moving to another string) is not an error.
+      if (!suggestAbort.signal.aborted) console.error('Translation error:', err);
     } finally {
-      setIsSuggesting(false);
+      // Only the latest run owns the spinner: an aborted run must not hide a newer one.
+      if (suggestAbortRef.current === suggestAbort) {
+        suggestAbortRef.current = null;
+        setIsSuggesting(false);
+      }
     }
   };
 
@@ -1875,6 +1895,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
 
     let cancelled = false;
     let completed = false;
+    const autoAbort = new AbortController();
     autoTranslatedItemKeyRef.current = itemKey;
 
     const runAutoTranslate = async () => {
@@ -1883,7 +1904,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
         if (item.type === 'string') {
           const icuAsk = makeIcuAsk(targetLang, targetLocaleName);
           void prefetchAddedIcuClauses(item.source, targetLang, icuAsk.body, icuAsk.message);
-          const res = await suggestTranslation(item.source, targetLang, targetLocaleName);
+          const res = await suggestTranslation(item.source, targetLang, targetLocaleName, undefined, autoAbort.signal);
           if (cancelled) return;
           // A `heuristic` result means no engine produced anything usable and the source came
           // back untouched: filling the box and marking it translated would hide the string
@@ -1922,7 +1943,8 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                 pi.source,
                 targetLang,
                 targetLocaleName,
-                pi.quantity
+                pi.quantity,
+                autoAbort.signal
               ),
             }))
           );
@@ -1950,7 +1972,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
           const results = await Promise.all(
             item.items.map(async (ai) => ({
               ai,
-              res: await suggestTranslation(ai.source, targetLang, targetLocaleName),
+              res: await suggestTranslation(ai.source, targetLang, targetLocaleName, undefined, autoAbort.signal),
             }))
           );
           if (cancelled) return;
@@ -1973,7 +1995,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
           }
         }
       } catch (err) {
-        console.error('Auto-translation error:', err);
+        if (!cancelled) console.error('Auto-translation error:', err);
       } finally {
         if (!cancelled) {
           setIsSuggesting(false);
@@ -1985,6 +2007,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
 
     return () => {
       cancelled = true;
+      autoAbort.abort();
       if (!completed && autoTranslatedItemKeyRef.current === itemKey) {
         autoTranslatedItemKeyRef.current = null;
       }
