@@ -1141,3 +1141,20 @@ test('Suggest warns when the added plural forms could not be filled', async ({ p
   await expect(warn).toContainText(/zero|one|two|few|many|other/);
   if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/suggest-unfilled-warning.png` });
 });
+
+test('Suggest shows the added plural forms for an indented multi-line ICU string', async ({ page }) => {
+  await mockProviderApi(page);
+  await openAppWithProvider(page);
+  const xml = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="notes">\n        {count, plural,\n            =0 {No notifications}\n            one {# notification}\n            other {# notifications}\n        }\n    </string>\n</resources>`;
+  await page.click('#header-right-drawer-btn');
+  await page.click('#drawer-import-btn');
+  await page.fill('#import-project-name', 'Test App');
+  await page.getByRole('button', { name: /لصق نص XML|Paste XML/ }).click();
+  await page.locator('textarea').last().fill(xml);
+  await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
+  const fields = page.locator('[data-testid^="icu-field-"]');
+  await expect(fields).toHaveCount(7);
+  await page.click('#weblate-suggest-btn');
+  for (let i = 0; i < 7; i++) await expect(fields.nth(i)).not.toHaveValue('');
+  await expect(page.getByTestId('icu-unfilled-warning')).toHaveCount(0);
+});

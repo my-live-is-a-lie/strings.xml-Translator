@@ -176,3 +176,24 @@ describe('emptyAddedIcuCategories', () => {
     expect(emptyAddedIcuCategories(src, '{n, plural, one{# item} other{# items}}', 'de')).toEqual([]);
   });
 });
+
+describe('source with text around the block', () => {
+  it('keeps the added categories a suggestion filled when the target has no outer whitespace', () => {
+    const src = '\n        {count, plural,\n            =0 {No notifications}\n            one {# notification}\n            other {# notifications}\n        }\n    ';
+    const target = '{count, plural,\n=0 {لا}\nzero {# أ}\none {# ب}\ntwo {# ج}\nfew {# د}\nmany {# هـ}\nother {# و}\n}';
+    const model = getIcuFieldModel(src, target, 'ar')!;
+    const block = model.find((f) => f.kind === 'block') as import('./placeholderCheck').IcuBlockField;
+    expect(block.clauses.map((c) => c.selector + ':' + c.value)).toEqual(['=0:لا', 'zero:# أ', 'one:# ب', 'two:# ج', 'few:# د', 'many:# هـ', 'other:# و']);
+    expect(emptyAddedIcuCategories(src, target, 'ar')).toEqual([]);
+  });
+});
+
+describe('nested blocks', () => {
+  it('fills the added categories of a plural inside a select clause', async () => {
+    const src = '{g, select, male {{n, plural, one {He sent one} other {He sent #}}} other {{n, plural, one {They sent one} other {They sent #}}}}';
+    const sug = '{g, select, male {{n, plural, one {أرسل واحدة} other {أرسل #}}} other {{n, plural, one {أرسلوا واحدة} other {أرسلوا #}}}}';
+    const out = await fillAddedIcuClauses(src, sug, 'ar', async () => null, async (m) => m.replace(/\{(He|They) sent #\}/g, '{ب #}'));
+    expect(emptyAddedIcuCategories(src, out, 'ar')).toEqual([]);
+    expect(out).toContain('two {ب #}');
+  });
+});

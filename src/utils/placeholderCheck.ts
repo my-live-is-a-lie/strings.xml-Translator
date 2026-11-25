@@ -723,6 +723,28 @@ function buildIcuFieldModel(source: string, target: string): IcuField[] | null {
               blockFrame(candidate) === blockFrame(field)
           ) ?? targetBlocks.find((candidate) => nameOf(candidate) === nameOf(field) && !usedTargetBlocks.has(candidate));
         if (fromTarget) usedTargetBlocks.add(fromTarget);
+        // The target carries plural categories the source does not have (the ones the target language
+        // adds, filled by a suggestion): keep them. Pairing by the source's clauses alone dropped them,
+        // so they showed empty whenever the source had text around the block (an indented, multi-line
+        // string) and the target did not.
+        const pluralLike = field.type === 'plural' || field.type === 'selectordinal';
+        if (
+          fromTarget &&
+          pluralLike &&
+          fromTarget.clauses.some(
+            (c) => !c.selector.startsWith('=') && c.selector !== 'other' && !field.clauses.some((sc) => sc.selector === c.selector)
+          )
+        ) {
+          return {
+            ...fromTarget,
+            clauses: fromTarget.clauses.map((clause) => {
+              const sc =
+                field.clauses.find((c) => c.selector === clause.selector) ?? field.clauses.find((c) => c.selector === 'other');
+              const absent = !clause.selector.startsWith('=') && !field.clauses.some((c) => c.selector === clause.selector);
+              return attachChildren({ ...clause, sourceValue: sc?.value ?? '', ...(absent && clause.selector !== 'other' ? { added: true } : {}) });
+            }),
+          };
+        }
         return {
           ...field,
           clauses: field.clauses.map((clause) => {
