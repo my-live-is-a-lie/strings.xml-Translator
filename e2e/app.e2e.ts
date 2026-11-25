@@ -1157,4 +1157,8 @@ test('Suggest shows the added plural forms for an indented multi-line ICU string
   await page.click('#weblate-suggest-btn');
   for (let i = 0; i < 7; i++) await expect(fields.nth(i)).not.toHaveValue('');
   await expect(page.getByTestId('icu-unfilled-warning')).toHaveCount(0);
+  // Saving is not blocked by the line-break count: the added forms add no line breaks
+  await page.getByRole('button', { name: /حفظ بدون متابعة|Save & Stay/ }).click();
+  await expect(page.getByText(/عدد الأسطر الجديدة|line breaks/)).toHaveCount(0);
+  await expect(page.locator('[data-testid^="icu-field-"]').first()).not.toHaveValue('');
 });

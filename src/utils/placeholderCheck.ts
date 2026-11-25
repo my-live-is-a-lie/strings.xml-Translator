@@ -637,7 +637,12 @@ function blockWithClauses(block: IcuBlockField, clauses: IcuClauseField[]): IcuB
   const withSelector = (tail: string, selector: string) => tail.replace(SELECTOR_TAIL, `${selector}$2{`);
   const frame = [withSelector(block.frame[0], clauses[0].selector)];
   for (let k = 1; k < clauses.length; k++) {
-    frame.push(sep !== null ? withSelector(sep, clauses[k].selector) : `} ${clauses[k].selector} {`);
+    // A category the target language adds goes on the same line as the clause before it: the source's
+    // own line breaks stay as they are, so the translation keeps exactly the source's line-break count
+    // (a multi-line source would otherwise gain one line per added category and could not be saved).
+    if (sep === null) frame.push(`} ${clauses[k].selector} {`);
+    else if (clauses[k].added) frame.push(withSelector(sep.replace(/\s*[\r\n]\s*/g, ' '), clauses[k].selector));
+    else frame.push(withSelector(sep, clauses[k].selector));
   }
   frame.push(last);
   return { ...block, clauses, frame };

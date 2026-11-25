@@ -209,3 +209,14 @@ describe('selectordinal', () => {
     expect(emptyAddedIcuCategories(src, out, 'ar')).toEqual([]);
   });
 });
+
+describe('line breaks of a multi-line source', () => {
+  it('adds the target categories without adding line breaks', async () => {
+    const src = '\n        {count, plural,\n            =0 {No notifications}\n            one {# notification}\n            other {# notifications}\n        }\n    ';
+    const sug = '{count, plural,\n            =0 {لا}\n            one {# ب}\n            other {# و}\n        }';
+    const out = await fillAddedIcuClauses(src, sug, 'ar', async () => null, async () => '{n, plural, zero {# أ} two {# ج} few {# د} many {# هـ} other {# و}}');
+    const count = (t: string) => (t.match(/\n/g) || []).length;
+    expect(out).toContain('zero {# أ}');
+    expect(count(out)).toBe(count(src));
+  });
+});
