@@ -22,7 +22,7 @@ export const DemoBanner: React.FC<DemoBannerProps> = ({ isAr, placement, classNa
   return (
     <div
       role="note"
-      className={`flex ${placement === 'settings' ? 'flex-wrap' : ''} items-center gap-2 rounded-2xl border border-[#1EB996]/40 bg-[#1EB996]/10 px-3 py-2 text-[12px] text-slate-700 dark:text-slate-200 shrink-0 ${className}`}
+      className={`flex ${placement === 'settings' ? 'flex-wrap' : ''} items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 dark:border-[#283242] dark:bg-[#151922] px-3 py-2 text-[12px] text-slate-700 dark:text-slate-200 shrink-0 ${className}`}
     >
       <span className={`leading-snug ${placement === 'settings' ? 'basis-full' : 'flex-1 min-w-0'}`}>
         {isAr
@@ -33,7 +33,7 @@ export const DemoBanner: React.FC<DemoBannerProps> = ({ isAr, placement, classNa
         href={DOWNLOAD_URL}
         target="_blank"
         rel="noopener noreferrer"
-        className={`${placement === 'settings' ? 'flex-1 justify-center' : ''} inline-flex items-center gap-1.5 shrink-0 rounded-full bg-[#1EB996] px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-[#19a384] transition`}
+        className={`${placement === 'settings' ? 'flex-1 justify-center' : ''} inline-flex items-center gap-1.5 shrink-0 rounded-full bg-amber-500 px-3 py-1.5 text-[12px] font-semibold text-slate-900 hover:bg-amber-400 transition`}
       >
         <Download className="w-3.5 h-3.5" aria-hidden="true" />
         {isAr ? 'تحميل التطبيق' : 'Get the app'}
