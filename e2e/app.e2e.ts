@@ -1162,3 +1162,23 @@ test('Suggest shows the added plural forms for an indented multi-line ICU string
   await expect(page.getByText(/عدد الأسطر الجديدة|line breaks/)).toHaveCount(0);
   await expect(page.locator('[data-testid^="icu-field-"]').first()).not.toHaveValue('');
 });
+
+test('Suggest on a nested multi-line ICU string keeps the line-break count so it can be saved', async ({ page }) => {
+  await mockProviderApi(page);
+  await openAppWithProvider(page);
+  const inner = (w: string) => `{count, plural,\n                one {${w} sent one message}\n                other {${w} sent # messages}\n            }`;
+  const xml = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="act">\n        {gender, select,\n            male {${inner('He')}}\n            other {${inner('They')}}\n        }\n    </string>\n</resources>`;
+  await page.click('#header-right-drawer-btn');
+  await page.click('#drawer-import-btn');
+  await page.fill('#import-project-name', 'Test App');
+  await page.getByRole('button', { name: /لصق نص XML|Paste XML/ }).click();
+  await page.locator('textarea').last().fill(xml);
+  await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
+  const fields = page.locator('[data-testid^="icu-field-"]');
+  await page.click('#weblate-suggest-btn');
+  await expect(fields.first()).not.toHaveValue('');
+  const n = await fields.count();
+  for (let i = 0; i < n; i++) await expect(fields.nth(i)).not.toHaveValue('');
+  await page.getByRole('button', { name: /حفظ بدون متابعة|Save & Stay/ }).click();
+  await expect(page.getByText(/عدد الأسطر الجديدة|line breaks/)).toHaveCount(0);
+});

@@ -636,13 +636,28 @@ function blockWithClauses(block: IcuBlockField, clauses: IcuClauseField[]): IcuB
   const last = block.frame[block.frame.length - 1];
   const withSelector = (tail: string, selector: string) => tail.replace(SELECTOR_TAIL, `${selector}$2{`);
   const frame = [withSelector(block.frame[0], clauses[0].selector)];
+  // The block's own separators are handed out in order to the clauses it already had, so its line
+  // breaks are all kept and none is added. A category the target language adds sits on the same line
+  // as the clause before it. When such a category comes first, the opening already carries the
+  // block's first break, so the first clause that was there before also follows it on that line.
+  let sepIdx = 1;
+  let seenOriginal = !clauses[0].added;
   for (let k = 1; k < clauses.length; k++) {
-    // A category the target language adds goes on the same line as the clause before it: the source's
-    // own line breaks stay as they are, so the translation keeps exactly the source's line-break count
-    // (a multi-line source would otherwise gain one line per added category and could not be saved).
-    if (sep === null) frame.push(`} ${clauses[k].selector} {`);
-    else if (clauses[k].added) frame.push(withSelector(sep.replace(/\s*[\r\n]\s*/g, ' '), clauses[k].selector));
-    else frame.push(withSelector(sep, clauses[k].selector));
+    const own = block.frame[sepIdx] ?? sep;
+    if (sep === null || own === null || own === undefined) {
+      frame.push(`} ${clauses[k].selector} {`);
+      if (!clauses[k].added) sepIdx++;
+      continue;
+    }
+    if (clauses[k].added) {
+      frame.push(withSelector(own.replace(/\s*[\r\n]\s*/g, ' '), clauses[k].selector));
+    } else if (!seenOriginal) {
+      seenOriginal = true;
+      frame.push(withSelector(own.replace(/\s*[\r\n]\s*/g, ' '), clauses[k].selector));
+    } else {
+      frame.push(withSelector(own, clauses[k].selector));
+      sepIdx++;
+    }
   }
   frame.push(last);
   return { ...block, clauses, frame };

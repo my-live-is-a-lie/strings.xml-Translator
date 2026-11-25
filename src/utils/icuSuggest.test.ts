@@ -220,3 +220,15 @@ describe('line breaks of a multi-line source', () => {
     expect(count(out)).toBe(count(src));
   });
 });
+
+describe('line breaks of a nested multi-line source', () => {
+  it('keeps the source line-break count when a plural inside a select gains categories', async () => {
+    const branch = (w: string) => `{count, plural,\n                one {${w} sent one}\n                other {${w} sent #}\n            }`;
+    const src = `\n        {gender, select,\n            male {${branch('He')}}\n            other {${branch('They')}}\n        }\n    `;
+    const sug = src.replace(/(He|They) sent one/g, 'أرسل واحدة').replace(/(He|They) sent #/g, 'أرسل #').trim();
+    const out = await fillAddedIcuClauses(src, sug, 'ar', async () => null, async (m) => m.replace(/\{(He|They) sent #\}/g, '{ب #}'));
+    const count = (t: string) => (t.match(/\n/g) || []).length;
+    expect(out).toContain('zero {ب #}');
+    expect(count(out)).toBe(count(src));
+  });
+});
