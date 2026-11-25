@@ -21,6 +21,12 @@ import {
 import { useT, tg } from '../i18n/i18n';
 import { SecretField } from './SecretField';
 import { textDirection } from '../utils/direction';
+import {
+  fetchProviderModels,
+  providerSupportsModelChoice,
+  providerSupportsThinking,
+  THINKING_LEVELS,
+} from '../utils/providerModels';
 
 export function getProviderDisplayName(prov: TranslationProviderConfig | undefined, isAr: boolean): string {
   if (!prov) return tg('google_translate');
@@ -70,6 +76,11 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   const [editApiSecret, setEditApiSecret] = useState('');
   const [editFolderId, setEditFolderId] = useState('');
   const [isTestingEditKey, setIsTestingEditKey] = useState(false);
+  // Model / thinking pickers (providers that support them, e.g. Gemini)
+  const [editModel, setEditModel] = useState('');
+  const [editThinking, setEditThinking] = useState('auto');
+  const [editModelChoices, setEditModelChoices] = useState<string[]>([]);
+  const [editModelsLoading, setEditModelsLoading] = useState(false);
   const [editTestResult, setEditTestResult] = useState<ProviderTestResult | null>(null);
   const editNameInputRef = useRef<HTMLInputElement | null>(null);
   const editTestAbortRef = useRef<{ controller: AbortController; cancelled: boolean } | null>(null);
@@ -193,6 +204,11 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
       setNewApiKey('');
       setNewApiSecret('');
       setNewFolderId('');
+      // Providers with a model/thinking choice (Gemini) get their pickers opened right away,
+      // so the choices are saved with the provider the key was just verified for.
+      if (providerSupportsModelChoice(detectedType) || providerSupportsThinking(detectedType)) {
+        handleStartEditProvider(added);
+      }
     }
   };
 
@@ -215,6 +231,17 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
     }
     setEditFolderId(prov.folderId || '');
     setEditTestResult(null);
+    setEditModel(prov.model || '');
+    setEditThinking(prov.thinkingLevel || 'auto');
+    setEditModelChoices([]);
+    if (providerSupportsModelChoice(prov.type) && prov.apiKey) {
+      setEditModelsLoading(true);
+      fetchProviderModels(prov.type, prov.apiKey)
+        .then((models) => {
+          setEditModelChoices((current) => (editingProviderId === prov.id || current.length === 0 ? models : current));
+        })
+        .finally(() => setEditModelsLoading(false));
+    }
     setTimeout(() => {
       editNameInputRef.current?.focus();
     }, 60);
@@ -249,6 +276,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
       updateCustomProvider(prov.id, {
         name: trimmedName,
         type: targetEngine,
+        model: editModel,
+        thinkingLevel: editThinking === 'auto' ? '' : editThinking,
       });
       refresh();
       setEditingProviderId(null);
@@ -273,6 +302,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
       updateCustomProvider(prov.id, {
         name: trimmedName,
         apiKey: combinedKey,
+        model: editModel,
+        thinkingLevel: editThinking === 'auto' ? '' : editThinking,
         type: detectedType,
         folderId: detectedType === 'yandex' || detectedType === 'libretranslate' ? editedFolderId : '',
       });
@@ -501,6 +532,74 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                 className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
                               />
                             </div>
+
+                            {(providerSupportsModelChoice(prov.type) || providerSupportsThinking(prov.type)) && (
+                              <div className="flex flex-col gap-2 rounded-lg border border-slate-200/80 dark:border-[#2A3244] bg-slate-50/60 dark:bg-[#161C29] p-2">
+                                <span data-i18n className="text-[10px] font-semibold text-slate-600 dark:text-slate-300">
+                                  {t('pick_model_and_thinking')}
+                                </span>
+                                <div className="flex gap-2">
+                                  {providerSupportsModelChoice(prov.type) && (
+                                    <div className="flex flex-col gap-1 flex-1 min-w-0">
+                                      <label
+                                        htmlFor="edit-provider-model-select"
+                                        className="text-[10px] font-semibold text-slate-600 dark:text-slate-300"
+                                      >
+                                        {t('model')}
+                                      </label>
+                                      <select
+                                        id="edit-provider-model-select"
+                                        dir="ltr"
+                                        value={editModel}
+                                        onChange={(e) => setEditModel(e.target.value)}
+                                        className="w-full px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
+                                      >
+                                        <option value="">
+                                          {editModelsLoading ? '…' : t('model_auto_recommended')}
+                                        </option>
+                                        {editModelChoices.map((m) => (
+                                          <option key={m} value={m}>
+                                            {m}
+                                          </option>
+                                        ))}
+                                        {editModel && !editModelChoices.includes(editModel) && (
+                                          <option value={editModel}>{editModel}</option>
+                                        )}
+                                      </select>
+                                    </div>
+                                  )}
+                                  {providerSupportsThinking(prov.type) && (
+                                    <div className="flex flex-col gap-1 flex-1 min-w-0">
+                                      <label
+                                        htmlFor="edit-provider-thinking-select"
+                                        className="text-[10px] font-semibold text-slate-600 dark:text-slate-300"
+                                      >
+                                        {t('thinking_power')}
+                                      </label>
+                                      <select
+                                        id="edit-provider-thinking-select"
+                                        value={editThinking}
+                                        onChange={(e) => setEditThinking(e.target.value)}
+                                        className="w-full px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
+                                      >
+                                        <option value="auto">{t('thinking_auto')}</option>
+                                        {THINKING_LEVELS.map((level) => (
+                                          <option key={level} value={level}>
+                                            {level === 'minimal'
+                                              ? t('thinking_minimal')
+                                              : level === 'low'
+                                                ? t('thinking_low')
+                                                : level === 'medium'
+                                                  ? t('thinking_medium')
+                                                  : t('thinking_high')}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
 
                             {(prov.type === 'lara' ||
                               inferEngineFromName(editProviderName, 'auto') === 'lara') && (

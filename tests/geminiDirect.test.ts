@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { geminiTranslateDirect, isModelUnavailableMessage, looksLikeGeminiKey } from '../src/utils/geminiDirect';
+import { geminiTranslateDirect, geminiThinkingConfig, isModelUnavailableMessage, looksLikeGeminiKey } from '../src/utils/geminiDirect';
 
 const ok = (text: string) =>
   new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text }] } }] }), { status: 200 });
@@ -154,5 +154,65 @@ describe('hedged model race', () => {
     const start = Date.now();
     await expect(geminiTranslateDirect({ apiKey: 'bad', sourceText: 'Hello' })).rejects.toThrow(/not valid|غير صالح/i);
     expect(Date.now() - start).toBeLessThan(3500);
+  });
+});
+
+describe('geminiThinkingConfig', () => {
+  it('maps named levels for Gemini 3+ models', () => {
+    expect(geminiThinkingConfig('gemini-3.8-flash', 'low')).toEqual({ thinkingLevel: 'low' });
+    expect(geminiThinkingConfig('gemini-3.8-flash', 'minimal')).toEqual({ thinkingLevel: 'minimal' });
+    expect(geminiThinkingConfig('gemini-4-hydrogen', 'high')).toEqual({ thinkingLevel: 'high' });
+  });
+
+  it('maps levels to thinking budgets for Gemini 2.5 models', () => {
+    expect(geminiThinkingConfig('gemini-2.5-flash', 'minimal')).toEqual({ thinkingBudget: 0 });
+    expect(geminiThinkingConfig('gemini-2.5-flash', 'medium')).toEqual({ thinkingBudget: 8192 });
+    expect(geminiThinkingConfig('gemini-2.5-flash', 'high')).toEqual({ thinkingBudget: 24576 });
+  });
+
+  it('leaves the model default for auto/empty levels', () => {
+    expect(geminiThinkingConfig('gemini-3.8-flash', 'auto')).toBeUndefined();
+    expect(geminiThinkingConfig('gemini-3.8-flash', undefined)).toBeUndefined();
+    expect(geminiThinkingConfig('gemini-3.8-flash', '')).toBeUndefined();
+  });
+});
+
+describe('pinned model and thinking level', () => {
+  it('calls the pinned model first with its thinking config', async () => {
+    const calls: Array<{ url: string; body: { model?: string; generationConfig?: { thinkingConfig?: unknown } } }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        calls.push({ url, body: JSON.parse(String(init?.body || '{}')) });
+        return ok('مرحبا');
+      })
+    );
+    const text = await geminiTranslateDirect({
+      apiKey: 'k',
+      sourceText: 'Hello',
+      model: 'gemini-3.8-flash',
+      thinkingLevel: 'low',
+    });
+    expect(text).toBe('مرحبا');
+    expect(calls[0].url).toContain('gemini-3.8-flash');
+    expect(calls[0].body.generationConfig?.thinkingConfig).toEqual({ thinkingLevel: 'low' });
+  });
+
+  it('retries without the thinking config when the model rejects it', async () => {
+    const bodies: Array<{ generationConfig?: { thinkingConfig?: unknown } }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body || '{}'));
+        bodies.push(body);
+        if (body.generationConfig?.thinkingConfig) return err(400, 'Unknown field thinkingLevel in thinking config');
+        return ok('مرحبا');
+      })
+    );
+    expect(
+      await geminiTranslateDirect({ apiKey: 'k', sourceText: 'Hello', model: 'gemini-3.8-flash', thinkingLevel: 'high' })
+    ).toBe('مرحبا');
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1].generationConfig?.thinkingConfig).toBeUndefined();
   });
 });

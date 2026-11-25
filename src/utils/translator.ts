@@ -305,6 +305,10 @@ export interface TranslationProviderConfig {
   folderId?: string;
   isBuiltIn?: boolean;
   verifiedAt?: number;
+  /** Pinned model for providers that offer a choice (e.g. Gemini). Empty means auto. */
+  model?: string;
+  /** Thinking/reasoning strength for providers that support it (e.g. Gemini). Empty means the model default. */
+  thinkingLevel?: string;
 }
 
 const CUSTOM_PROVIDERS_STORAGE_KEY = 'custom_translation_providers_v1';
@@ -492,6 +496,8 @@ export function addCustomProvider(input: {
   type: ProviderEngineType;
   apiKey: string;
   folderId?: string;
+  model?: string;
+  thinkingLevel?: string;
 }): TranslationProviderConfig {
   const current = getCustomProviders();
   const newProvider: TranslationProviderConfig = {
@@ -500,6 +506,8 @@ export function addCustomProvider(input: {
     type: input.type,
     apiKey: input.apiKey.trim(),
     folderId: input.folderId?.trim() || undefined,
+    model: input.model?.trim() || undefined,
+    thinkingLevel: input.thinkingLevel || undefined,
     isBuiltIn: false,
     verifiedAt: Date.now(),
   };
@@ -516,6 +524,8 @@ export function updateCustomProvider(
     type?: ProviderEngineType;
     apiKey?: string;
     folderId?: string;
+    model?: string;
+    thinkingLevel?: string;
   }
 ): TranslationProviderConfig | null {
   const current = getCustomProviders();
@@ -530,6 +540,9 @@ export function updateCustomProvider(
     apiKey: updates.apiKey !== undefined ? updates.apiKey.trim() : existing.apiKey,
     folderId:
       updates.folderId !== undefined ? updates.folderId.trim() || undefined : existing.folderId,
+    model: updates.model !== undefined ? updates.model || undefined : existing.model,
+    thinkingLevel:
+      updates.thinkingLevel !== undefined ? updates.thinkingLevel || undefined : existing.thinkingLevel,
     verifiedAt: Date.now(),
   };
 
@@ -1284,6 +1297,8 @@ async function translateSingleSegmentUncached(
         targetLocaleName,
         pluralQuantity,
         signal,
+        model: activeProvider.type === 'gemini' ? activeProvider.model : undefined,
+        thinkingLevel: activeProvider.type === 'gemini' ? activeProvider.thinkingLevel : undefined,
       });
       const cleanedAi = stripMetadataLabels(translated, coreText);
       if (cleanedAi && !isPollutedTranslation(cleanedAi)) {

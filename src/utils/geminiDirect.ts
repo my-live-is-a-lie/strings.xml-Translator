@@ -80,6 +80,59 @@ async function discoverFlashModels(apiKey: string, signal?: AbortSignal): Promis
     .sort((a, b) => version(b) - version(a));
 }
 
+/**
+ * Lists every text model the key can call, for the model picker: Flash models first (they are the
+ * sensible translation choices), then the rest, each group newest first. Returns [] when the key
+ * or the network fails, so the picker can fall back to its static list.
+ */
+export async function listGeminiModels(apiKey: string, signal?: AbortSignal): Promise<string[]> {
+  try {
+    const res = await fetchWithTimeout(
+      `${API_ROOT}/models?pageSize=200`,
+      { headers: { 'x-goog-api-key': apiKey.trim() } },
+      10000,
+      signal
+    );
+    if (!res.ok) return [];
+    const data = (await res.json()) as { models?: Array<{ name?: string; supportedGenerationMethods?: string[] }> };
+    const version = (n: string) => Number((/gemini-(\d+(?:\.\d+)?)/.exec(n) || [])[1] || 0);
+    const usable = (data.models || [])
+      .filter((m) => m.name && (m.supportedGenerationMethods || []).includes('generateContent'))
+      .map((m) => (m.name as string).replace(/^models\//, ''))
+      .filter((n) => /^gemini-/.test(n) && !/(image|tts|live|audio|embedding|robotics|computer-use)/.test(n));
+    const flash = usable.filter((n) => /flash/.test(n));
+    const rest = usable.filter((n) => !/flash/.test(n));
+    const byVersion = (a: string, b: string) => version(b) - version(a);
+    return [...flash.sort(byVersion), ...rest.sort(byVersion)];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Maps the picker's thinking level onto the request shape the chosen model generation expects:
+ * `thinkingLevel` for Gemini 3 and later, a numeric `thinkingBudget` for Gemini 2.5 (which has no
+ * named levels: 0 disables thinking, so 'minimal' maps to it there). Returns undefined for 'auto'
+ * or an unknown level, leaving the model's own default.
+ */
+export function geminiThinkingConfig(
+  model: string,
+  level: string | undefined
+): { thinkingLevel?: string; thinkingBudget?: number } | undefined {
+  if (!level || level === 'auto') return undefined;
+  const major = Number((/gemini-(\d+)/.exec(model) || [])[1] || 0);
+  if (major >= 3) {
+    if (!['minimal', 'low', 'medium', 'high'].includes(level)) return undefined;
+    return { thinkingLevel: level };
+  }
+  if (major === 2) {
+    const budget: Record<string, number> = { minimal: 0, low: 1024, medium: 8192, high: 24576 };
+    if (!(level in budget)) return undefined;
+    return { thinkingBudget: budget[level] };
+  }
+  return undefined;
+}
+
 export async function geminiTranslateDirect(opts: {
   apiKey: string;
   sourceText: string;
@@ -88,6 +141,10 @@ export async function geminiTranslateDirect(opts: {
   pluralQuantity?: string;
   /** Aborts the call when the user cancels (distinct from the per-attempt timeout). */
   signal?: AbortSignal;
+  /** Pinned model from the provider's settings; raced first when set, the other candidates still follow. */
+  model?: string;
+  /** Thinking strength from the provider's settings ('auto'/undefined keeps the model default). */
+  thinkingLevel?: string;
 }): Promise<string> {
   const { apiKey, sourceText, targetLang = 'ar', targetLocaleName, pluralQuantity, signal } = opts;
   const langLabel = targetLocaleName ? `${targetLocaleName} (${targetLang})` : targetLang;
@@ -102,6 +159,9 @@ Source string:
 ${sourceText}`;
 
   const callModel = async (model: string, sig?: AbortSignal): Promise<string> => {
+    const generationConfig: Record<string, unknown> = { temperature: 0.1 };
+    const thinking = geminiThinkingConfig(model, opts.thinkingLevel);
+    if (thinking) generationConfig.thinkingConfig = thinking;
     const res = await fetchWithTimeout(
       `${API_ROOT}/models/${model}:generateContent`,
       {
@@ -113,12 +173,50 @@ ${sourceText}`;
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.1 },
+          generationConfig,
         }),
       },
       GEMINI_TIMEOUT_MS,
       sig
     );
+
+    // A model that does not know its thinking parameter answers 400; drop the setting and retry
+    // once rather than failing a provider the user just configured.
+    if (res.status === 400 && thinking) {
+      let msg = '';
+      try {
+        const body = (await res.clone().json()) as { error?: { message?: string } };
+        msg = body?.error?.message || '';
+      } catch (err) {
+        debugIgnored('geminiDirect', err);
+      }
+      if (/thinking/i.test(msg)) {
+        generationConfig.thinkingConfig = undefined;
+        delete generationConfig.thinkingConfig;
+        const retry = await fetchWithTimeout(
+          `${API_ROOT}/models/${model}:generateContent`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': apiKey.trim(),
+            },
+            body: JSON.stringify({
+              systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
+              contents: [{ role: 'user', parts: [{ text: prompt }] }],
+              generationConfig,
+            }),
+          },
+          GEMINI_TIMEOUT_MS,
+          sig
+        );
+        return handleModelResponse(retry);
+      }
+    }
+    return handleModelResponse(res);
+  };
+
+  const handleModelResponse = async (res: Response): Promise<string> => {
 
     if (!res.ok) {
       let message =
@@ -199,7 +297,7 @@ ${sourceText}`;
   // Hedged race over untried models: first success wins and aborts the rest, a fatal error
   // (bad key) rejects immediately, and a model that fails fast brings the next one in early.
   // Resolves null when every model failed, leaving the recorded errors for the caller.
-  const raceModels = (models: Array<string | null>): Promise<string | null> => {
+  const raceModels = (models: Array<string | null | undefined>): Promise<string | null> => {
     const fresh = models.filter((m): m is string => typeof m === 'string' && m.length > 0 && !tried.has(m));
     if (!fresh.length) return Promise.resolve(null);
     return new Promise<string | null>((resolve, reject) => {
@@ -241,7 +339,7 @@ ${sourceText}`;
     });
   };
 
-  const raced = await raceModels([workingModel, ...GEMINI_MODEL_CANDIDATES]);
+  const raced = await raceModels([opts.model, workingModel, ...GEMINI_MODEL_CANDIDATES]);
   if (raced !== null) return raced;
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
   const discovered = await raceModels(await discoverFlashModels(apiKey, signal));
