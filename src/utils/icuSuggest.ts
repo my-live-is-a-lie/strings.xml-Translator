@@ -1,8 +1,12 @@
 import { assembleIcuFields, getIcuFieldModel, setIcuClauseValue } from './placeholderCheck';
-import type { IcuBlockField } from './placeholderCheck';
+import type { IcuBlockField, IcuField } from './placeholderCheck';
 import { ARABIC_PLURAL_GLOSSARY } from './glossary';
 
 export type IcuQuantity = 'zero' | 'one' | 'two' | 'few' | 'many' | 'other';
+const NON_LATIN_TARGETS = new Set([
+  'ar', 'fa', 'ur', 'he', 'ps', 'ku', 'ru', 'uk', 'bg', 'sr', 'mk', 'be', 'kk', 'mn', 'el', 'hy', 'ka',
+  'zh', 'ja', 'ko', 'hi', 'bn', 'th', 'ta', 'te', 'ml', 'kn', 'mr', 'gu', 'pa', 'ne', 'si', 'my', 'km', 'lo',
+]);
 const QUANTITIES: readonly string[] = ['zero', 'one', 'two', 'few', 'many', 'other'];
 
 /**
@@ -27,15 +31,98 @@ export async function fillAddedIcuClauses(
   translateBody: (body: string, quantity: IcuQuantity) => Promise<string | null>,
   translateMessage?: (message: string) => Promise<string | null>
 ): Promise<string> {
-  let model = getIcuFieldModel(source, suggestion, targetLocale);
+  const model = getIcuFieldModel(source, suggestion, targetLocale);
   if (!model) return suggestion;
+  const { fields, changed } = await fillFields(model, targetLocale, translateBody, translateMessage);
+  return changed ? assembleIcuFields(fields) : suggestion;
+}
+
+type BodyFn = (body: string, quantity: IcuQuantity) => Promise<string | null>;
+type MessageFn = (message: string) => Promise<string | null>;
+
+/**
+ * Remembers each request's answer, so the same request is never sent twice. Used to start the
+ * added-category requests while the main suggestion is still on its way: the prefetch and the real
+ * fill ask for the same messages, and the second asker gets the first one's reply.
+ */
+export function memoizeIcuRequests(translateBody: BodyFn, translateMessage?: MessageFn) {
+  const bodies = new Map<string, Promise<string | null>>();
+  const messages = new Map<string, Promise<string | null>>();
+  const body: BodyFn = (text, quantity) => {
+    const key = `${quantity}\u0000${text}`;
+    if (!bodies.has(key)) bodies.set(key, translateBody(text, quantity).catch(() => null));
+    return bodies.get(key)!;
+  };
+  const message: MessageFn | undefined = translateMessage
+    ? (text) => {
+        if (!messages.has(text)) messages.set(text, translateMessage(text).catch(() => null));
+        return messages.get(text)!;
+      }
+    : undefined;
+  return { body, message };
+}
+
+/**
+ * Sends the added-category requests for `source` without waiting for the suggestion. It fills an
+ * empty suggestion, which asks for exactly the categories the real fill will ask for; the answers
+ * stay in the memoized functions. Never rejects.
+ */
+export async function prefetchAddedIcuClauses(
+  source: string,
+  targetLocale: string,
+  translateBody: BodyFn,
+  translateMessage?: MessageFn
+): Promise<void> {
+  try {
+    await fillAddedIcuClauses(source, '', targetLocale, translateBody, translateMessage);
+  } catch {
+    /* the real fill asks again and handles the failure */
+  }
+}
+
+/** Fills the added categories of every block in `fields`, including blocks nested in a clause body. */
+async function fillFields(
+  input: IcuField[],
+  targetLocale: string,
+  translateBody: (body: string, quantity: IcuQuantity) => Promise<string | null>,
+  translateMessage?: (message: string) => Promise<string | null>
+): Promise<{ fields: IcuField[]; changed: boolean }> {
+  let model = input;
   let changed = false;
   for (let f = 0; f < model.length; f++) {
     const field = model[f];
     if (field.kind !== 'block') continue;
-    const wanted: number[] = [];
-    for (let k = 0; k < field.clauses.length; k++) {
+    // A clause whose body holds its own block (a plural inside a select): fill that block too.
+    // The inner blocks are independent, so their requests go out at the same time.
+    const withChildren = field.clauses.map((c, k) => (c.children ? k : -1)).filter((k) => k >= 0);
+    const inners = await Promise.all(
+      withChildren.map((k) => fillFields(field.clauses[k].children!, targetLocale, translateBody, translateMessage))
+    );
+    withChildren.forEach((k, n) => {
+      const inner = inners[n];
+      if (!inner.changed) return;
       const clause = field.clauses[k];
+      const updated = { ...clause, children: inner.fields, value: assembleIcuFields(inner.fields) };
+      model = model.map((fl, i) =>
+        i === f && fl.kind === 'block' ? { ...fl, clauses: fl.clauses.map((c, j) => (j === k ? updated : c)) } : fl
+      );
+      changed = true;
+    });
+    // An English ordinal suffix ("#st", "#nd", "#th") has no translation. For a non-Latin target the
+    // suffix is dropped: every ordinal clause that is only "#" plus letters becomes a plain "#" (Arabic
+    // has one ordinal form, so the same text serves all the source's forms). No request is sent.
+    if (field.type === 'selectordinal' && NON_LATIN_TARGETS.has(targetLocale.split('-')[0].toLowerCase())) {
+      for (let k = 0; k < field.clauses.length; k++) {
+        const clause = field.clauses[k];
+        if (clause.children || !/^#[A-Za-z]{1,3}$/.test(clause.sourceValue.trim()) || clause.value === '#') continue;
+        model = setIcuClauseValue(model, f, k, '#');
+        changed = true;
+      }
+    }
+    const current = model[f] as IcuBlockField;
+    const wanted: number[] = [];
+    for (let k = 0; k < current.clauses.length; k++) {
+      const clause = current.clauses[k];
       if (!clause.added || clause.value.trim() || !QUANTITIES.includes(clause.selector)) continue;
       wanted.push(k);
     }
@@ -44,13 +131,13 @@ export async function fillAddedIcuClauses(
     // Arabic forms the built-in glossary already knows cost no request at all.
     if (targetLocale.split('-')[0].toLowerCase() === 'ar') {
       for (const k of wanted) {
-        const hit = ARABIC_PLURAL_GLOSSARY[field.clauses[k].sourceValue.trim()]?.[field.clauses[k].selector as IcuQuantity];
+        const hit = ARABIC_PLURAL_GLOSSARY[current.clauses[k].sourceValue.trim()]?.[current.clauses[k].selector as IcuQuantity];
         if (hit) filled.set(k, hit);
       }
     }
     const remaining = wanted.filter((k) => !filled.has(k));
     if (translateMessage && remaining.length > 1) {
-      const together = await translateTogether(field, remaining, translateMessage);
+      const together = await translateTogether(current, remaining, translateMessage);
       for (const [k, text] of together.filled) filled.set(k, text);
       for (const k of together.failed) skipped.add(k);
     }
@@ -58,7 +145,7 @@ export async function fillAddedIcuClauses(
       if (skipped.has(k)) continue;
       let text = filled.get(k) ?? null;
       if (!text) {
-        const clause = field.clauses[k];
+        const clause = current.clauses[k];
         try {
           text = await translateBody(clause.sourceValue, clause.selector as IcuQuantity);
         } catch {
@@ -71,7 +158,7 @@ export async function fillAddedIcuClauses(
       }
     }
   }
-  return changed ? assembleIcuFields(model) : suggestion;
+  return { fields: model, changed };
 }
 
 /** One request per distinct source body: the categories that share it go out as a single plural message. */
@@ -109,4 +196,33 @@ async function translateTogether(
     }
   }
   return { filled: out, failed };
+}
+
+
+/**
+ * The plural forms a suggestion left without a translation, so the editor can say so instead of
+ * leaving them silently empty: a category the target language adds that is still empty, and (for a
+ * target written in a non-Latin script) a form that still holds its English source text, which is
+ * what a failed request leaves behind. Returns the distinct selectors, in order.
+ */
+export function emptyAddedIcuCategories(source: string, text: string, targetLocale: string): string[] {
+  const model = getIcuFieldModel(source, text, targetLocale);
+  if (!model) return [];
+  const nonLatin = NON_LATIN_TARGETS.has(targetLocale.split('-')[0].toLowerCase());
+  const out: string[] = [];
+  const visit = (fields: IcuField[]) => {
+    for (const field of fields) {
+      if (field.kind !== 'block') continue;
+      for (const clause of field.clauses) {
+        if (clause.children) visit(clause.children);
+        if (!QUANTITIES.includes(clause.selector) || out.includes(clause.selector)) continue;
+        const value = clause.value.trim();
+        const empty = clause.added && !value;
+        const keptSource = nonLatin && !clause.children && value !== '' && value === clause.sourceValue.trim() && /[A-Za-z]{2,}/.test(value);
+        if (empty || keptSource) out.push(clause.selector);
+      }
+    }
+  };
+  visit(model);
+  return out;
 }

@@ -1082,3 +1082,103 @@ test('Suggest fills every plural category of the target language in an ICU messa
   for (let i = 0; i < 7; i++) await expect(fields.nth(i)).not.toHaveValue('');
   if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/suggest-all-plural-forms.png` });
 });
+
+const ICU_NOTES_XML = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="notes">{count, plural, =0{No notifications} one{# notification} other{# notifications}}</string>\n</resources>`;
+async function importIcuNotes(page: import('@playwright/test').Page) {
+  await page.click('#header-right-drawer-btn');
+  await page.click('#drawer-import-btn');
+  await page.fill('#import-project-name', 'Test App');
+  await page.getByRole('button', { name: /لصق نص XML|Paste XML/ }).click();
+  await page.locator('textarea').last().fill(ICU_NOTES_XML);
+  await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
+}
+
+test('ICU fields get the delete hint and "delete all" like plural forms', async ({ page }) => {
+  await mockProviderApi(page);
+  await openAppWithProvider(page);
+  await importIcuNotes(page);
+  const fields = page.locator('[data-testid^="icu-field-"]');
+  await expect(fields).toHaveCount(7);
+  await page.click('#weblate-suggest-btn');
+  for (let i = 0; i < 7; i++) await expect(fields.nth(i)).not.toHaveValue('');
+  const hint = page.getByTestId('plural-pick-hint');
+  // Nothing focused: the hint shows, a tap on a field clears that field only
+  await page.locator('[data-src-text]').first().click();
+  await page.click('#weblate-quick-delete-btn');
+  await expect(hint).toBeVisible();
+  await expect(hint).toHaveClass(/red/);
+  await expect(page.getByTestId('plural-delete-all')).toHaveText(/حذف الكل|Delete all/);
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/icu-delete-hint.png` });
+  await fields.nth(2).click();
+  await expect(fields.nth(2)).toHaveValue('');
+  await expect(fields.nth(1)).not.toHaveValue('');
+  await expect(hint).toHaveCount(0);
+  // "Delete all" clears every field
+  await page.locator('[data-src-text]').first().click();
+  await page.click('#weblate-quick-delete-btn');
+  await page.getByTestId('plural-delete-all').click();
+  for (let i = 0; i < 7; i++) await expect(fields.nth(i)).toHaveValue('');
+  await expect(hint).toHaveCount(0);
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/icu-delete-all-done.png` });
+});
+
+test('Suggest warns when the added plural forms could not be filled', async ({ page }) => {
+  // Built-in engines: Google is blocked; MyMemory answers the first 3 requests (one per source clause), then hits its limit
+  let calls = 0;
+  await page.route('**/translate.googleapis.com/**', (route) => route.abort());
+  await page.route('**/api.mymemory.translated.net/**', async (route) => {
+    calls += 1;
+    if (calls > 3) return route.fulfill({ status: 429, json: { responseStatus: 429, responseData: { translatedText: 'QUOTA' } } });
+    const q = new URL(route.request().url()).searchParams.get('q') ?? '';
+    return route.fulfill({ json: { responseStatus: 200, responseData: { translatedText: q.replace('notifications', 'إشعارات').replace('notification', 'إشعار') } } });
+  });
+  await page.goto('/');
+  await expect(page.locator('#header-load-sample-btn')).toBeVisible();
+  await importIcuNotes(page);
+  await page.click('#weblate-suggest-btn');
+  const warn = page.getByTestId('icu-unfilled-warning');
+  await expect(warn).toBeVisible();
+  await expect(warn).toContainText(/zero|one|two|few|many|other/);
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/suggest-unfilled-warning.png` });
+});
+
+test('Suggest shows the added plural forms for an indented multi-line ICU string', async ({ page }) => {
+  await mockProviderApi(page);
+  await openAppWithProvider(page);
+  const xml = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="notes">\n        {count, plural,\n            =0 {No notifications}\n            one {# notification}\n            other {# notifications}\n        }\n    </string>\n</resources>`;
+  await page.click('#header-right-drawer-btn');
+  await page.click('#drawer-import-btn');
+  await page.fill('#import-project-name', 'Test App');
+  await page.getByRole('button', { name: /لصق نص XML|Paste XML/ }).click();
+  await page.locator('textarea').last().fill(xml);
+  await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
+  const fields = page.locator('[data-testid^="icu-field-"]');
+  await expect(fields).toHaveCount(7);
+  await page.click('#weblate-suggest-btn');
+  for (let i = 0; i < 7; i++) await expect(fields.nth(i)).not.toHaveValue('');
+  await expect(page.getByTestId('icu-unfilled-warning')).toHaveCount(0);
+  // Saving is not blocked by the line-break count: the added forms add no line breaks
+  await page.getByRole('button', { name: /حفظ بدون متابعة|Save & Stay/ }).click();
+  await expect(page.getByText(/عدد الأسطر الجديدة|line breaks/)).toHaveCount(0);
+  await expect(page.locator('[data-testid^="icu-field-"]').first()).not.toHaveValue('');
+});
+
+test('Suggest on a nested multi-line ICU string keeps the line-break count so it can be saved', async ({ page }) => {
+  await mockProviderApi(page);
+  await openAppWithProvider(page);
+  const inner = (w: string) => `{count, plural,\n                one {${w} sent one message}\n                other {${w} sent # messages}\n            }`;
+  const xml = `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="act">\n        {gender, select,\n            male {${inner('He')}}\n            other {${inner('They')}}\n        }\n    </string>\n</resources>`;
+  await page.click('#header-right-drawer-btn');
+  await page.click('#drawer-import-btn');
+  await page.fill('#import-project-name', 'Test App');
+  await page.getByRole('button', { name: /لصق نص XML|Paste XML/ }).click();
+  await page.locator('textarea').last().fill(xml);
+  await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
+  const fields = page.locator('[data-testid^="icu-field-"]');
+  await page.click('#weblate-suggest-btn');
+  await expect(fields.first()).not.toHaveValue('');
+  const n = await fields.count();
+  for (let i = 0; i < n; i++) await expect(fields.nth(i)).not.toHaveValue('');
+  await page.getByRole('button', { name: /حفظ بدون متابعة|Save & Stay/ }).click();
+  await expect(page.getByText(/عدد الأسطر الجديدة|line breaks/)).toHaveCount(0);
+});

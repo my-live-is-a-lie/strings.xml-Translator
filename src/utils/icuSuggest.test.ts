@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fillAddedIcuClauses } from './icuSuggest';
+import { emptyAddedIcuCategories, fillAddedIcuClauses, memoizeIcuRequests, prefetchAddedIcuClauses } from './icuSuggest';
 import { getIcuFieldModel } from './placeholderCheck';
 
 const SRC = '{count, plural, =0{No notifications} one{# notification} other{# notifications}}';
@@ -160,5 +160,106 @@ describe('suggest fills the plural categories the target language adds', () => {
       );
       expect(typeof one).toBe('string');
     });
+  });
+});
+
+describe('emptyAddedIcuCategories', () => {
+  const src = '{n, plural, one{# item} other{# items}}';
+  it('lists added categories that are still empty', () => {
+    expect(emptyAddedIcuCategories(src, '{n, plural, one{# عنصر} other{# عناصر}}', 'ar')).toEqual(['zero', 'two', 'few', 'many']);
+  });
+  it('lists a form left in English for a non-Latin target, and nothing when all is filled', () => {
+    expect(emptyAddedIcuCategories(src, '{n, plural, zero{# ص} one{# عنصر} two{# ص} few{# ص} many{# ص} other{# items}}', 'ar')).toEqual(['other']);
+    expect(emptyAddedIcuCategories(src, '{n, plural, zero{# ص} one{# عنصر} two{# ص} few{# ص} many{# ص} other{# عناصر}}', 'ar')).toEqual([]);
+  });
+  it('does not flag an unchanged form for a Latin-script target', () => {
+    expect(emptyAddedIcuCategories(src, '{n, plural, one{# item} other{# items}}', 'de')).toEqual([]);
+  });
+});
+
+describe('source with text around the block', () => {
+  it('keeps the added categories a suggestion filled when the target has no outer whitespace', () => {
+    const src = '\n        {count, plural,\n            =0 {No notifications}\n            one {# notification}\n            other {# notifications}\n        }\n    ';
+    const target = '{count, plural,\n=0 {لا}\nzero {# أ}\none {# ب}\ntwo {# ج}\nfew {# د}\nmany {# هـ}\nother {# و}\n}';
+    const model = getIcuFieldModel(src, target, 'ar')!;
+    const block = model.find((f) => f.kind === 'block') as import('./placeholderCheck').IcuBlockField;
+    expect(block.clauses.map((c) => c.selector + ':' + c.value)).toEqual(['=0:لا', 'zero:# أ', 'one:# ب', 'two:# ج', 'few:# د', 'many:# هـ', 'other:# و']);
+    expect(emptyAddedIcuCategories(src, target, 'ar')).toEqual([]);
+  });
+});
+
+describe('nested blocks', () => {
+  it('fills the added categories of a plural inside a select clause', async () => {
+    const src = '{g, select, male {{n, plural, one {He sent one} other {He sent #}}} other {{n, plural, one {They sent one} other {They sent #}}}}';
+    const sug = '{g, select, male {{n, plural, one {أرسل واحدة} other {أرسل #}}} other {{n, plural, one {أرسلوا واحدة} other {أرسلوا #}}}}';
+    const out = await fillAddedIcuClauses(src, sug, 'ar', async () => null, async (m) => m.replace(/\{(He|They) sent #\}/g, '{ب #}'));
+    expect(emptyAddedIcuCategories(src, out, 'ar')).toEqual([]);
+    expect(out).toContain('two {ب #}');
+  });
+});
+
+describe('selectordinal', () => {
+  it('drops English ordinal suffixes for an Arabic target without a request', async () => {
+    const src = 'You finished {p, selectordinal, one {#st} two {#nd} few {#rd} other {#th}}!';
+    const sug = 'لقد أنهيت {p, selectordinal, one {#st} two {#nd} few {#ثالث} other {#th}}!';
+    let calls = 0;
+    const out = await fillAddedIcuClauses(src, sug, 'ar', async () => (calls++, null), async () => (calls++, null));
+    expect(out).toBe('لقد أنهيت {p, selectordinal, one {#} two {#} few {#} other {#}}!');
+    expect(calls).toBe(0);
+    expect(emptyAddedIcuCategories(src, out, 'ar')).toEqual([]);
+  });
+});
+
+describe('line breaks of a multi-line source', () => {
+  it('adds the target categories without adding line breaks', async () => {
+    const src = '\n        {count, plural,\n            =0 {No notifications}\n            one {# notification}\n            other {# notifications}\n        }\n    ';
+    const sug = '{count, plural,\n            =0 {لا}\n            one {# ب}\n            other {# و}\n        }';
+    const out = await fillAddedIcuClauses(src, sug, 'ar', async () => null, async () => '{n, plural, zero {# أ} two {# ج} few {# د} many {# هـ} other {# و}}');
+    const count = (t: string) => (t.match(/\n/g) || []).length;
+    expect(out).toContain('zero {# أ}');
+    expect(count(out)).toBe(count(src));
+  });
+});
+
+describe('line breaks of a nested multi-line source', () => {
+  it('keeps the source line-break count when a plural inside a select gains categories', async () => {
+    const branch = (w: string) => `{count, plural,\n                one {${w} sent one}\n                other {${w} sent #}\n            }`;
+    const src = `\n        {gender, select,\n            male {${branch('He')}}\n            other {${branch('They')}}\n        }\n    `;
+    const sug = src.replace(/(He|They) sent one/g, 'أرسل واحدة').replace(/(He|They) sent #/g, 'أرسل #').trim();
+    const out = await fillAddedIcuClauses(src, sug, 'ar', async () => null, async (m) => m.replace(/\{(He|They) sent #\}/g, '{ب #}'));
+    const count = (t: string) => (t.match(/\n/g) || []).length;
+    expect(out).toContain('zero {ب #}');
+    expect(count(out)).toBe(count(src));
+  });
+});
+
+describe('speed: concurrent and prefetched requests', () => {
+  it('sends the nested plurals\' requests at the same time', async () => {
+    const branch = (w: string) => `{count, plural, one {${w} one} other {${w} #}}`;
+    const src = `{gender, select, male {${branch('He')}} other {${branch('They')}}}`;
+    const sug = src.replace(/(He|They) one/g, 'واحد').replace(/(He|They) #/g, 'أ #');
+    let inFlight = 0;
+    let peak = 0;
+    const out = await fillAddedIcuClauses(src, sug, 'ar', async () => null, async (m) => {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      await new Promise((r) => setTimeout(r, 10));
+      inFlight--;
+      return m.replace(/\{(He|They) #\}/g, '{ب #}');
+    });
+    expect(peak).toBe(2);
+    expect(out).toContain('zero {ب #}');
+  });
+
+  it('a prefetch and the real fill send each request once', async () => {
+    const src = '{count, plural, one {# item} other {# items}}';
+    const sug = '{count, plural, one {# عنصر} other {# عناصر}}';
+    let sent = 0;
+    const ask = memoizeIcuRequests(async () => null, async (m) => (sent++, m.replace(/items/g, 'ع')));
+    const prefetch = prefetchAddedIcuClauses(src, 'ar', ask.body, ask.message);
+    const out = await fillAddedIcuClauses(src, sug, 'ar', ask.body, ask.message);
+    await prefetch;
+    expect(sent).toBe(1);
+    expect(out).toContain('zero {# ع}');
   });
 });

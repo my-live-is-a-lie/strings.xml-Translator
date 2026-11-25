@@ -382,6 +382,11 @@ export const UI_STRINGS: Record<string, { en: string; ar: string }> = {
   "not_saved_icu_incomplete": { en: "Not saved. Translate every field of the message to save it:", ar: "لم يُحفظ النص. يجب ترجمة كل حقول الرسالة ليتم حفظها:" },
   "array_pick_item_first": { en: "Click the item you want first.", ar: "اضغط على العنصر المطلوب أولًا." },
   "delete_all_fields": { en: "Delete all", ar: "حذف الكل" },
+  "icu_pick_field_first": { en: "Click the field you want first.", ar: "اضغط على الحقل المطلوب أولًا." },
+  "suggest_forms_incomplete": {
+    en: "Some plural forms have no translation (%1$s). The translation engine did not answer for them (a daily limit, a slow network or an unusable reply). Press Suggest again in a moment, or type them by hand.",
+    ar: "بعض الصيغ بلا ترجمة (%1$s). لم يردّ محرّك الترجمة عليها (حدّ يومي أو شبكة بطيئة أو ردّ غير صالح). اضغط «اقترح» مرة أخرى بعد قليل، أو اكتبها يدويًا."
+  },
   "plural_source_singular": { en: "Singular", ar: "مفرد" },
   "plural_source_plural": { en: "Plural", ar: "الجمع" },
   "plural_pick_form_first": { en: "Click the plural form you want first.", ar: "اضغط على الصيغة المطلوبة أولًا." },

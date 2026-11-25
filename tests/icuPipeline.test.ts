@@ -49,7 +49,8 @@ describe('ICU blocks survive the machine-translation path', () => {
     replyWith('لديك {count, plural, one {# رسالة} other {# رسائل}}');
     const res = await suggestTranslation(PLURAL, 'ar');
     expect(res.text).toBe('لديك {count, plural, one {# رسالة} other {# رسائل}}');
-    expect(res.source).toBe('google');
+    // Google always translates the ICU keywords, so a whole block is never asked of it: MyMemory answers.
+    expect(res.source).toBe('mymemory');
     expect(validatePlaceholders(PLURAL, res.text, 'ar').valid).toBe(true);
   });
 
@@ -365,7 +366,7 @@ describe('a rejected suggestion is reported honestly', () => {
         const q = new URL(String(url)).searchParams.get('q') ?? '';
         // This reply mangles the keywords, so the whole-block check rejects it, and the
         // empty replies stop the per-clause fallback from translating the pieces either.
-        if (q.startsWith('You have {')) return gtxOk('{العدد، جمع، واحد {# رسالة}}');
+        if (q.startsWith('You have {')) return myMemoryOk('{العدد، جمع، واحد {# رسالة}}');
         if (q === 'Messages') return gtxOk('الرسائل');
         return gtxOk('');
       })
