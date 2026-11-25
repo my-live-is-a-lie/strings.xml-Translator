@@ -1,5 +1,11 @@
 import type { ProviderEngineType } from './translator';
-import { GEMINI_MODEL_CANDIDATES, listGeminiModels } from './geminiDirect';
+import { GEMINI_MODEL_CANDIDATES, keepLatestGeneration, listGeminiModels } from './geminiDirect';
+
+/** Static fallback for the picker, trimmed the same way as the fetched list (latest generation only). */
+const FALLBACK_MODELS = (() => {
+  const fresh = keepLatestGeneration(GEMINI_MODEL_CANDIDATES);
+  return fresh.length ? fresh : [...GEMINI_MODEL_CANDIDATES];
+})();
 
 /** Thinking strengths a provider's picker can offer. 'auto' keeps the model's own default. */
 export const THINKING_LEVELS = ['minimal', 'low', 'medium', 'high'] as const;
@@ -44,8 +50,8 @@ export function getProviderModelsSnapshot(
   if (hit) return hit;
   modelListStore.set(storeKey, 'loading');
   listGeminiModels(apiKey)
-    .then((models) => (models.length ? models : [...GEMINI_MODEL_CANDIDATES]))
-    .catch(() => [...GEMINI_MODEL_CANDIDATES])
+    .then((models) => (models.length ? models : [...FALLBACK_MODELS]))
+    .catch(() => [...FALLBACK_MODELS])
     .then((models) => {
       modelListStore.set(storeKey, models);
       modelListListeners.forEach((cb) => cb());

@@ -3,7 +3,7 @@ import { useDialog } from '../utils/useDialog';
 import { createPortal } from 'react-dom';
 import { AlertCircle, Check, CheckCircle2, ChevronDown, Cpu, KeyRound, Loader2, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { ENGINE_OPTIONS } from './headerOptions';
-import { testGeminiKeyDirect, looksLikeGeminiKey } from '../utils/geminiDirect';
+import { testGeminiKeyDirect, looksLikeGeminiKey, probeGeminiModel } from '../utils/geminiDirect';
 import {
   TranslationProviderConfig,
   ProviderEngineType,
@@ -26,8 +26,8 @@ import {
   providerSupportsModelChoice,
   providerSupportsThinking,
   subscribeModelLists,
-  THINKING_LEVELS,
 } from '../utils/providerModels';
+import { geminiThinkingLevelsForModel } from '../utils/geminiDirect';
 
 export function getProviderDisplayName(prov: TranslationProviderConfig | undefined, isAr: boolean): string {
   if (!prov) return tg('google_translate');
@@ -316,13 +316,57 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   const modelChoices = Array.isArray(modelListResult) ? modelListResult : [];
   const activeModelsLoading = modelListResult === 'loading';
 
+  const [modelProbe, setModelProbe] = useState<'idle' | 'checking' | 'unavailable'>('idle');
+  const modelProbeSeq = useRef(0);
+
+  // The thinking picker only offers the levels the pinned model accepts (per Google's thinking
+  // docs table); on 'auto' it follows the top model in the fetched list. A stored level that the
+  // current model rejects displays and saves as 'auto'.
+  const thinkingModelRef = activeProviderObj?.model || modelChoices[0] || '';
+  const thinkingLevels = activeProviderObj
+    ? geminiThinkingLevelsForModel(thinkingModelRef)
+    : [];
+  const storedThinking = activeProviderObj?.thinkingLevel || 'auto';
+  const effectiveThinking =
+    storedThinking !== 'auto' && !thinkingLevels.includes(storedThinking) ? 'auto' : storedThinking;
+
   const saveActiveModelChoice = (model: string, thinkingLevel: string) => {
     if (!activeProviderObj || activeProviderObj.isBuiltIn) return;
-    updateCustomProvider(activeProviderObj.id, {
-      model,
-      thinkingLevel: thinkingLevel === 'auto' ? '' : thinkingLevel,
-    });
-    refresh();
+    const providerId = activeProviderObj.id;
+    const apiKey = activeProviderObj.apiKey;
+    // Switching models can invalidate the stored level (e.g. minimal exists on 3.6/3-flash but
+    // not on 3.8); a level the new model rejects falls back to 'auto'.
+    const levelForModel =
+      thinkingLevel !== 'auto' && model && !geminiThinkingLevelsForModel(model).includes(thinkingLevel)
+        ? 'auto'
+        : thinkingLevel;
+    const persist = () => {
+      updateCustomProvider(providerId, {
+        model,
+        thinkingLevel: levelForModel === 'auto' ? '' : levelForModel,
+      });
+      refresh();
+    };
+    // A pinned model is probed with a one-token call first: the list endpoint names models the
+    // key cannot actually run (other tiers, freshly retired), and picking one of those should say
+    // so instead of silently saving a choice that 404s on the next suggestion.
+    if (model && activeProviderObj.type === 'gemini' && apiKey) {
+      const seq = ++modelProbeSeq.current;
+      setModelProbe('checking');
+      void probeGeminiModel(apiKey, model).then((availability) => {
+        if (seq !== modelProbeSeq.current) return;
+        if (availability === 'unavailable') {
+          setModelProbe('unavailable');
+          return;
+        }
+        setModelProbe('idle');
+        persist();
+      });
+      return;
+    }
+    modelProbeSeq.current += 1;
+    setModelProbe('idle');
+    persist();
   };
 
   return (
@@ -378,7 +422,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                         dir="ltr"
                         value={activeProviderObj.model || ''}
                         onChange={(e) =>
-                          saveActiveModelChoice(e.target.value, activeProviderObj.thinkingLevel || 'auto')
+                          saveActiveModelChoice(e.target.value, effectiveThinking)
                         }
                         className="w-full px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
                       >
@@ -406,12 +450,12 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                       </label>
                       <select
                         id="active-provider-thinking-select"
-                        value={activeProviderObj.thinkingLevel || 'auto'}
+                        value={effectiveThinking}
                         onChange={(e) => saveActiveModelChoice(activeProviderObj.model || '', e.target.value)}
                         className="w-full px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
                       >
                         <option value="auto">{t('thinking_auto')}</option>
-                        {THINKING_LEVELS.map((level) => (
+                        {thinkingLevels.map((level) => (
                           <option key={level} value={level}>
                             {level === 'minimal'
                               ? t('thinking_minimal')
@@ -419,13 +463,36 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                 ? t('thinking_low')
                                 : level === 'medium'
                                   ? t('thinking_medium')
-                                  : t('thinking_high')}
+                                  : level === 'high'
+                                    ? t('thinking_high')
+                                    : t('thinking_xhigh')}
                           </option>
                         ))}
                       </select>
                     </div>
                   )}
                 </div>
+                {modelProbe !== 'idle' && (
+                  <div
+                    className={`flex items-center gap-1.5 text-[10px] ${
+                      modelProbe === 'unavailable'
+                        ? 'text-red-500 dark:text-red-400'
+                        : 'text-slate-500 dark:text-slate-400'
+                    }`}
+                  >
+                    {modelProbe === 'checking' ? (
+                      <>
+                        <Loader2 className="w-3 h-3 animate-spin shrink-0" />
+                        <span>{t('checking_model_availability')}</span>
+                      </>
+                    ) : (
+                      <>
+                        <AlertCircle className="w-3 h-3 shrink-0" />
+                        <span>{t('model_not_available_on_plan')}</span>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 

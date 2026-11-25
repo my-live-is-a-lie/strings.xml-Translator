@@ -100,8 +100,9 @@ export async function listGeminiModels(apiKey: string, signal?: AbortSignal): Pr
       .filter((m) => m.name && (m.supportedGenerationMethods || []).includes('generateContent'))
       .map((m) => (m.name as string).replace(/^models\//, ''))
       .filter((n) => /^gemini-/.test(n) && !/(image|tts|live|audio|embedding|robotics|computer-use)/.test(n));
-    const flash = usable.filter((n) => /flash/.test(n));
-    const rest = usable.filter((n) => !/flash/.test(n));
+    const fresh = keepLatestGeneration(usable);
+    const flash = fresh.filter((n) => /flash/.test(n));
+    const rest = fresh.filter((n) => !/flash/.test(n));
     const byVersion = (a: string, b: string) => version(b) - version(a);
     return [...flash.sort(byVersion), ...rest.sort(byVersion)];
   } catch {
@@ -110,19 +111,108 @@ export async function listGeminiModels(apiKey: string, signal?: AbortSignal): Pr
 }
 
 /**
+ * The models endpoint lists every model the API ever served, including retired generations that
+ * now answer 404 (e.g. gemini-2.5-flash) and tiers the caller's plan may not include. The plan
+ * part cannot be read from the list, but the retired part follows the version number, so the
+ * picker only offers the newest major generation the endpoint returned. Models without a version
+ * (aliases like gemini-flash-latest) are dropped here: 'auto' already races them.
+ */
+export function keepLatestGeneration(models: string[]): string[] {
+  const versioned = models.filter((n) => /^gemini-\d/.test(n));
+  const maxMajor = versioned.reduce(
+    (max, n) => Math.max(max, Number((/^gemini-(\d+)/.exec(n) || [])[1] || 0)),
+    0
+  );
+  if (maxMajor === 0) return [];
+  return versioned.filter((n) => Number((/^gemini-(\d+)/.exec(n) || [])[1] || 0) === maxMajor);
+}
+
+export type ModelAvailability = 'ok' | 'unavailable' | 'unknown';
+
+/**
+ * Answers whether this key can actually call this model, with the smallest possible generateContent
+ * probe. 'unavailable' means the API said the model is retired, unknown, or not for this key
+ * (isModelUnavailableMessage); 'unknown' covers rate limits, timeouts and server errors, where the
+ * pick should still be saved because the translation failover recovers from a bad model.
+ */
+export async function probeGeminiModel(
+  apiKey: string,
+  model: string,
+  signal?: AbortSignal
+): Promise<ModelAvailability> {
+  try {
+    const res = await fetchWithTimeout(
+      `${API_ROOT}/models/${model}:generateContent`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey.trim(),
+        },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: 'Hi' }] }],
+          generationConfig: { maxOutputTokens: 1, temperature: 0 },
+        }),
+      },
+      15000,
+      signal
+    );
+    if (res.ok) return 'ok';
+    let message = '';
+    try {
+      const body = (await res.json()) as { error?: { message?: string } };
+      message = body?.error?.message || '';
+    } catch (err) {
+      debugIgnored('geminiDirect', err);
+    }
+    return isModelUnavailableMessage(res.status, message) ? 'unavailable' : 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
+/**
+ * Thinking levels each model accepts, from Google's thinking docs
+ * (https://ai.google.dev/gemini-api/docs/thinking). The models endpoint only exposes whether a
+ * model thinks at all (`thinking: boolean` on the Model resource); the per-model level list is
+ * documentation, not API data, so it is a table here. First match wins, specific before generic.
+ */
+const THINKING_LEVEL_TABLE: Array<[RegExp, string[]]> = [
+  [/^gemini-4-(neon|hydrogen)/, ['low', 'medium', 'high', 'xhigh']],
+  [/^gemini-4-/, ['low', 'medium', 'high']],
+  [/^gemini-3-pro/, ['low', 'high']],
+  [/^gemini-3\.8-flash/, ['low', 'medium', 'high']],
+  [/^gemini-3\.1-flash-lite-image/, ['minimal', 'high']],
+  [/^gemini-3(\.\d+)?-flash-lite/, ['minimal', 'low', 'medium', 'high']],
+  [/^gemini-3(\.(?!8)\d+)?-flash/, ['minimal', 'low', 'medium', 'high']],
+  [/^gemini-3/, ['low', 'medium', 'high']],
+  [/^gemini-2\.5/, ['low', 'medium', 'high']],
+];
+const DEFAULT_THINKING_LEVELS = ['low', 'medium', 'high'];
+
+/** Levels the thinking picker may offer for this model. Unknown models get the safe middle set. */
+export function geminiThinkingLevelsForModel(model: string | undefined): string[] {
+  if (!model) return DEFAULT_THINKING_LEVELS;
+  for (const [pattern, levels] of THINKING_LEVEL_TABLE) {
+    if (pattern.test(model)) return levels;
+  }
+  return DEFAULT_THINKING_LEVELS;
+}
+
+/**
  * Maps the picker's thinking level onto the request shape the chosen model generation expects:
  * `thinkingLevel` for Gemini 3 and later, a numeric `thinkingBudget` for Gemini 2.5 (which has no
  * named levels: 0 disables thinking, so 'minimal' maps to it there). Returns undefined for 'auto'
- * or an unknown level, leaving the model's own default.
+ * or a level the model does not support, leaving the model's own default.
  */
 export function geminiThinkingConfig(
   model: string,
   level: string | undefined
 ): { thinkingLevel?: string; thinkingBudget?: number } | undefined {
   if (!level || level === 'auto') return undefined;
+  if (!geminiThinkingLevelsForModel(model).includes(level)) return undefined;
   const major = Number((/gemini-(\d+)/.exec(model) || [])[1] || 0);
   if (major >= 3) {
-    if (!['minimal', 'low', 'medium', 'high'].includes(level)) return undefined;
     return { thinkingLevel: level };
   }
   if (major === 2) {

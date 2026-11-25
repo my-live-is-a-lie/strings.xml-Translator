@@ -160,12 +160,14 @@ describe('hedged model race', () => {
 describe('geminiThinkingConfig', () => {
   it('maps named levels for Gemini 3+ models', () => {
     expect(geminiThinkingConfig('gemini-3.8-flash', 'low')).toEqual({ thinkingLevel: 'low' });
-    expect(geminiThinkingConfig('gemini-3.8-flash', 'minimal')).toEqual({ thinkingLevel: 'minimal' });
+    // minimal is not supported on 3.8-flash per the thinking docs, so it is dropped to the default
+    expect(geminiThinkingConfig('gemini-3.8-flash', 'minimal')).toBeUndefined();
+    expect(geminiThinkingConfig('gemini-3-flash-preview', 'minimal')).toEqual({ thinkingLevel: 'minimal' });
     expect(geminiThinkingConfig('gemini-4-hydrogen', 'high')).toEqual({ thinkingLevel: 'high' });
   });
 
   it('maps levels to thinking budgets for Gemini 2.5 models', () => {
-    expect(geminiThinkingConfig('gemini-2.5-flash', 'minimal')).toEqual({ thinkingBudget: 0 });
+    expect(geminiThinkingConfig('gemini-2.5-flash', 'low')).toEqual({ thinkingBudget: 1024 });
     expect(geminiThinkingConfig('gemini-2.5-flash', 'medium')).toEqual({ thinkingBudget: 8192 });
     expect(geminiThinkingConfig('gemini-2.5-flash', 'high')).toEqual({ thinkingBudget: 24576 });
   });
