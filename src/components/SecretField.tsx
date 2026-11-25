@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Eye, EyeClosed, Clipboard, X } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
 import { useT } from '../i18n/i18n';
 
 const PEEK_MS = 1800;
@@ -57,9 +58,21 @@ export function SecretField({
     setPeek(false);
   };
 
+  // The Web Clipboard API is unreliable inside the Capacitor WebView (Android rejects
+  // navigator.clipboard.readText() without a native permission grant), so the native
+  // Clipboard plugin reads the clipboard there; the web API stays for browsers.
+  const readClipboard = async (): Promise<string> => {
+    if (Capacitor.isNativePlatform()) {
+      const { Clipboard: NativeClipboard } = await import('@capacitor/clipboard');
+      const { value } = await NativeClipboard.read();
+      return value || '';
+    }
+    return navigator.clipboard.readText();
+  };
+
   const handlePaste = async () => {
     try {
-      const text = (await navigator.clipboard.readText()).trim();
+      const text = (await readClipboard()).trim();
       if (text) {
         onChange(text);
         startPeek();

@@ -21,9 +21,16 @@ Follow these strict rules for every translation:
 4. Use natural, concise mobile UI terminology appropriate for Android applications (for example, translate "Install" to "تثبيت" in Arabic).
 5. Preserve leading or trailing whitespace and outer quotes only if they exist in the source string.`;
 
-/** fetch() with a hard timeout so a slow provider can never freeze a translation. */
-export function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = 10000): Promise<Response> {
-  return fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+/** fetch() with a hard timeout so a slow provider can never freeze a translation.
+ *  An optional caller signal (e.g. a Cancel button) is combined with the timeout. */
+export function fetchWithTimeout(
+  url: string,
+  init: RequestInit = {},
+  timeoutMs = 10000,
+  signal?: AbortSignal
+): Promise<Response> {
+  const combined = signal ? AbortSignal.any([AbortSignal.timeout(timeoutMs), signal]) : AbortSignal.timeout(timeoutMs);
+  return fetch(url, { ...init, signal: combined });
 }
 
 /** Maps an HTTP status from a provider to a message the user can act on (Arabic first). */

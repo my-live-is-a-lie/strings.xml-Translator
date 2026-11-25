@@ -19,6 +19,7 @@
   "dependencies": {
     "@capacitor/android": "^8.5.1",
     "@capacitor/cli": "^8.5.1",
+    "@capacitor/clipboard": "^8.0.1",
     "@capacitor/core": "^8.5.1",
     "@capacitor/filesystem": "^8.1.5",
     "@capacitor/share": "^8.0.3",

@@ -10,7 +10,9 @@ const API_ROOT = 'https://generativelanguage.googleapis.com/v1beta';
 // name is trusted: the alias that always points at the current Flash model goes first, then pinned names,
 // and as a last resort the list of models the key can actually use is asked for.
 export const GEMINI_MODEL_CANDIDATES = ['gemini-flash-latest', 'gemini-3.8-flash', 'gemini-2.5-flash'];
-const GEMINI_TIMEOUT_MS = 15000;
+// High-demand spikes make a healthy model answer in 20s+ sometimes; the per-attempt timeout must
+// outlast that or every candidate times out one after another and verification always fails.
+const GEMINI_TIMEOUT_MS = 30000;
 
 let workingModel: string | null = null;
 
@@ -46,11 +48,12 @@ export function isModelUnavailableMessage(status: number, message: string): bool
 }
 
 /** Asks Google which models this key can call and returns Flash models, newest first. */
-async function discoverFlashModels(apiKey: string): Promise<string[]> {
+async function discoverFlashModels(apiKey: string, signal?: AbortSignal): Promise<string[]> {
   const res = await fetchWithTimeout(
     `${API_ROOT}/models?pageSize=200`,
     { headers: { 'x-goog-api-key': apiKey.trim() } },
-    GEMINI_TIMEOUT_MS
+    GEMINI_TIMEOUT_MS,
+    signal
   );
   if (!res.ok) return [];
   const data = (await res.json()) as { models?: Array<{ name?: string; supportedGenerationMethods?: string[] }> };
@@ -68,8 +71,10 @@ export async function geminiTranslateDirect(opts: {
   targetLang?: string;
   targetLocaleName?: string;
   pluralQuantity?: string;
+  /** Aborts the call when the user cancels (distinct from the per-attempt timeout). */
+  signal?: AbortSignal;
 }): Promise<string> {
-  const { apiKey, sourceText, targetLang = 'ar', targetLocaleName, pluralQuantity } = opts;
+  const { apiKey, sourceText, targetLang = 'ar', targetLocaleName, pluralQuantity, signal } = opts;
   const langLabel = targetLocaleName ? `${targetLocaleName} (${targetLang})` : targetLang;
   const pluralContext = pluralQuantity
     ? `\nThis value is the "${pluralQuantity}" CLDR plural form for ${langLabel}. Translate only this form; ` +
@@ -96,7 +101,8 @@ ${sourceText}`;
           generationConfig: { temperature: 0.1 },
         }),
       },
-      GEMINI_TIMEOUT_MS
+      GEMINI_TIMEOUT_MS,
+      signal
     );
 
     if (!res.ok) {
@@ -138,8 +144,18 @@ ${sourceText}`;
     return text;
   };
 
+  // A flaky model (overloaded 503, rate limit, timeout, network hiccup) must fail over to the
+  // next candidate, not kill the whole call: during demand spikes the first alias can hang while
+  // the next pinned model answers fine. The last such error is surfaced only if every model fails.
+  const isTransientError = (err: unknown): boolean => {
+    if (err instanceof GeminiHttpError) return err.status >= 500 || err.status === 429;
+    if (err instanceof TypeError) return true; // network failure
+    return err instanceof DOMException && (err.name === 'TimeoutError' || err.name === 'AbortError');
+  };
+
   const tried = new Set<string>();
   let structureError: GeminiStructureError | null = null;
+  let transientError: unknown = null;
   const attempt = async (model: string): Promise<string | null> => {
     if (tried.has(model)) return null;
     tried.add(model);
@@ -148,12 +164,17 @@ ${sourceText}`;
       workingModel = model;
       return out;
     } catch (err) {
+      if (signal?.aborted) throw err; // the user cancelled: stop, don't fail over
       if (err instanceof GeminiHttpError && err.modelUnavailable) return null; // try the next model
       // A reply that breaks the ICU structure is worth retrying on another model too,
       // but the model itself works, so it stays the working model.
       if (err instanceof GeminiStructureError) {
         structureError = err;
         return null;
+      }
+      if (isTransientError(err)) {
+        transientError = err;
+        return null; // overloaded/slow model: try the next candidate
       }
       throw err;
     }
@@ -164,7 +185,7 @@ ${sourceText}`;
     const out = await attempt(model);
     if (out !== null) return out;
   }
-  for (const model of await discoverFlashModels(apiKey)) {
+  for (const model of await discoverFlashModels(apiKey, signal)) {
     const out = await attempt(model);
     if (out !== null) return out;
   }
@@ -172,13 +193,15 @@ ${sourceText}`;
   // Reachable only when every model failed; surface the structural problem when that was
   // the reason, since "no model available" would send the user to check a working key.
   if (structureError) throw structureError;
+  // Every model failed transiently (demand spike, timeouts): say so instead of "no model available".
+  if (transientError) throw transientError;
   throw new Error(
     'Gemini: لا يوجد نموذج متاح لهذا المفتاح حالياً / No Gemini model is available for this key. Check the key in Google AI Studio.'
   );
 }
 
 /** Verifies a Gemini key by translating one short word, entirely from the browser. */
-export async function testGeminiKeyDirect(apiKey: string): Promise<ProviderTestResult> {
+export async function testGeminiKeyDirect(apiKey: string, signal?: AbortSignal): Promise<ProviderTestResult> {
   const testSource = 'Install';
   try {
     const providerTranslation = await geminiTranslateDirect({
@@ -186,6 +209,7 @@ export async function testGeminiKeyDirect(apiKey: string): Promise<ProviderTestR
       sourceText: testSource,
       targetLang: 'ar',
       targetLocaleName: 'Arabic',
+      signal,
     });
     return { success: true, matched: true, testSource, providerTranslation, detectedType: 'gemini' };
   } catch (err) {
