@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { emptyAddedIcuCategories, fillAddedIcuClauses } from './icuSuggest';
+import { emptyAddedIcuCategories, fillAddedIcuClauses, memoizeIcuRequests, prefetchAddedIcuClauses } from './icuSuggest';
 import { getIcuFieldModel } from './placeholderCheck';
 
 const SRC = '{count, plural, =0{No notifications} one{# notification} other{# notifications}}';
@@ -230,5 +230,36 @@ describe('line breaks of a nested multi-line source', () => {
     const count = (t: string) => (t.match(/\n/g) || []).length;
     expect(out).toContain('zero {ب #}');
     expect(count(out)).toBe(count(src));
+  });
+});
+
+describe('speed: concurrent and prefetched requests', () => {
+  it('sends the nested plurals\' requests at the same time', async () => {
+    const branch = (w: string) => `{count, plural, one {${w} one} other {${w} #}}`;
+    const src = `{gender, select, male {${branch('He')}} other {${branch('They')}}}`;
+    const sug = src.replace(/(He|They) one/g, 'واحد').replace(/(He|They) #/g, 'أ #');
+    let inFlight = 0;
+    let peak = 0;
+    const out = await fillAddedIcuClauses(src, sug, 'ar', async () => null, async (m) => {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      await new Promise((r) => setTimeout(r, 10));
+      inFlight--;
+      return m.replace(/\{(He|They) #\}/g, '{ب #}');
+    });
+    expect(peak).toBe(2);
+    expect(out).toContain('zero {ب #}');
+  });
+
+  it('a prefetch and the real fill send each request once', async () => {
+    const src = '{count, plural, one {# item} other {# items}}';
+    const sug = '{count, plural, one {# عنصر} other {# عناصر}}';
+    let sent = 0;
+    const ask = memoizeIcuRequests(async () => null, async (m) => (sent++, m.replace(/items/g, 'ع')));
+    const prefetch = prefetchAddedIcuClauses(src, 'ar', ask.body, ask.message);
+    const out = await fillAddedIcuClauses(src, sug, 'ar', ask.body, ask.message);
+    await prefetch;
+    expect(sent).toBe(1);
+    expect(out).toContain('zero {# ع}');
   });
 });

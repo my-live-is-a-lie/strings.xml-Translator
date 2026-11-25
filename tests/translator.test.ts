@@ -206,10 +206,10 @@ describe('gtxLooksUnavailable counts only failed requests', () => {
     await suggestTranslation('First failure', 'ar');
     await suggestTranslation('Second failure', 'ar');
     expect(gtxLooksUnavailable()).toBe(false);
-    // A reply arrived — even one the gates reject — so the engine answered.
-    gtxRejectsBlock();
-    const res = await suggestTranslation(BLOCK, 'ar');
-    expect(res.source).toBe('mymemory');
+    // A reply arrived, so the engine answered. (A whole ICU block is no longer asked of Google.)
+    vi.stubGlobal('fetch', vi.fn(async () => gtxOk('مرحبا')));
+    const res = await suggestTranslation('Good reply', 'ar');
+    expect(res.source).toBe('google');
     // Two more failures still do not reach the threshold: the reply reset the count.
     gtxFails();
     await suggestTranslation('Third failure', 'ar');

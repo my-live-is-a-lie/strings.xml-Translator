@@ -1,5 +1,5 @@
 import { breakAfterUnderscores } from './keyBreaks';
-import { emptyAddedIcuCategories, fillAddedIcuClauses } from '../utils/icuSuggest';
+import { emptyAddedIcuCategories, fillAddedIcuClauses, memoizeIcuRequests, prefetchAddedIcuClauses } from '../utils/icuSuggest';
 import { SourceChangeBadge, SourceChangeDiff } from './SourceChangeDiff';
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
@@ -54,6 +54,19 @@ import {
 } from '../utils/newlines';
 import { getStoredItem, setStoredItem, copyTextToClipboard, readTextFromClipboard } from '../utils/storage';
 import { useT } from '../i18n/i18n';
+
+// The request functions the ICU category fill uses; memoized so a prefetch and the fill share replies.
+const makeIcuAsk = (targetLang: string, targetLocaleName: string) =>
+  memoizeIcuRequests(
+    async (body, quantity) => {
+      const r = await suggestTranslation(body, targetLang, targetLocaleName, quantity);
+      return isFillableSuggestion(r) ? r.text : null;
+    },
+    async (message) => {
+      const r = await suggestTranslation(message, targetLang, targetLocaleName);
+      return isFillableSuggestion(r) ? r.text : null;
+    }
+  );
 
 const PLURAL_QUANTITY_LABELS_AR: Record<string, string> = {
   zero: 'صفر (0)',
@@ -1761,6 +1774,9 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
 
     try {
       if (draftItem.type === 'string') {
+        const icuAsk = makeIcuAsk(targetLang, targetLocaleName);
+        // The added categories only depend on the source: ask for them while the main request runs
+        void prefetchAddedIcuClauses(draftItem.source, targetLang, icuAsk.body, icuAsk.message);
         const res = await suggestTranslation(draftItem.source, targetLang, targetLocaleName);
         setIcuRejected(suggestionRejectedForIcu(res));
         // A rejected suggestion hands back the unchanged source text; filling it would
@@ -1771,14 +1787,8 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
             draftItem.source,
             res.text,
             targetLang,
-            async (body, quantity) => {
-              const r = await suggestTranslation(body, targetLang, targetLocaleName, quantity);
-              return isFillableSuggestion(r) ? r.text : null;
-            },
-            async (message) => {
-              const r = await suggestTranslation(message, targetLang, targetLocaleName);
-              return isFillableSuggestion(r) ? r.text : null;
-            }
+            icuAsk.body,
+            icuAsk.message
           );
           setIcuUnfilled(emptyAddedIcuCategories(draftItem.source, filledText, targetLang));
           const isNowEmpty = !filledText.trim();
@@ -1871,6 +1881,8 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
       setIsSuggesting(true);
       try {
         if (item.type === 'string') {
+          const icuAsk = makeIcuAsk(targetLang, targetLocaleName);
+          void prefetchAddedIcuClauses(item.source, targetLang, icuAsk.body, icuAsk.message);
           const res = await suggestTranslation(item.source, targetLang, targetLocaleName);
           if (cancelled) return;
           // A `heuristic` result means no engine produced anything usable and the source came
@@ -1884,14 +1896,8 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
               item.source,
               res.text,
               targetLang,
-              async (body, quantity) => {
-                const r = await suggestTranslation(body, targetLang, targetLocaleName, quantity);
-                return isFillableSuggestion(r) ? r.text : null;
-              },
-              async (message) => {
-                const r = await suggestTranslation(message, targetLang, targetLocaleName);
-                return isFillableSuggestion(r) ? r.text : null;
-              }
+              icuAsk.body,
+              icuAsk.message
             );
             if (cancelled) return;
             setIcuUnfilled(emptyAddedIcuCategories(item.source, filledText, targetLang));

@@ -37,6 +37,49 @@ export async function fillAddedIcuClauses(
   return changed ? assembleIcuFields(fields) : suggestion;
 }
 
+type BodyFn = (body: string, quantity: IcuQuantity) => Promise<string | null>;
+type MessageFn = (message: string) => Promise<string | null>;
+
+/**
+ * Remembers each request's answer, so the same request is never sent twice. Used to start the
+ * added-category requests while the main suggestion is still on its way: the prefetch and the real
+ * fill ask for the same messages, and the second asker gets the first one's reply.
+ */
+export function memoizeIcuRequests(translateBody: BodyFn, translateMessage?: MessageFn) {
+  const bodies = new Map<string, Promise<string | null>>();
+  const messages = new Map<string, Promise<string | null>>();
+  const body: BodyFn = (text, quantity) => {
+    const key = `${quantity}\u0000${text}`;
+    if (!bodies.has(key)) bodies.set(key, translateBody(text, quantity).catch(() => null));
+    return bodies.get(key)!;
+  };
+  const message: MessageFn | undefined = translateMessage
+    ? (text) => {
+        if (!messages.has(text)) messages.set(text, translateMessage(text).catch(() => null));
+        return messages.get(text)!;
+      }
+    : undefined;
+  return { body, message };
+}
+
+/**
+ * Sends the added-category requests for `source` without waiting for the suggestion. It fills an
+ * empty suggestion, which asks for exactly the categories the real fill will ask for; the answers
+ * stay in the memoized functions. Never rejects.
+ */
+export async function prefetchAddedIcuClauses(
+  source: string,
+  targetLocale: string,
+  translateBody: BodyFn,
+  translateMessage?: MessageFn
+): Promise<void> {
+  try {
+    await fillAddedIcuClauses(source, '', targetLocale, translateBody, translateMessage);
+  } catch {
+    /* the real fill asks again and handles the failure */
+  }
+}
+
 /** Fills the added categories of every block in `fields`, including blocks nested in a clause body. */
 async function fillFields(
   input: IcuField[],
@@ -49,18 +92,22 @@ async function fillFields(
   for (let f = 0; f < model.length; f++) {
     const field = model[f];
     if (field.kind !== 'block') continue;
-    // A clause whose body holds its own block (a plural inside a select): fill that block too
-    for (let k = 0; k < field.clauses.length; k++) {
+    // A clause whose body holds its own block (a plural inside a select): fill that block too.
+    // The inner blocks are independent, so their requests go out at the same time.
+    const withChildren = field.clauses.map((c, k) => (c.children ? k : -1)).filter((k) => k >= 0);
+    const inners = await Promise.all(
+      withChildren.map((k) => fillFields(field.clauses[k].children!, targetLocale, translateBody, translateMessage))
+    );
+    withChildren.forEach((k, n) => {
+      const inner = inners[n];
+      if (!inner.changed) return;
       const clause = field.clauses[k];
-      if (!clause.children) continue;
-      const inner = await fillFields(clause.children, targetLocale, translateBody, translateMessage);
-      if (!inner.changed) continue;
       const updated = { ...clause, children: inner.fields, value: assembleIcuFields(inner.fields) };
       model = model.map((fl, i) =>
         i === f && fl.kind === 'block' ? { ...fl, clauses: fl.clauses.map((c, j) => (j === k ? updated : c)) } : fl
       );
       changed = true;
-    }
+    });
     // An English ordinal suffix ("#st", "#nd", "#th") has no translation. For a non-Latin target the
     // suffix is dropped: every ordinal clause that is only "#" plus letters becomes a plain "#" (Arabic
     // has one ordinal form, so the same text serves all the source's forms). No request is sent.

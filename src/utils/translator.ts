@@ -1406,6 +1406,14 @@ async function translateSingleSegmentUncached(
     strategies = [{ engine: 'google', run: tryGoogleGtx }, { engine: 'mymemory', run: tryMyMemory }];
   }
 
+  // Google's free endpoint translates the ICU keywords themselves ("plural" becomes "جمع"), so its
+  // reply to a whole message with an ICU block is always rejected by the structure check. Asking it
+  // wastes a request (and its wait); the per-clause pass below still uses it on plain clause bodies.
+  if (coreText.includes('{') && splitIcuBlocks(coreText)) {
+    const withoutGoogle = strategies.filter((st) => st.engine !== 'google');
+    if (withoutGoogle.length > 0) strategies = withoutGoogle;
+  }
+
   // A reply from these strategies already passed `breaksIcuStructure`: whatever an
   // earlier engine broke, this suggestion is good, so it carries no rejection.
   const primary = strategies[0];
