@@ -195,10 +195,7 @@ export async function listGeminiModels(apiKey: string, signal?: AbortSignal): Pr
           // multimodal text model takes those in.
           !/generates?\s+(images?|audio|speech|video|music)|text-to-speech|image generation|audio generation|music generation|transcription|text\s+to\s+image/i.test(
             m.description
-          ) &&
-          // -latest aliases duplicate a versioned model already in the list and have hung or
-          // 503'd under demand spikes, so they are not offered as separate choices.
-          !/-latest$/i.test(m.name)
+          )
       )
       .map(({ name, thinking }) => ({ name, thinking }))
       // Newest first; within one version the general-purpose families outrank specialties.

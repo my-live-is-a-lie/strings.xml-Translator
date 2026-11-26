@@ -198,7 +198,7 @@ describe('listGeminiModels', () => {
     description,
   });
 
-  it('keeps text models and drops non-text variants, aliases and audio/image models', async () => {
+  it('keeps text models and -latest aliases, drops non-text variants and audio/image models', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () =>
@@ -243,11 +243,12 @@ describe('listGeminiModels', () => {
     expect(names).toContain('gemini-4-argon');
     expect(names).toContain('gemini-4-carbon');
     expect(names).toContain('gemini-2.0-flash-exp');
+    // -latest aliases are real working endpoints: offered like any other model
+    expect(names).toContain('gemini-flash-latest');
     for (const dropped of [
       'gemini-3.5-transcribe',
       'gemini-nano-banana-2.1',
       'gemini-omni-2.0',
-      'gemini-flash-latest',
       'gemini-2.0-tts',
       'gemini-robotics-er-1',
       'gemini-embedding-2',
