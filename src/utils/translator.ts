@@ -428,7 +428,7 @@ function migrateLegacyGeminiKey(): void {
     if (!migrated) {
       migrated = {
         id: `custom_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-        name: 'Gemini AI',
+        name: 'Gemini API',
         type: 'gemini',
         apiKey: legacyKey,
         isBuiltIn: false,

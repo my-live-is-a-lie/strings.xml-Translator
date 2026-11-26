@@ -188,14 +188,14 @@ export async function directCallProviderWithKey(
       // Never return a reply that breaks the ICU structure (it throws at runtime).
       if (!validatePlaceholders(sourceText, cleaned, targetLang).valid) {
         throw Object.assign(
-          new Error('Yandex: الردّ يخالف بنية ICU / The AI reply damaged the ICU MessageFormat structure'),
+          new Error('Yandex Cloud Translate: الردّ يخالف بنية ICU / The AI reply damaged the ICU MessageFormat structure'),
           { name: 'StructuralError' }
         );
       }
       return cleaned;
     }
 
-    throw new Error('Yandex: فشل التحقق من المفتاح / Authentication failed: check key and folder ID.');
+    throw new Error('Yandex Cloud Translate: فشل التحقق من المفتاح / Authentication failed: check key and folder ID.');
   };
 
   const tryDeepL = async (): Promise<string> => {
@@ -215,9 +215,9 @@ export async function directCallProviderWithKey(
         data: { text: [sourceText], source_lang: 'EN', target_lang: deeplTarget },
       }
     );
-    if (!res.ok) throw providerHttpError('DeepL', res.status);
+    if (!res.ok) throw providerHttpError('DeepL API', res.status);
     const text = res.data?.translations?.[0]?.text;
-    if (!text) throw new Error('DeepL: استجابة فارغة / Empty translation response');
+    if (!text) throw new Error('DeepL API: استجابة فارغة / Empty translation response');
     return stripMetadataWrappers(text, sourceText);
   };
 
@@ -243,14 +243,14 @@ export async function directCallProviderWithKey(
         },
       }
     );
-    if (!res.ok) throw providerHttpError('OpenAI', res.status);
+    if (!res.ok) throw providerHttpError('OpenAI API', res.status);
     const content = res.data?.choices?.[0]?.message?.content;
-    if (!content) throw new Error('OpenAI: استجابة فارغة / Empty response');
+    if (!content) throw new Error('OpenAI API: استجابة فارغة / Empty response');
     const cleaned = stripMetadataWrappers(content, sourceText);
     // Never return a reply that breaks the ICU structure (it throws at runtime).
     if (!validatePlaceholders(sourceText, cleaned, targetLang).valid) {
       throw Object.assign(
-          new Error('OpenAI: الردّ يخالف بنية ICU / The AI reply damaged the ICU MessageFormat structure'),
+          new Error('OpenAI API: الردّ يخالف بنية ICU / The AI reply damaged the ICU MessageFormat structure'),
           { name: 'StructuralError' }
         );
     }
@@ -267,9 +267,9 @@ export async function directCallProviderWithKey(
         data: { q: sourceText, source: 'en', target: baseLang, format: 'text' },
       }
     );
-    if (!res.ok) throw providerHttpError('Google Cloud Translation', res.status);
+    if (!res.ok) throw providerHttpError('Google Cloud', res.status);
     const t = res.data?.data?.translations?.[0]?.translatedText;
-    if (!t) throw new Error('Google Cloud Translation: استجابة فارغة / Empty response');
+    if (!t) throw new Error('Google Cloud: استجابة فارغة / Empty response');
     return stripMetadataWrappers(t, sourceText);
   };
 
@@ -282,9 +282,9 @@ export async function directCallProviderWithKey(
         data: [{ Text: sourceText }],
       }
     );
-    if (!res.ok) throw providerHttpError('Microsoft Translator', res.status);
+    if (!res.ok) throw providerHttpError('Microsoft Azure Translator', res.status);
     const text = res.data?.[0]?.translations?.[0]?.text;
-    if (!text) throw new Error('Microsoft Translator: استجابة فارغة / Empty response');
+    if (!text) throw new Error('Microsoft Azure Translator: استجابة فارغة / Empty response');
     return stripMetadataWrappers(text, sourceText);
   };
 

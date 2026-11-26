@@ -207,16 +207,17 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
 
       const defaultNameMap: Record<string, string> = {
         lara: 'Lara Translate',
-        yandex: 'Yandex AI',
-        deepl: 'DeepL',
-        gemini: 'Gemini AI',
-        openai: 'OpenAI GPT',
+        yandex: 'Yandex Cloud Translate',
+        deepl: 'DeepL API',
+        gemini: 'Gemini API',
+        openai: 'OpenAI API',
         google_cloud: 'Google Cloud',
-        microsoft: 'Microsoft Translator',
+        libretranslate: 'LibreTranslate',
+        microsoft: 'Microsoft Azure Translator',
       };
 
       const finalName =
-        newProviderName.trim() || `${defaultNameMap[detectedType] || 'Custom'} API`;
+        newProviderName.trim() || defaultNameMap[detectedType] || 'Custom API';
 
       const added = addCustomProvider({
         name: finalName,
