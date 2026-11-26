@@ -1380,7 +1380,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                       </div>
                     )}
                     {showThinkingPicker && (
-                      <div className="flex flex-col gap-1 flex-1 min-w-0">
+                      <div className={`flex flex-col gap-1 min-w-0 ${providerSupportsModelChoice(activeProviderObj.type) ? 'shrink-0' : 'flex-1'}`}>
                         <label
                           htmlFor="active-provider-thinking-select"
                           className="text-[10px] font-semibold text-slate-600 dark:text-slate-300"
@@ -1391,7 +1391,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                           id="active-provider-thinking-select"
                           value={effectiveThinking}
                           onChange={(e) => saveActiveModelChoice(activeProviderObj.model || '', e.target.value)}
-                          className="w-full px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
+                          className={`px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996] ${providerSupportsModelChoice(activeProviderObj.type) ? 'w-auto' : 'w-full'}`}
                         >
                           <option value="auto">
                             {probeLoading ? '…' : t('thinking_auto')}
