@@ -436,18 +436,18 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   // and ignores option styling): tapping the already-selected model re-tests it.
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [thinkingMenuOpen, setThinkingMenuOpen] = useState(false);
-  // Close a picker when the user taps outside it. No full-screen overlay: it would
+  // Close a picker on a real tap outside it (click never fires after a drag). No full-screen overlay: it would
   // swallow touch drags meant for the drawer and let the page behind scroll.
   useEffect(() => {
     if (!modelMenuOpen && !thinkingMenuOpen) return;
-    const onDown = (e: PointerEvent) => {
+    const onDown = (e: MouseEvent) => {
       const el = e.target as Element | null;
       const inside = (id: string) => !!el?.closest(`#${id}-list, #${id}-select`);
       if (modelMenuOpen && !inside('active-provider-model')) setModelMenuOpen(false);
       if (thinkingMenuOpen && !inside('active-provider-thinking')) setThinkingMenuOpen(false);
     };
-    document.addEventListener('pointerdown', onDown, true);
-    return () => document.removeEventListener('pointerdown', onDown, true);
+    document.addEventListener('click', onDown, true);
+    return () => document.removeEventListener('click', onDown, true);
   }, [modelMenuOpen, thinkingMenuOpen]);
   const thinkingLabel = (level: string) =>
     level === 'auto'
