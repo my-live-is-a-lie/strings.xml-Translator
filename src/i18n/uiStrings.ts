@@ -235,7 +235,7 @@ export const UI_STRINGS: Record<string, { en: string; ar: string }> = {
   "save_changes": { en: "Save Changes", ar: "حفظ التعديلات" },
   "add_translator_api_key": { en: "Add Translator API Key", ar: "إضافة مفتاح API لمزود ترجمة" },
   "provider_name_type_or_swipe": { en: "Provider Name (Type or swipe list below)", ar: "اسم المزود (اكتب الاسم أو اختر من القائمة أدناه)" },
-  "type_provider_name_e_g": { en: "Type provider name (e.g. Yandex AI)...", ar: "اكتب اسم المزود (مثال: Yandex AI)..." },
+  "type_provider_name_e_g": { en: "Type provider name", ar: "اكتب اسم المزود" },
   "swipe_list_to_choose_provider": { en: "Swipe list to choose provider engine:", ar: "اسحب القائمة لاختيار نوع المزود:" },
   "translator_api_key": { en: "Translator API Key", ar: "مفتاح API للمزود" },
   "paste_access_key_id_or": { en: "Paste Access Key ID (or ID:Secret)...", ar: "الصق معرّف المفتاح (أو المعرّف:السر)..." },
