@@ -1409,7 +1409,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                             aria-haspopup="listbox"
                             aria-expanded={thinkingMenuOpen}
                             onClick={() => setThinkingMenuOpen((open) => !open)}
-                            className={`px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996] flex items-center justify-between gap-2 whitespace-nowrap ${providerSupportsModelChoice(activeProviderObj.type) ? '' : 'w-full'}`}
+                            className={`px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996] flex items-center justify-between gap-2 whitespace-nowrap min-w-[6.5rem] ${providerSupportsModelChoice(activeProviderObj.type) ? '' : 'w-full'}`}
                           >
                             <span className="truncate">{thinkingLabel(effectiveThinking)}</span>
                             <ChevronDown className="w-3 h-3 shrink-0 text-slate-500 dark:text-slate-400" />
