@@ -87,7 +87,9 @@ function keyTag(apiKey: string): string {
 
 /** Storage key for a persisted probe (exported for tests). */
 export const modelProbeCacheKey = (apiKey: string, model: string) =>
-  `model_probe_v1:${keyTag(apiKey)}:${model}`;
+  // v2: v1 entries could carry marks from failover-sweep answers about models the user never
+  // picked; only the user's own picked model may mark itself now, so the old marks are dropped.
+  `model_probe_v2:${keyTag(apiKey)}:${model}`;
 
 function readCachedProbe(apiKey: string, model: string): ModelProbeResult | null {
   const cacheKey = modelProbeCacheKey(apiKey, model);

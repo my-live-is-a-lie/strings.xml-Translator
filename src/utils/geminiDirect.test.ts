@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   classifyGeminiKeyProblem,
+  isModelQuotaMessage,
   geminiThinkingConfig,
   geminiTranslateDirect,
   GEMINI_THINKING_LEVELS,
@@ -23,9 +24,14 @@ describe('classifyGeminiKeyProblem', () => {
     expect(
       classifyGeminiKeyProblem(429, 'Quota exceeded for metric: generate_requests_per_project_per_day')
     ).toBe('quota-exhausted');
+    // The generic plan/billing wording is what a per-model limit-0 answers on some models
+    // (verified live: lite models answer 200 for the same key in the same burst): not a key problem.
     expect(
       classifyGeminiKeyProblem(429, 'You exceeded your current quota, please check your plan and billing details')
-    ).toBe('quota-exhausted');
+    ).toBeNull();
+    expect(
+      isModelQuotaMessage(429, 'You exceeded your current quota, please check your plan and billing details')
+    ).toBe(true);
     // A model-scoped daily quota (limit 0 on the free tier) says nothing about the key.
     expect(
       classifyGeminiKeyProblem(
@@ -231,11 +237,13 @@ describe('listGeminiModels', () => {
     expect(names).toContain('gemini-3.1-flash-lite-preview');
     expect(names).toContain('gemini-3.1-pro-preview');
     expect(names).toContain('gemini-2.5-pro');
+    // The API reports generateContent for these: they are real text models and must show,
+    // whatever their names look like. The lazy probe decides whether they answer for this key.
+    expect(names).toContain('gemini-3.1-pro-preview-customtools');
+    expect(names).toContain('gemini-4-argon');
+    expect(names).toContain('gemini-4-carbon');
+    expect(names).toContain('gemini-2.0-flash-exp');
     for (const dropped of [
-      'gemini-3.1-pro-preview-customtools',
-      'gemini-4-argon',
-      'gemini-4-carbon',
-      'gemini-2.0-flash-exp',
       'gemini-3.5-transcribe',
       'gemini-nano-banana-2.1',
       'gemini-omni-2.0',
@@ -246,7 +254,8 @@ describe('listGeminiModels', () => {
     ]) {
       expect(names).not.toContain(dropped);
     }
-    // flash family first, newest version first
+    // newest version first; within one version the general-purpose families come first
+    expect(names.indexOf('gemini-4-argon')).toBeLessThan(names.indexOf('gemini-3.1-flash'));
     expect(names.indexOf('gemini-3.1-flash')).toBeLessThan(names.indexOf('gemini-3.1-pro'));
   });
 });
@@ -475,5 +484,45 @@ describe('testGeminiKeyDirect', () => {
     expect(called).toContain('gemini-9.9-flash');
     // The built-in candidates were never the plan's only hope.
     expect(res.workingModel).toBe('gemini-9.9-flash');
+  });
+});
+
+describe('geminiTranslateDirect failover reporting scope', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('marks only the model the user picked, never failover or discovery candidates', async () => {
+    const calls: Array<[string, string]> = [];
+    const quota = (m: string) =>
+      err(
+        429,
+        `Quota exceeded for metric: generativelanguage.googleapis.com/generate_requests_per_model_per_day, limit: 0, model: ${m}`
+      );
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.includes('/models?')) {
+          return new Response(
+            JSON.stringify({
+              models: [{ name: 'models/gemini-9.9-flash', supportedGenerationMethods: ['generateContent'] }],
+            }),
+            { status: 200 }
+          );
+        }
+        const m = /models\/([^:?]+):/.exec(url)?.[1] ?? '';
+        if (m === 'gemini-9.9-flash') return ok();
+        return quota(m || 'unknown'); // the picked model and every built-in candidate
+      })
+    );
+    const out = await geminiTranslateDirect({
+      apiKey: 'k',
+      sourceText: 'Hello',
+      model: 'gemini-user-picked',
+      onModelDefiniteFailure: (m, kind) => calls.push([m, kind]),
+    });
+    // The call succeeds through failover, and only the user's own pick is reported.
+    expect(out).toBe('Hi');
+    expect(calls).toEqual([['gemini-user-picked', 'model-quota']]);
   });
 });

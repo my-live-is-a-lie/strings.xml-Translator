@@ -53,21 +53,27 @@ export function classifyGeminiKeyProblem(status: number, message: string): Gemin
     // Model-scoped quota (per-model daily limit, e.g. limit 0 on the free tier) says something
     // about THIS model on this plan, not about the key: it is not a key problem.
     if (isModelQuotaMessage(status, message)) return null;
-    if (/per.?day|daily|billing|credit|account/i.test(message)) return 'quota-exhausted';
+    // Only an explicit project/account metric blames the key. The generic "check your plan and
+    // billing" wording is what a per-model limit-0 answers on some models (verified live: lite
+    // models answer 200 for the same key in the same burst), so ambiguous 429s never blame the key.
+    if (/per_?project|per_?account/i.test(message)) return 'quota-exhausted';
   }
   return null;
 }
 
 /**
- * True when a 429 is scoped to one model ("generate_requests_per_model_per_day, limit: 0, model:
- * gemini-3.1-pro"): the model is not on this key's tier or its daily quota is used up. A
- * per-minute variant is a plain rate limit and matches neither this nor the key problem.
+ * True when a 429 is scoped to one model: either the metric names the model
+ * ("generate_requests_per_model_per_day, limit: 0, model: gemini-3.1-pro") or the wording is the
+ * generic plan/billing quota text, which Google also returns for per-model limit-0. A per-minute
+ * variant is a plain rate limit and matches neither this nor the key problem.
  */
 export function isModelQuotaMessage(status: number, message: string): boolean {
   return (
     status === 429 &&
     !/per_?minute/i.test(message) &&
-    (/per_?model/i.test(message) || /model:\s*\S+/i.test(message))
+    (/per_?model/i.test(message) ||
+      /model:\s*\S+/i.test(message) ||
+      /current quota|plan and billing|billing details/i.test(message))
   );
 }
 
@@ -174,30 +180,34 @@ export async function listGeminiModels(apiKey: string, signal?: AbortSignal): Pr
       }))
       .filter(
         (m) =>
-          // Canonical public models follow one shape: gemini-<version>[-family][-preview].
-          // Codename drops (gemini-4-argon/carbon/...), specialized suffixes
-          // (-customtools), experiment tags (-exp) and -latest aliases all break that
-          // shape and are left out; new versions and preview releases of the real
-          // families pass without any code change. Anything unusual that still passes
-          // is caught by the runtime probe.
-          /^gemini-\d+(\.\d+)?-(flash|flash-lite|pro|ultra)(-preview)?$|^gemini-\d+(\.\d+)?$/.test(
-            m.name
-          ) &&
-          // Name backstop for non-text-translation variants (image, speech, transcription,
-          // omni-modal...). The API marks no modality field, so the documented description is
-          // the structural signal below and this regex only catches what it misses.
-          !/(image|imagen|tts|live|audio|embedding|robotics|computer-use|transcribe|omni|veo|banana)/i.test(
+          // Filter by what the API reports, not by name shape: any model the endpoint offers
+          // generateContent on is a candidate, including new codename families (gemini-4-argon,
+          // carbon, hydrogen, neon), specialty variants (customtools) and gemma. Whether one
+          // actually answers for this key is decided by the lazy runtime probe, never by the list.
+          // Specialties whose output is not plain text (speech, image, music, transcription,
+          // agents, robotics) are excluded by the model's own description, with a name backstop
+          // for the ones whose description stays silent (the API exposes no modality field).
+          !/(tts|image|imagen|banana|lyria|music|transcribe|robotics|computer-use|antigravity|deep-research|embedding|native-audio|live|omni|veo)/i.test(
             m.name
           ) &&
           // The model resource's own description: exclude models documented as producing
           // non-text output. Input words ("accepts audio/images") must NOT match - every
           // multimodal text model takes those in.
-          !/generates?\s+(images?|audio|speech|video|music)|text-to-speech|image generation|audio generation|transcription|text\s+to\s+image/i.test(
+          !/generates?\s+(images?|audio|speech|video|music)|text-to-speech|image generation|audio generation|music generation|transcription|text\s+to\s+image/i.test(
             m.description
-          )
+          ) &&
+          // -latest aliases duplicate a versioned model already in the list and have hung or
+          // 503'd under demand spikes, so they are not offered as separate choices.
+          !/-latest$/i.test(m.name)
       )
       .map(({ name, thinking }) => ({ name, thinking }))
-      .sort((a, b) => familyRank(a.name) - familyRank(b.name) || version(b.name) - version(a.name));
+      // Newest first; within one version the general-purpose families outrank specialties.
+      .sort(
+        (a, b) =>
+          version(b.name) - version(a.name) ||
+          familyRank(a.name) - familyRank(b.name) ||
+          a.name.localeCompare(b.name)
+      );
   } catch {
     return [];
   }
@@ -534,9 +544,16 @@ ${sourceText}`;
       // can surface it even when the failover hides it behind other models' failures.
       if (err instanceof GeminiHttpError && err.keyProblem && !keyProblemError) keyProblemError = err;
       if (err instanceof GeminiHttpError && err.modelQuota && !modelQuotaError) modelQuotaError = err;
-      // A definite answer about THIS model (gone, or its quota not on the plan) is reported so
-      // the picker can move it to the unavailable group; the failover still tries the next model.
-      if (err instanceof GeminiHttpError && (err.modelUnavailable || err.modelQuota)) {
+      // A definite answer about the model the USER picked (gone, or its quota not on the plan)
+      // is reported so the picker can move it to the unavailable group. Failover and discovery
+      // candidates are only tried so the call can succeed: their answers keep them out of this
+      // race but never mark them - the user did not choose them, and a background sweep must not
+      // fill the unavailable group with models they never tried.
+      if (
+        err instanceof GeminiHttpError &&
+        (err.modelUnavailable || err.modelQuota) &&
+        model === opts.model
+      ) {
         try {
           opts.onModelDefiniteFailure?.(model, err.modelQuota ? 'model-quota' : 'unavailable');
         } catch (cbErr) {
