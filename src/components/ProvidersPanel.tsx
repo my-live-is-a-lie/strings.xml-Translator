@@ -363,10 +363,14 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   // (404-style unusable, or a model-scoped quota like a free-tier limit of 0) - transient
   // failures never move anything. Picking one from there re-tests it.
   // Two marked groups, each placed only by the model's own definite answer: "not on your
-  // plan" (model-scoped quota, e.g. a free-tier limit of 0) and "unavailable" (404-style,
-  // the model does not run at all). Picking one from either group re-tests it.
-  const isPlanLimitedModel = (name: string): boolean =>
-    peekModelProbe(activeProviderType ?? '', activeProviderKey, name)?.modelQuota === true;
+  // plan" (the API said the model's limit on this key is 0 - it can never run here) and
+  // "unavailable" (404-style, the model does not run at all). A model whose daily quota is
+  // used up is on the plan, so it stays in the available list and shows its note when picked.
+  // Picking one from either group re-tests it.
+  const isPlanLimitedModel = (name: string): boolean => {
+    const entry = peekModelProbe(activeProviderType ?? '', activeProviderKey, name);
+    return entry?.modelQuota === true && entry.quotaKind !== 'daily-used';
+  };
   const isDefiniteUnavailableModel = (name: string): boolean =>
     peekModelProbe(activeProviderType ?? '', activeProviderKey, name)?.availability === 'unavailable';
   const isUnavailableModel = (name: string): boolean =>
@@ -393,6 +397,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
     | 'invalid-key'
     | 'quota-exhausted'
     | 'model-quota'
+    | 'daily-quota-used'
   >('idle');
   const modelProbeSeq = useRef(0);
   // The model picker is a custom dropdown (the native Android popup swallows same-option taps
@@ -476,7 +481,13 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
         // clears as soon as a working model is picked.
         setModelProbe(
           entry.keyProblem ??
-            (entry.modelQuota ? 'model-quota' : entry.availability === 'unknown' ? 'inconclusive' : 'idle')
+            (entry.modelQuota
+              ? entry.quotaKind === 'daily-used'
+                ? 'daily-quota-used'
+                : 'model-quota'
+              : entry.availability === 'unknown'
+                ? 'inconclusive'
+                : 'idle')
         );
         // A successful (re-)test clears this model's runtime line from the provider card and
         // floats it to the top of the picker - including cache-hit picks, which skip the
@@ -671,7 +682,19 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                     </div>
                   )}
                 </div>
-                {modelProbe !== 'idle' && (
+                {(() => {
+                  // A quota note from picking this model clears the moment the model actually
+                  // runs again (a successful suggest or re-test records an 'ok' probe entry).
+                  const liveEntry = activeProviderObj?.model
+                    ? peekModelProbe(activeProviderObj.type, activeProviderObj.apiKey, activeProviderObj.model)
+                    : undefined;
+                  if (
+                    (modelProbe === 'model-quota' || modelProbe === 'daily-quota-used') &&
+                    liveEntry &&
+                    liveEntry.availability === 'ok'
+                  )
+                    return null;
+                  return modelProbe !== 'idle' && (
                   <div
                     className={`flex items-center gap-1.5 text-[10px] ${
                       modelProbe === 'unavailable' ||
@@ -679,7 +702,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                       modelProbe === 'invalid-key' ||
                       modelProbe === 'quota-exhausted'
                         ? 'text-red-500 dark:text-red-400'
-                        : modelProbe === 'model-quota'
+                        : modelProbe === 'model-quota' || modelProbe === 'daily-quota-used'
                           ? 'text-amber-600 dark:text-amber-400'
                           : 'text-slate-500 dark:text-slate-400'
                     }`}
@@ -703,12 +726,15 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                   ? t('provider_quota_exhausted')
                                   : modelProbe === 'model-quota'
                                     ? t('model_quota_unavailable')
-                                    : t('model_check_inconclusive')}
+                                    : modelProbe === 'daily-quota-used'
+                                      ? t('model_daily_quota_used')
+                                      : t('model_check_inconclusive')}
                         </span>
                       </>
                     )}
                   </div>
-                )}
+                  );
+                })()}
               </div>
             )}
 

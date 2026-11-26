@@ -4,6 +4,7 @@ import {
   GeminiModelInfo,
   listGeminiModels,
   ModelProbeResult,
+  ModelQuotaKind,
   probeGeminiModel,
   sweepProbeGeminiModel,
 } from './geminiDirect';
@@ -117,6 +118,10 @@ function readCachedProbe(apiKey: string, model: string): ModelProbeResult | null
       levels: parsed.levels.filter((l): l is string => typeof l === 'string'),
       modelQuota: parsed.modelQuota === true ? true : undefined,
       levelsPending: (parsed as { levelsPending?: unknown }).levelsPending === true ? true : undefined,
+      quotaKind: ((): ModelQuotaKind | undefined => {
+        const q = (parsed as { quotaKind?: unknown }).quotaKind;
+        return q === 'limit-zero' || q === 'daily-used' ? q : undefined;
+      })(),
       // Only definite results (and model-scoped quota, which is definite about this model on
       // this plan) are ever persisted, so a well-formed entry is definite.
       definite: parsed.modelQuota === true ? false : true,
@@ -261,7 +266,8 @@ export function reportModelDefiniteFailure(
   type: ProviderEngineType | string,
   apiKey: string,
   model: string,
-  kind: 'unavailable' | 'model-quota'
+  kind: 'unavailable' | 'model-quota',
+  quotaKind?: ModelQuotaKind
 ): void {
   const key = apiKey.trim();
   const name = model.trim();
@@ -269,7 +275,7 @@ export function reportModelDefiniteFailure(
   const previous = peekModelProbe(type, key, name);
   const result: ModelProbeResult =
     kind === 'model-quota'
-      ? { availability: 'unknown', levels: previous?.levels ?? [], keyProblem: null, definite: false, modelQuota: true }
+      ? { availability: 'unknown', levels: previous?.levels ?? [], keyProblem: null, definite: false, modelQuota: true, quotaKind: quotaKind ?? 'limit-zero' }
       : { availability: 'unavailable', levels: previous?.levels ?? [], keyProblem: null, definite: true };
   modelProbeStore.set(`${type}:${key}:${name}`, result);
   try {
@@ -340,6 +346,41 @@ export function getModelProbeSnapshot(
  * marked levelsPending and a real pick still probes the levels. Models with any known state
  * (user picks, earlier sweeps) are skipped.
  */
+/**
+ * A real translation just succeeded with this model: record it as tested-and-working. Clears a
+ * stale "daily quota used" mark the moment the quota resets (the first successful suggest or
+ * re-test after that), floats the model to the top and clears its card line.
+ */
+export function recordModelRuntimeSuccess(
+  providerId: string,
+  type: ProviderEngineType | string,
+  apiKey: string,
+  model: string
+): void {
+  const key = apiKey.trim();
+  const name = model.trim();
+  if (type !== 'gemini' || !key || !name) return;
+  const storeKey = `${type}:${key}:${name}`;
+  const previous = peekModelProbe(type, key, name);
+  const result: ModelProbeResult = {
+    availability: 'ok',
+    levels: previous?.levels ?? [],
+    keyProblem: null,
+    definite: true,
+    levelsPending: previous?.levels?.length ? undefined : true,
+  };
+  modelProbeStore.set(storeKey, result);
+  try {
+    setStoredItem(modelProbeCacheKey(key, name), JSON.stringify({ ...result, at: Date.now() }));
+  } catch {
+    // Caching is best-effort; the in-memory entry covers this session.
+  }
+  modelOkAtStore.set(storeKey, Date.now());
+  clearModelUnavailableError(providerId, name);
+  probeStatesVersion++;
+  notify();
+}
+
 export async function sweepGeminiModels(apiKey: string): Promise<void> {
   const key = apiKey.trim();
   if (!key) return;
@@ -351,14 +392,14 @@ export async function sweepGeminiModels(apiKey: string): Promise<void> {
   }
   for (const m of models) {
     if (peekModelProbe('gemini', key, m.name)) continue;
-    const outcome = await sweepProbeGeminiModel(key, m.name, 2000);
+    const { outcome, quotaKind } = await sweepProbeGeminiModel(key, m.name, 2000);
     if (outcome === 'key-quota') return;
     if (outcome === 'inconclusive') continue;
     const result: ModelProbeResult =
       outcome === 'ok'
         ? { availability: 'ok', levels: [], keyProblem: null, definite: true, levelsPending: true }
         : outcome === 'model-quota'
-          ? { availability: 'unknown', levels: [], keyProblem: null, definite: false, modelQuota: true }
+          ? { availability: 'unknown', levels: [], keyProblem: null, definite: false, modelQuota: true, quotaKind: quotaKind ?? 'limit-zero' }
           : { availability: 'unavailable', levels: [], keyProblem: null, definite: true };
     const storeKey = `gemini:${key}:${m.name}`;
     modelProbeStore.set(storeKey, result);

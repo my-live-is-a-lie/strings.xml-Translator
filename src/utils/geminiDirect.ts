@@ -77,6 +77,21 @@ export function isModelQuotaMessage(status: number, message: string): boolean {
   );
 }
 
+/** Two different model-scoped quota answers hide behind the same generic 429 wording. */
+export type ModelQuotaKind = 'limit-zero' | 'daily-used';
+
+/**
+ * Reads the model-scoped limit out of a 429's detail line: "limit: 0" means the model is not on
+ * this plan at all; a positive limit (e.g. 20/day on the free tier) means the model IS on the
+ * plan and today's quota is simply used up - it resets and must not be treated as plan-limited.
+ * Returns undefined when the message carries no parseable limit.
+ */
+export function parseModelQuotaKind(message: string): ModelQuotaKind | undefined {
+  const m = /limit:\s*(\d+)/i.exec(message);
+  if (!m) return undefined;
+  return m[1] === '0' ? 'limit-zero' : 'daily-used';
+}
+
 export class GeminiHttpError extends Error {
   constructor(
     message: string,
@@ -84,7 +99,9 @@ export class GeminiHttpError extends Error {
     readonly modelUnavailable: boolean,
     readonly keyProblem: GeminiKeyProblem | null = null,
     /** True when the failure was a model-scoped quota (per-model limit), not a key problem. */
-    readonly modelQuota: boolean = false
+    readonly modelQuota: boolean = false,
+    /** Which kind of model quota, when the message said: not-on-plan (limit 0) vs daily-used. */
+    readonly quotaKind?: ModelQuotaKind
   ) {
     super(message);
   }
@@ -231,6 +248,8 @@ export interface ModelProbeResult {
    * Callers warn but keep the pick; never cached (the daily quota resets).
    */
   modelQuota?: boolean;
+  /** Set alongside modelQuota when the answer named its limit: not-on-plan vs daily-used. */
+  quotaKind?: ModelQuotaKind;
   /**
    * True only when every probe got a definite API answer (success, a 400 about the thinking
    * parameter, or a 404 about the model). Transient failures (network, timeouts, 401/403, 429,
@@ -246,6 +265,10 @@ export interface ModelProbeResult {
 }
 
 export type GeminiSweepOutcome = 'ok' | 'unavailable' | 'model-quota' | 'key-quota' | 'inconclusive';
+export interface GeminiSweepResult {
+  outcome: GeminiSweepOutcome;
+  quotaKind?: ModelQuotaKind;
+}
 
 /**
  * One bare generateContent attempt with a tight deadline, for the after-add model sweep. Only
@@ -258,7 +281,7 @@ export async function sweepProbeGeminiModel(
   apiKey: string,
   model: string,
   timeoutMs = 2000
-): Promise<GeminiSweepOutcome> {
+): Promise<GeminiSweepResult> {
   try {
     const res = await fetchWithTimeout(
       `${API_ROOT}/models/${model}:generateContent`,
@@ -275,7 +298,7 @@ export async function sweepProbeGeminiModel(
       },
       timeoutMs
     );
-    if (res.ok) return 'ok';
+    if (res.ok) return { outcome: 'ok' };
     let message = '';
     try {
       const body = (await res.json()) as { error?: { message?: string } };
@@ -283,12 +306,13 @@ export async function sweepProbeGeminiModel(
     } catch (err) {
       debugIgnored('geminiDirect', err);
     }
-    if (isModelUnavailableMessage(res.status, message)) return 'unavailable';
-    if (isModelQuotaMessage(res.status, message)) return 'model-quota';
-    if (res.status === 429 && /per_?project|per_?account/i.test(message)) return 'key-quota';
-    return 'inconclusive';
+    if (isModelUnavailableMessage(res.status, message)) return { outcome: 'unavailable' };
+    if (isModelQuotaMessage(res.status, message))
+      return { outcome: 'model-quota', quotaKind: parseModelQuotaKind(message) ?? 'limit-zero' };
+    if (res.status === 429 && /per_?project|per_?account/i.test(message)) return { outcome: 'key-quota' };
+    return { outcome: 'inconclusive' };
   } catch {
-    return 'inconclusive';
+    return { outcome: 'inconclusive' };
   }
 }
 
@@ -312,6 +336,7 @@ export async function probeGeminiModel(
   model: string,
   signal?: AbortSignal
 ): Promise<ModelProbeResult> {
+  let seenQuotaKind: ModelQuotaKind | undefined;
   const probeLevel = async (level: string): Promise<LevelProbe> => {
     try {
       const res = await fetchWithTimeout(
@@ -345,7 +370,10 @@ export async function probeGeminiModel(
       if (isModelUnavailableMessage(res.status, message)) return 'model-unavailable';
       const keyProblem = classifyGeminiKeyProblem(res.status, message);
       if (keyProblem) return keyProblem;
-      if (isModelQuotaMessage(res.status, message)) return 'model-quota';
+      if (isModelQuotaMessage(res.status, message)) {
+        seenQuotaKind = seenQuotaKind ?? parseModelQuotaKind(message);
+        return 'model-quota';
+      }
       if (res.status === 400 && /thinking/i.test(message)) return 'level-unsupported';
       return 'unknown';
     } catch {
@@ -377,6 +405,7 @@ export async function probeGeminiModel(
       keyProblem: null,
       definite: false,
       modelQuota: true,
+      quotaKind: seenQuotaKind ?? 'limit-zero',
     };
   }
   const availability: ModelAvailability = results.some(([, r]) => r === 'ok' || r === 'level-unsupported')
@@ -425,7 +454,15 @@ export async function geminiTranslateDirect(opts: {
    * Called the moment a model fails with a definite API answer (gone, or a model-scoped quota),
    * before the failover moves on. Transient failures never trigger it.
    */
-  onModelDefiniteFailure?: (model: string, kind: 'unavailable' | 'model-quota') => void;
+  onModelDefiniteFailure?: (model: string, kind: 'unavailable' | 'model-quota', quotaKind?: ModelQuotaKind) => void;
+  /** The call succeeded: the winning model (pinned or failover) that produced the translation. */
+  onModelSuccess?: (model: string) => void;
+  /**
+   * The pinned model failed with a DEFINITE answer (gone, or a model-scoped quota) and a
+   * failover model produced the translation instead: the caller should make the winner the
+   * saved selection. Transient pinned failures never trigger this - the pick stands.
+   */
+  onModelFailover?: (model: string) => void;
 }): Promise<string> {
   const { apiKey, sourceText, targetLang = 'ar', targetLocaleName, pluralQuantity, signal } = opts;
   const langLabel = targetLocaleName ? `${targetLocaleName} (${targetLang})` : targetLang;
@@ -539,7 +576,8 @@ ${sourceText}`;
         res.status,
         isModelUnavailableMessage(res.status, apiMessage || message),
         classified,
-        modelQuota
+        modelQuota,
+        modelQuota ? parseModelQuotaKind(apiMessage || message) : undefined
       );
     }
 
@@ -576,6 +614,7 @@ ${sourceText}`;
   };
 
   const tried = new Set<string>();
+  let pinnedDefiniteFailed = false;
   let structureError: GeminiStructureError | null = null;
   let transientError: unknown = null;
   let keyProblemError: GeminiHttpError | null = null;
@@ -604,8 +643,9 @@ ${sourceText}`;
         (err.modelUnavailable || err.modelQuota) &&
         model === opts.model
       ) {
+        pinnedDefiniteFailed = true;
         try {
-          opts.onModelDefiniteFailure?.(model, err.modelQuota ? 'model-quota' : 'unavailable');
+          opts.onModelDefiniteFailure?.(model, err.modelQuota ? 'model-quota' : 'unavailable', err.quotaKind);
         } catch (cbErr) {
           debugIgnored('geminiDirect', cbErr);
         }
@@ -670,12 +710,26 @@ ${sourceText}`;
     });
   };
 
+  const noteWinner = () => {
+    if (!workingModel) return;
+    try {
+      opts.onModelSuccess?.(workingModel);
+      if (opts.model && workingModel !== opts.model && pinnedDefiniteFailed) {
+        opts.onModelFailover?.(workingModel);
+      }
+    } catch (cbErr) {
+      debugIgnored('geminiDirect', cbErr);
+    }
+  };
   const raced = await raceModels([
     opts.model,
     workingModel,
     ...(opts.candidateModels?.length ? opts.candidateModels : GEMINI_MODEL_CANDIDATES),
   ]);
-  if (raced !== null) return raced;
+  if (raced !== null) {
+    noteWinner();
+    return raced;
+  }
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
   // Failover discovery: every text model the endpoint lists for this key (the picker's filter),
   // not only Flash - a plan can have Pro quota left when Flash is exhausted, or the reverse.
@@ -683,7 +737,10 @@ ${sourceText}`;
     ? [] // the caller already raced the full list
     : (await listGeminiModels(apiKey, signal)).map((m) => m.name);
   const discovered = await raceModels(discoveredNames);
-  if (discovered !== null) return discovered;
+  if (discovered !== null) {
+    noteWinner();
+    return discovered;
+  }
   workingModel = null;
   // Every model failed. A definite key problem outranks every other explanation: the user must
   // fix the key or the quota, not hunt for a model.

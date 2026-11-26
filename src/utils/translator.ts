@@ -18,6 +18,7 @@ import {
 import { GeminiHttpError, geminiTranslateDirect } from './geminiDirect';
 import {
   clearProviderRuntimeErrorOnSuccess,
+  recordModelRuntimeSuccess,
   reportModelDefiniteFailure,
   reportProviderKeyProblem,
 } from './providerModels';
@@ -1316,8 +1317,18 @@ async function translateSingleSegmentUncached(
         thinkingLevel: activeProvider.type === 'gemini' ? activeProvider.thinkingLevel : undefined,
         // A definite answer about a model (gone, or its quota not on the plan) moves it to the
         // picker's unavailable group and shows it on the card; transient failures never do.
-        onModelDefiniteFailure: (model, kind) =>
-          reportModelDefiniteFailure(activeProvider.id, 'gemini', userGeminiKey, model, kind),
+        onModelDefiniteFailure: (model, kind, quotaKind) =>
+          reportModelDefiniteFailure(activeProvider.id, 'gemini', userGeminiKey, model, kind, quotaKind),
+        // A suggest that succeeds with any model records it as tested-and-working, which floats
+        // it to the top of the picker and clears a stale quota line the moment the quota resets.
+        onModelSuccess: (model) =>
+          recordModelRuntimeSuccess(activeProvider.id, 'gemini', userGeminiKey, model),
+        // When the picked model is definitely out and another model translated, the saved
+        // selection moves to the model that actually did the work.
+        onModelFailover: (model) => {
+          recordModelRuntimeSuccess(activeProvider.id, 'gemini', userGeminiKey, model);
+          updateCustomProvider(activeProvider.id, { model });
+        },
       });
       const cleanedAi = stripMetadataLabels(translated, coreText);
       if (cleanedAi && !isPollutedTranslation(cleanedAi)) {
