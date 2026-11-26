@@ -568,207 +568,6 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
             />
           </button>
 
-          {activeProviderObj &&
-            !activeProviderObj.isBuiltIn &&
-            (providerSupportsModelChoice(activeProviderObj.type) ||
-              providerSupportsThinking(activeProviderObj.type)) && (
-              <div
-                className={`flex flex-col gap-2 px-3 pb-3 pt-2.5 ${
-                  providersPanelOpen ? 'border-b' : ''
-                } border-slate-200/80 dark:border-[#2A3244]`}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="flex gap-2">
-                  {providerSupportsModelChoice(activeProviderObj.type) && (
-                    <div className="flex flex-col gap-1 flex-1 min-w-0">
-                      <label
-                        htmlFor="active-provider-model-select"
-                        className="text-[10px] font-semibold text-slate-600 dark:text-slate-300"
-                      >
-                        {t('model')}
-                      </label>
-                      <div className="relative">
-                        <button
-                          id="active-provider-model-select"
-                          type="button"
-                          dir="ltr"
-                          aria-haspopup="listbox"
-                          aria-expanded={modelMenuOpen}
-                          onClick={() => setModelMenuOpen((open) => !open)}
-                          className="w-full px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996] flex items-center justify-between gap-1 text-left"
-                        >
-                          <span className="truncate">
-                            {activeProviderObj.model ||
-                              (activeModelsLoading ? '…' : t('model_auto_recommended'))}
-                          </span>
-                          <ChevronDown className="w-3 h-3 shrink-0 text-slate-500 dark:text-slate-400" />
-                        </button>
-                        {modelMenuOpen && (
-                          <>
-                            <div
-                              className="fixed inset-0 z-40 cursor-default"
-                              onClick={() => setModelMenuOpen(false)}
-                            />
-                            <ul
-                              dir="ltr"
-                              role="listbox"
-                              className="absolute right-0 z-50 mt-1 w-[calc(200%_+_0.5rem)] max-h-64 overflow-auto rounded-lg border border-slate-300 dark:border-[#2E384D] bg-white dark:bg-[#1B212E] shadow-xl py-1"
-                            >
-                              {([
-                                { name: '', label: activeModelsLoading ? '…' : t('model_auto_recommended'), dimmed: false },
-                                ...availableModels.map((m) => ({ name: m.name, label: m.name, dimmed: false })),
-                                ...(activeProviderObj.model &&
-                                activeProviderObj.model !== '' &&
-                                !modelChoices.some((m) => m.name === activeProviderObj.model)
-                                  ? [{ name: activeProviderObj.model, label: activeProviderObj.model, dimmed: false }]
-                                  : []),
-                              ] as Array<{ name: string; label: string; dimmed: boolean }>).map((item) => (
-                                <li key={item.name || '__auto__'} role="option" aria-selected={(activeProviderObj.model || '') === item.name}>
-                                  <button
-                                    type="button"
-                                    onClick={() => pickModel(item.name)}
-                                    className={`w-full px-2 py-1.5 text-left text-[11px] font-mono flex items-center justify-between gap-1 hover:bg-slate-100 dark:hover:bg-[#262E3F] ${
-                                      (activeProviderObj.model || '') === item.name
-                                        ? 'text-[#1EB996] font-semibold'
-                                        : 'text-slate-900 dark:text-slate-100'
-                                    }`}
-                                  >
-                                    <span className="truncate">{item.label}</span>
-                                    {(activeProviderObj.model || '') === item.name && (
-                                      <Check className="w-3 h-3 shrink-0" />
-                                    )}
-                                  </button>
-                                </li>
-                              ))}
-                              {([
-                                { heading: t('models_plan_unavailable'), models: planLimitedModels },
-                                { heading: t('models_unavailable'), models: unavailableModels },
-                              ] as Array<{ heading: string; models: typeof planLimitedModels }>).map(
-                                (group) =>
-                                  group.models.length > 0 && (
-                                    <li key={group.heading}>
-                                      <div dir="rtl" className="px-2 pt-1.5 pb-0.5 text-[10px] font-semibold text-slate-500 dark:text-slate-400 text-right">
-                                        {group.heading}
-                                      </div>
-                                      <ul>
-                                        {group.models.map((m) => (
-                                          <li key={m.name} role="option" aria-selected={activeProviderObj.model === m.name}>
-                                            <button
-                                              type="button"
-                                              onClick={() => pickModel(m.name)}
-                                              className={`w-full px-2 py-1.5 text-left text-[11px] font-mono flex items-center justify-between gap-1 hover:bg-slate-100 dark:hover:bg-[#262E3F] ${
-                                                activeProviderObj.model === m.name
-                                                  ? 'text-[#1EB996] font-semibold'
-                                                  : 'text-slate-400 dark:text-slate-500'
-                                              }`}
-                                            >
-                                              <span className="truncate">{m.name}</span>
-                                              {activeProviderObj.model === m.name && (
-                                                <Check className="w-3 h-3 shrink-0" />
-                                              )}
-                                            </button>
-                                          </li>
-                                        ))}
-                                      </ul>
-                                    </li>
-                                  )
-                              )}
-                            </ul>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                  {showThinkingPicker && (
-                    <div className="flex flex-col gap-1 flex-1 min-w-0">
-                      <label
-                        htmlFor="active-provider-thinking-select"
-                        className="text-[10px] font-semibold text-slate-600 dark:text-slate-300"
-                      >
-                        {t('thinking_power')}
-                      </label>
-                      <select
-                        id="active-provider-thinking-select"
-                        value={effectiveThinking}
-                        onChange={(e) => saveActiveModelChoice(activeProviderObj.model || '', e.target.value)}
-                        className="w-full px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
-                      >
-                        <option value="auto">
-                          {probeLoading ? '…' : t('thinking_auto')}
-                        </option>
-                        {thinkingLevels.map((level: string) => (
-                          <option key={level} value={level}>
-                            {level === 'minimal'
-                              ? t('thinking_minimal')
-                              : level === 'low'
-                                ? t('thinking_low')
-                                : level === 'medium'
-                                  ? t('thinking_medium')
-                                  : level === 'high'
-                                    ? t('thinking_high')
-                                    : t('thinking_xhigh')}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                </div>
-                {(() => {
-                  // A quota note from picking this model clears the moment the model actually
-                  // runs again (a successful suggest or re-test records an 'ok' probe entry).
-                  const liveEntry = activeProviderObj?.model
-                    ? peekModelProbe(activeProviderObj.type, activeProviderObj.apiKey, activeProviderObj.model)
-                    : undefined;
-                  if (
-                    (modelProbe === 'model-quota' || modelProbe === 'daily-quota-used') &&
-                    liveEntry &&
-                    liveEntry.availability === 'ok'
-                  )
-                    return null;
-                  return modelProbe !== 'idle' && (
-                  <div
-                    className={`flex items-center gap-1.5 text-[10px] ${
-                      modelProbe === 'unavailable' ||
-                      modelProbe === 'expired-key' ||
-                      modelProbe === 'invalid-key' ||
-                      modelProbe === 'quota-exhausted'
-                        ? 'text-red-500 dark:text-red-400'
-                        : modelProbe === 'model-quota' || modelProbe === 'daily-quota-used'
-                          ? 'text-amber-600 dark:text-amber-400'
-                          : 'text-slate-500 dark:text-slate-400'
-                    }`}
-                  >
-                    {modelProbe === 'checking' ? (
-                      <>
-                        <Loader2 className="w-3 h-3 animate-spin shrink-0" />
-                        <span>{t('checking_model_availability')}</span>
-                      </>
-                    ) : (
-                      <>
-                        <AlertCircle className="w-3 h-3 shrink-0" />
-                        <span>
-                          {modelProbe === 'unavailable'
-                            ? t('model_not_available_on_plan')
-                            : modelProbe === 'expired-key'
-                              ? t('provider_key_expired')
-                              : modelProbe === 'invalid-key'
-                                ? t('provider_key_invalid')
-                                : modelProbe === 'quota-exhausted'
-                                  ? t('provider_quota_exhausted')
-                                  : modelProbe === 'model-quota'
-                                    ? t('model_quota_unavailable')
-                                    : modelProbe === 'daily-quota-used'
-                                      ? t('model_daily_quota_used')
-                                      : t('model_check_inconclusive')}
-                        </span>
-                      </>
-                    )}
-                  </div>
-                  );
-                })()}
-              </div>
-            )}
-
           {providersPanelOpen && (
             <div className="p-3 flex flex-col gap-3 border-t border-slate-200/80 dark:border-[#2A3244]">
               {gtxDown && (
@@ -1467,6 +1266,210 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
             </div>
           )}
         </div>
+
+        {/* Model and thinking pickers: their own card, hidden while the provider list is expanded */}
+        {!providersPanelOpen && (
+          <div className="flex flex-col shrink-0 rounded-2xl border border-slate-200/90 dark:border-[#2F384B] bg-slate-50/70 dark:bg-[#1B212E]">
+            {activeProviderObj &&
+              !activeProviderObj.isBuiltIn &&
+              (providerSupportsModelChoice(activeProviderObj.type) ||
+                providerSupportsThinking(activeProviderObj.type)) && (
+                <div
+                  className="flex flex-col gap-2 px-3 py-3"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex gap-2">
+                    {providerSupportsModelChoice(activeProviderObj.type) && (
+                      <div className="flex flex-col gap-1 flex-1 min-w-0">
+                        <label
+                          htmlFor="active-provider-model-select"
+                          className="text-[10px] font-semibold text-slate-600 dark:text-slate-300"
+                        >
+                          {t('model')}
+                        </label>
+                        <div className="relative">
+                          <button
+                            id="active-provider-model-select"
+                            type="button"
+                            dir="ltr"
+                            aria-haspopup="listbox"
+                            aria-expanded={modelMenuOpen}
+                            onClick={() => setModelMenuOpen((open) => !open)}
+                            className="w-full px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996] flex items-center justify-between gap-1 text-left"
+                          >
+                            <span className="truncate">
+                              {activeProviderObj.model ||
+                                (activeModelsLoading ? '…' : t('model_auto_recommended'))}
+                            </span>
+                            <ChevronDown className="w-3 h-3 shrink-0 text-slate-500 dark:text-slate-400" />
+                          </button>
+                          {modelMenuOpen && (
+                            <>
+                              <div
+                                className="fixed inset-0 z-40 cursor-default"
+                                onClick={() => setModelMenuOpen(false)}
+                              />
+                              <ul
+                                dir="ltr"
+                                role="listbox"
+                                className="absolute right-0 z-50 mt-1 w-[calc(200%_+_0.5rem)] max-h-64 overflow-auto rounded-lg border border-slate-300 dark:border-[#2E384D] bg-white dark:bg-[#1B212E] shadow-xl py-1"
+                              >
+                                {([
+                                  { name: '', label: activeModelsLoading ? '…' : t('model_auto_recommended'), dimmed: false },
+                                  ...availableModels.map((m) => ({ name: m.name, label: m.name, dimmed: false })),
+                                  ...(activeProviderObj.model &&
+                                  activeProviderObj.model !== '' &&
+                                  !modelChoices.some((m) => m.name === activeProviderObj.model)
+                                    ? [{ name: activeProviderObj.model, label: activeProviderObj.model, dimmed: false }]
+                                    : []),
+                                ] as Array<{ name: string; label: string; dimmed: boolean }>).map((item) => (
+                                  <li key={item.name || '__auto__'} role="option" aria-selected={(activeProviderObj.model || '') === item.name}>
+                                    <button
+                                      type="button"
+                                      onClick={() => pickModel(item.name)}
+                                      className={`w-full px-2 py-1.5 text-left text-[11px] font-mono flex items-center justify-between gap-1 hover:bg-slate-100 dark:hover:bg-[#262E3F] ${
+                                        (activeProviderObj.model || '') === item.name
+                                          ? 'text-[#1EB996] font-semibold'
+                                          : 'text-slate-900 dark:text-slate-100'
+                                      }`}
+                                    >
+                                      <span className="truncate">{item.label}</span>
+                                      {(activeProviderObj.model || '') === item.name && (
+                                        <Check className="w-3 h-3 shrink-0" />
+                                      )}
+                                    </button>
+                                  </li>
+                                ))}
+                                {([
+                                  { heading: t('models_plan_unavailable'), models: planLimitedModels },
+                                  { heading: t('models_unavailable'), models: unavailableModels },
+                                ] as Array<{ heading: string; models: typeof planLimitedModels }>).map(
+                                  (group) =>
+                                    group.models.length > 0 && (
+                                      <li key={group.heading}>
+                                        <div dir="rtl" className="px-2 pt-1.5 pb-0.5 text-[10px] font-semibold text-slate-500 dark:text-slate-400 text-right">
+                                          {group.heading}
+                                        </div>
+                                        <ul>
+                                          {group.models.map((m) => (
+                                            <li key={m.name} role="option" aria-selected={activeProviderObj.model === m.name}>
+                                              <button
+                                                type="button"
+                                                onClick={() => pickModel(m.name)}
+                                                className={`w-full px-2 py-1.5 text-left text-[11px] font-mono flex items-center justify-between gap-1 hover:bg-slate-100 dark:hover:bg-[#262E3F] ${
+                                                  activeProviderObj.model === m.name
+                                                    ? 'text-[#1EB996] font-semibold'
+                                                    : 'text-slate-400 dark:text-slate-500'
+                                                }`}
+                                              >
+                                                <span className="truncate">{m.name}</span>
+                                                {activeProviderObj.model === m.name && (
+                                                  <Check className="w-3 h-3 shrink-0" />
+                                                )}
+                                              </button>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      </li>
+                                    )
+                                )}
+                              </ul>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    {showThinkingPicker && (
+                      <div className="flex flex-col gap-1 flex-1 min-w-0">
+                        <label
+                          htmlFor="active-provider-thinking-select"
+                          className="text-[10px] font-semibold text-slate-600 dark:text-slate-300"
+                        >
+                          {t('thinking_power')}
+                        </label>
+                        <select
+                          id="active-provider-thinking-select"
+                          value={effectiveThinking}
+                          onChange={(e) => saveActiveModelChoice(activeProviderObj.model || '', e.target.value)}
+                          className="w-full px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
+                        >
+                          <option value="auto">
+                            {probeLoading ? '…' : t('thinking_auto')}
+                          </option>
+                          {thinkingLevels.map((level: string) => (
+                            <option key={level} value={level}>
+                              {level === 'minimal'
+                                ? t('thinking_minimal')
+                                : level === 'low'
+                                  ? t('thinking_low')
+                                  : level === 'medium'
+                                    ? t('thinking_medium')
+                                    : level === 'high'
+                                      ? t('thinking_high')
+                                      : t('thinking_xhigh')}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                  {(() => {
+                    // A quota note from picking this model clears the moment the model actually
+                    // runs again (a successful suggest or re-test records an 'ok' probe entry).
+                    const liveEntry = activeProviderObj?.model
+                      ? peekModelProbe(activeProviderObj.type, activeProviderObj.apiKey, activeProviderObj.model)
+                      : undefined;
+                    if (
+                      (modelProbe === 'model-quota' || modelProbe === 'daily-quota-used') &&
+                      liveEntry &&
+                      liveEntry.availability === 'ok'
+                    )
+                      return null;
+                    return modelProbe !== 'idle' && (
+                    <div
+                      className={`flex items-center gap-1.5 text-[10px] ${
+                        modelProbe === 'unavailable' ||
+                        modelProbe === 'expired-key' ||
+                        modelProbe === 'invalid-key' ||
+                        modelProbe === 'quota-exhausted'
+                          ? 'text-red-500 dark:text-red-400'
+                          : modelProbe === 'model-quota' || modelProbe === 'daily-quota-used'
+                            ? 'text-amber-600 dark:text-amber-400'
+                            : 'text-slate-500 dark:text-slate-400'
+                      }`}
+                    >
+                      {modelProbe === 'checking' ? (
+                        <>
+                          <Loader2 className="w-3 h-3 animate-spin shrink-0" />
+                          <span>{t('checking_model_availability')}</span>
+                        </>
+                      ) : (
+                        <>
+                          <AlertCircle className="w-3 h-3 shrink-0" />
+                          <span>
+                            {modelProbe === 'unavailable'
+                              ? t('model_not_available_on_plan')
+                              : modelProbe === 'expired-key'
+                                ? t('provider_key_expired')
+                                : modelProbe === 'invalid-key'
+                                  ? t('provider_key_invalid')
+                                  : modelProbe === 'quota-exhausted'
+                                    ? t('provider_quota_exhausted')
+                                    : modelProbe === 'model-quota'
+                                      ? t('model_quota_unavailable')
+                                      : modelProbe === 'daily-quota-used'
+                                        ? t('model_daily_quota_used')
+                                        : t('model_check_inconclusive')}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                    );
+                  })()}
+                </div>
+              )}
+          </div>
+        )}
       {providerToDelete && createPortal(
         (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
