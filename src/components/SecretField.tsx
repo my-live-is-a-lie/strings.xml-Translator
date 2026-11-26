@@ -6,6 +6,18 @@ import { useT } from '../i18n/i18n';
 const PEEK_MS = 1800;
 const EASE = 'ease-[cubic-bezier(0.4,0,0.2,1)]';
 
+// The Web Clipboard API is unreliable inside the Capacitor WebView (Android rejects
+// navigator.clipboard.readText() without a native permission grant), so the native
+// Clipboard plugin reads the clipboard there; the web API stays for browsers.
+export async function readClipboardText(): Promise<string> {
+  if (Capacitor.isNativePlatform()) {
+    const { Clipboard: NativeClipboard } = await import('@capacitor/clipboard');
+    const { value } = await NativeClipboard.read();
+    return value || '';
+  }
+  return navigator.clipboard.readText();
+}
+
 /** Two icons stacked in one spot; the active one rotates/scales in while the other rotates/scales out. */
 function IconSwap({ showSecond, first, second }: { showSecond: boolean; first: React.ReactNode; second: React.ReactNode }) {
   const base = `absolute inset-0 flex items-center justify-center transition-all duration-300 ${EASE} motion-reduce:transition-none`;
@@ -58,21 +70,9 @@ export function SecretField({
     setPeek(false);
   };
 
-  // The Web Clipboard API is unreliable inside the Capacitor WebView (Android rejects
-  // navigator.clipboard.readText() without a native permission grant), so the native
-  // Clipboard plugin reads the clipboard there; the web API stays for browsers.
-  const readClipboard = async (): Promise<string> => {
-    if (Capacitor.isNativePlatform()) {
-      const { Clipboard: NativeClipboard } = await import('@capacitor/clipboard');
-      const { value } = await NativeClipboard.read();
-      return value || '';
-    }
-    return navigator.clipboard.readText();
-  };
-
   const handlePaste = async () => {
     try {
-      const text = (await readClipboard()).trim();
+      const text = (await readClipboardText()).trim();
       if (text) {
         onChange(text);
         startPeek();

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useDialog } from '../utils/useDialog';
 import { createPortal } from 'react-dom';
-import { AlertCircle, Check, CheckCircle2, ChevronDown, Cpu, KeyRound, Loader2, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { AlertCircle, Check, CheckCircle2, ChevronDown, Clipboard, Cpu, KeyRound, Loader2, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { ENGINE_OPTIONS } from './headerOptions';
 import { testGeminiKeyDirect, looksLikeGeminiKey } from '../utils/geminiDirect';
 import {
@@ -19,7 +19,7 @@ import {
   testProviderApiKey,
 } from '../utils/translator';
 import { useT, tg } from '../i18n/i18n';
-import { SecretField } from './SecretField';
+import { SecretField, readClipboardText } from './SecretField';
 import { textDirection } from '../utils/direction';
 import {
   getModelProbeSnapshot,
@@ -88,6 +88,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   // The edited key that was verified valid; saving a changed key is allowed only for this exact value.
   const [editVerified, setEditVerified] = useState<{ sig: string; result: ProviderTestResult } | null>(null);
   const editNameInputRef = useRef<HTMLInputElement | null>(null);
+  const editKeyInputRef = useRef<HTMLInputElement | null>(null);
   const editTestAbortRef = useRef<{ controller: AbortController; cancelled: boolean } | null>(null);
 
   // Warn when the free Google engine keeps failing, since it relies on an unofficial endpoint.
@@ -937,26 +938,61 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                   ? t('lara_access_key_id_or')
                                   : t('edit_api_key')}
                               </label>
-                              <input
-                                type="text"
-                                autoComplete="off"
-                                value={editApiKey}
-                                onChange={(e) => {
-                                  cancelOngoingTest(editTestAbortRef, setIsTestingEditKey);
-                                  setEditTestResult(null);
-                                  setEditApiKey(e.target.value);
-                                }}
-                                onKeyDown={(e) => e.stopPropagation()}
-                                onTouchStart={(e) => e.stopPropagation()}
-                                placeholder={
-                                  prov.type === 'lara' ||
-                                  inferEngineFromName(editProviderName, 'auto') === 'lara'
-                                    ? t('access_key_id_or_id')
-                                    : t('api_key')
-                                }
-                                required
-                                className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
-                              />
+                              <div className="relative flex items-center" dir="ltr">
+                                <input
+                                  ref={editKeyInputRef}
+                                  type="text"
+                                  autoComplete="off"
+                                  autoCapitalize="off"
+                                  autoCorrect="off"
+                                  spellCheck={false}
+                                  data-1p-ignore
+                                  value={editApiKey}
+                                  onChange={(e) => {
+                                    cancelOngoingTest(editTestAbortRef, setIsTestingEditKey);
+                                    setEditTestResult(null);
+                                    setEditApiKey(e.target.value);
+                                  }}
+                                  onKeyDown={(e) => e.stopPropagation()}
+                                  onTouchStart={(e) => e.stopPropagation()}
+                                  placeholder={
+                                    prov.type === 'lara' ||
+                                    inferEngineFromName(editProviderName, 'auto') === 'lara'
+                                      ? t('access_key_id_or_id')
+                                      : t('api_key')
+                                  }
+                                  required
+                                  // The key is always masked and can never be revealed
+                                  style={{ WebkitTextSecurity: 'disc' } as React.CSSProperties}
+                                  className="w-full px-2.5 pe-8 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    if (editApiKey) {
+                                      cancelOngoingTest(editTestAbortRef, setIsTestingEditKey);
+                                      setEditTestResult(null);
+                                      setEditApiKey('');
+                                      editKeyInputRef.current?.focus();
+                                      return;
+                                    }
+                                    try {
+                                      const text = (await readClipboardText()).trim();
+                                      if (text) {
+                                        setEditTestResult(null);
+                                        setEditApiKey(text);
+                                      }
+                                    } catch {
+                                      editKeyInputRef.current?.focus(); // clipboard blocked: paste manually
+                                    }
+                                  }}
+                                  className="absolute end-2 p-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                                  title={editApiKey ? t('clear_key_field') : t('paste_from_clipboard')}
+                                  aria-label={editApiKey ? t('clear_key_field') : t('paste_from_clipboard')}
+                                >
+                                  {editApiKey ? <X className="w-3 h-3" /> : <Clipboard className="w-3.5 h-3.5" />}
+                                </button>
+                              </div>
                             </div>
 
                             {(prov.type === 'lara' ||
