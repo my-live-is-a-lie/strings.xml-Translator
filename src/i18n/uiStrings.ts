@@ -14,6 +14,7 @@ export const UI_STRINGS: Record<string, { en: string; ar: string }> = {
   "skip": { en: "Skip", ar: "تخطّي" },
   "save_continue": { en: "Save & Continue", ar: "حفظ ومتابعة" },
   "suggesting": { en: "Suggesting...", ar: "جارٍ الاقتراح..." },
+  "suggestion_none": { en: "No suggestion for this text", ar: "لا يوجد اقتراح لهذا النص" },
   "suggest": { en: "Suggest", ar: "اقترح" },
   "saved": { en: "Saved!", ar: "تم الحفظ!" },
   "save_stay": { en: "Save & Stay", ar: "حفظ بدون متابعة" },
