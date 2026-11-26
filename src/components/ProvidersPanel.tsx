@@ -1267,15 +1267,15 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
           )}
         </div>
 
-        {/* Model and thinking pickers: their own card, hidden while the provider list is expanded */}
+        {/* Model and thinking pickers: loose controls under the provider card (no card around them), hidden while the provider list is expanded */}
         {!providersPanelOpen && (
-          <div className="flex flex-col shrink-0 rounded-2xl border border-slate-200/90 dark:border-[#2F384B] bg-slate-50/70 dark:bg-[#1B212E]">
+          <>
             {activeProviderObj &&
               !activeProviderObj.isBuiltIn &&
               (providerSupportsModelChoice(activeProviderObj.type) ||
                 providerSupportsThinking(activeProviderObj.type)) && (
                 <div
-                  className="flex flex-col gap-2 px-3 py-3"
+                  className="flex flex-col gap-2 px-1"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <div className="flex gap-2">
@@ -1468,7 +1468,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                   })()}
                 </div>
               )}
-          </div>
+          </>
         )}
       {providerToDelete && createPortal(
         (
