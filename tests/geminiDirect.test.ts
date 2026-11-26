@@ -108,9 +108,10 @@ describe('gemini model fallback', () => {
 
 describe('looksLikeGeminiKey', () => {
   it('recognises AI Studio Gemini key shapes', () => {
-    expect(looksLikeGeminiKey('AIzaSyAbCdEfGhIjKlMnOpQrStUvWxYz1234567')).toBe(true);
+    // Synthetic placeholder: deliberately not a valid key, keeps secret scanners quiet.
+    expect(looksLikeGeminiKey('AIzaTEST-ONLY-not-a-real-key')).toBe(true);
     expect(looksLikeGeminiKey('AQ.AbCdEfGh123')).toBe(true);
-    expect(looksLikeGeminiKey('  AIzaSyPadded  ')).toBe(true);
+    expect(looksLikeGeminiKey('  AIzaTEST-ONLY-not-a-real-key  ')).toBe(true);
   });
 
   it('rejects other providers\' key shapes', () => {
