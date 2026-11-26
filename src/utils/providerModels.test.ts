@@ -1,5 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getModelProbeSnapshot, modelProbeCacheKey, peekModelProbe } from './providerModels';
+import {
+  clearModelUnavailableError,
+  clearProviderRuntimeError,
+  clearProviderRuntimeErrorOnSuccess,
+  getModelProbeSnapshot,
+  getProviderRuntimeErrorsSnapshot,
+  modelProbeCacheKey,
+  peekModelProbe,
+  reportModelDefiniteFailure,
+} from './providerModels';
 import { getStoredItem, removeStoredItem, setStoredItem } from './storage';
 
 const ok = () =>
@@ -99,6 +108,43 @@ describe('model probe cache', () => {
     const peeked = peekModelProbe('gemini', 'quotakey', 'gemini-p-pro');
     expect(peeked?.modelQuota).toBe(true);
     cleanup('quotakey', 'gemini-p-pro');
+  });
+
+  it('reportModelDefiniteFailure moves the model to unavailable and onto the card', () => {
+    reportModelDefiniteFailure('prov1', 'gemini', 'rtkey', 'gemini-rt-pro', 'unavailable');
+    expect(peekModelProbe('gemini', 'rtkey', 'gemini-rt-pro')?.availability).toBe('unavailable');
+    const persisted = JSON.parse(getStoredItem(modelProbeCacheKey('rtkey', 'gemini-rt-pro')) as string);
+    expect(persisted.availability).toBe('unavailable');
+    const card = getProviderRuntimeErrorsSnapshot().get('prov1');
+    expect(card?.kind).toBe('model-unavailable');
+    expect(card?.model).toBe('gemini-rt-pro');
+    clearProviderRuntimeError('prov1');
+    expect(getProviderRuntimeErrorsSnapshot().get('prov1')).toBeUndefined();
+    cleanup('rtkey', 'gemini-rt-pro');
+  });
+
+  it('reportModelDefiniteFailure with model-quota persists the group membership', () => {
+    reportModelDefiniteFailure('prov2', 'gemini', 'rtkey2', 'gemini-rt-pro', 'model-quota');
+    expect(peekModelProbe('gemini', 'rtkey2', 'gemini-rt-pro')?.modelQuota).toBe(true);
+    const persisted = JSON.parse(getStoredItem(modelProbeCacheKey('rtkey2', 'gemini-rt-pro')) as string);
+    expect(persisted.modelQuota).toBe(true);
+    clearProviderRuntimeError('prov2');
+    cleanup('rtkey2', 'gemini-rt-pro');
+  });
+
+  it('clearProviderRuntimeErrorOnSuccess keeps the line while the pinned model is still broken', () => {
+    reportModelDefiniteFailure('prov3', 'gemini', 'rtkey3', 'gemini-rt-pro', 'unavailable');
+    // Failover success with the broken model still pinned: the line stays.
+    clearProviderRuntimeErrorOnSuccess('prov3', 'gemini-rt-pro');
+    expect(getProviderRuntimeErrorsSnapshot().get('prov3')?.kind).toBe('model-unavailable');
+    // Success after the user moved to another model: the line clears.
+    clearProviderRuntimeErrorOnSuccess('prov3', 'gemini-rt-flash');
+    expect(getProviderRuntimeErrorsSnapshot().get('prov3')).toBeUndefined();
+    // A successful re-test clears the line for that model only.
+    reportModelDefiniteFailure('prov3', 'gemini', 'rtkey3', 'gemini-rt-pro', 'unavailable');
+    clearModelUnavailableError('prov3', 'gemini-rt-pro');
+    expect(getProviderRuntimeErrorsSnapshot().get('prov3')).toBeUndefined();
+    cleanup('rtkey3', 'gemini-rt-pro');
   });
 
   it('force re-probes a cached model and overwrites the group when it recovers', async () => {

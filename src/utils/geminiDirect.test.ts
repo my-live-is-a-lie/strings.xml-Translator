@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   classifyGeminiKeyProblem,
   geminiThinkingConfig,
+  geminiTranslateDirect,
   GEMINI_THINKING_LEVELS,
   listGeminiModels,
   probeGeminiModel,
@@ -196,6 +197,13 @@ describe('listGeminiModels', () => {
               model('gemini-3.1-flash'),
               model('gemini-3.1-pro'),
               model('gemini-2.5-flash', 'Fast multimodal model: accepts text, images and audio as input'),
+              model('gemini-3.1-flash-lite-preview'),
+              model('gemini-3.1-pro-preview'),
+              model('gemini-2.5-pro'),
+              model('gemini-3.1-pro-preview-customtools'),
+              model('gemini-4-argon'),
+              model('gemini-4-carbon'),
+              model('gemini-2.0-flash-exp'),
               model('gemini-3.5-transcribe', 'Transcribes audio to text'),
               model('gemini-nano-banana-2.1', 'Generates images from text prompts'),
               model('gemini-omni-2.0', 'Omni-modal with audio output'),
@@ -214,7 +222,15 @@ describe('listGeminiModels', () => {
     expect(names).toContain('gemini-3.1-pro');
     // multimodal input must NOT drop a text-output model
     expect(names).toContain('gemini-2.5-flash');
+    // preview releases of real families stay
+    expect(names).toContain('gemini-3.1-flash-lite-preview');
+    expect(names).toContain('gemini-3.1-pro-preview');
+    expect(names).toContain('gemini-2.5-pro');
     for (const dropped of [
+      'gemini-3.1-pro-preview-customtools',
+      'gemini-4-argon',
+      'gemini-4-carbon',
+      'gemini-2.0-flash-exp',
       'gemini-3.5-transcribe',
       'gemini-nano-banana-2.1',
       'gemini-omni-2.0',
@@ -227,5 +243,80 @@ describe('listGeminiModels', () => {
     }
     // flash family first, newest version first
     expect(names.indexOf('gemini-3.1-flash')).toBeLessThan(names.indexOf('gemini-3.1-pro'));
+  });
+});
+
+describe('geminiTranslateDirect model failure reporting', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const translateOk = () =>
+    new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'مرحبا' }] } }] }), {
+      status: 200,
+    });
+
+  it('reports a pinned model that 404s and still translates via failover', async () => {
+    const calls: Array<[string, string]> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url.includes('gemini-dead-pro') ? err(404, 'models/gemini-dead-pro is not found') : translateOk()
+      )
+    );
+    const out = await geminiTranslateDirect({
+      apiKey: 'k',
+      sourceText: 'Hello',
+      model: 'gemini-dead-pro',
+      onModelDefiniteFailure: (m, kind) => calls.push([m, kind]),
+    });
+    expect(out).toBe('مرحبا');
+    expect(calls).toEqual([['gemini-dead-pro', 'unavailable']]);
+  });
+
+  it('reports a model-scoped quota as model-quota, never as a key problem', async () => {
+    const calls: Array<[string, string]> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url.includes('gemini-quota-pro')
+          ? err(
+              429,
+              'Quota exceeded for metric: generativelanguage.googleapis.com/generate_requests_per_model_per_day, limit: 0, model: gemini-quota-pro'
+            )
+          : translateOk()
+      )
+    );
+    const out = await geminiTranslateDirect({
+      apiKey: 'k',
+      sourceText: 'Hello',
+      model: 'gemini-quota-pro',
+      onModelDefiniteFailure: (m, kind) => calls.push([m, kind]),
+    });
+    expect(out).toBe('مرحبا');
+    expect(calls).toEqual([['gemini-quota-pro', 'model-quota']]);
+  });
+
+  it('never reports transient failures', async () => {
+    const calls: Array<[string, string]> = [];
+    let failedOnce = false;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.includes('gemini-flaky') && !failedOnce) {
+          failedOnce = true;
+          return err(503, 'The model is overloaded');
+        }
+        return translateOk();
+      })
+    );
+    const out = await geminiTranslateDirect({
+      apiKey: 'k',
+      sourceText: 'Hello',
+      model: 'gemini-flaky',
+      onModelDefiniteFailure: (m, kind) => calls.push([m, kind]),
+    });
+    expect(out).toBe('مرحبا');
+    expect(calls).toEqual([]);
   });
 });

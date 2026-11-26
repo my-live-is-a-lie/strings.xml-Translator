@@ -22,6 +22,7 @@ import { useT, tg } from '../i18n/i18n';
 import { SecretField } from './SecretField';
 import { textDirection } from '../utils/direction';
 import {
+  clearModelUnavailableError,
   getModelProbeSnapshot,
   getModelProbeStatesVersion,
   getProviderModelsSnapshot,
@@ -384,10 +385,11 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
       // A model picked from the unavailable group is an explicit re-test: bypass the cache so a
       // recovered model moves back to "available" and a still-failing one stays put.
       const force = isUnavailableModel(model);
-      // Kicks off the cached probe if it is not running yet.
+      // Kicks off the probe: force bypasses the cache for the re-test. The polling below must
+      // NOT force - a forced poll would relaunch the probe on every tick and never settle.
       getModelProbeSnapshot(activeProviderObj.type, apiKey, model, { force });
       const waitForProbe = () => {
-        const entry = getModelProbeSnapshot(activeProviderObj.type, apiKey, model, { force });
+        const entry = getModelProbeSnapshot(activeProviderObj.type, apiKey, model);
         if (entry === 'loading') {
           window.setTimeout(waitForProbe, 150);
           return;
@@ -406,6 +408,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
           entry.keyProblem ??
             (entry.modelQuota ? 'model-quota' : entry.availability === 'unknown' ? 'inconclusive' : 'idle')
         );
+        // A successful (re-)test clears this model's runtime line from the provider card.
+        if (entry.availability === 'ok') clearModelUnavailableError(providerId, model);
         const levelForModel =
           thinkingLevel !== 'auto' && !entry.levels.includes(thinkingLevel) ? 'auto' : thinkingLevel;
         persist(levelForModel);
@@ -478,13 +482,11 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                         <option value="">
                           {activeModelsLoading ? '…' : t('model_auto_recommended')}
                         </option>
-                        <optgroup label={t('models_available')}>
-                          {availableModels.map((m) => (
-                            <option key={m.name} value={m.name}>
-                              {m.name}
-                            </option>
-                          ))}
-                        </optgroup>
+                        {availableModels.map((m) => (
+                          <option key={m.name} value={m.name}>
+                            {m.name}
+                          </option>
+                        ))}
                         {unavailableModels.length > 0 && (
                           <optgroup label={t('models_unavailable')}>
                             {unavailableModels.map((m) => (
@@ -680,14 +682,22 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                         </div>
 
                         {providerRuntimeErrors.get(prov.id) && (
-                          <div className="flex items-center gap-1.5 mt-1.5 text-[10px] text-red-500 dark:text-red-400">
+                          <div
+                            className={`flex items-center gap-1.5 mt-1.5 text-[10px] ${
+                              providerRuntimeErrors.get(prov.id)?.kind === 'model-unavailable'
+                                ? 'text-amber-600 dark:text-amber-400'
+                                : 'text-red-500 dark:text-red-400'
+                            }`}
+                          >
                             <AlertCircle className="w-3 h-3 shrink-0" />
                             <span>
                               {providerRuntimeErrors.get(prov.id)?.kind === 'expired-key'
                                 ? t('provider_key_expired')
                                 : providerRuntimeErrors.get(prov.id)?.kind === 'invalid-key'
                                   ? t('provider_key_invalid')
-                                  : t('provider_quota_exhausted')}
+                                  : providerRuntimeErrors.get(prov.id)?.kind === 'quota-exhausted'
+                                    ? t('provider_quota_exhausted')
+                                    : `${providerRuntimeErrors.get(prov.id)?.model ?? ''} ${t('model_unavailable_short')}`}
                             </span>
                           </div>
                         )}

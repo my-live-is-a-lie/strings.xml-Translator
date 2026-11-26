@@ -150,10 +150,11 @@ export function getModelProbeStatesVersion(): number {
  * call clears it.
  */
 export type ProviderKeyProblem = 'expired-key' | 'invalid-key' | 'quota-exhausted';
-const providerRuntimeErrors = new Map<string, { kind: ProviderKeyProblem; at: number }>();
+/** Card-visible runtime error: a key/account problem, or one model proven unusable at runtime. */
+export type ProviderRuntimeError = { kind: ProviderKeyProblem | 'model-unavailable'; model?: string; at: number };
+const providerRuntimeErrors = new Map<string, ProviderRuntimeError>();
 // Stable snapshot for useSyncExternalStore: replaced (never mutated) on every change.
-let runtimeErrorsSnapshot: ReadonlyMap<string, { kind: ProviderKeyProblem; at: number }> =
-  providerRuntimeErrors;
+let runtimeErrorsSnapshot: ReadonlyMap<string, ProviderRuntimeError> = providerRuntimeErrors;
 
 export function reportProviderKeyProblem(providerId: string, kind: ProviderKeyProblem): void {
   providerRuntimeErrors.set(providerId, { kind, at: Date.now() });
@@ -168,11 +169,63 @@ export function clearProviderRuntimeError(providerId: string): void {
   }
 }
 
-export function getProviderRuntimeErrorsSnapshot(): ReadonlyMap<
-  string,
-  { kind: ProviderKeyProblem; at: number }
-> {
+/**
+ * Success path after a translation: key problems always clear. A model-unavailable line clears
+ * only when the failing model is no longer the pinned one - when the pinned model itself just
+ * failed and a failover model answered, the pinned model is still broken and the line stays.
+ */
+export function clearProviderRuntimeErrorOnSuccess(providerId: string, pinnedModel?: string): void {
+  const err = providerRuntimeErrors.get(providerId);
+  if (!err) return;
+  if (err.kind === 'model-unavailable' && pinnedModel?.trim() && err.model === pinnedModel.trim()) return;
+  clearProviderRuntimeError(providerId);
+}
+
+/** A successful re-test of a model clears its runtime line. */
+export function clearModelUnavailableError(providerId: string, model: string): void {
+  const err = providerRuntimeErrors.get(providerId);
+  if (err?.kind === 'model-unavailable' && err.model === model.trim()) {
+    clearProviderRuntimeError(providerId);
+  }
+}
+
+export function getProviderRuntimeErrorsSnapshot(): ReadonlyMap<string, ProviderRuntimeError> {
   return runtimeErrorsSnapshot;
+}
+
+/**
+ * A definite API answer during a real translation call - the model is gone (404-style) or its
+ * per-model quota is not on this plan (e.g. free-tier limit 0). Moves the model to the picker's
+ * unavailable group (persisted with the same TTL) and says so on the provider card. Transient
+ * failures (network, timeouts, 5xx, per-minute 429) must never call this. The card line clears
+ * on the next successful translation like any runtime error; the group membership clears when a
+ * re-test from the unavailable group succeeds.
+ */
+export function reportModelDefiniteFailure(
+  providerId: string,
+  type: ProviderEngineType | string,
+  apiKey: string,
+  model: string,
+  kind: 'unavailable' | 'model-quota'
+): void {
+  const key = apiKey.trim();
+  const name = model.trim();
+  if (type !== 'gemini' || !key || !name) return;
+  const previous = peekModelProbe(type, key, name);
+  const result: ModelProbeResult =
+    kind === 'model-quota'
+      ? { availability: 'unknown', levels: previous?.levels ?? [], keyProblem: null, definite: false, modelQuota: true }
+      : { availability: 'unavailable', levels: previous?.levels ?? [], keyProblem: null, definite: true };
+  modelProbeStore.set(`${type}:${key}:${name}`, result);
+  try {
+    setStoredItem(modelProbeCacheKey(key, name), JSON.stringify({ ...result, at: Date.now() }));
+  } catch {
+    // Caching is best-effort; the in-memory entry already covers this session.
+  }
+  probeStatesVersion++;
+  providerRuntimeErrors.set(providerId, { kind: 'model-unavailable', model: name, at: Date.now() });
+  runtimeErrorsSnapshot = new Map(providerRuntimeErrors);
+  notify();
 }
 
 

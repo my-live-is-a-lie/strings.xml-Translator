@@ -175,10 +175,15 @@ export async function listGeminiModels(apiKey: string, signal?: AbortSignal): Pr
       }))
       .filter(
         (m) =>
-          /^gemini-/.test(m.name) &&
-          // "-latest" entries are aliases of the concrete version already in the list: keeping
-          // both would double the picker with pointers that drift without telling the user.
-          !/-latest$/.test(m.name) &&
+          // Canonical public models follow one shape: gemini-<version>[-family][-preview].
+          // Codename drops (gemini-4-argon/carbon/...), specialized suffixes
+          // (-customtools), experiment tags (-exp) and -latest aliases all break that
+          // shape and are left out; new versions and preview releases of the real
+          // families pass without any code change. Anything unusual that still passes
+          // is caught by the runtime probe.
+          /^gemini-\d+(\.\d+)?-(flash|flash-lite|pro|ultra)(-preview)?$|^gemini-\d+(\.\d+)?$/.test(
+            m.name
+          ) &&
           // Name backstop for non-text-translation variants (image, speech, transcription,
           // omni-modal...). The API marks no modality field, so the documented description is
           // the structural signal below and this regex only catches what it misses.
@@ -352,6 +357,11 @@ export async function geminiTranslateDirect(opts: {
   model?: string;
   /** Thinking strength from the provider's settings ('auto'/undefined keeps the model default). */
   thinkingLevel?: string;
+  /**
+   * Called the moment a model fails with a definite API answer (gone, or a model-scoped quota),
+   * before the failover moves on. Transient failures never trigger it.
+   */
+  onModelDefiniteFailure?: (model: string, kind: 'unavailable' | 'model-quota') => void;
 }): Promise<string> {
   const { apiKey, sourceText, targetLang = 'ar', targetLocaleName, pluralQuantity, signal } = opts;
   const langLabel = targetLocaleName ? `${targetLocaleName} (${targetLang})` : targetLang;
@@ -445,7 +455,7 @@ ${sourceText}`;
       const classified = classifyGeminiKeyProblem(res.status, apiMessage);
       if (classified === 'expired-key') {
         message =
-          'Gemini: انتهت صلاحية المفتاح، جدّده من Google AI Studio / The API key expired - renew it in Google AI Studio';
+          'Gemini: انتهت صلاحية المفتاح / The API key expired';
       } else if (classified === 'invalid-key') {
         message =
           'Gemini: المفتاح غير صالح أو غير مفعّل / The API key is invalid or disabled';
@@ -458,7 +468,7 @@ ${sourceText}`;
       const modelQuota = isModelQuotaMessage(res.status, apiMessage);
       if (modelQuota) {
         message =
-          'Gemini: هذا النموذج غير متاح لخطتك حالياً - جرّب نموذجاً آخر / This model is not available for your plan right now - try another model';
+          'Gemini: هذا النموذج غير متاح لخطتك / This model isn\'t available for your plan';
       }
       throw new GeminiHttpError(
         message,
@@ -520,6 +530,15 @@ ${sourceText}`;
       // can surface it even when the failover hides it behind other models' failures.
       if (err instanceof GeminiHttpError && err.keyProblem && !keyProblemError) keyProblemError = err;
       if (err instanceof GeminiHttpError && err.modelQuota && !modelQuotaError) modelQuotaError = err;
+      // A definite answer about THIS model (gone, or its quota not on the plan) is reported so
+      // the picker can move it to the unavailable group; the failover still tries the next model.
+      if (err instanceof GeminiHttpError && (err.modelUnavailable || err.modelQuota)) {
+        try {
+          opts.onModelDefiniteFailure?.(model, err.modelQuota ? 'model-quota' : 'unavailable');
+        } catch (cbErr) {
+          debugIgnored('geminiDirect', cbErr);
+        }
+      }
       if (err instanceof GeminiHttpError && err.modelUnavailable) return null; // try the next model
       // A reply that breaks the ICU structure is worth retrying on another model too,
       // but the model itself works, so it stays the working model.

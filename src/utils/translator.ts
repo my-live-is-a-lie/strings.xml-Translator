@@ -16,7 +16,11 @@ import {
   scheduleStoredWrite,
 } from './storage';
 import { GeminiHttpError, geminiTranslateDirect } from './geminiDirect';
-import { clearProviderRuntimeError, reportProviderKeyProblem } from './providerModels';
+import {
+  clearProviderRuntimeErrorOnSuccess,
+  reportModelDefiniteFailure,
+  reportProviderKeyProblem,
+} from './providerModels';
 import { fetchGoogleGtxRaw, fetchWithTimeout, providerHttpError } from '../shared/translateCore';
 import { directCallProviderWithKey, directTestProviderApiKey } from './directProviders';
 import { findClauseBodyOpens, hasMultilineIcuBlock, splitIcuBlocks, validatePlaceholders } from './placeholderCheck';
@@ -1300,12 +1304,19 @@ async function translateSingleSegmentUncached(
         signal,
         model: activeProvider.type === 'gemini' ? activeProvider.model : undefined,
         thinkingLevel: activeProvider.type === 'gemini' ? activeProvider.thinkingLevel : undefined,
+        // A definite answer about a model (gone, or its quota not on the plan) moves it to the
+        // picker's unavailable group and shows it on the card; transient failures never do.
+        onModelDefiniteFailure: (model, kind) =>
+          reportModelDefiniteFailure(activeProvider.id, 'gemini', userGeminiKey, model, kind),
       });
       const cleanedAi = stripMetadataLabels(translated, coreText);
       if (cleanedAi && !isPollutedTranslation(cleanedAi)) {
         const restored = postProcess(restoreSegmentSyntax(cleanedAi, tokens, usesEscapedDoubleQuotes));
         if (!breaksIcuStructure(restored) && !changesLineBreaks(restored) && !isEchoReply(coreText, restored, baseLang)) {
-          clearProviderRuntimeError(activeProvider.id);
+          clearProviderRuntimeErrorOnSuccess(
+            activeProvider.id,
+            activeProvider.type === 'gemini' ? activeProvider.model : undefined
+          );
           return restored;
         }
       }
