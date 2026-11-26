@@ -1334,10 +1334,7 @@ async function translateSingleSegmentUncached(
       if (cleanedAi && !isPollutedTranslation(cleanedAi)) {
         const restored = postProcess(restoreSegmentSyntax(cleanedAi, tokens, usesEscapedDoubleQuotes));
         if (!breaksIcuStructure(restored) && !changesLineBreaks(restored) && !isEchoReply(coreText, restored, baseLang)) {
-          clearProviderRuntimeErrorOnSuccess(
-            activeProvider.id,
-            activeProvider.type === 'gemini' ? activeProvider.model : undefined
-          );
+          clearProviderRuntimeErrorOnSuccess(activeProvider.id);
           return restored;
         }
       }

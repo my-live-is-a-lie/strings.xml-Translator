@@ -22,7 +22,6 @@ import { useT, tg } from '../i18n/i18n';
 import { SecretField } from './SecretField';
 import { textDirection } from '../utils/direction';
 import {
-  clearModelUnavailableError,
   getModelProbeSnapshot,
   getModelProbeStatesVersion,
   getProviderModelsSnapshot,
@@ -493,7 +492,6 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
         // floats it to the top of the picker - including cache-hit picks, which skip the
         // network path where the ordering timestamp is otherwise set.
         if (entry.availability === 'ok') {
-          clearModelUnavailableError(providerId, model);
           noteModelProbeSuccess(activeProviderObj.type, apiKey, model);
         }
         const levelForModel =
@@ -843,11 +841,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
 
                         {providerRuntimeErrors.get(prov.id) && (
                           <div
-                            className={`flex items-center gap-1.5 mt-1.5 text-[10px] ${
-                              providerRuntimeErrors.get(prov.id)?.kind === 'model-unavailable'
-                                ? 'text-amber-600 dark:text-amber-400'
-                                : 'text-red-500 dark:text-red-400'
-                            }`}
+                            className="flex items-center gap-1.5 mt-1.5 text-[10px] text-red-500 dark:text-red-400"
                           >
                             <AlertCircle className="w-3 h-3 shrink-0" />
                             <span>
@@ -855,9 +849,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                 ? t('provider_key_expired')
                                 : providerRuntimeErrors.get(prov.id)?.kind === 'invalid-key'
                                   ? t('provider_key_invalid')
-                                  : providerRuntimeErrors.get(prov.id)?.kind === 'quota-exhausted'
-                                    ? t('provider_quota_exhausted')
-                                    : `${providerRuntimeErrors.get(prov.id)?.model ?? ''} ${t('model_unavailable_short')}`}
+                                  : t('provider_quota_exhausted')}
                             </span>
                           </div>
                         )}

@@ -264,7 +264,6 @@ export const UI_STRINGS: Record<string, { en: string; ar: string }> = {
   "models_unavailable": { en: "Unavailable models", ar: "نماذج غير متاحة" },
   "models_plan_unavailable": { en: "Not on your plan", ar: "غير متاحة لخطتك" },
   "model_check_inconclusive": { en: "Couldn't check this model now; saved anyway", ar: "تعذّر فحص هذا النموذج الآن، وتم حفظه" },
-  "model_unavailable_short": { en: "isn't available", ar: "غير متاح" },
   "model_quota_unavailable": { en: "This model isn't available for your plan", ar: "هذا النموذج غير متاح لخطتك" },
   "model_daily_quota_used": { en: "Daily quota used up", ar: "انتهت حصته اليومية" },
   "provider_key_expired": { en: "API key expired", ar: "انتهت صلاحية مفتاح API" },
