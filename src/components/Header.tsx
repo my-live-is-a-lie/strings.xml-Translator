@@ -789,8 +789,8 @@ const HeaderBase: React.FC<HeaderProps> = ({
             className={`relative w-72 sm:w-80 max-w-[85vw] h-dvh max-h-dvh overflow-hidden bg-white dark:bg-[#161922] ${drawerSide === 'right' ? 'border-l' : 'border-r'} border-slate-200 dark:border-[#252C3A] shadow-2xl z-10 flex flex-col animate-in ${drawerSide === 'right' ? 'slide-in-from-right' : 'slide-in-from-left'} duration-200`}
           >
             {/* Drawer Header: 4 Squircle Buttons (Language, Theme, Random Accent, Palette) + Close Button */}
-            <div className="relative flex items-center justify-between gap-2 px-3.5 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] border-b border-slate-200/80 dark:border-[#252C3A]">
-              <div className="flex items-center gap-1.5 min-w-0">
+            <div className="relative flex flex-row-reverse items-center justify-between gap-2 px-3.5 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] border-b border-slate-200/80 dark:border-[#252C3A]">
+              <div className="flex flex-row-reverse items-center gap-1.5 min-w-0">
                 {/* 1. App Language Button */}
                 <button
                   id="drawer-language-btn"
