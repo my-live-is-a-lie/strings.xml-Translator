@@ -6,11 +6,16 @@ import {
   GEMINI_THINKING_LEVELS,
   listGeminiModels,
   probeGeminiModel,
+  testGeminiKeyDirect,
 } from './geminiDirect';
 
 describe('classifyGeminiKeyProblem', () => {
   it('names invalid keys and exhausted quota, but not plain rate limits', () => {
     expect(classifyGeminiKeyProblem(401, 'API key not valid')).toBe('invalid-key');
+    expect(classifyGeminiKeyProblem(400, 'API key not valid. Please pass a valid API key.')).toBe(
+      'invalid-key'
+    );
+    expect(classifyGeminiKeyProblem(400, 'API_KEY_INVALID')).toBe('invalid-key');
     expect(classifyGeminiKeyProblem(403, 'API key expired. Please renew the API key.')).toBe(
       'expired-key'
     );
@@ -318,5 +323,157 @@ describe('geminiTranslateDirect model failure reporting', () => {
     });
     expect(out).toBe('مرحبا');
     expect(calls).toEqual([]);
+  });
+});
+
+describe('testGeminiKeyDirect', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const listOk = (names: string[]) =>
+    new Response(
+      JSON.stringify({
+        models: names.map((name) => ({
+          name: `models/${name}`,
+          supportedGenerationMethods: ['generateContent'],
+          description: 'General-purpose text model',
+        })),
+      }),
+      { status: 200 }
+    );
+  const MODELS = ['gemini-3.1-pro-preview', 'gemini-3.1-flash', 'gemini-2.5-flash'];
+  const modelScopedQuota = (model: string) =>
+    err(
+      429,
+      `Quota exceeded for metric: generativelanguage.googleapis.com/generate_requests_per_model_per_day, limit: 0, model: ${model}`
+    );
+  const modelIn = (url: string) => /models\/([^:?]+):/.exec(url)?.[1] ?? '';
+
+  it('accepts the key when the first probed model is quota-limited but another works', async () => {
+    // The exact real-world case: the verification probe hit a model whose per-model daily quota
+    // is 0 on this plan, and the old code failed the whole key for it.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.includes('/models?')) return listOk(MODELS);
+        const m = modelIn(url);
+        if (m === 'gemini-3.1-flash') return ok();
+        if (MODELS.includes(m)) return modelScopedQuota(m);
+        return err(404, `models/${m} is not found`); // stale workingModel / built-ins
+      })
+    );
+    const res = await testGeminiKeyDirect('k');
+    expect(res.success).toBe(true);
+    expect(res.matched).toBe(true);
+    expect(res.errorKind).toBeUndefined();
+    expect(res.modelsQuotaLimited).toBeUndefined();
+    expect(res.workingModel).toBe('gemini-3.1-flash');
+  });
+
+  it('accepts the key when every model answers a model-scoped quota', async () => {
+    // Quota is enforced per key, so a quota answer proves the key authenticated: accept it and
+    // let the picker mark models as they are probed.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.includes('/models?')) return listOk(MODELS);
+        return modelScopedQuota(modelIn(url) || 'gemini-flash-latest');
+      })
+    );
+    const res = await testGeminiKeyDirect('k');
+    expect(res.success).toBe(true);
+    expect(res.modelsQuotaLimited).toBe(true);
+    expect(res.errorKind).toBeUndefined();
+    expect(res.workingModel).toBeUndefined();
+  });
+
+  it('accepts the key when every candidate model is gone (404)', async () => {
+    // The API answered every call, so the key works; there is just no usable model right now.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.includes('/models?')) return listOk(MODELS);
+        const m = modelIn(url) || 'unknown';
+        return err(404, `models/${m} is not found`);
+      })
+    );
+    const res = await testGeminiKeyDirect('k');
+    expect(res.success).toBe(true);
+    expect(res.noWorkingModel).toBe(true);
+    expect(res.errorKind).toBeUndefined();
+  });
+
+  it('reports a provider-side outage as provider-error, never a key verdict', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.includes('/models?')) return listOk(MODELS);
+        return err(500, 'internal error');
+      })
+    );
+    const res = await testGeminiKeyDirect('k');
+    expect(res.success).toBe(false);
+    expect(res.errorKind).toBe('provider-error');
+  });
+
+  it('rejects an invalid key with a categorized errorKind (Google answers 400)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.includes('/models?')) return err(400, 'API key not valid. Please pass a valid API key.');
+        return err(400, 'API key not valid. Please pass a valid API key.');
+      })
+    );
+    const res = await testGeminiKeyDirect('k');
+    expect(res.success).toBe(false);
+    expect(res.errorKind).toBe('invalid-key');
+  });
+
+  it('rejects a key-wide exhausted quota as quota-exhausted', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.includes('/models?')) return listOk(MODELS);
+        return err(
+          429,
+          'Quota exceeded for metric: generativelanguage.googleapis.com/generate_requests_per_project_per_day, limit: 50'
+        );
+      })
+    );
+    const res = await testGeminiKeyDirect('k');
+    expect(res.success).toBe(false);
+    expect(res.errorKind).toBe('quota-exhausted');
+  });
+
+  it('reports a network failure as unreachable', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('Failed to fetch');
+      })
+    );
+    const res = await testGeminiKeyDirect('k');
+    expect(res.success).toBe(false);
+    expect(res.errorKind).toBe('unreachable');
+  });
+
+  it('races the discovered model list instead of the built-in candidates', async () => {
+    const called: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.includes('/models?')) return listOk(['gemini-9.9-flash']);
+        const m = modelIn(url);
+        if (m) called.push(m);
+        if (m === 'gemini-9.9-flash') return ok();
+        return err(404, `models/${m} is not found`);
+      })
+    );
+    const res = await testGeminiKeyDirect('k');
+    expect(res.success).toBe(true);
+    expect(called).toContain('gemini-9.9-flash');
+    // The built-in candidates were never the plan's only hope.
+    expect(res.workingModel).toBe('gemini-9.9-flash');
   });
 });

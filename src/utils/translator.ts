@@ -574,6 +574,16 @@ export interface ProviderTestResult {
   googleTranslation?: string;
   providerTranslation?: string;
   detectedType?: ProviderEngineType;
+  /** Categorized failure for UI copy; the UI renders Arabic from this instead of the raw message. */
+  errorKind?: 'expired-key' | 'invalid-key' | 'quota-exhausted' | 'unreachable' | 'provider-error' | 'unknown';
+  /** The model that answered the verification call, so it can become the provider's default. */
+  workingModel?: string;
+  /** Key authenticated but every model answered a model-scoped quota; accepted with a flag. */
+  modelsQuotaLimited?: boolean;
+  /** Key authenticated but every candidate model is gone or retired; accepted with a flag. */
+  noWorkingModel?: boolean;
+  /** Key authenticated and models answered, but no clean translation came back to compare. */
+  translationUnverified?: boolean;
   error?: string;
 }
 

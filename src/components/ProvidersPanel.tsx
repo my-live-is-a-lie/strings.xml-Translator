@@ -110,6 +110,27 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
     onChanged();
   };
 
+  // Arabic-first UI: a categorized failure renders the app's Arabic copy, never the raw
+  // mixed-language API message (e.g. "Gemini: عربي / English").
+  const testErrorText = (result: ProviderTestResult): string => {
+    switch (result.errorKind) {
+      case 'expired-key':
+        return t('provider_key_expired');
+      case 'invalid-key':
+        return t('provider_key_invalid');
+      case 'quota-exhausted':
+        return t('provider_quota_exhausted');
+      case 'unreachable':
+        return t('provider_unreachable');
+      case 'provider-error':
+        return t('provider_error');
+      default:
+        // The add-key flow never shows a raw API message: anything uncategorized still gets
+        // key-scoped Arabic copy, not a mixed-language string about a model.
+        return t('provider_key_rejected');
+    }
+  };
+
   const inferEngineFromName = (typedName: string, selectedEngine: string): string => {
     if (selectedEngine && selectedEngine !== 'auto') return selectedEngine;
     const lower = typedName.trim().toLowerCase();
@@ -199,6 +220,12 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
         folderId: detectedType === 'yandex' || detectedType === 'libretranslate' ? folderId : undefined,
       });
 
+      // The verification already found a model that answers on this plan: make it the default
+      // so the first real translation does not start by failing on a quota-limited one.
+      if (result.workingModel) {
+        updateCustomProvider(added.id, { model: result.workingModel });
+      }
+
       refresh();
       setSelectedProviderId(added.id);
       setNewProviderName('');
@@ -287,6 +314,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
         apiKey: combinedKey,
         type: detectedType,
         folderId: detectedType === 'yandex' || detectedType === 'libretranslate' ? editedFolderId : '',
+        // A changed key may have different model availability than the old one.
+        ...(result.workingModel ? { model: result.workingModel } : {}),
       });
       refresh();
       setEditingProviderId(null);
@@ -846,7 +875,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                   </span>
                                 </div>
                                 {editTestResult.error && (
-                                  <p className="opacity-90 leading-snug">{editTestResult.error}</p>
+                                  <p className="opacity-90 leading-snug">{testErrorText(editTestResult)}</p>
                                 )}
                               </div>
                             )}
@@ -1172,7 +1201,11 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                             <>
                               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                               <span data-i18n>
-                                {t('api_key_works_translation_matched')}
+                                {testResult.modelsQuotaLimited || testResult.noWorkingModel
+                                  ? t('api_key_works_no_models')
+                                  : testResult.translationUnverified
+                                    ? t('api_key_works')
+                                    : t('api_key_works_translation_matched')}
                               </span>
                             </>
                           ) : (
@@ -1218,7 +1251,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
 
                         {testResult.error && (
                           <p className="text-[10px] leading-snug opacity-90">
-                            {testResult.error}
+                            {testErrorText(testResult)}
                           </p>
                         )}
                       </div>

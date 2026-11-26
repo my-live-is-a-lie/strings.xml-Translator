@@ -32,7 +32,10 @@ describe('gemini model fallback', () => {
   it('does not hide a bad key behind the fallback', async () => {
     const fetchMock = vi.fn(async () => err(400, 'API key not valid. Please pass a valid API key.'));
     vi.stubGlobal('fetch', fetchMock);
-    await expect(geminiTranslateDirect({ apiKey: 'bad', sourceText: 'Hello' })).rejects.toThrow(/API key not valid/);
+    // Google's 400 is classified: the rejection names the key problem, not the raw API wording.
+    await expect(geminiTranslateDirect({ apiKey: 'bad', sourceText: 'Hello' })).rejects.toThrow(
+      /invalid or disabled/
+    );
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 

@@ -42,6 +42,10 @@ export type GeminiKeyProblem = 'expired-key' | 'invalid-key' | 'quota-exhausted'
 export function classifyGeminiKeyProblem(status: number, message: string): GeminiKeyProblem | null {
   if (isModelUnavailableMessage(status, message)) return null;
   if (status === 401) return 'invalid-key';
+  // Google's API_KEY_INVALID answer is a 400, not a 401.
+  if (status === 400 && /api_?key_invalid|api key not valid|key not valid|invalid (api )?key/i.test(message)) {
+    return 'invalid-key';
+  }
   if (status === 403 && /key|permission|leaked|referer|ip address|disabled|expired/i.test(message)) {
     return /expired|renew/i.test(message) ? 'expired-key' : 'invalid-key';
   }
@@ -92,6 +96,14 @@ class GeminiStructureError extends Error {
   }
 }
 
+/** Every candidate model is gone or retired for this key: the key answered, no model is usable. */
+export class GeminiNoModelError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'NoModelError';
+  }
+}
+
 /** True when the API says this model can't be used (retired, unknown, or not for this key), not that the key is bad. */
 export function isModelUnavailableMessage(status: number, message: string): boolean {
   if (status === 404) return true;
@@ -101,22 +113,9 @@ export function isModelUnavailableMessage(status: number, message: string): bool
   );
 }
 
-/** Asks Google which models this key can call and returns Flash models, newest first. */
-async function discoverFlashModels(apiKey: string, signal?: AbortSignal): Promise<string[]> {
-  const res = await fetchWithTimeout(
-    `${API_ROOT}/models?pageSize=200`,
-    { headers: { 'x-goog-api-key': apiKey.trim() } },
-    GEMINI_TIMEOUT_MS,
-    signal
-  );
-  if (!res.ok) return [];
-  const data = (await res.json()) as { models?: Array<{ name?: string; supportedGenerationMethods?: string[] }> };
-  const version = (n: string) => Number((/gemini-(\d+(?:\.\d+)?)/.exec(n) || [])[1] || 0);
-  return (data.models || [])
-    .filter((m) => m.name && /flash/.test(m.name) && !/(lite|image|tts|live|audio|embedding|thinking|exp)/.test(m.name))
-    .filter((m) => (m.supportedGenerationMethods || []).includes('generateContent'))
-    .map((m) => (m.name as string).replace(/^models\//, ''))
-    .sort((a, b) => version(b) - version(a));
+/** The model that answered the most recent successful call; null after a full failure. */
+export function getLastWorkingGeminiModel(): string | null {
+  return workingModel;
 }
 
 /**
@@ -357,6 +356,11 @@ export async function geminiTranslateDirect(opts: {
   model?: string;
   /** Thinking strength from the provider's settings ('auto'/undefined keeps the model default). */
   thinkingLevel?: string;
+  /**
+   * Candidate models to race after the pinned one; defaults to the built-in list. Verification
+   * passes the full discovered list so one quota-limited or retired model never fails a key.
+   */
+  candidateModels?: string[];
   /**
    * Called the moment a model fails with a definite API answer (gone, or a model-scoped quota),
    * before the failover moves on. Transient failures never trigger it.
@@ -599,10 +603,19 @@ ${sourceText}`;
     });
   };
 
-  const raced = await raceModels([opts.model, workingModel, ...GEMINI_MODEL_CANDIDATES]);
+  const raced = await raceModels([
+    opts.model,
+    workingModel,
+    ...(opts.candidateModels?.length ? opts.candidateModels : GEMINI_MODEL_CANDIDATES),
+  ]);
   if (raced !== null) return raced;
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-  const discovered = await raceModels(await discoverFlashModels(apiKey, signal));
+  // Failover discovery: every text model the endpoint lists for this key (the picker's filter),
+  // not only Flash - a plan can have Pro quota left when Flash is exhausted, or the reverse.
+  const discoveredNames = opts.candidateModels?.length
+    ? [] // the caller already raced the full list
+    : (await listGeminiModels(apiKey, signal)).map((m) => m.name);
+  const discovered = await raceModels(discoveredNames);
   if (discovered !== null) return discovered;
   workingModel = null;
   // Every model failed. A definite key problem outranks every other explanation: the user must
@@ -616,7 +629,7 @@ ${sourceText}`;
   if (structureError) throw structureError;
   // Every model failed transiently (demand spike, timeouts): say so instead of "no model available".
   if (transientError) throw transientError;
-  throw new Error(
+  throw new GeminiNoModelError(
     'Gemini: لا يوجد نموذج متاح لهذا المفتاح حالياً / No Gemini model is available for this key. Check the key in Google AI Studio.'
   );
 }
@@ -624,24 +637,60 @@ ${sourceText}`;
 /** Verifies a Gemini key by translating one short word, entirely from the browser. */
 export async function testGeminiKeyDirect(apiKey: string, signal?: AbortSignal): Promise<ProviderTestResult> {
   const testSource = 'Install';
+  // Verification tests the KEY, not one model: every discovered text model is a candidate, so a
+  // model that is quota-limited or retired on this plan never fails a working key.
+  let candidateModels: string[] | undefined;
+  try {
+    const listed = await listGeminiModels(apiKey, signal);
+    if (listed.length) candidateModels = listed.map((m) => m.name);
+  } catch (err) {
+    debugIgnored('geminiDirect', err);
+  }
   try {
     const providerTranslation = await geminiTranslateDirect({
       apiKey,
       sourceText: testSource,
       targetLang: 'ar',
       targetLocaleName: 'Arabic',
+      candidateModels,
       signal,
     });
-    return { success: true, matched: true, testSource, providerTranslation, detectedType: 'gemini' };
+    return {
+      success: true,
+      matched: true,
+      testSource,
+      providerTranslation,
+      detectedType: 'gemini',
+      workingModel: getLastWorkingGeminiModel() ?? undefined,
+    };
   } catch (err) {
-    const raw = err instanceof Error ? err.message : String(err);
-    const network = err instanceof TypeError;
+    // A model-scoped quota on every model still proves the key authenticated: Google enforces
+    // quota per key, so an invalid key would have been rejected before any quota answer.
+    if (err instanceof GeminiHttpError && err.modelQuota) {
+      return { success: true, matched: true, detectedType: 'gemini', modelsQuotaLimited: true };
+    }
+    // Same logic for models that are gone (404) or that answered with a broken structure:
+    // the API answered, so the key works; no usable translation came back.
+    if (err instanceof GeminiNoModelError) {
+      return { success: true, matched: true, detectedType: 'gemini', noWorkingModel: true };
+    }
+    if (err instanceof GeminiStructureError) {
+      return { success: true, matched: true, detectedType: 'gemini', translationUnverified: true };
+    }
+    const errorKind: ProviderTestResult['errorKind'] =
+      err instanceof GeminiHttpError && err.keyProblem
+        ? err.keyProblem
+        : err instanceof TypeError ||
+            (err instanceof DOMException && (err.name === 'TimeoutError' || err.name === 'AbortError'))
+          ? 'unreachable'
+          : err instanceof GeminiHttpError && err.status >= 500
+            ? 'provider-error'
+            : 'unknown';
     return {
       success: false,
       matched: false,
-      error: network
-        ? `تعذّر الوصول إلى Gemini من هذا المتصفح (${raw}). تحقق من الاتصال أو من مانع الإعلانات. / Could not reach the Gemini API from this browser.`
-        : raw,
+      errorKind,
+      error: err instanceof Error ? err.message : String(err),
     };
   }
 }
