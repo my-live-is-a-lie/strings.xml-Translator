@@ -651,7 +651,9 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                     ? t('yandex_ai_translator')
                                     : prov.type === 'gemini'
                                       ? t('gemini_ai_engine')
-                                      : prov.type === 'google' || prov.type === 'google_cloud'
+                                      : prov.type === 'google_cloud'
+                                        ? 'Google Cloud'
+                                      : prov.type === 'google'
                                         ? t('google_neural_translate')
                                         : prov.type === 'deepl'
                                           ? t('deepl_neural_mt')
