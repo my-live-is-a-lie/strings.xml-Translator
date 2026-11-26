@@ -5,6 +5,7 @@ import {
   listGeminiModels,
   ModelProbeResult,
   probeGeminiModel,
+  sweepProbeGeminiModel,
 } from './geminiDirect';
 import { getStoredItem, removeStoredItem, setStoredItem } from './storage';
 
@@ -115,6 +116,7 @@ function readCachedProbe(apiKey: string, model: string): ModelProbeResult | null
       availability: parsed.availability as ModelProbeResult['availability'],
       levels: parsed.levels.filter((l): l is string => typeof l === 'string'),
       modelQuota: parsed.modelQuota === true ? true : undefined,
+      levelsPending: (parsed as { levelsPending?: unknown }).levelsPending === true ? true : undefined,
       // Only definite results (and model-scoped quota, which is definite about this model on
       // this plan) are ever persisted, so a well-formed entry is definite.
       definite: parsed.modelQuota === true ? false : true,
@@ -294,11 +296,13 @@ export function getModelProbeSnapshot(
   const name = model.trim();
   const storeKey = `${type}:${key}:${name}`;
   // force re-runs the probe: picking a model from the unavailable group is an explicit re-test.
+  // A sweep entry (levelsPending) knows the model answers but never probed its levels: it
+  // groups and orders the picker, yet a real probe request still launches the level probes.
   if (!opts?.force) {
     const hit = modelProbeStore.get(storeKey);
-    if (hit) return hit;
+    if (hit && (hit === 'loading' || !hit.levelsPending)) return hit;
     const cached = readCachedProbe(key, name);
-    if (cached) {
+    if (cached && !cached.levelsPending) {
       modelProbeStore.set(storeKey, cached);
       return cached;
     }
@@ -324,4 +328,48 @@ export function getModelProbeSnapshot(
       notify();
     });
   return 'loading';
+}
+
+/**
+ * After a key is added: test every discovered model once, sequentially, one bare attempt with a
+ * 2s deadline and gentle pacing, so the user never has to test models by hand. Placement follows
+ * the standing rule - only a model's own definite answer marks it: 404-style failures go to the
+ * unavailable group, model-scoped quota to the plan group, passes float to the top, and
+ * deadlines, per-minute 429s and 5xx leave the model untouched. A project/account quota answer
+ * is about the key, so the sweep stops there. Thinking levels stay lazy: sweep 'ok' entries are
+ * marked levelsPending and a real pick still probes the levels. Models with any known state
+ * (user picks, earlier sweeps) are skipped.
+ */
+export async function sweepGeminiModels(apiKey: string): Promise<void> {
+  const key = apiKey.trim();
+  if (!key) return;
+  let models;
+  try {
+    models = await listGeminiModels(key);
+  } catch {
+    return;
+  }
+  for (const m of models) {
+    if (peekModelProbe('gemini', key, m.name)) continue;
+    const outcome = await sweepProbeGeminiModel(key, m.name, 2000);
+    if (outcome === 'key-quota') return;
+    if (outcome === 'inconclusive') continue;
+    const result: ModelProbeResult =
+      outcome === 'ok'
+        ? { availability: 'ok', levels: [], keyProblem: null, definite: true, levelsPending: true }
+        : outcome === 'model-quota'
+          ? { availability: 'unknown', levels: [], keyProblem: null, definite: false, modelQuota: true }
+          : { availability: 'unavailable', levels: [], keyProblem: null, definite: true };
+    const storeKey = `gemini:${key}:${m.name}`;
+    modelProbeStore.set(storeKey, result);
+    try {
+      setStoredItem(modelProbeCacheKey(key, m.name), JSON.stringify({ ...result, at: Date.now() }));
+    } catch {
+      // Caching is best-effort; the in-memory entry covers this session.
+    }
+    if (outcome === 'ok') modelOkAtStore.set(storeKey, Date.now());
+    probeStatesVersion++;
+    notify();
+    await new Promise((r) => setTimeout(r, 200));
+  }
 }

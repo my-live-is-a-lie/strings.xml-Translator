@@ -237,6 +237,59 @@ export interface ModelProbeResult {
    * 5xx) make the result indefinite: callers must not cache it or let it mark anything.
    */
   definite: boolean;
+  /**
+   * Set by the after-add sweep: availability is known from a single bare attempt, but thinking
+   * levels were never probed. Such entries group and order the picker but must NOT satisfy a
+   * real probe request - picking the model still launches the lazy per-level probe.
+   */
+  levelsPending?: boolean;
+}
+
+export type GeminiSweepOutcome = 'ok' | 'unavailable' | 'model-quota' | 'key-quota' | 'inconclusive';
+
+/**
+ * One bare generateContent attempt with a tight deadline, for the after-add model sweep. Only
+ * definite answers classify: a 404-style answer marks the model unusable, a model-scoped quota
+ * marks it plan-limited, a project/account quota is about the KEY (the caller stops the sweep),
+ * and everything else - per-minute 429, 5xx, network, deadline - stays inconclusive so nothing
+ * gets marked by a maybe.
+ */
+export async function sweepProbeGeminiModel(
+  apiKey: string,
+  model: string,
+  timeoutMs = 2000
+): Promise<GeminiSweepOutcome> {
+  try {
+    const res = await fetchWithTimeout(
+      `${API_ROOT}/models/${model}:generateContent`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey.trim(),
+        },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: 'Hi' }] }],
+          generationConfig: { maxOutputTokens: 1, temperature: 0 },
+        }),
+      },
+      timeoutMs
+    );
+    if (res.ok) return 'ok';
+    let message = '';
+    try {
+      const body = (await res.json()) as { error?: { message?: string } };
+      message = body?.error?.message || '';
+    } catch (err) {
+      debugIgnored('geminiDirect', err);
+    }
+    if (isModelUnavailableMessage(res.status, message)) return 'unavailable';
+    if (isModelQuotaMessage(res.status, message)) return 'model-quota';
+    if (res.status === 429 && /per_?project|per_?account/i.test(message)) return 'key-quota';
+    return 'inconclusive';
+  } catch {
+    return 'inconclusive';
+  }
 }
 
 type LevelProbe =

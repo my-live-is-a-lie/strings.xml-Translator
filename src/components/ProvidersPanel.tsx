@@ -29,6 +29,7 @@ import {
   getProviderRuntimeErrorsSnapshot,
   noteModelProbeSuccess,
   peekModelProbe,
+  sweepGeminiModels,
   peekModelProbeOkAt,
   providerSupportsModelChoice,
   providerSupportsThinking,
@@ -226,6 +227,12 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
       // so the first real translation does not start by failing on a quota-limited one.
       if (result.workingModel) {
         updateCustomProvider(added.id, { model: result.workingModel });
+      }
+
+      // Then quietly test every discovered model in the background (one bare 2s attempt each):
+      // plan-limited and unusable models land in their picker groups, passes float to the top.
+      if (detectedType === 'gemini') {
+        void sweepGeminiModels(combinedApiKey);
       }
 
       refresh();
