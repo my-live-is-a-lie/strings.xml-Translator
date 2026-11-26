@@ -85,6 +85,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   const [isTestingEditKey, setIsTestingEditKey] = useState(false);
 
   const [editTestResult, setEditTestResult] = useState<ProviderTestResult | null>(null);
+  // The edited key that was verified valid; saving a changed key is allowed only for this exact value.
+  const [editVerified, setEditVerified] = useState<{ sig: string; result: ProviderTestResult } | null>(null);
   const editNameInputRef = useRef<HTMLInputElement | null>(null);
   const editTestAbortRef = useRef<{ controller: AbortController; cancelled: boolean } | null>(null);
 
@@ -267,29 +269,68 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
     }, 60);
   };
 
+  // What the edit form would save, and whether it changes the stored key/folder.
+  const resolveEditTarget = (prov: TranslationProviderConfig) => {
+    const trimmedName = editProviderName.trim() || prov.name;
+    const rawKey = editApiKey.trim() || (prov.type === 'libretranslate' ? 'none' : '');
+    const rawSecret = editApiSecret.trim();
+    const inferredEngine = inferEngineFromName(trimmedName, 'auto');
+    const targetEngine =
+      inferredEngine !== 'auto' ? (inferredEngine as ProviderEngineType) : prov.type;
+    const combinedKey =
+      targetEngine === 'lara' && rawSecret && !rawKey.includes(':')
+        ? `${rawKey}:${rawSecret}`
+        : rawKey;
+    const editedFolderId = editFolderId.trim();
+    const keyChanged =
+      combinedKey !== (prov.apiKey || '').trim() ||
+      ((targetEngine === 'yandex' || targetEngine === 'libretranslate') && editedFolderId !== (prov.folderId || '').trim());
+    const sig = JSON.stringify([targetEngine, combinedKey, editedFolderId]);
+    return { trimmedName, rawKey, targetEngine, combinedKey, editedFolderId, keyChanged, sig };
+  };
+
+  // A changed key is verified automatically once typing pauses; Save stays disabled until it passes
+  // (an unchanged key needs no check).
+  const editingProv = editingProviderId ? providersList.find((p) => p.id === editingProviderId) : undefined;
+  const editSig = editingProv ? resolveEditTarget(editingProv).sig : '';
+  useEffect(() => {
+    if (!editingProv) return;
+    const target = resolveEditTarget(editingProv);
+    if (!target.keyChanged || !target.rawKey) return;
+    const abort = { controller: new AbortController(), cancelled: false };
+    const timer = setTimeout(async () => {
+      editTestAbortRef.current = abort;
+      setIsTestingEditKey(true);
+      const result = await testEngineKey(
+        target.targetEngine,
+        target.combinedKey,
+        target.editedFolderId,
+        abort.controller.signal
+      );
+      if (abort.cancelled) return;
+      editTestAbortRef.current = null;
+      setIsTestingEditKey(false);
+      setEditTestResult(result);
+      if (result.success && result.matched) setEditVerified({ sig: target.sig, result });
+    }, 400);
+    return () => {
+      clearTimeout(timer);
+      abort.cancelled = true;
+      abort.controller.abort();
+      if (editTestAbortRef.current === abort) editTestAbortRef.current = null;
+      setIsTestingEditKey(false);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingProviderId, editSig]);
+
   const handleSaveEditedProvider = async (
     e: React.FormEvent,
     prov: TranslationProviderConfig
   ) => {
     e.preventDefault();
-    const trimmedName = editProviderName.trim() || prov.name;
-    const rawKey = editApiKey.trim() || (prov.type === 'libretranslate' ? 'none' : '');
-    const rawSecret = editApiSecret.trim();
+    const { trimmedName, rawKey, targetEngine, combinedKey, editedFolderId, keyChanged, sig } =
+      resolveEditTarget(prov);
     if (!rawKey) return;
-
-    const inferredEngine = inferEngineFromName(trimmedName, 'auto');
-    const targetEngine =
-      inferredEngine !== 'auto' ? (inferredEngine as ProviderEngineType) : prov.type;
-
-    const combinedKey =
-      targetEngine === 'lara' && rawSecret && !rawKey.includes(':')
-        ? `${rawKey}:${rawSecret}`
-        : rawKey;
-
-    const editedFolderId = editFolderId.trim();
-    const keyChanged =
-      combinedKey !== (prov.apiKey || '').trim() ||
-      ((targetEngine === 'yandex' || targetEngine === 'libretranslate') && editedFolderId !== (prov.folderId || '').trim());
 
     // If only the provider name was changed, save immediately without re-running network verification
     if (!keyChanged) {
@@ -303,32 +344,23 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
       return;
     }
 
-    // If the API key was modified, verify the new API key against Google Translate first
-    setIsTestingEditKey(true);
+    // A changed key is saved only if this exact key was already verified valid
+    const result = editVerified && editVerified.sig === sig ? editVerified.result : null;
+    if (!result) return;
+
+    const detectedType: ProviderEngineType = result.detectedType || targetEngine;
+    updateCustomProvider(prov.id, {
+      name: trimmedName,
+      apiKey: combinedKey,
+      type: detectedType,
+      folderId: detectedType === 'yandex' || detectedType === 'libretranslate' ? editedFolderId : '',
+      // A changed key may have different model availability than the old one.
+      ...(result.workingModel ? { model: result.workingModel } : {}),
+    });
+    refresh();
+    setEditingProviderId(null);
     setEditTestResult(null);
-    const editTestAbort = { controller: new AbortController(), cancelled: false };
-    editTestAbortRef.current = editTestAbort;
-
-    const result = await testEngineKey(targetEngine, combinedKey, editedFolderId, editTestAbort.controller.signal);
-    if (editTestAbort.cancelled) return; // cancelled: keep editing without a stale result
-    editTestAbortRef.current = null;
-    setIsTestingEditKey(false);
-    setEditTestResult(result);
-
-    if (result.success && result.matched) {
-      const detectedType: ProviderEngineType = result.detectedType || targetEngine;
-      updateCustomProvider(prov.id, {
-        name: trimmedName,
-        apiKey: combinedKey,
-        type: detectedType,
-        folderId: detectedType === 'yandex' || detectedType === 'libretranslate' ? editedFolderId : '',
-        // A changed key may have different model availability than the old one.
-        ...(result.workingModel ? { model: result.workingModel } : {}),
-      });
-      refresh();
-      setEditingProviderId(null);
-      setEditTestResult(null);
-    }
+    setEditVerified(null);
   };
 
   const handleConfirmDeleteProvider = () => {
@@ -911,6 +943,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                 value={editApiKey}
                                 onChange={(e) => {
                                   cancelOngoingTest(editTestAbortRef, setIsTestingEditKey);
+                                  setEditTestResult(null);
                                   setEditApiKey(e.target.value);
                                 }}
                                 onKeyDown={(e) => e.stopPropagation()}
@@ -936,7 +969,10 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                   type="text"
                                   autoComplete="off"
                                   value={editApiSecret}
-                                  onChange={(e) => setEditApiSecret(e.target.value)}
+                                  onChange={(e) => {
+                                    setEditTestResult(null);
+                                    setEditApiSecret(e.target.value);
+                                  }}
                                   onKeyDown={(e) => e.stopPropagation()}
                                   onTouchStart={(e) => e.stopPropagation()}
                                   placeholder={
@@ -957,7 +993,10 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                   dir="ltr"
                                   autoComplete="off"
                                   value={editFolderId}
-                                  onChange={(e) => setEditFolderId(e.target.value)}
+                                  onChange={(e) => {
+                                    setEditTestResult(null);
+                                    setEditFolderId(e.target.value);
+                                  }}
                                   onKeyDown={(e) => e.stopPropagation()}
                                   onTouchStart={(e) => e.stopPropagation()}
                                   placeholder="https://libretranslate.example.com"
@@ -978,7 +1017,10 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                   dir="ltr"
                                   autoComplete="off"
                                   value={editFolderId}
-                                  onChange={(e) => setEditFolderId(e.target.value)}
+                                  onChange={(e) => {
+                                    setEditTestResult(null);
+                                    setEditFolderId(e.target.value);
+                                  }}
                                   onKeyDown={(e) => e.stopPropagation()}
                                   onTouchStart={(e) => e.stopPropagation()}
                                   placeholder={
@@ -1029,6 +1071,10 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                 type="submit"
                                 disabled={
                                   isTestingEditKey ||
+                                  (() => {
+                                    const target = resolveEditTarget(prov);
+                                    return target.keyChanged && editVerified?.sig !== target.sig;
+                                  })() ||
                                   !editProviderName.trim() ||
                                   (!editApiKey.trim() && prov.type !== 'libretranslate')
                                 }
