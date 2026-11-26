@@ -435,6 +435,21 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   // The model picker is a custom dropdown (the native Android popup swallows same-option taps
   // and ignores option styling): tapping the already-selected model re-tests it.
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [thinkingMenuOpen, setThinkingMenuOpen] = useState(false);
+  const thinkingLabel = (level: string) =>
+    level === 'auto'
+      ? probeLoading
+        ? '…'
+        : t('thinking_auto')
+      : level === 'minimal'
+        ? t('thinking_minimal')
+        : level === 'low'
+          ? t('thinking_low')
+          : level === 'medium'
+            ? t('thinking_medium')
+            : level === 'high'
+              ? t('thinking_high')
+              : t('thinking_xhigh');
 
   // The thinking picker only offers the levels the reference model (the pinned one, or the top of
   // the fetched list on 'auto') actually accepted in a tiny runtime probe - nothing about model
@@ -1278,7 +1293,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                   className="flex flex-col gap-2 px-1"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div className="flex gap-2">
+                  <div className="relative flex gap-2">
                     {providerSupportsModelChoice(activeProviderObj.type) && (
                       <div className="flex flex-col gap-1 flex-1 min-w-0">
                         <label
@@ -1287,7 +1302,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                         >
                           {t('model')}
                         </label>
-                        <div className="relative">
+                        <div>
                           <button
                             id="active-provider-model-select"
                             type="button"
@@ -1312,7 +1327,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                               <ul
                                 dir="ltr"
                                 role="listbox"
-                                className="absolute right-0 z-50 mt-1 w-[calc(200%_+_0.5rem)] max-h-64 overflow-auto rounded-lg border border-slate-300 dark:border-[#2E384D] bg-white dark:bg-[#1B212E] shadow-xl py-1"
+                                className="absolute inset-x-0 z-50 mt-1 max-h-64 overflow-auto rounded-lg border border-slate-300 dark:border-[#2E384D] bg-white dark:bg-[#1B212E] shadow-xl py-1"
                               >
                                 {([
                                   { name: '', label: activeModelsLoading ? '…' : t('model_auto_recommended'), dimmed: false },
@@ -1387,29 +1402,51 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                         >
                           {t('thinking_power')}
                         </label>
-                        <select
-                          id="active-provider-thinking-select"
-                          value={effectiveThinking}
-                          onChange={(e) => saveActiveModelChoice(activeProviderObj.model || '', e.target.value)}
-                          className={`px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996] ${providerSupportsModelChoice(activeProviderObj.type) ? 'w-auto' : 'w-full'}`}
-                        >
-                          <option value="auto">
-                            {probeLoading ? '…' : t('thinking_auto')}
-                          </option>
-                          {thinkingLevels.map((level: string) => (
-                            <option key={level} value={level}>
-                              {level === 'minimal'
-                                ? t('thinking_minimal')
-                                : level === 'low'
-                                  ? t('thinking_low')
-                                  : level === 'medium'
-                                    ? t('thinking_medium')
-                                    : level === 'high'
-                                      ? t('thinking_high')
-                                      : t('thinking_xhigh')}
-                            </option>
-                          ))}
-                        </select>
+                        <div>
+                          <button
+                            id="active-provider-thinking-select"
+                            type="button"
+                            aria-haspopup="listbox"
+                            aria-expanded={thinkingMenuOpen}
+                            onClick={() => setThinkingMenuOpen((open) => !open)}
+                            className={`px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996] flex items-center justify-between gap-2 whitespace-nowrap ${providerSupportsModelChoice(activeProviderObj.type) ? '' : 'w-full'}`}
+                          >
+                            <span className="truncate">{thinkingLabel(effectiveThinking)}</span>
+                            <ChevronDown className="w-3 h-3 shrink-0 text-slate-500 dark:text-slate-400" />
+                          </button>
+                          {thinkingMenuOpen && (
+                            <>
+                              <div
+                                className="fixed inset-0 z-40 cursor-default"
+                                onClick={() => setThinkingMenuOpen(false)}
+                              />
+                              <ul
+                                role="listbox"
+                                className="absolute end-0 z-50 mt-1 min-w-[9rem] max-h-64 overflow-auto rounded-lg border border-slate-300 dark:border-[#2E384D] bg-white dark:bg-[#1B212E] shadow-xl py-1"
+                              >
+                                {['auto', ...thinkingLevels].map((level: string) => (
+                                  <li key={level} role="option" aria-selected={effectiveThinking === level}>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setThinkingMenuOpen(false);
+                                        saveActiveModelChoice(activeProviderObj.model || '', level);
+                                      }}
+                                      className={`w-full px-2 py-1.5 text-start text-[11px] flex items-center justify-between gap-2 whitespace-nowrap hover:bg-slate-100 dark:hover:bg-[#262E3F] ${
+                                        effectiveThinking === level
+                                          ? 'text-[#1EB996] font-semibold'
+                                          : 'text-slate-900 dark:text-slate-100'
+                                      }`}
+                                    >
+                                      <span>{thinkingLabel(level)}</span>
+                                      {effectiveThinking === level && <Check className="w-3 h-3 shrink-0" />}
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            </>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>

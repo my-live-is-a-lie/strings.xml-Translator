@@ -139,8 +139,8 @@ const HeaderBase: React.FC<HeaderProps> = ({
   // Which physical edge the drawer slides from when it was opened by an edge swipe (null = the default side)
   const [edgeSide, setEdgeSide] = useState<'left' | 'right' | null>(null);
   // The side follows the chosen language (not the document direction, which is applied a moment later):
-  // LTR languages open the menu from the right, RTL ones from the left.
-  const wantedSide: 'left' | 'right' = edgeSide ?? (appLang === 'ar' ? 'left' : 'right');
+  // LTR languages open the menu from the left, RTL ones from the right (the top bar is mirrored to match).
+  const wantedSide: 'left' | 'right' = edgeSide ?? (appLang === 'ar' ? 'right' : 'left');
   // Side the open menu is actually drawn on. When the language changes while the menu is open it first slides out
   // on the old side, then is rebuilt on the new one (see the effect below), keeping all of its state.
   const [shownSide, setShownSide] = useState<'left' | 'right'>(wantedSide);
@@ -424,8 +424,8 @@ const HeaderBase: React.FC<HeaderProps> = ({
     <>
       <header className={`${part !== 'all' ? '' : 'sticky top-0 z-30'} bg-white/95 dark:bg-[#131314]/95 backdrop-blur-md md:border-b border-slate-200/80 dark:border-slate-800/80 transition-colors`}>
         {part === 'dock' && (
-          <div className="px-2 py-1.5 flex items-center justify-between gap-1.5 text-xs">
-            <div className="flex items-center gap-1.5 min-w-0">
+          <div className="px-2 py-1.5 flex flex-row-reverse items-center justify-between gap-1.5 text-xs">
+            <div className="flex flex-row-reverse items-center gap-1.5 min-w-0">
             <button
               type="button"
               onClick={onOpenFilesModal}
@@ -450,7 +450,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
               <span data-i18n>{t('strings_list', stringsCount)}</span>
             </button>
             </div>
-            <div className="flex items-center gap-1.5 shrink-0">
+            <div className="flex flex-row-reverse items-center gap-1.5 shrink-0">
             <OfflineDot appLang={appLang} />
             <button
               type="button"
@@ -481,7 +481,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
         {showBar && (
           <>
         {/* Material 3 Top App Bar */}
-        <div className={`max-w-7xl mx-auto px-4 sm:px-6 ${compact ? 'min-h-13 py-1.5 flex-wrap gap-y-1.5' : 'h-13 sm:h-14'} flex items-center justify-between gap-4`}>
+        <div className={`max-w-7xl mx-auto px-4 sm:px-6 ${compact ? 'min-h-13 py-1.5 flex-wrap gap-y-1.5' : 'h-13 sm:h-14'} flex flex-row-reverse items-center justify-between gap-4`}>
           {/* Files Button (replacing App Icon & Name at top left corner) */}
           <div className="flex items-center gap-2 min-w-0">
             <button
@@ -566,7 +566,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
           </div>
 
           {/* Right Actions - Far Right List Icon Button */}
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex flex-row-reverse items-center gap-2 shrink-0">
             <OfflineBadge appLang={appLang} />
 
             <button
