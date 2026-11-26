@@ -436,6 +436,19 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   // and ignores option styling): tapping the already-selected model re-tests it.
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [thinkingMenuOpen, setThinkingMenuOpen] = useState(false);
+  // Close a picker when the user taps outside it. No full-screen overlay: it would
+  // swallow touch drags meant for the drawer and let the page behind scroll.
+  useEffect(() => {
+    if (!modelMenuOpen && !thinkingMenuOpen) return;
+    const onDown = (e: PointerEvent) => {
+      const el = e.target as Element | null;
+      const inside = (id: string) => !!el?.closest(`#${id}-list, #${id}-select`);
+      if (modelMenuOpen && !inside('active-provider-model')) setModelMenuOpen(false);
+      if (thinkingMenuOpen && !inside('active-provider-thinking')) setThinkingMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', onDown, true);
+    return () => document.removeEventListener('pointerdown', onDown, true);
+  }, [modelMenuOpen, thinkingMenuOpen]);
   const thinkingLabel = (level: string) =>
     level === 'auto'
       ? probeLoading
@@ -1320,14 +1333,11 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                           </button>
                           {modelMenuOpen && (
                             <>
-                              <div
-                                className="fixed inset-0 z-40 cursor-default"
-                                onClick={() => setModelMenuOpen(false)}
-                              />
                               <ul
                                 dir="ltr"
                                 role="listbox"
-                                className="absolute inset-x-0 z-50 mt-1 max-h-64 overflow-auto rounded-lg border border-slate-300 dark:border-[#2E384D] bg-white dark:bg-[#1B212E] shadow-xl py-1"
+                                id="active-provider-model-list"
+                                className="absolute inset-x-0 z-50 mt-1 max-h-64 overflow-y-auto overscroll-contain touch-pan-y rounded-lg border border-slate-300 dark:border-[#2E384D] bg-white dark:bg-[#1B212E] shadow-xl py-1"
                               >
                                 {([
                                   { name: '', label: activeModelsLoading ? '…' : t('model_auto_recommended'), dimmed: false },
@@ -1416,13 +1426,10 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                           </button>
                           {thinkingMenuOpen && (
                             <>
-                              <div
-                                className="fixed inset-0 z-40 cursor-default"
-                                onClick={() => setThinkingMenuOpen(false)}
-                              />
                               <ul
                                 role="listbox"
-                                className="absolute end-0 z-50 mt-1 min-w-[9rem] max-h-64 overflow-auto rounded-lg border border-slate-300 dark:border-[#2E384D] bg-white dark:bg-[#1B212E] shadow-xl py-1"
+                                id="active-provider-thinking-list"
+                                className="absolute end-0 z-50 mt-1 min-w-[9rem] max-h-64 overflow-y-auto overscroll-contain touch-pan-y rounded-lg border border-slate-300 dark:border-[#2E384D] bg-white dark:bg-[#1B212E] shadow-xl py-1"
                               >
                                 {['auto', ...thinkingLevels].map((level: string) => (
                                   <li key={level} role="option" aria-selected={effectiveThinking === level}>
