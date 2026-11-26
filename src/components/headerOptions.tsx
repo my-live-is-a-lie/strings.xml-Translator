@@ -16,13 +16,13 @@ export const THEME_OPTIONS: Array<{ id: AppTheme; label: string; labelAr: string
 
 export const ENGINE_OPTIONS: Array<{ value: string; nameEn: string; nameAr: string; labelAr: string; labelEn: string }> = [
   { value: 'auto', nameEn: '', nameAr: '', labelAr: 'تعرف تلقائي على المزود', labelEn: 'Auto-Detect Provider' },
-  { value: 'gemini', nameEn: 'Gemini AI', nameAr: 'ذكاء Gemini الاصطناعي', labelAr: 'Gemini', labelEn: 'Gemini' },
-  { value: 'lara', nameEn: 'Lara Translate', nameAr: 'ترجمة Lara الذكية', labelAr: 'Lara', labelEn: 'Lara' },
-  { value: 'yandex', nameEn: 'Yandex AI', nameAr: 'ترجمة Yandex الذكية', labelAr: 'Yandex', labelEn: 'Yandex' },
-  { value: 'deepl', nameEn: 'DeepL API', nameAr: 'ترجمة DeepL', labelAr: 'DeepL', labelEn: 'DeepL' },
-  { value: 'openai', nameEn: 'OpenAI GPT', nameAr: 'ذكاء OpenAI GPT', labelAr: 'OpenAI', labelEn: 'OpenAI' },
-  { value: 'google_cloud', nameEn: 'Google Cloud Translate', nameAr: 'ترجمة Google السحابية', labelAr: 'Google Cloud', labelEn: 'Google Cloud' },
-  { value: 'libretranslate', nameEn: 'LibreTranslate', nameAr: 'ليبرترانسليت (مفتوح المصدر)', labelAr: 'LibreTranslate', labelEn: 'LibreTranslate' },
-  { value: 'microsoft', nameEn: 'Microsoft Translator', nameAr: 'مترجم Microsoft', labelAr: 'Microsoft Translator', labelEn: 'Microsoft Translator' },
+  { value: 'gemini', nameEn: 'Gemini AI', nameAr: 'Gemini AI', labelAr: 'Gemini AI', labelEn: 'Gemini AI' },
+  { value: 'lara', nameEn: 'Lara Translate', nameAr: 'Lara Translate', labelAr: 'Lara Translate', labelEn: 'Lara Translate' },
+  { value: 'yandex', nameEn: 'Yandex AI', nameAr: 'Yandex AI', labelAr: 'Yandex AI', labelEn: 'Yandex AI' },
+  { value: 'deepl', nameEn: 'DeepL API', nameAr: 'DeepL API', labelAr: 'DeepL API', labelEn: 'DeepL API' },
+  { value: 'openai', nameEn: 'OpenAI GPT', nameAr: 'OpenAI GPT', labelAr: 'OpenAI GPT', labelEn: 'OpenAI GPT' },
+  { value: 'google_cloud', nameEn: 'Google Cloud', nameAr: 'Google Cloud', labelAr: 'Google Cloud', labelEn: 'Google Cloud' },
+  { value: 'libretranslate', nameEn: 'LibreTranslate', nameAr: 'LibreTranslate', labelAr: 'LibreTranslate', labelEn: 'LibreTranslate' },
+  { value: 'microsoft', nameEn: 'Microsoft Azure Translator', nameAr: 'Microsoft Azure Translator', labelAr: 'Microsoft Azure Translator', labelEn: 'Microsoft Azure Translator' },
 ];
 
