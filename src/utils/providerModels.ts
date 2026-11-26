@@ -159,6 +159,23 @@ export function peekModelProbeOkAt(
 }
 
 /**
+ * Records that the user just picked/re-tested this model and it answered: floats it to the top
+ * of the picker. This MUST also run on cache-hit picks - a cached probe result skips the
+ * network path (and its okAt update), which used to freeze the ordering for any model the
+ * key-verification sweep had already probed.
+ */
+export function noteModelProbeSuccess(
+  type: ProviderEngineType | string,
+  apiKey: string | undefined,
+  model: string | undefined
+): void {
+  if (type !== 'gemini' || !apiKey?.trim() || !model?.trim()) return;
+  modelOkAtStore.set(`${type}:${apiKey.trim()}:${model.trim()}`, Date.now());
+  probeStatesVersion++;
+  notify();
+}
+
+/**
  * Read-only view of a model's probe state for grouping the picker: returns the in-memory or
  * persisted result without ever launching a probe. Unprobed models return null.
  */

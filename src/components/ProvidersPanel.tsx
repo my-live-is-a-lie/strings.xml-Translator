@@ -27,6 +27,7 @@ import {
   getModelProbeStatesVersion,
   getProviderModelsSnapshot,
   getProviderRuntimeErrorsSnapshot,
+  noteModelProbeSuccess,
   peekModelProbe,
   peekModelProbeOkAt,
   providerSupportsModelChoice,
@@ -470,8 +471,13 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
           entry.keyProblem ??
             (entry.modelQuota ? 'model-quota' : entry.availability === 'unknown' ? 'inconclusive' : 'idle')
         );
-        // A successful (re-)test clears this model's runtime line from the provider card.
-        if (entry.availability === 'ok') clearModelUnavailableError(providerId, model);
+        // A successful (re-)test clears this model's runtime line from the provider card and
+        // floats it to the top of the picker - including cache-hit picks, which skip the
+        // network path where the ordering timestamp is otherwise set.
+        if (entry.availability === 'ok') {
+          clearModelUnavailableError(providerId, model);
+          noteModelProbeSuccess(activeProviderObj.type, apiKey, model);
+        }
         const levelForModel =
           thinkingLevel !== 'auto' && !entry.levels.includes(thinkingLevel) ? 'auto' : thinkingLevel;
         persist(levelForModel);
