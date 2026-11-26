@@ -125,6 +125,40 @@ function readCachedProbe(apiKey: string, model: string): ModelProbeResult | null
 }
 
 /**
+ * When this key last got a SUCCESSFUL probe for the model (0 = never / not within the TTL).
+ * Drives the picker's ordering: a model that was tested and worked floats to the top.
+ */
+const modelOkAtStore = new Map<string, number>();
+export function peekModelProbeOkAt(
+  type: ProviderEngineType | string,
+  apiKey: string | undefined,
+  model: string | undefined
+): number {
+  if (type !== 'gemini' || !apiKey?.trim() || !model?.trim()) return 0;
+  const key = apiKey.trim();
+  const name = model.trim();
+  const storeKey = `${type}:${key}:${name}`;
+  const hit = modelOkAtStore.get(storeKey);
+  if (hit) return hit;
+  try {
+    const raw = getStoredItem(modelProbeCacheKey(key, name));
+    if (!raw) return 0;
+    const parsed = JSON.parse(raw) as { availability?: string; at?: number };
+    if (
+      parsed.availability === 'ok' &&
+      typeof parsed.at === 'number' &&
+      Date.now() - parsed.at <= PROBE_TTL_MS
+    ) {
+      modelOkAtStore.set(storeKey, parsed.at);
+      return parsed.at;
+    }
+  } catch {
+    // A malformed entry just means "no known success".
+  }
+  return 0;
+}
+
+/**
  * Read-only view of a model's probe state for grouping the picker: returns the in-memory or
  * persisted result without ever launching a probe. Unprobed models return null.
  */
@@ -257,6 +291,7 @@ export function getModelProbeSnapshot(
     .catch((): ModelProbeResult => ({ availability: 'unknown', levels: [], definite: false }))
     .then((result) => {
       modelProbeStore.set(storeKey, result);
+      if (result.availability === 'ok') modelOkAtStore.set(storeKey, Date.now());
       // Only definite API answers are persisted: a result shaped by a transient key/network
       // problem must never mark a working model for future sessions. A model-scoped quota is
       // definite about this model on this plan, so it is persisted too and the unavailable

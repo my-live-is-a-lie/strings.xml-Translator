@@ -28,6 +28,7 @@ import {
   getProviderModelsSnapshot,
   getProviderRuntimeErrorsSnapshot,
   peekModelProbe,
+  peekModelProbeOkAt,
   providerSupportsModelChoice,
   providerSupportsThinking,
   subscribeModelLists,
@@ -353,12 +354,25 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   // Two groups in the picker: a model lands in "unavailable" only on a definite API answer
   // (404-style unusable, or a model-scoped quota like a free-tier limit of 0) - transient
   // failures never move anything. Picking one from there re-tests it.
-  const isUnavailableModel = (name: string): boolean => {
-    const probe = peekModelProbe(activeProviderType ?? '', activeProviderKey, name);
-    return !!probe && (probe.availability === 'unavailable' || probe.modelQuota === true);
-  };
-  const availableModels = modelChoices.filter((m) => !isUnavailableModel(m.name));
-  const unavailableModels = modelChoices.filter((m) => isUnavailableModel(m.name));
+  // Two marked groups, each placed only by the model's own definite answer: "not on your
+  // plan" (model-scoped quota, e.g. a free-tier limit of 0) and "unavailable" (404-style,
+  // the model does not run at all). Picking one from either group re-tests it.
+  const isPlanLimitedModel = (name: string): boolean =>
+    peekModelProbe(activeProviderType ?? '', activeProviderKey, name)?.modelQuota === true;
+  const isDefiniteUnavailableModel = (name: string): boolean =>
+    peekModelProbe(activeProviderType ?? '', activeProviderKey, name)?.availability === 'unavailable';
+  const isUnavailableModel = (name: string): boolean =>
+    isPlanLimitedModel(name) || isDefiniteUnavailableModel(name);
+  // A model that was tested and succeeded floats to the top, most recent success first; the
+  // rest keep the API list's order (the sort is stable).
+  const okAt = (name: string) => peekModelProbeOkAt(activeProviderType ?? '', activeProviderKey, name);
+  const availableModels = modelChoices
+    .filter((m) => !isUnavailableModel(m.name))
+    .sort((a, b) => okAt(b.name) - okAt(a.name));
+  const planLimitedModels = modelChoices.filter((m) => isPlanLimitedModel(m.name));
+  const unavailableModels = modelChoices.filter(
+    (m) => isDefiniteUnavailableModel(m.name) && !isPlanLimitedModel(m.name)
+  );
   // Definite key/account problems (invalid key, exhausted quota) stick on the provider card.
   const providerRuntimeErrors = useSyncExternalStore(subscribeModelLists, getProviderRuntimeErrorsSnapshot);
 
@@ -373,6 +387,11 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
     | 'model-quota'
   >('idle');
   const modelProbeSeq = useRef(0);
+  // Re-test of the already-selected model: a native select fires no change event when the
+  // current option is picked again (or the popup is dismissed), so closing the popup with an
+  // unchanged value is treated as "test this model again".
+  const modelSelectOpenValue = useRef<string | null>(null);
+  const modelSelectChanged = useRef(false);
 
   // The thinking picker only offers the levels the reference model (the pinned one, or the top of
   // the fetched list on 'auto') actually accepted in a tiny runtime probe - nothing about model
@@ -393,7 +412,11 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   const showThinkingPicker = providerSupportsThinking(activeProviderObj?.type ?? '') &&
     (refModelInfo ? refModelInfo.thinking : true);
 
-  const saveActiveModelChoice = (model: string, thinkingLevel: string) => {
+  const saveActiveModelChoice = (
+    model: string,
+    thinkingLevel: string,
+    opts?: { forceRetest?: boolean }
+  ) => {
     if (!activeProviderObj || activeProviderObj.isBuiltIn) return;
     const providerId = activeProviderObj.id;
     const apiKey = activeProviderObj.apiKey;
@@ -413,7 +436,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
       setModelProbe('checking');
       // A model picked from the unavailable group is an explicit re-test: bypass the cache so a
       // recovered model moves back to "available" and a still-failing one stays put.
-      const force = isUnavailableModel(model);
+      const force = opts?.forceRetest === true || isUnavailableModel(model);
       // Kicks off the probe: force bypasses the cache for the re-test. The polling below must
       // NOT force - a forced poll would relaunch the probe on every tick and never settle.
       getModelProbeSnapshot(activeProviderObj.type, apiKey, model, { force });
@@ -503,9 +526,28 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                         id="active-provider-model-select"
                         dir="ltr"
                         value={activeProviderObj.model || ''}
-                        onChange={(e) =>
-                          saveActiveModelChoice(e.target.value, effectiveThinking)
-                        }
+                        onFocus={() => {
+                          modelSelectOpenValue.current = activeProviderObj.model || '';
+                          modelSelectChanged.current = false;
+                        }}
+                        onBlur={() => {
+                          const openedValue = modelSelectOpenValue.current;
+                          modelSelectOpenValue.current = null;
+                          // A real switch already started its own probe in onChange.
+                          if (modelSelectChanged.current) {
+                            modelSelectChanged.current = false;
+                            return;
+                          }
+                          if (openedValue && activeProviderObj.type === 'gemini') {
+                            saveActiveModelChoice(openedValue, effectiveThinking, {
+                              forceRetest: true,
+                            });
+                          }
+                        }}
+                        onChange={(e) => {
+                          modelSelectChanged.current = true;
+                          saveActiveModelChoice(e.target.value, effectiveThinking);
+                        }}
                         className="w-full px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
                       >
                         <option value="">
@@ -516,10 +558,27 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                             {m.name}
                           </option>
                         ))}
+                        {planLimitedModels.length > 0 && (
+                          <optgroup label={t('models_plan_unavailable')}>
+                            {planLimitedModels.map((m) => (
+                              <option
+                                key={m.name}
+                                value={m.name}
+                                className="text-slate-400 dark:text-slate-500"
+                              >
+                                {m.name}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
                         {unavailableModels.length > 0 && (
                           <optgroup label={t('models_unavailable')}>
                             {unavailableModels.map((m) => (
-                              <option key={m.name} value={m.name}>
+                              <option
+                                key={m.name}
+                                value={m.name}
+                                className="text-slate-400 dark:text-slate-500"
+                              >
                                 {m.name}
                               </option>
                             ))}
