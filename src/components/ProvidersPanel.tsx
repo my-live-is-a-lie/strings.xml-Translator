@@ -387,11 +387,9 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
     | 'model-quota'
   >('idle');
   const modelProbeSeq = useRef(0);
-  // Re-test of the already-selected model: a native select fires no change event when the
-  // current option is picked again (or the popup is dismissed), so closing the popup with an
-  // unchanged value is treated as "test this model again".
-  const modelSelectOpenValue = useRef<string | null>(null);
-  const modelSelectChanged = useRef(false);
+  // The model picker is a custom dropdown (the native Android popup swallows same-option taps
+  // and ignores option styling): tapping the already-selected model re-tests it.
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
 
   // The thinking picker only offers the levels the reference model (the pinned one, or the top of
   // the fetched list on 'auto') actually accepted in a tiny runtime probe - nothing about model
@@ -411,6 +409,18 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   const refModelInfo = modelChoices.find((m) => m.name === thinkingModelRef);
   const showThinkingPicker = providerSupportsThinking(activeProviderObj?.type ?? '') &&
     (refModelInfo ? refModelInfo.thinking : true);
+
+  // A tap on the already-selected model re-tests it live (cache bypassed); any other tap is a
+  // normal pick, which is probed before saving as usual. 'auto' has nothing to re-test.
+  const pickModel = (name: string) => {
+    setModelMenuOpen(false);
+    if (!activeProviderObj) return;
+    if (name && name === (activeProviderObj.model || '') && activeProviderObj.type === 'gemini') {
+      saveActiveModelChoice(name, effectiveThinking, { forceRetest: true });
+      return;
+    }
+    saveActiveModelChoice(name, effectiveThinking);
+  };
 
   const saveActiveModelChoice = (
     model: string,
@@ -522,73 +532,96 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                       >
                         {t('model')}
                       </label>
-                      <select
-                        id="active-provider-model-select"
-                        dir="ltr"
-                        value={activeProviderObj.model || ''}
-                        onFocus={() => {
-                          modelSelectOpenValue.current = activeProviderObj.model || '';
-                          modelSelectChanged.current = false;
-                        }}
-                        onBlur={() => {
-                          const openedValue = modelSelectOpenValue.current;
-                          modelSelectOpenValue.current = null;
-                          // A real switch already started its own probe in onChange.
-                          if (modelSelectChanged.current) {
-                            modelSelectChanged.current = false;
-                            return;
-                          }
-                          if (openedValue && activeProviderObj.type === 'gemini') {
-                            saveActiveModelChoice(openedValue, effectiveThinking, {
-                              forceRetest: true,
-                            });
-                          }
-                        }}
-                        onChange={(e) => {
-                          modelSelectChanged.current = true;
-                          saveActiveModelChoice(e.target.value, effectiveThinking);
-                        }}
-                        className="w-full px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
-                      >
-                        <option value="">
-                          {activeModelsLoading ? '…' : t('model_auto_recommended')}
-                        </option>
-                        {availableModels.map((m) => (
-                          <option key={m.name} value={m.name}>
-                            {m.name}
-                          </option>
-                        ))}
-                        {planLimitedModels.length > 0 && (
-                          <optgroup label={t('models_plan_unavailable')}>
-                            {planLimitedModels.map((m) => (
-                              <option
-                                key={m.name}
-                                value={m.name}
-                                className="text-slate-400 dark:text-slate-500"
-                              >
-                                {m.name}
-                              </option>
-                            ))}
-                          </optgroup>
+                      <div className="relative">
+                        <button
+                          id="active-provider-model-select"
+                          type="button"
+                          dir="ltr"
+                          aria-haspopup="listbox"
+                          aria-expanded={modelMenuOpen}
+                          onClick={() => setModelMenuOpen((open) => !open)}
+                          className="w-full px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996] flex items-center justify-between gap-1 text-left"
+                        >
+                          <span className="truncate">
+                            {activeProviderObj.model ||
+                              (activeModelsLoading ? '…' : t('model_auto_recommended'))}
+                          </span>
+                          <ChevronDown className="w-3 h-3 shrink-0 text-slate-500 dark:text-slate-400" />
+                        </button>
+                        {modelMenuOpen && (
+                          <>
+                            <div
+                              className="fixed inset-0 z-40 cursor-default"
+                              onClick={() => setModelMenuOpen(false)}
+                            />
+                            <ul
+                              dir="ltr"
+                              role="listbox"
+                              className="absolute right-0 z-50 mt-1 w-[calc(200%_+_0.5rem)] max-h-64 overflow-auto rounded-lg border border-slate-300 dark:border-[#2E384D] bg-white dark:bg-[#1B212E] shadow-xl py-1"
+                            >
+                              {([
+                                { name: '', label: activeModelsLoading ? '…' : t('model_auto_recommended'), dimmed: false },
+                                ...availableModels.map((m) => ({ name: m.name, label: m.name, dimmed: false })),
+                                ...(activeProviderObj.model &&
+                                activeProviderObj.model !== '' &&
+                                !modelChoices.some((m) => m.name === activeProviderObj.model)
+                                  ? [{ name: activeProviderObj.model, label: activeProviderObj.model, dimmed: false }]
+                                  : []),
+                              ] as Array<{ name: string; label: string; dimmed: boolean }>).map((item) => (
+                                <li key={item.name || '__auto__'} role="option" aria-selected={(activeProviderObj.model || '') === item.name}>
+                                  <button
+                                    type="button"
+                                    onClick={() => pickModel(item.name)}
+                                    className={`w-full px-2 py-1.5 text-left text-[11px] font-mono flex items-center justify-between gap-1 hover:bg-slate-100 dark:hover:bg-[#262E3F] ${
+                                      (activeProviderObj.model || '') === item.name
+                                        ? 'text-[#1EB996] font-semibold'
+                                        : 'text-slate-900 dark:text-slate-100'
+                                    }`}
+                                  >
+                                    <span className="truncate">{item.label}</span>
+                                    {(activeProviderObj.model || '') === item.name && (
+                                      <Check className="w-3 h-3 shrink-0" />
+                                    )}
+                                  </button>
+                                </li>
+                              ))}
+                              {([
+                                { heading: t('models_plan_unavailable'), models: planLimitedModels },
+                                { heading: t('models_unavailable'), models: unavailableModels },
+                              ] as Array<{ heading: string; models: typeof planLimitedModels }>).map(
+                                (group) =>
+                                  group.models.length > 0 && (
+                                    <li key={group.heading}>
+                                      <div dir="rtl" className="px-2 pt-1.5 pb-0.5 text-[10px] font-semibold text-slate-500 dark:text-slate-400 text-right">
+                                        {group.heading}
+                                      </div>
+                                      <ul>
+                                        {group.models.map((m) => (
+                                          <li key={m.name} role="option" aria-selected={activeProviderObj.model === m.name}>
+                                            <button
+                                              type="button"
+                                              onClick={() => pickModel(m.name)}
+                                              className={`w-full px-2 py-1.5 text-left text-[11px] font-mono flex items-center justify-between gap-1 hover:bg-slate-100 dark:hover:bg-[#262E3F] ${
+                                                activeProviderObj.model === m.name
+                                                  ? 'text-[#1EB996] font-semibold'
+                                                  : 'text-slate-400 dark:text-slate-500'
+                                              }`}
+                                            >
+                                              <span className="truncate">{m.name}</span>
+                                              {activeProviderObj.model === m.name && (
+                                                <Check className="w-3 h-3 shrink-0" />
+                                              )}
+                                            </button>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </li>
+                                  )
+                              )}
+                            </ul>
+                          </>
                         )}
-                        {unavailableModels.length > 0 && (
-                          <optgroup label={t('models_unavailable')}>
-                            {unavailableModels.map((m) => (
-                              <option
-                                key={m.name}
-                                value={m.name}
-                                className="text-slate-400 dark:text-slate-500"
-                              >
-                                {m.name}
-                              </option>
-                            ))}
-                          </optgroup>
-                        )}
-                        {activeProviderObj.model &&
-                          !modelChoices.some((m) => m.name === activeProviderObj.model) && (
-                            <option value={activeProviderObj.model}>{activeProviderObj.model}</option>
-                          )}
-                      </select>
+                      </div>
                     </div>
                   )}
                   {showThinkingPicker && (
