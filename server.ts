@@ -11,6 +11,7 @@ import {
   translateBatch,
 } from './server/providers';
 import { normalizeSourceLang } from './src/shared/sourceLang';
+import { ProviderKeyError } from './src/shared/laraErrors';
 import { createRateLimiter } from './server/rateLimit';
 import { log, metrics, metricsSnapshot, requestLogger } from './server/observability';
 
@@ -269,6 +270,7 @@ async function startServer() {
       return res.status(400).json({
         success: false,
         matched: false,
+        ...(error instanceof ProviderKeyError ? { errorKind: error.keyProblem } : {}),
         error: toUserMessage(error, 'فشل اختبار المفتاح / API key test failed.'),
       });
     }
@@ -298,6 +300,7 @@ async function startServer() {
     } catch (error) {
       logProviderError('providers/translate', error);
       return res.status(502).json({
+        ...(error instanceof ProviderKeyError ? { keyProblem: error.keyProblem } : {}),
         error: toUserMessage(error, 'فشلت الترجمة عبر المزود / Provider translation failed.'),
       });
     }

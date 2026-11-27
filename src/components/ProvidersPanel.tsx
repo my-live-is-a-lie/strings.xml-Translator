@@ -127,6 +127,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
         return t('provider_key_invalid');
       case 'quota-exhausted':
         return t('provider_quota_exhausted');
+      case 'quota-or-limit':
+        return t('provider_quota_or_limit');
       case 'unreachable':
         return t('provider_unreachable');
       case 'provider-error':
@@ -728,7 +730,9 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                 ? t('provider_key_expired')
                                 : providerRuntimeErrors.get(prov.id)?.kind === 'invalid-key'
                                   ? t('provider_key_invalid')
-                                  : t('provider_quota_exhausted')}
+                                  : providerRuntimeErrors.get(prov.id)?.kind === 'quota-or-limit'
+                                    ? t('provider_quota_or_limit')
+                                    : t('provider_quota_exhausted')}
                             </span>
                           </div>
                         )}

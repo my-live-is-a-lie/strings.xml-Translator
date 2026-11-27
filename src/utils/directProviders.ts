@@ -12,6 +12,7 @@ import {
 import { nativeFetch } from './nativeHttp';
 import { validatePlaceholders } from './placeholderCheck';
 import { geminiTranslateDirect } from './geminiDirect';
+import { classifyLaraError, ProviderKeyError, type LaraKeyProblem } from '../shared/laraErrors';
 import { normalizeSourceLang, sourceLangName, deeplSourceCode, laraSourceCode } from '../shared/sourceLang';
 
 export const DIRECT_PROVIDER_TYPES = [
@@ -40,6 +41,7 @@ export interface DirectProviderTestResult {
   providerTranslation?: string;
   detectedType?: string;
   error?: string;
+  errorKind?: LaraKeyProblem;
 }
 
 // The Lara SDK is Node-oriented; load it only when a Lara key is actually used.
@@ -334,7 +336,10 @@ export async function directCallProviderWithKey(
         if (result && typeof result.translation === 'string' && result.translation.trim()) {
           return stripMetadataWrappers(result.translation, sourceText);
         }
-      } catch {
+      } catch (err) {
+        // A key or quota problem will not change with another language: stop here, spend nothing more.
+        const problem = classifyLaraError(err);
+        if (problem) throw new ProviderKeyError(problem);
         if (laraTarget !== baseLang) {
           try {
             const lara = new LaraTranslator(new AccessKey(creds.id, creds.secret), {
@@ -352,6 +357,7 @@ export async function directCallProviderWithKey(
     }
 
     // 2. Official Lara SDK with AuthToken
+    let tokenProblem: LaraKeyProblem | null = null;
     if (creds.singleToken) {
       try {
         const tokenClient = new LaraTranslator(new AuthToken(creds.singleToken, ''), {
@@ -361,7 +367,8 @@ export async function directCallProviderWithKey(
         if (result && typeof result.translation === 'string' && result.translation.trim()) {
           return stripMetadataWrappers(result.translation, sourceText);
         }
-      } catch {
+      } catch (err) {
+        tokenProblem = classifyLaraError(err);
         // Fall through to direct REST probes
       }
 
@@ -408,9 +415,13 @@ export async function directCallProviderWithKey(
       }
     }
 
-    throw new Error(
-      'Lara Translate: فشل التحقق من المفتاح. أدخل Access Key ID و Secret / Authentication failed: check credentials.'
-    );
+    if (tokenProblem) throw new ProviderKeyError(tokenProblem);
+    if (!creds.singleToken && !(creds.id && creds.secret)) {
+      throw new Error(
+        'Lara Translate: فشل التحقق من المفتاح. أدخل Access Key ID و Secret / Authentication failed: check credentials.'
+      );
+    }
+    throw new Error('Lara Translate: فشل الطلب / Request failed.');
   };
 
   const tryLibre = async (): Promise<string> => {
@@ -536,6 +547,7 @@ export async function directTestProviderApiKey(
       success: false,
       matched: false,
       error: err instanceof Error ? err.message : 'Unknown authentication error',
+      ...(err instanceof ProviderKeyError ? { errorKind: err.keyProblem } : {}),
     };
   }
 }

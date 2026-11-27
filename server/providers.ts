@@ -11,6 +11,7 @@ import {
   stripMetadataWrappers,
 } from '../src/shared/translateCore';
 import { validatePlaceholders } from '../src/utils/placeholderCheck';
+import { classifyLaraError, ProviderKeyError, type LaraKeyProblem } from '../src/shared/laraErrors';
 import { normalizeSourceLang, sourceLangName, deeplSourceCode, laraSourceCode } from '../src/shared/sourceLang';
 
 export const PROVIDER_TYPES = [
@@ -304,6 +305,9 @@ export async function callProviderWithKey(
           return stripMetadataWrappers(result.translation, sourceText);
         }
       } catch (err) {
+        // A key or quota problem will not change with another language: stop here, spend nothing more.
+        const problem = classifyLaraError(err);
+        if (problem) throw new ProviderKeyError(problem);
         if (laraTarget !== baseLang) {
           const fallback = await lara.translate(sourceText, laraSourceCode(src), baseLang, laraTranslateOptions(laraOptions));
           if (fallback && typeof fallback.translation === 'string' && fallback.translation.trim()) {
@@ -315,6 +319,7 @@ export async function callProviderWithKey(
     }
 
     // 2. Official Lara SDK with AuthToken (single token / JWT)
+    let tokenProblem: LaraKeyProblem | null = null;
     if (creds.singleToken) {
       try {
         const tokenClient = new LaraTranslator(new AuthToken(creds.singleToken, ''), {
@@ -324,7 +329,8 @@ export async function callProviderWithKey(
         if (result && typeof result.translation === 'string' && result.translation.trim()) {
           return stripMetadataWrappers(result.translation, sourceText);
         }
-      } catch {
+      } catch (err) {
+        tokenProblem = classifyLaraError(err);
         // Fall through to the REST header probes
       }
 
@@ -365,9 +371,13 @@ export async function callProviderWithKey(
       }
     }
 
-    throw new Error(
-      'Lara Translate: فشل التحقق من المفتاح. أدخل Access Key ID و Secret / Authentication failed: provide the Access Key ID and Secret.'
-    );
+    if (tokenProblem) throw new ProviderKeyError(tokenProblem);
+    if (!creds.singleToken && !(creds.id && creds.secret)) {
+      throw new Error(
+        'Lara Translate: فشل التحقق من المفتاح. أدخل Access Key ID و Secret / Authentication failed: provide the Access Key ID and Secret.'
+      );
+    }
+    throw new Error('Lara Translate: فشل الطلب / Request failed.');
   };
 
   const tryLibre = async (): Promise<string> => {

@@ -24,6 +24,7 @@ import {
 } from './providerModels';
 import { fetchGoogleGtxRaw, fetchWithTimeout, providerHttpError } from '../shared/translateCore';
 import { directCallProviderWithKey, directTestProviderApiKey } from './directProviders';
+import { ProviderKeyError } from '../shared/laraErrors';
 import { normalizeSourceLang } from '../shared/sourceLang';
 
 /** Source language of the open project (base ISO code). Set by the app when a project opens or its source language changes. */
@@ -638,7 +639,7 @@ export interface ProviderTestResult {
   providerTranslation?: string;
   detectedType?: ProviderEngineType;
   /** Categorized failure for UI copy; the UI renders Arabic from this instead of the raw message. */
-  errorKind?: 'expired-key' | 'invalid-key' | 'quota-exhausted' | 'unreachable' | 'provider-error' | 'unknown';
+  errorKind?: 'expired-key' | 'invalid-key' | 'quota-exhausted' | 'quota-or-limit' | 'unreachable' | 'provider-error' | 'unknown';
   /** The model that answered the verification call, so it can become the provider's default. */
   workingModel?: string;
   /** Key authenticated but every model answered a model-scoped quota; accepted with a flag. */
@@ -672,6 +673,11 @@ export async function testProviderApiKey(
       );
       if (res.ok) {
         return (await res.json()) as ProviderTestResult;
+      }
+      // A definite key problem named by the server is the answer; do not retry it another way.
+      const failure = (await res.json().catch(() => null)) as ProviderTestResult | null;
+      if (failure && (failure.errorKind === 'quota-or-limit' || failure.errorKind === 'invalid-key')) {
+        return failure;
       }
     } catch (serverErr) {
       logFallback('server provider test', serverErr);
@@ -1323,14 +1329,23 @@ async function translateSingleSegmentUncached(
             signal
           )
         );
-        if (!pRes.ok) throw providerHttpError('server provider', pRes.status);
+        if (!pRes.ok) {
+          // The server names a definite key problem (invalid key, exhausted quota) so it can stay on the card.
+          const failure = (await pRes.json().catch(() => null)) as { keyProblem?: string } | null;
+          if (failure?.keyProblem === 'quota-or-limit' || failure?.keyProblem === 'invalid-key') {
+            reportProviderKeyProblem(activeProvider.id, failure.keyProblem);
+          }
+          throw providerHttpError('server provider', pRes.status);
+        }
         const pData = (await pRes.json()) as { translatedText?: string };
         if (pData && typeof pData.translatedText === 'string' && pData.translatedText.trim()) {
           const cleaned = stripMetadataLabels(pData.translatedText, coreText);
           if (cleaned && !isPollutedTranslation(cleaned)) {
             const restored = postProcess(restoreSegmentSyntax(cleaned, tokens, usesEscapedDoubleQuotes));
-            if (!breaksIcuStructure(restored) && !changesLineBreaks(restored) && !isEchoReply(coreText, restored, baseLang))
+            if (!breaksIcuStructure(restored) && !changesLineBreaks(restored) && !isEchoReply(coreText, restored, baseLang)) {
+              clearProviderRuntimeErrorOnSuccess(activeProvider.id);
               return restored;
+            }
           }
         }
       } catch (err) {
@@ -1358,12 +1373,15 @@ async function translateSingleSegmentUncached(
         const cleaned = stripMetadataLabels(directResult.translatedText, coreText);
         if (cleaned && !isPollutedTranslation(cleaned)) {
           const restored = postProcess(restoreSegmentSyntax(cleaned, tokens, usesEscapedDoubleQuotes));
-          if (!breaksIcuStructure(restored) && !changesLineBreaks(restored) && !isEchoReply(coreText, restored, baseLang))
+          if (!breaksIcuStructure(restored) && !changesLineBreaks(restored) && !isEchoReply(coreText, restored, baseLang)) {
+            clearProviderRuntimeErrorOnSuccess(activeProvider.id);
             return restored;
+          }
         }
       }
     } catch (err) {
       logFallback('direct provider', err);
+      if (err instanceof ProviderKeyError) reportProviderKeyProblem(activeProvider.id, err.keyProblem);
     }
 
     return null;
