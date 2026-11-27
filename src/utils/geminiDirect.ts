@@ -7,14 +7,13 @@ import { SYSTEM_INSTRUCTION, fetchWithTimeout } from '../shared/translateCore';
 import { validatePlaceholders } from './placeholderCheck';
 import {
   classifyGeminiKeyProblem,
+  GeminiHttpError,
   isModelQuotaMessage,
   isModelUnavailableMessage,
+  parseModelQuotaKind,
   type GeminiKeyProblem,
+  type ModelQuotaKind,
 } from '../shared/providerErrors';
-
-// Kept so existing imports of these names keep working; they now live in shared/providerErrors.ts.
-export { classifyGeminiKeyProblem, isModelQuotaMessage, isModelUnavailableMessage };
-export type { GeminiKeyProblem };
 
 const API_ROOT = 'https://generativelanguage.googleapis.com/v1beta';
 // Google retires models for new keys from time to time ("no longer available to new users"), so no single
@@ -41,36 +40,6 @@ export const looksLikeGeminiKey = (key: string): boolean => {
   const trimmed = key.trim();
   return trimmed.startsWith('AIza') || trimmed.startsWith('AQ.');
 };
-
-/** Two different model-scoped quota answers hide behind the same generic 429 wording. */
-export type ModelQuotaKind = 'limit-zero' | 'daily-used';
-
-/**
- * Reads the model-scoped limit out of a 429's detail line: "limit: 0" means the model is not on
- * this plan at all; a positive limit (e.g. 20/day on the free tier) means the model IS on the
- * plan and today's quota is simply used up - it resets and must not be treated as plan-limited.
- * Returns undefined when the message carries no parseable limit.
- */
-export function parseModelQuotaKind(message: string): ModelQuotaKind | undefined {
-  const m = /limit:\s*(\d+)/i.exec(message);
-  if (!m) return undefined;
-  return m[1] === '0' ? 'limit-zero' : 'daily-used';
-}
-
-export class GeminiHttpError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-    readonly modelUnavailable: boolean,
-    readonly keyProblem: GeminiKeyProblem | null = null,
-    /** True when the failure was a model-scoped quota (per-model limit), not a key problem. */
-    readonly modelQuota: boolean = false,
-    /** Which kind of model quota, when the message said: not-on-plan (limit 0) vs daily-used. */
-    readonly quotaKind?: ModelQuotaKind
-  ) {
-    super(message);
-  }
-}
 
 /**
  * The model answered, but the answer broke the ICU structure of the source string.

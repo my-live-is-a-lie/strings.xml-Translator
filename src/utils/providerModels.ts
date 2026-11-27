@@ -4,10 +4,10 @@ import {
   GeminiModelInfo,
   listGeminiModels,
   ModelProbeResult,
-  ModelQuotaKind,
   probeGeminiModel,
   sweepProbeGeminiModel,
 } from './geminiDirect';
+import type { ModelQuotaKind, ProviderKeyKind } from '../shared/providerErrors';
 import { getStoredItem, removeStoredItem, setStoredItem } from './storage';
 
 /**
@@ -209,7 +209,7 @@ export function getModelProbeStatesVersion(): number {
  * never silently falls back to the free engines. Session-scoped by design: the next successful
  * call clears it.
  */
-export type ProviderKeyProblem = 'expired-key' | 'invalid-key' | 'quota-exhausted' | 'quota-or-limit';
+export type ProviderKeyProblem = ProviderKeyKind;
 /** Card-visible runtime error: a key/account problem (invalid/expired key, exhausted quota). */
 export type ProviderRuntimeError = { kind: ProviderKeyProblem; at: number };
 const providerRuntimeErrors = new Map<string, ProviderRuntimeError>();

@@ -2,6 +2,8 @@ import React from 'react';
 import { AlertCircle, Check, Pencil, Trash2 } from 'lucide-react';
 import { TranslationProviderConfig } from '../../utils/translator';
 import { useT } from '../../i18n/i18n';
+import type { ProviderRuntimeError } from '../../utils/providerModels';
+import { KEY_KIND_UI_KEY } from './errorKindText';
 import { ProviderEditForm } from './ProviderEditForm';
 
 interface ProviderListItemProps {
@@ -11,7 +13,7 @@ interface ProviderListItemProps {
   isSelected: boolean;
   isEditing: boolean;
   /** A definite key/account problem that sticks on the card */
-  runtimeError: { kind: string } | undefined;
+  runtimeError: ProviderRuntimeError | undefined;
   onSelect: () => void;
   onToggleEdit: () => void;
   onCloseEdit: () => void;
@@ -123,13 +125,7 @@ export const ProviderListItem: React.FC<ProviderListItemProps> = ({
         >
           <AlertCircle className="w-3 h-3 shrink-0" />
           <span>
-            {runtimeError?.kind === 'expired-key'
-              ? t('provider_key_expired')
-              : runtimeError?.kind === 'invalid-key'
-                ? t('provider_key_invalid')
-                : runtimeError?.kind === 'quota-or-limit'
-                  ? t('provider_quota_or_limit')
-                  : t('provider_quota_exhausted')}
+            {t(KEY_KIND_UI_KEY[runtimeError.kind])}
           </span>
         </div>
       )}

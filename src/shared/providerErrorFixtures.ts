@@ -2,7 +2,7 @@
  * Provider error cases shared by the classifier tests.
  *
  * SYNTHETIC: these are not recorded answers from Lara or Google. Each case is built from what the
- * current classifiers in laraErrors.ts and geminiDirect.ts are written to handle, and the expected
+ * current classifiers in providerErrors.ts are written to handle, and the expected
  * result is what they return today. Lara does not publish the status or type for an exhausted
  * quota, so its quota cases in particular are guesses and stay unverified until a real answer is
  * recorded. Replace a case with a recorded answer when one is available.

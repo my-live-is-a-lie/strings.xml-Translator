@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { classifyGeminiKeyProblem, isModelQuotaMessage } from '../shared/providerErrors';
 import {
-  classifyGeminiKeyProblem,
-  isModelQuotaMessage,
   geminiThinkingConfig,
   geminiTranslateDirect,
   GEMINI_THINKING_LEVELS,

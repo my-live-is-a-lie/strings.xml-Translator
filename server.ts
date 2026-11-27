@@ -12,7 +12,7 @@ import {
 } from './server/providers';
 import { normalizeSourceLang } from './src/shared/sourceLang';
 import { sanitizeDeeplOptions } from './src/shared/deeplOptions';
-import { ProviderKeyError } from './src/shared/laraErrors';
+import { ProviderKeyError } from './src/shared/providerErrors';
 import { createRateLimiter } from './server/rateLimit';
 import { log, metrics, metricsSnapshot, requestLogger } from './server/observability';
 
