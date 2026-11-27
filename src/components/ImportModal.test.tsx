@@ -60,6 +60,12 @@ function click(el: HTMLElement) {
   });
 }
 
+async function flush() {
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 0));
+  });
+}
+
 function fillProjectName(name: string) {
   const input = container.querySelector<HTMLInputElement>('#import-project-name');
   if (!input) throw new Error('project name input not found');
@@ -135,23 +141,25 @@ describe('ImportModal / Import Report', () => {
     expect(document.activeElement).toBe(buttonWithText(BTN_START));
   });
 
-  it('a BOM alone does not show the report and the import completes', () => {
+  it('a BOM alone does not show the report and the import completes', async () => {
     const { onImportComplete } = renderModal();
     click(buttonWithText(TAB_PASTE));
     pasteXml('﻿' + CLEAN_XML); // U+FEFF byte order mark
     click(buttonWithText(BTN_START));
 
     expect(hasButton(BTN_CONTINUE)).toBe(false);
+    await flush();
     expect(onImportComplete).toHaveBeenCalledTimes(1);
   });
 
-  it('CRLF line endings alone do not show the report and the import completes', () => {
+  it('CRLF line endings alone do not show the report and the import completes', async () => {
     const { onImportComplete } = renderModal();
     click(buttonWithText(TAB_PASTE));
     pasteXml(CLEAN_XML.replace(/\n/g, '\r\n'));
     click(buttonWithText(BTN_START));
 
     expect(hasButton(BTN_CONTINUE)).toBe(false);
+    await flush();
     expect(onImportComplete).toHaveBeenCalledTimes(1);
   });
 });
@@ -269,13 +277,14 @@ describe('ImportModal / partial import (Phase 3 of #25)', () => {
     expect(container.querySelector('pre')?.textContent).toContain('<string name="broken">oops');
   });
 
-  it('completes the import with only the well-formed entry, once Continue is clicked', () => {
+  it('completes the import with only the well-formed entry, once Continue is clicked', async () => {
     const { onImportComplete } = renderModal();
     click(buttonWithText(TAB_PASTE));
     pasteXml(XML_WITH_ONE_MALFORMED_ENTRY);
     click(buttonWithText(BTN_START));
     click(buttonWithText(BTN_CONTINUE));
 
+    await flush();
     expect(onImportComplete).toHaveBeenCalledTimes(1);
     const project = onImportComplete.mock.calls[0][0];
     expect(project.items.map((i: { name: string }) => i.name)).toEqual(['app_name']);
