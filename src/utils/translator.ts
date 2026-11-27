@@ -1261,7 +1261,7 @@ async function translateSingleSegmentUncached(
                 laraEffort: activeProvider.type === 'lara' ? activeProvider.laraEffort : undefined,
               }),
             },
-            25000,
+            activeProvider.type === 'lara' && activeProvider.laraMode === 'think' ? 70000 : 25000,
             signal
           )
         );

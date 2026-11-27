@@ -38,9 +38,15 @@ export interface LaraTranslateExtras {
   reasoningEffort?: 'low' | 'medium' | 'high';
 }
 
+/** Think (reasoning) answers are much slower, so it gets a longer timeout; Standard keeps the normal one. */
+const LARA_THINK_TIMEOUT_MS = 60000;
+function laraTimeoutMs(extras?: LaraTranslateExtras): number {
+  return extras?.reasoning ? LARA_THINK_TIMEOUT_MS : LARA_CONNECTION_TIMEOUT_MS;
+}
+
 function laraTranslateOptions(extras?: LaraTranslateExtras) {
   return {
-    timeoutInMillis: LARA_CONNECTION_TIMEOUT_MS,
+    timeoutInMillis: laraTimeoutMs(extras),
     ...(extras?.reasoning
       ? { reasoning: true, ...(extras.reasoningEffort ? { reasoningEffort: extras.reasoningEffort } : {}) }
       : {}),
@@ -281,7 +287,7 @@ export async function callProviderWithKey(
     // 1. Official Lara SDK with AccessKey (ID + Secret)
     if (creds.id && creds.secret) {
       const lara = new LaraTranslator(new AccessKey(creds.id, creds.secret), {
-        connectionTimeoutMs: LARA_CONNECTION_TIMEOUT_MS,
+        connectionTimeoutMs: laraTimeoutMs(laraOptions),
       });
       try {
         const result = await lara.translate(sourceText, 'en', laraTarget, laraTranslateOptions(laraOptions));
@@ -303,7 +309,7 @@ export async function callProviderWithKey(
     if (creds.singleToken) {
       try {
         const tokenClient = new LaraTranslator(new AuthToken(creds.singleToken, ''), {
-          connectionTimeoutMs: LARA_CONNECTION_TIMEOUT_MS,
+          connectionTimeoutMs: laraTimeoutMs(laraOptions),
         });
         const result = await tokenClient.translate(sourceText, 'en', laraTarget, laraTranslateOptions(laraOptions));
         if (result && typeof result.translation === 'string' && result.translation.trim()) {

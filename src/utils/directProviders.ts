@@ -71,9 +71,15 @@ export interface LaraTranslateExtras {
   reasoningEffort?: 'low' | 'medium' | 'high';
 }
 
+/** Think (reasoning) answers are much slower, so it gets a longer timeout; Standard keeps the normal one. */
+const LARA_THINK_TIMEOUT_MS = 60000;
+function laraTimeoutMs(extras?: LaraTranslateExtras): number {
+  return extras?.reasoning ? LARA_THINK_TIMEOUT_MS : LARA_CONNECTION_TIMEOUT_MS;
+}
+
 function laraTranslateOptions(extras?: LaraTranslateExtras) {
   return {
-    timeoutInMillis: LARA_CONNECTION_TIMEOUT_MS,
+    timeoutInMillis: laraTimeoutMs(extras),
     ...(extras?.reasoning
       ? { reasoning: true, ...(extras.reasoningEffort ? { reasoningEffort: extras.reasoningEffort } : {}) }
       : {}),
@@ -313,7 +319,7 @@ export async function directCallProviderWithKey(
     if (creds.id && creds.secret) {
       try {
         const lara = new LaraTranslator(new AccessKey(creds.id, creds.secret), {
-          connectionTimeoutMs: LARA_CONNECTION_TIMEOUT_MS,
+          connectionTimeoutMs: laraTimeoutMs(laraOptions),
         });
         const result = await lara.translate(sourceText, 'en', laraTarget, laraTranslateOptions(laraOptions));
         if (result && typeof result.translation === 'string' && result.translation.trim()) {
@@ -323,7 +329,7 @@ export async function directCallProviderWithKey(
         if (laraTarget !== baseLang) {
           try {
             const lara = new LaraTranslator(new AccessKey(creds.id, creds.secret), {
-              connectionTimeoutMs: LARA_CONNECTION_TIMEOUT_MS,
+              connectionTimeoutMs: laraTimeoutMs(laraOptions),
             });
             const fallback = await lara.translate(sourceText, 'en', baseLang, laraTranslateOptions(laraOptions));
             if (fallback && typeof fallback.translation === 'string' && fallback.translation.trim()) {
@@ -340,7 +346,7 @@ export async function directCallProviderWithKey(
     if (creds.singleToken) {
       try {
         const tokenClient = new LaraTranslator(new AuthToken(creds.singleToken, ''), {
-          connectionTimeoutMs: LARA_CONNECTION_TIMEOUT_MS,
+          connectionTimeoutMs: laraTimeoutMs(laraOptions),
         });
         const result = await tokenClient.translate(sourceText, 'en', laraTarget, laraTranslateOptions(laraOptions));
         if (result && typeof result.translation === 'string' && result.translation.trim()) {
