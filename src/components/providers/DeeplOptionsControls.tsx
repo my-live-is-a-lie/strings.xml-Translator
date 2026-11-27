@@ -21,7 +21,9 @@ export const DeeplOptionsControls: React.FC<DeeplOptionsControlsProps> = ({ prov
   // Blur never fires when the panel unmounts (drawer closed while the field is focused), so the
   // cleanup saves a pending draft. The ref holds the latest values for the cleanup to read.
   const pending = useRef({ id: provider.id, draft: contextDraft, saved: options.context });
-  pending.current = { id: provider.id, draft: contextDraft, saved: options.context };
+  useEffect(() => {
+    pending.current = { id: provider.id, draft: contextDraft, saved: options.context };
+  });
   useEffect(
     () => () => {
       const { id, draft, saved } = pending.current;
