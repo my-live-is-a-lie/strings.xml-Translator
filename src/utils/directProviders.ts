@@ -2,6 +2,7 @@
 // Uses nativeFetch (CapacitorHttp) on native Android/iOS to bypass browser CORS completely,
 // allowing the APK to translate directly without requiring an intermediate backend proxy server.
 
+import { deeplRequestFields, type DeeplOptions } from '../shared/deeplOptions';
 import {
   SYSTEM_INSTRUCTION,
   fetchGoogleGtxRaw,
@@ -168,7 +169,8 @@ export async function directCallProviderWithKey(
   pluralQuantity?: string,
   folderId?: string,
   laraOptions?: LaraTranslateExtras,
-  sourceLang = 'en'
+  sourceLang = 'en',
+  deeplOptions?: DeeplOptions
 ): Promise<DirectProviderResult> {
   const src = normalizeSourceLang(sourceLang);
   const baseLang = targetLang.split('-')[0].toLowerCase();
@@ -245,7 +247,7 @@ export async function directCallProviderWithKey(
       {
         method: 'POST',
         headers: { Authorization: `DeepL-Auth-Key ${trimmedKey}`, 'Content-Type': 'application/json' },
-        data: { text: [sourceText], source_lang: deeplSourceCode(src), target_lang: deeplTarget },
+        data: { text: [sourceText], source_lang: deeplSourceCode(src), target_lang: deeplTarget, ...deeplRequestFields(deeplOptions) },
       }
     );
     if (!res.ok) throw providerHttpError('DeepL API', res.status);

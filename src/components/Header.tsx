@@ -1146,7 +1146,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
                 </button>
               )}
 
-              <ProvidersPanel isAr={isAr} onChanged={() => setProvidersRevision((r) => r + 1)} />
+              <ProvidersPanel isAr={isAr} targetLang={project.targetLang} onChanged={() => setProvidersRevision((r) => r + 1)} />
 
               {/* Auto-Translate Option Toggle (Under Translate Providers) */}
               <button

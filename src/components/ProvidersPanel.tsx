@@ -1,9 +1,24 @@
-import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import React, {
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { useDialog } from '../utils/useDialog';
 import { createPortal } from 'react-dom';
-import { AlertCircle, Check, CheckCircle2, ChevronDown, Clipboard, Cpu, KeyRound, Loader2, Pencil, Plus, Trash2, X } from 'lucide-react';
-import { ENGINE_OPTIONS } from './headerOptions';
-import { testGeminiKeyDirect, looksLikeGeminiKey } from '../utils/geminiDirect';
+import {
+  AlertCircle,
+  Check,
+  ChevronDown,
+  Clipboard,
+  Cpu,
+  KeyRound,
+  Loader2,
+  Pencil,
+  Plus,
+  Trash2,
+  X,
+} from 'lucide-react';
 import {
   TranslationProviderConfig,
   ProviderEngineType,
@@ -13,30 +28,18 @@ import {
   gtxLooksUnavailable,
   getActiveProviderId,
   setActiveProviderId,
-  addCustomProvider,
   updateCustomProvider,
-  parseLaraInstructions,
-  LARA_INSTRUCTION_MAX_WORDS,
   removeCustomProvider,
-  getCustomProviders,
-  testProviderApiKey,
 } from '../utils/translator';
+import { useKeyTest } from './providers/useKeyTest';
+import { AddProviderForm } from './providers/AddProviderForm';
+import { inferEngineFromName } from './providers/engineInference';
+import { testErrorText as testErrorTextFor } from './providers/testErrorText';
+import { ActiveProviderControls } from './providers/ActiveProviderControls';
 import { useT, tg } from '../i18n/i18n';
-import { SecretField, readClipboardText } from './SecretField';
+import { readClipboardText } from './SecretField';
 import { textDirection } from '../utils/direction';
-import {
-  getModelProbeSnapshot,
-  getModelProbeStatesVersion,
-  getProviderModelsSnapshot,
-  getProviderRuntimeErrorsSnapshot,
-  noteModelProbeSuccess,
-  peekModelProbe,
-  sweepGeminiModels,
-  peekModelProbeOkAt,
-  providerSupportsModelChoice,
-  providerSupportsThinking,
-  subscribeModelLists,
-} from '../utils/providerModels';
+import { getProviderRuntimeErrorsSnapshot, subscribeModelLists } from '../utils/providerModels';
 
 export function getProviderDisplayName(prov: TranslationProviderConfig | undefined, isAr: boolean): string {
   if (!prov) return tg('google_translate');
@@ -50,9 +53,11 @@ interface ProvidersPanelProps {
   isAr: boolean;
   /** Called after providers are added, edited, removed or the active one changes */
   onChanged: () => void;
+  /** The project's target language code */
+  targetLang: string;
 }
 
-export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged }) => {
+export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged, targetLang }) => {
   const { t, tb } = useT();
   // Translation Providers state inside the sidebar
   const [providersPanelOpen, setProvidersPanelOpen] = useState(false);
@@ -63,18 +68,6 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
 
   // Add new API key form state
   const [showAddKeyForm, setShowAddKeyForm] = useState(false);
-  const [newProviderName, setNewProviderName] = useState('');
-  const [newProviderEngine, setNewProviderEngine] = useState<string>('auto');
-  const [newApiKey, setNewApiKey] = useState('');
-  const [newApiSecret, setNewApiSecret] = useState('');
-  const [newFolderId, setNewFolderId] = useState('');
-  const [isTestingKey, setIsTestingKey] = useState(false);
-  const [testResult, setTestResult] = useState<ProviderTestResult | null>(null);
-  const addKeyFormRef = useRef<HTMLFormElement | null>(null);
-  const providerNameInputRef = useRef<HTMLInputElement | null>(null);
-  // An in-flight verification: aborting lets the user stop a stuck check; editing the key
-  // cancels it too, since the result would describe a key that is no longer in the field.
-  const testAbortRef = useRef<{ controller: AbortController; cancelled: boolean } | null>(null);
 
   // Confirm delete dialog state
   const [providerToDelete, setProviderToDelete] = useState<TranslationProviderConfig | null>(null);
@@ -85,14 +78,11 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   const [editApiKey, setEditApiKey] = useState('');
   const [editApiSecret, setEditApiSecret] = useState('');
   const [editFolderId, setEditFolderId] = useState('');
-  const [isTestingEditKey, setIsTestingEditKey] = useState(false);
-
-  const [editTestResult, setEditTestResult] = useState<ProviderTestResult | null>(null);
+  const editTest = useKeyTest();
   // The edited key that was verified valid; saving a changed key is allowed only for this exact value.
   const [editVerified, setEditVerified] = useState<{ sig: string; result: ProviderTestResult } | null>(null);
   const editNameInputRef = useRef<HTMLInputElement | null>(null);
   const editKeyInputRef = useRef<HTMLInputElement | null>(null);
-  const editTestAbortRef = useRef<{ controller: AbortController; cancelled: boolean } | null>(null);
 
   // Warn when the free Google engine keeps failing, since it relies on an unofficial endpoint.
   // The status is read on every render: it expires with time (no event fires for that), and the
@@ -107,6 +97,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
 
   const deleteDialogRef = useDialog(providerToDelete !== null, () => setProviderToDelete(null));
 
+  const testErrorText = (result: ProviderTestResult) => testErrorTextFor(t, result);
+
   const refresh = () => {
     setProvidersList(getAllTranslationProviders());
     onChanged();
@@ -118,146 +110,11 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
     onChanged();
   };
 
-  // Arabic-first UI: a categorized failure renders the app's Arabic copy, never the raw
-  // mixed-language API message (e.g. "Gemini: عربي / English").
-  const testErrorText = (result: ProviderTestResult): string => {
-    switch (result.errorKind) {
-      case 'expired-key':
-        return t('provider_key_expired');
-      case 'invalid-key':
-        return t('provider_key_invalid');
-      case 'quota-exhausted':
-        return t('provider_quota_exhausted');
-      case 'quota-or-limit':
-        return t('provider_quota_or_limit');
-      case 'unreachable':
-        return t('provider_unreachable');
-      case 'provider-error':
-        return t('provider_error');
-      default:
-        // Gemini always sets errorKind, so its raw messages (mixed language, about a model) never
-        // reach here. Other providers do not categorize: show what they actually said (HTTP status,
-        // "folder ID required", ...) instead of hiding it behind a generic line.
-        if (result.errorKind === undefined && result.error) return result.error;
-        return t('provider_key_rejected');
-    }
-  };
-
-  const inferEngineFromName = (typedName: string, selectedEngine: string): string => {
-    if (selectedEngine && selectedEngine !== 'auto') return selectedEngine;
-    const lower = typedName.trim().toLowerCase();
-    if (lower.includes('libre') || lower.includes('ليبر')) return 'libretranslate';
-    if (lower.includes('lara') || lower.includes('لارا') || lower.includes('translated')) return 'lara';
-    if (lower.includes('yandex') || lower.includes('ياندكس')) return 'yandex';
-    if (lower.includes('deepl') || lower.includes('ديب')) return 'deepl';
-    if (lower.includes('gemini') || lower.includes('جيميني')) return 'gemini';
-    if (lower.includes('openai') || lower.includes('gpt') || lower.includes('chatgpt')) return 'openai';
-    if (lower.includes('microsoft') || lower.includes('azure') || lower.includes('bing')) return 'microsoft';
-    if (lower.includes('google') || lower.includes('جوجل')) return 'google_cloud';
-    return 'auto';
-  };
-
-  // Gemini keys are verified straight from the browser; every other provider goes through the server
-  const cancelOngoingTest = (
-    ref: React.MutableRefObject<{ controller: AbortController; cancelled: boolean } | null>,
-    stopSpinner: (v: boolean) => void
-  ) => {
-    if (!ref.current) return;
-    ref.current.cancelled = true;
-    ref.current.controller.abort();
-    ref.current = null;
-    stopSpinner(false);
-  };
-
-  const testEngineKey = (
-    engine: string,
-    key: string,
-    folderId?: string,
-    signal?: AbortSignal
-  ): Promise<ProviderTestResult> =>
-    // Gemini verifies straight from the browser even on Auto-Detect when the key shape gives it
-    // away: without this, Auto-Detect + a Gemini key lands on the server path and fails wherever
-    // the server is unreachable (static web demo). Google allows CORS from any origin.
-    engine === 'gemini' || (engine === 'auto' && looksLikeGeminiKey(key))
-      ? testGeminiKeyDirect(key, signal)
-      : testProviderApiKey(engine, key, folderId, signal);
-
-  const handleTestAndAddProvider = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const pendingEngine = inferEngineFromName(newProviderName, newProviderEngine);
-    if (!newApiKey.trim() && pendingEngine !== 'libretranslate') return;
-
-    setIsTestingKey(true);
-    setTestResult(null);
-    const testAbort = { controller: new AbortController(), cancelled: false };
-    testAbortRef.current = testAbort;
-
-    const effectiveEngine = inferEngineFromName(newProviderName, newProviderEngine);
-    const rawKey = newApiKey.trim() || (effectiveEngine === 'libretranslate' ? 'none' : '');
-    const rawSecret = newApiSecret.trim();
-    const combinedApiKey =
-      effectiveEngine === 'lara' && rawSecret && !rawKey.includes(':')
-        ? `${rawKey}:${rawSecret}`
-        : rawKey;
-
-    const folderId = newFolderId.trim();
-    const result = await testEngineKey(effectiveEngine, combinedApiKey, folderId, testAbort.controller.signal);
-    if (testAbort.cancelled) return; // cancelled: the user already moved on
-    testAbortRef.current = null;
-    setIsTestingKey(false);
-    setTestResult(result);
-
-    if (result.success && result.matched) {
-      const detectedType: ProviderEngineType =
-        result.detectedType ||
-        (effectiveEngine !== 'auto' ? (effectiveEngine as ProviderEngineType) : 'yandex');
-
-      const defaultNameMap: Record<string, string> = {
-        lara: 'Lara Translate',
-        yandex: 'Yandex Cloud Translate',
-        deepl: 'DeepL API',
-        gemini: 'Gemini API',
-        openai: 'OpenAI API',
-        google_cloud: 'Google Cloud',
-        libretranslate: 'LibreTranslate',
-        microsoft: 'Microsoft Azure Translator',
-      };
-
-      const finalName =
-        newProviderName.trim() || defaultNameMap[detectedType] || 'Custom API';
-
-      const added = addCustomProvider({
-        name: finalName,
-        type: detectedType,
-        apiKey: combinedApiKey,
-        folderId: detectedType === 'yandex' || detectedType === 'libretranslate' ? folderId : undefined,
-      });
-
-      // The verification already found a model that answers on this plan: make it the default
-      // so the first real translation does not start by failing on a quota-limited one.
-      if (result.workingModel) {
-        updateCustomProvider(added.id, { model: result.workingModel });
-      }
-
-      // Then quietly test every discovered model in the background (one bare 2s attempt each):
-      // plan-limited and unusable models land in their picker groups, passes float to the top.
-      if (detectedType === 'gemini') {
-        void sweepGeminiModels(combinedApiKey, () => getCustomProviders().some((p) => p.id === added.id));
-      }
-
-      refresh();
-      setSelectedProviderId(added.id);
-      setNewProviderName('');
-      setNewApiKey('');
-      setNewApiSecret('');
-      setNewFolderId('');
-    }
-  };
 
   const handleStartEditProvider = (prov: TranslationProviderConfig) => {
     if (editingProviderId === prov.id) {
       setEditingProviderId(null);
-      setEditTestResult(null);
+      editTest.setResult(null);
       return;
     }
     setEditingProviderId(prov.id);
@@ -272,7 +129,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
       setEditApiSecret('');
     }
     setEditFolderId(prov.folderId || '');
-    setEditTestResult(null);
+    editTest.setResult(null);
     setTimeout(() => {
       editNameInputRef.current?.focus();
     }, 60);
@@ -306,28 +163,14 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
     if (!editingProv) return;
     const target = resolveEditTarget(editingProv);
     if (!target.keyChanged || !target.rawKey) return;
-    const abort = { controller: new AbortController(), cancelled: false };
     const timer = setTimeout(async () => {
-      editTestAbortRef.current = abort;
-      setIsTestingEditKey(true);
-      const result = await testEngineKey(
-        target.targetEngine,
-        target.combinedKey,
-        target.editedFolderId,
-        abort.controller.signal
-      );
-      if (abort.cancelled) return;
-      editTestAbortRef.current = null;
-      setIsTestingEditKey(false);
-      setEditTestResult(result);
+      const result = await editTest.run(target.targetEngine, target.combinedKey, target.editedFolderId);
+      if (!result) return;
       if (result.success && result.matched) setEditVerified({ sig: target.sig, result });
     }, 400);
     return () => {
       clearTimeout(timer);
-      abort.cancelled = true;
-      abort.controller.abort();
-      if (editTestAbortRef.current === abort) editTestAbortRef.current = null;
-      setIsTestingEditKey(false);
+      editTest.cancel();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingProviderId, editSig]);
@@ -349,7 +192,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
       });
       refresh();
       setEditingProviderId(null);
-      setEditTestResult(null);
+      editTest.setResult(null);
       return;
     }
 
@@ -368,7 +211,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
     });
     refresh();
     setEditingProviderId(null);
-    setEditTestResult(null);
+    editTest.setResult(null);
     setEditVerified(null);
   };
 
@@ -387,216 +230,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   const activeProviderObj =
     providersList.find((p) => p.id === selectedProviderId) || providersList[0];
   const providerLabel = (prov?: TranslationProviderConfig) => getProviderDisplayName(prov, isAr);
-
-  // The pickers under the provider button edit the ACTIVE provider. Its model list comes from the
-  // provider's list-models endpoint (cached external store; static fallback inside).
-  const activeProviderType = activeProviderObj?.type;
-  const activeProviderKey = activeProviderObj?.apiKey;
-  const modelListResult = useSyncExternalStore(subscribeModelLists, () =>
-    getProviderModelsSnapshot(activeProviderType ?? '', activeProviderKey)
-  );
-  const modelChoices = Array.isArray(modelListResult) ? modelListResult : [];
-  const activeModelsLoading = modelListResult === 'loading';
-  // Re-render when any probe lands so the available/unavailable groups stay current.
-  useSyncExternalStore(subscribeModelLists, getModelProbeStatesVersion);
-  // Two groups in the picker: a model lands in "unavailable" only on a definite API answer
-  // (404-style unusable, or a model-scoped quota like a free-tier limit of 0) - transient
-  // failures never move anything. Picking one from there re-tests it.
-  // Two marked groups, each placed only by the model's own definite answer: "not on your
-  // plan" (the API said the model's limit on this key is 0 - it can never run here) and
-  // "unavailable" (404-style, the model does not run at all). A model whose daily quota is
-  // used up is on the plan, so it stays in the available list and shows its note when picked.
-  // Picking one from either group re-tests it.
-  const isPlanLimitedModel = (name: string): boolean => {
-    const entry = peekModelProbe(activeProviderType ?? '', activeProviderKey, name);
-    return entry?.modelQuota === true && entry.quotaKind !== 'daily-used';
-  };
-  const isDefiniteUnavailableModel = (name: string): boolean =>
-    peekModelProbe(activeProviderType ?? '', activeProviderKey, name)?.availability === 'unavailable';
-  const isUnavailableModel = (name: string): boolean =>
-    isPlanLimitedModel(name) || isDefiniteUnavailableModel(name);
-  // A model that was tested and succeeded floats to the top, most recent success first; the
-  // rest keep the API list's order (the sort is stable).
-  const okAt = (name: string) => peekModelProbeOkAt(activeProviderType ?? '', activeProviderKey, name);
-  const availableModels = modelChoices
-    .filter((m) => !isUnavailableModel(m.name))
-    .sort((a, b) => okAt(b.name) - okAt(a.name));
-  const planLimitedModels = modelChoices.filter((m) => isPlanLimitedModel(m.name));
-  const unavailableModels = modelChoices.filter(
-    (m) => isDefiniteUnavailableModel(m.name) && !isPlanLimitedModel(m.name)
-  );
   // Definite key/account problems (invalid key, exhausted quota) stick on the provider card.
   const providerRuntimeErrors = useSyncExternalStore(subscribeModelLists, getProviderRuntimeErrorsSnapshot);
-
-  const [modelProbe, setModelProbe] = useState<
-    | 'idle'
-    | 'checking'
-    | 'unavailable'
-    | 'inconclusive'
-    | 'expired-key'
-    | 'invalid-key'
-    | 'quota-exhausted'
-    | 'model-quota'
-    | 'daily-quota-used'
-  >('idle');
-  const modelProbeSeq = useRef(0);
-  // Unmount invalidates any probe still polling, so its timer chain ends instead of setting state.
-  useEffect(() => {
-    const seqRef = modelProbeSeq;
-    return () => {
-      seqRef.current += 1;
-    };
-  }, []);
-  // The model picker is a custom dropdown (the native Android popup swallows same-option taps
-  // and ignores option styling): tapping the already-selected model re-tests it.
-  const [modelMenuOpen, setModelMenuOpen] = useState(false);
-  const [thinkingMenuOpen, setThinkingMenuOpen] = useState(false);
-  const [laraModeMenuOpen, setLaraModeMenuOpen] = useState(false);
-  const [laraEffortMenuOpen, setLaraEffortMenuOpen] = useState(false);
-  const [laraStyleMenuOpen, setLaraStyleMenuOpen] = useState(false);
-  // Unsaved text of the Lara instructions box (saved when the box loses focus).
-  const [laraInstrDraft, setLaraInstrDraft] = useState<string | null>(null);
-  // The "key works, provider added" box goes away by itself after 5 seconds.
-  useEffect(() => {
-    if (!testResult || !(testResult.success && testResult.matched)) return;
-    const timer = window.setTimeout(() => setTestResult(null), 5000);
-    return () => window.clearTimeout(timer);
-  }, [testResult]);
-  // Close a picker on a real tap outside it (click never fires after a drag). No full-screen overlay: it would
-  // swallow touch drags meant for the drawer and let the page behind scroll.
-  useEffect(() => {
-    if (!modelMenuOpen && !thinkingMenuOpen && !laraModeMenuOpen && !laraEffortMenuOpen && !laraStyleMenuOpen) return;
-    const onDown = (e: MouseEvent) => {
-      const el = e.target as Element | null;
-      const inside = (id: string) => !!el?.closest(`#${id}-list, #${id}-select`);
-      if (modelMenuOpen && !inside('active-provider-model')) setModelMenuOpen(false);
-      if (thinkingMenuOpen && !inside('active-provider-thinking')) setThinkingMenuOpen(false);
-      if (laraModeMenuOpen && !inside('active-lara-mode')) setLaraModeMenuOpen(false);
-      if (laraEffortMenuOpen && !inside('active-lara-effort')) setLaraEffortMenuOpen(false);
-      if (laraStyleMenuOpen && !inside('active-lara-style')) setLaraStyleMenuOpen(false);
-    };
-    document.addEventListener('click', onDown, true);
-    return () => document.removeEventListener('click', onDown, true);
-  }, [modelMenuOpen, thinkingMenuOpen, laraModeMenuOpen, laraEffortMenuOpen, laraStyleMenuOpen]);
-  const thinkingLabel = (level: string) =>
-    level === 'auto'
-      ? probeLoading
-        ? '…'
-        : t('thinking_auto')
-      : level === 'minimal'
-        ? t('thinking_minimal')
-        : level === 'low'
-          ? t('thinking_low')
-          : level === 'medium'
-            ? t('thinking_medium')
-            : level === 'high'
-              ? t('thinking_high')
-              : t('thinking_xhigh');
-
-  // The thinking picker only offers the levels the reference model (the pinned one, or the top of
-  // the fetched list on 'auto') actually accepted in a tiny runtime probe - nothing about model
-  // versions is hardcoded. A stored level the model rejected displays and saves as 'auto'.
-  const thinkingModelRef = activeProviderObj?.model || modelChoices[0]?.name || '';
-  const probeResult = useSyncExternalStore(subscribeModelLists, () =>
-    getModelProbeSnapshot(activeProviderType ?? '', activeProviderKey, thinkingModelRef || undefined)
-  );
-  const probeLoading = probeResult === 'loading';
-  const thinkingLevels = probeResult && probeResult !== 'loading' ? probeResult.levels : [];
-  const storedThinking = activeProviderObj?.thinkingLevel || 'auto';
-  const effectiveThinking =
-    storedThinking !== 'auto' && !probeLoading && !thinkingLevels.includes(storedThinking)
-      ? 'auto'
-      : storedThinking;
-  // The thinking picker hides when the endpoint said the reference model does not think at all.
-  const refModelInfo = modelChoices.find((m) => m.name === thinkingModelRef);
-  const showThinkingPicker = providerSupportsThinking(activeProviderObj?.type ?? '') &&
-    (refModelInfo ? refModelInfo.thinking : true);
-
-  // A tap on the already-selected model re-tests it live (cache bypassed); any other tap is a
-  // normal pick, which is probed before saving as usual. 'auto' has nothing to re-test.
-  const pickModel = (name: string) => {
-    setModelMenuOpen(false);
-    if (!activeProviderObj) return;
-    if (name && name === (activeProviderObj.model || '') && activeProviderObj.type === 'gemini') {
-      saveActiveModelChoice(name, effectiveThinking, { forceRetest: true });
-      return;
-    }
-    saveActiveModelChoice(name, effectiveThinking);
-  };
-
-  const saveActiveModelChoice = (
-    model: string,
-    thinkingLevel: string,
-    opts?: { forceRetest?: boolean }
-  ) => {
-    if (!activeProviderObj || activeProviderObj.isBuiltIn) return;
-    const providerId = activeProviderObj.id;
-    const apiKey = activeProviderObj.apiKey;
-    const persist = (level: string) => {
-      updateCustomProvider(providerId, {
-        model,
-        thinkingLevel: level === 'auto' ? '' : level,
-      });
-      refresh();
-    };
-    // A pinned model is probed before saving: the list endpoint names models the key cannot
-    // actually run (other tiers, freshly retired), and picking one of those should say so instead
-    // of silently saving a choice that 404s on the next suggestion. The probe also answers which
-    // thinking levels the new model accepts; a stored level it rejects falls back to 'auto'.
-    if (model && activeProviderObj.type === 'gemini' && apiKey) {
-      const seq = ++modelProbeSeq.current;
-      setModelProbe('checking');
-      // A model picked from the unavailable group is an explicit re-test: bypass the cache so a
-      // recovered model moves back to "available" and a still-failing one stays put.
-      const force = opts?.forceRetest === true || isUnavailableModel(model);
-      // Kicks off the probe: force bypasses the cache for the re-test. The polling below must
-      // NOT force - a forced poll would relaunch the probe on every tick and never settle.
-      getModelProbeSnapshot(activeProviderObj.type, apiKey, model, { force });
-      const waitForProbe = () => {
-        // Stale (another model was picked) or unmounted: stop polling instead of ticking on.
-        if (seq !== modelProbeSeq.current) return;
-        const entry = getModelProbeSnapshot(activeProviderObj.type, apiKey, model);
-        if (entry === 'loading') {
-          window.setTimeout(waitForProbe, 150);
-          return;
-        }
-        if (seq !== modelProbeSeq.current) return;
-        if (!entry || entry.availability === 'unavailable') {
-          setModelProbe('unavailable');
-          return;
-        }
-        // A definite key problem (invalid/expired key, quota exhausted) is named in red; a
-        // model-scoped quota (this model not on the key's tier) warns in amber but keeps the
-        // pick; an inconclusive probe (transient key/network trouble) just notes the check did
-        // not run. Picking a different model re-probes and resets this state, so the warning
-        // clears as soon as a working model is picked.
-        setModelProbe(
-          entry.keyProblem ??
-            (entry.modelQuota
-              ? entry.quotaKind === 'daily-used'
-                ? 'daily-quota-used'
-                : 'model-quota'
-              : entry.availability === 'unknown'
-                ? 'inconclusive'
-                : 'idle')
-        );
-        // A successful (re-)test clears this model's runtime line from the provider card and
-        // floats it to the top of the picker - including cache-hit picks, which skip the
-        // network path where the ordering timestamp is otherwise set.
-        if (entry.availability === 'ok') {
-          noteModelProbeSuccess(activeProviderObj.type, apiKey, model);
-        }
-        const levelForModel =
-          thinkingLevel !== 'auto' && !entry.levels.includes(thinkingLevel) ? 'auto' : thinkingLevel;
-        persist(levelForModel);
-      };
-      waitForProbe();
-      return;
-    }
-    modelProbeSeq.current += 1;
-    setModelProbe('idle');
-    persist(thinkingLevel);
-  };
 
   return (
     <>
@@ -811,8 +446,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                   data-1p-ignore
                                   value={editApiKey}
                                   onChange={(e) => {
-                                    cancelOngoingTest(editTestAbortRef, setIsTestingEditKey);
-                                    setEditTestResult(null);
+                                    editTest.cancel();
+                                    editTest.setResult(null);
                                     setEditApiKey(e.target.value);
                                   }}
                                   onKeyDown={(e) => e.stopPropagation()}
@@ -832,8 +467,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                   type="button"
                                   onClick={async () => {
                                     if (editApiKey) {
-                                      cancelOngoingTest(editTestAbortRef, setIsTestingEditKey);
-                                      setEditTestResult(null);
+                                      editTest.cancel();
+                                      editTest.setResult(null);
                                       setEditApiKey('');
                                       editKeyInputRef.current?.focus();
                                       return;
@@ -841,7 +476,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                     try {
                                       const text = (await readClipboardText()).trim();
                                       if (text) {
-                                        setEditTestResult(null);
+                                        editTest.setResult(null);
                                         setEditApiKey(text);
                                       }
                                     } catch {
@@ -868,7 +503,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                   autoComplete="off"
                                   value={editApiSecret}
                                   onChange={(e) => {
-                                    setEditTestResult(null);
+                                    editTest.setResult(null);
                                     setEditApiSecret(e.target.value);
                                   }}
                                   onKeyDown={(e) => e.stopPropagation()}
@@ -892,7 +527,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                   autoComplete="off"
                                   value={editFolderId}
                                   onChange={(e) => {
-                                    setEditTestResult(null);
+                                    editTest.setResult(null);
                                     setEditFolderId(e.target.value);
                                   }}
                                   onKeyDown={(e) => e.stopPropagation()}
@@ -916,7 +551,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                   autoComplete="off"
                                   value={editFolderId}
                                   onChange={(e) => {
-                                    setEditTestResult(null);
+                                    editTest.setResult(null);
                                     setEditFolderId(e.target.value);
                                   }}
                                   onKeyDown={(e) => e.stopPropagation()}
@@ -929,7 +564,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                               </div>
                             )}
 
-                            {editTestResult && !editTestResult.matched && (
+                            {editTest.result && !editTest.result.matched && (
                               <div className="p-2 rounded-lg border bg-rose-500/10 border-rose-500/30 text-rose-700 dark:text-rose-300 text-[10px] flex flex-col gap-1">
                                 <div className="flex items-center gap-1 font-semibold">
                                   <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
@@ -937,17 +572,17 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                     {t('new_api_key_verification_failed')}
                                   </span>
                                 </div>
-                                {editTestResult.error && (
-                                  <p className="opacity-90 leading-snug">{testErrorText(editTestResult)}</p>
+                                {editTest.result.error && (
+                                  <p className="opacity-90 leading-snug">{testErrorText(editTest.result)}</p>
                                 )}
                               </div>
                             )}
 
                             <div className="flex items-center justify-end gap-1.5 pt-0.5">
-                              {isTestingEditKey && (
+                              {editTest.running && (
                                 <button
                                   type="button"
-                                  onClick={() => cancelOngoingTest(editTestAbortRef, setIsTestingEditKey)}
+                                  onClick={() => editTest.cancel()}
                                   className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-600 dark:text-rose-300 text-[11px] font-semibold transition cursor-pointer"
                                 >
                                   <X className="w-3 h-3" />
@@ -957,9 +592,9 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                               <button
                                 type="button"
                                 onClick={() => {
-                                  cancelOngoingTest(editTestAbortRef, setIsTestingEditKey);
+                                  editTest.cancel();
                                   setEditingProviderId(null);
-                                  setEditTestResult(null);
+                                  editTest.setResult(null);
                                 }}
                                 className="px-2.5 py-1.5 rounded-lg bg-slate-200/70 hover:bg-slate-200 dark:bg-[#252D3D] dark:hover:bg-[#2E384B] text-slate-700 dark:text-slate-200 text-[11px] font-semibold transition cursor-pointer"
                               >
@@ -968,7 +603,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                               <button
                                 type="submit"
                                 disabled={
-                                  isTestingEditKey ||
+                                  editTest.running ||
                                   (() => {
                                     const target = resolveEditTarget(prov);
                                     return target.keyChanged && editVerified?.sig !== target.sig;
@@ -978,7 +613,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                 }
                                 className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#1EB996] hover:bg-[#19A585] disabled:opacity-50 text-white text-[11px] font-semibold transition cursor-pointer shadow-xs"
                               >
-                                {isTestingEditKey ? (
+                                {editTest.running ? (
                                   <>
                                     <Loader2 className="w-3 h-3 animate-spin" />
                                     <span data-i18n>{t('verifying')}</span>
@@ -1004,16 +639,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                 <button
                   id="drawer-toggle-add-apikey-btn"
                   type="button"
-                  onClick={() => {
-                    const nextOpen = !showAddKeyForm;
-                    setShowAddKeyForm(nextOpen);
-                    setTestResult(null);
-                    if (nextOpen) {
-                      setTimeout(() => {
-                        addKeyFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                      }, 80);
-                    }
-                  }}
+                  onClick={() => setShowAddKeyForm((open) => !open)}
                   className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-slate-200/70 hover:bg-slate-200 dark:bg-[#252D3D] dark:hover:bg-[#2D374B] text-slate-800 dark:text-slate-200 text-xs font-semibold transition cursor-pointer shrink-0"
                 >
                   <KeyRound className="w-3.5 h-3.5 text-[#1EB996]" />
@@ -1027,741 +653,14 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                   />
                 </button>
 
-                {showAddKeyForm && (
-                  <form
-                    ref={addKeyFormRef}
-                    onSubmit={handleTestAndAddProvider}
-                    className="flex flex-col gap-3 p-3 rounded-xl bg-white dark:bg-[#141821] border border-slate-200/80 dark:border-[#283142]"
-                  >
-                    {/* Provider Custom Name Input (Typable) */}
-                    <div className="flex flex-col gap-1.5">
-                      <label data-i18n
-                        htmlFor="provider-custom-name-input"
-                        className="text-[11px] font-semibold text-slate-700 dark:text-slate-300"
-                      >
-                        {t('provider_name_type_or_swipe')}
-                      </label>
-                      <div
-                        className="relative flex items-center"
-                        dir={textDirection(newProviderName)}
-                      >
-                        <input
-                          ref={providerNameInputRef}
-                          id="provider-custom-name-input"
-                          type="text"
-                          autoComplete="off"
-                          dir={textDirection(newProviderName)}
-                          value={newProviderName}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setNewProviderName(val);
-                            const inferred = inferEngineFromName(val, 'auto');
-                            if (inferred !== 'auto') {
-                              setNewProviderEngine(inferred);
-                            }
-                          }}
-                          onKeyDown={(e) => e.stopPropagation()}
-                          onTouchStart={(e) => e.stopPropagation()}
-                          placeholder={
-                            t('type_provider_name_e_g')
-                          }
-                          className="w-full px-3 pe-9 py-2 rounded-lg bg-slate-50 dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
-                        />
-                        {newProviderName && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setNewProviderName('');
-                              providerNameInputRef.current?.focus();
-                            }}
-                            className="absolute end-2 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
-                            aria-label="Clear provider name"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Swipeable / Scrollable Provider Engine List */}
-                    <div className="flex flex-col gap-1.5">
-                      <div
-                        id="provider-swipe-list"
-                        onTouchMove={(e) => e.stopPropagation()}
-                        className="flex flex-col gap-1 max-h-36 overflow-y-auto overscroll-contain touch-pan-y p-1.5 rounded-lg bg-slate-50 dark:bg-[#1B212E] border border-slate-200 dark:border-[#2E384D]"
-                      >
-                        {ENGINE_OPTIONS.map((opt) => {
-                          const isSelectedEngine = newProviderEngine === opt.value;
-                          return (
-                            <button
-                              key={opt.value}
-                              type="button"
-                              onClick={() => {
-                                setNewProviderEngine(opt.value);
-                                if (opt.value !== 'auto') {
-                                  const presetName = isAr ? opt.nameAr : opt.nameEn;
-                                  if (presetName) {
-                                    setNewProviderName(presetName);
-                                  }
-                                }
-                              }}
-                              className={`w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-md text-xs text-start transition cursor-pointer shrink-0 ${
-                                isSelectedEngine
-                                  ? 'bg-[#1EB996]/15 text-[#1EB996] font-semibold border border-[#1EB996]/40'
-                                  : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-[#252E40]'
-                              }`}
-                            >
-                              <span className="truncate">{isAr ? opt.labelAr : opt.labelEn}</span>
-                              {isSelectedEngine && <Check className="w-3.5 h-3.5 text-[#1EB996] shrink-0" />}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* API Key Input */}
-                    <SecretField
-                      id="provider-api-key-input"
-                      label={
-                        inferEngineFromName(newProviderName, newProviderEngine) === 'lara'
-                          ? t('lara_access_key_id_or')
-                          : t('translator_api_key')
-                      }
-                      value={newApiKey}
-                      onChange={(v) => {
-                        cancelOngoingTest(testAbortRef, setIsTestingKey);
-                        setNewApiKey(v);
-                      }}
-                      placeholder={
-                        inferEngineFromName(newProviderName, newProviderEngine) === 'lara'
-                          ? t('paste_access_key_id_or')
-                          : t('paste_api_key_here')
-                      }
-                      required
-                    />
-
-                    {/* Optional Lara Access Key Secret Input when Lara Translate is selected */}
-                    {inferEngineFromName(newProviderName, newProviderEngine) === 'lara' && (
-                      <SecretField
-                        id="provider-api-secret-input"
-                        label={t('lara_access_key_secret')}
-                        value={newApiSecret}
-                        onChange={setNewApiSecret}
-                        placeholder={t('paste_access_key_secret_optional')}
-                      />
-                    )}
-
-                    {/* Where the key is kept; the user should restrict it in the provider's console */}
-                    <p data-i18n className="text-[10px] leading-snug text-slate-600 dark:text-slate-400">
-                      {t('keys_are_encrypted_on_this')}
-                    </p>
-
-                    {/* LibreTranslate: the instance to use (self-hosted or public) */}
-                    {inferEngineFromName(newProviderName, newProviderEngine) === 'libretranslate' && (
-                      <div className="flex flex-col gap-1.5">
-                        <label data-i18n
-                          htmlFor="provider-server-url-input"
-                          className="text-[11px] font-semibold text-slate-700 dark:text-slate-300"
-                        >
-                          {t('server_url')}
-                        </label>
-                        <input
-                          id="provider-server-url-input"
-                          type="url"
-                          dir="ltr"
-                          autoComplete="off"
-                          value={newFolderId}
-                          onChange={(e) => setNewFolderId(e.target.value)}
-                          onKeyDown={(e) => e.stopPropagation()}
-                          onTouchStart={(e) => e.stopPropagation()}
-                          placeholder="https://libretranslate.example.com"
-                          className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
-                        />
-                        <p data-i18n className="text-[10px] leading-snug text-slate-600 dark:text-slate-400">
-                          {t('must_start_with_https_the')}
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Yandex Cloud folder ID: needed with an IAM token (personal account) */}
-                    {(inferEngineFromName(newProviderName, newProviderEngine) === 'yandex' ||
-                      newApiKey.trim().startsWith('t1.')) && (
-                      <div className="flex flex-col gap-1.5">
-                        <label data-i18n
-                          htmlFor="provider-folder-id-input"
-                          className="text-[11px] font-semibold text-slate-700 dark:text-slate-300"
-                        >
-                          {t('folder_id')}
-                        </label>
-                        <input
-                          id="provider-folder-id-input"
-                          type="text"
-                          dir="ltr"
-                          autoComplete="off"
-                          value={newFolderId}
-                          onChange={(e) => setNewFolderId(e.target.value)}
-                          onKeyDown={(e) => e.stopPropagation()}
-                          onTouchStart={(e) => e.stopPropagation()}
-                          placeholder="b1g..."
-                          className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
-                        />
-                        <p data-i18n className="text-[10px] leading-snug text-slate-600 dark:text-slate-400">
-                          {t('required_with_an_iam_token')}
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Submit / Verify Key Button */}
-                    <button
-                      id="provider-verify-add-btn"
-                      type="submit"
-                      disabled={
-                        isTestingKey ||
-                        (!newApiKey.trim() && inferEngineFromName(newProviderName, newProviderEngine) !== 'libretranslate')
-                      }
-                      className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg bg-[#1EB996] hover:bg-[#19A585] disabled:opacity-50 text-white text-xs font-semibold transition cursor-pointer shadow-xs shrink-0"
-                    >
-                      {isTestingKey ? (
-                        <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          <span data-i18n>
-                            {t('testing_comparing_with_google')}
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span data-i18n>
-                            {t('verify_add_to_providers')}
-                          </span>
-                        </>
-                      )}
-                    </button>
-
-                    {/* Stop a stuck verification instead of waiting it out */}
-                    {isTestingKey && (
-                      <button
-                        id="provider-verify-cancel-btn"
-                        type="button"
-                        onClick={() => cancelOngoingTest(testAbortRef, setIsTestingKey)}
-                        className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-600 dark:text-rose-300 text-xs font-semibold transition cursor-pointer shrink-0"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                        <span data-i18n>{tb('cancel')}</span>
-                      </button>
-                    )}
-
-                    {/* Verification & Google Comparison Result Box */}
-                    {testResult && (
-                      <div
-                        className={`p-2.5 rounded-lg border text-[11px] flex flex-col gap-1.5 ${
-                          testResult.success && testResult.matched
-                            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300'
-                            : 'bg-rose-500/10 border-rose-500/30 text-rose-700 dark:text-rose-300'
-                        }`}
-                      >
-                        <div className="flex items-center gap-1.5 font-semibold">
-                          {testResult.success && testResult.matched ? (
-                            <>
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                              <span data-i18n>
-                                {testResult.modelsQuotaLimited || testResult.noWorkingModel
-                                  ? t('api_key_works_no_models')
-                                  : testResult.translationUnverified
-                                    ? t('api_key_works')
-                                    : t('api_key_works_translation_matched')}
-                              </span>
-                            </>
-                          ) : (
-                            <>
-                              <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                              <span data-i18n>
-                                {t('api_key_verification_failed')}
-                              </span>
-                            </>
-                          )}
-                        </div>
-
-                        {testResult.testSource && (
-                          <div className="text-[10px] space-y-0.5 text-slate-600 dark:text-slate-300 bg-black/5 dark:bg-black/25 p-1.5 rounded">
-                            <div>
-                              <span data-i18n className="opacity-70">
-                                {t('test')}
-                              </span>
-                              <span className="font-mono">{testResult.testSource}</span>
-                            </div>
-                            {testResult.googleTranslation && (
-                              <div>
-                                <span data-i18n className="opacity-70">
-                                  {t('google_translate_2')}
-                                </span>
-                                <span className="font-semibold">
-                                  {testResult.googleTranslation}
-                                </span>
-                              </div>
-                            )}
-                            {testResult.providerTranslation && (
-                              <div>
-                                <span data-i18n className="opacity-70">
-                                  {t('provider')}
-                                </span>
-                                <span className="font-semibold">
-                                  {testResult.providerTranslation}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {testResult.error && (
-                          <p className="text-[10px] leading-snug opacity-90">
-                            {testErrorText(testResult)}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </form>
-                )}
+                <AddProviderForm open={showAddKeyForm} isAr={isAr} onAdded={(id) => { refresh(); setSelectedProviderId(id); }} />
               </div>
             </div>
           )}
         </div>
 
-        {/* Model and thinking pickers: loose controls under the provider card (no card around them), hidden while the provider list is expanded */}
         {!providersPanelOpen && (
-          <>
-            {activeProviderObj && !activeProviderObj.isBuiltIn && activeProviderObj.type === 'lara' && (() => {
-              const laraProv = activeProviderObj;
-              const laraThink = laraProv.laraMode === 'think';
-              const laraEffort = laraProv.laraEffort || 'low';
-              const laraStyle = laraProv.laraStyle || 'faithful';
-              const laraInstrText = laraInstrDraft ?? laraProv.laraInstructions ?? '';
-              const laraInstrTooLong = parseLaraInstructions(laraInstrText).some(
-                (l) => l.split(/\s+/).length > LARA_INSTRUCTION_MAX_WORDS
-              );
-              const laraNoTrace = !!laraProv.laraNoTrace;
-              const pickerButton = 'px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996] flex items-center justify-between gap-2 whitespace-nowrap w-full';
-              const listBox = 'absolute z-50 mt-1 min-w-[9rem] max-h-64 overflow-y-auto overscroll-contain touch-pan-y rounded-lg border border-slate-300 dark:border-[#2E384D] bg-white dark:bg-[#1B212E] shadow-xl py-1';
-              const renderList = (
-                id: string,
-                position: string,
-                options: Array<{ value: string; label: string }>,
-                current: string,
-                onPick: (value: string) => void,
-                close: () => void
-              ) => (
-                <ul role="listbox" id={`${id}-list`} className={`${listBox} ${position}`}>
-                  {options.map((o) => (
-                    <li key={o.value} role="option" aria-selected={current === o.value}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          close();
-                          onPick(o.value);
-                        }}
-                        className={`w-full px-2 py-1.5 text-start text-[11px] flex items-center justify-between gap-2 whitespace-nowrap hover:bg-slate-100 dark:hover:bg-[#262E3F] ${
-                          current === o.value ? 'text-[#1EB996] font-semibold' : 'text-slate-900 dark:text-slate-100'
-                        }`}
-                      >
-                        <span>{o.label}</span>
-                        {current === o.value && <Check className="w-3 h-3 shrink-0" />}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              );
-              return (
-                <div className="flex flex-col gap-2 px-1" onClick={(e) => e.stopPropagation()}>
-                  <div className="relative flex gap-2">
-                    <div className="flex flex-col gap-1 flex-1 min-w-0">
-                      <label
-                        htmlFor="active-lara-mode-select"
-                        className="text-[10px] font-semibold text-slate-600 dark:text-slate-300"
-                      >
-                        {t('lara_mode')}
-                      </label>
-                      <div>
-                        <button
-                          id="active-lara-mode-select"
-                          type="button"
-                          aria-haspopup="listbox"
-                          aria-expanded={laraModeMenuOpen}
-                          onClick={() => {
-                            setLaraEffortMenuOpen(false);
-                            setLaraStyleMenuOpen(false);
-                            setLaraModeMenuOpen((open) => !open);
-                          }}
-                          className={pickerButton}
-                        >
-                          <span className="truncate">{laraThink ? t('lara_mode_think') : t('lara_mode_standard')}</span>
-                          <ChevronDown className="w-3 h-3 shrink-0 text-slate-500 dark:text-slate-400" />
-                        </button>
-                        {laraModeMenuOpen &&
-                          renderList(
-                            'active-lara-mode',
-                            'start-0',
-                            [
-                              { value: 'standard', label: t('lara_mode_standard') },
-                              { value: 'think', label: t('lara_mode_think') },
-                            ],
-                            laraThink ? 'think' : 'standard',
-                            (value) => {
-                              updateCustomProvider(laraProv.id, { laraMode: value === 'think' ? 'think' : '' });
-                              refresh();
-                            },
-                            () => setLaraModeMenuOpen(false)
-                          )}
-                      </div>
-                    </div>
-                    {laraThink && (
-                      <div className="flex flex-col gap-1 min-w-0 shrink-0">
-                        <label
-                          htmlFor="active-lara-effort-select"
-                          className="text-[10px] font-semibold text-slate-600 dark:text-slate-300"
-                        >
-                          {t('lara_effort')}
-                        </label>
-                        <div>
-                          <button
-                            id="active-lara-effort-select"
-                            type="button"
-                            aria-haspopup="listbox"
-                            aria-expanded={laraEffortMenuOpen}
-                            onClick={() => {
-                              setLaraModeMenuOpen(false);
-                              setLaraEffortMenuOpen((open) => !open);
-                            }}
-                            className={`${pickerButton} min-w-[6.5rem]`}
-                          >
-                            <span className="truncate">{t(`thinking_${laraEffort}`)}</span>
-                            <ChevronDown className="w-3 h-3 shrink-0 text-slate-500 dark:text-slate-400" />
-                          </button>
-                          {laraEffortMenuOpen &&
-                            renderList(
-                              'active-lara-effort',
-                              'end-0',
-                              [
-                                { value: 'low', label: t('thinking_low') },
-                                { value: 'medium', label: t('thinking_medium') },
-                                { value: 'high', label: t('thinking_high') },
-                              ],
-                              laraEffort,
-                              (value) => {
-                                updateCustomProvider(laraProv.id, { laraEffort: value });
-                                refresh();
-                              },
-                              () => setLaraEffortMenuOpen(false)
-                            )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  <div className="relative flex flex-col gap-1">
-                    <label
-                      htmlFor="active-lara-style-select"
-                      className="text-[10px] font-semibold text-slate-600 dark:text-slate-300"
-                    >
-                      {t('lara_style')}
-                    </label>
-                    <div>
-                      <button
-                        id="active-lara-style-select"
-                        type="button"
-                        aria-haspopup="listbox"
-                        aria-expanded={laraStyleMenuOpen}
-                        onClick={() => {
-                          setLaraModeMenuOpen(false);
-                          setLaraEffortMenuOpen(false);
-                          setLaraStyleMenuOpen((open) => !open);
-                        }}
-                        className={pickerButton}
-                      >
-                        <span className="truncate">{t(`lara_style_${laraStyle}`)}</span>
-                        <ChevronDown className="w-3 h-3 shrink-0 text-slate-500 dark:text-slate-400" />
-                      </button>
-                      {laraStyleMenuOpen &&
-                        renderList(
-                          'active-lara-style',
-                          'start-0',
-                          [
-                            { value: 'faithful', label: t('lara_style_faithful') },
-                            { value: 'fluid', label: t('lara_style_fluid') },
-                            { value: 'creative', label: t('lara_style_creative') },
-                          ],
-                          laraStyle,
-                          (value) => {
-                            updateCustomProvider(laraProv.id, { laraStyle: value });
-                            refresh();
-                          },
-                          () => setLaraStyleMenuOpen(false)
-                        )}
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label
-                      htmlFor="active-lara-instructions"
-                      className="text-[10px] font-semibold text-slate-600 dark:text-slate-300"
-                    >
-                      {t('lara_instructions')}
-                    </label>
-                    <textarea
-                      id="active-lara-instructions"
-                      rows={3}
-                      value={laraInstrText}
-                      placeholder={t('lara_instructions_placeholder')}
-                      onChange={(e) => setLaraInstrDraft(e.target.value)}
-                      onBlur={() => {
-                        if (laraInstrDraft === null) return;
-                        updateCustomProvider(laraProv.id, { laraInstructions: laraInstrDraft });
-                        setLaraInstrDraft(null);
-                        refresh();
-                      }}
-                      className="px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996] w-full resize-none"
-                    />
-                    {laraInstrTooLong && (
-                      <span id="active-lara-instructions-warning" className="text-[10px] text-red-500">
-                        {t('lara_instructions_too_long')}
-                      </span>
-                    )}
-                  </div>
-                  <button
-                    id="active-lara-notrace"
-                    type="button"
-                    role="switch"
-                    aria-checked={laraNoTrace}
-                    onClick={() => {
-                      updateCustomProvider(laraProv.id, { laraNoTrace: !laraNoTrace });
-                      refresh();
-                    }}
-                    className="flex items-center justify-between gap-3 text-start cursor-pointer"
-                  >
-                    <span className="text-[11px] text-slate-600 dark:text-slate-300">{t('lara_notrace')}</span>
-                    <span
-                      className={`relative w-9 h-5 rounded-full shrink-0 transition-colors ${laraNoTrace ? 'bg-[var(--accent-primary)]' : 'bg-slate-300 dark:bg-[#2A3446]'}`}
-                    >
-                      <span
-                        className={`absolute top-0.5 start-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${laraNoTrace ? 'translate-x-4 rtl:-translate-x-4' : ''}`}
-                      />
-                    </span>
-                  </button>
-                </div>
-              );
-            })()}
-            {activeProviderObj &&
-              !activeProviderObj.isBuiltIn &&
-              (providerSupportsModelChoice(activeProviderObj.type) ||
-                providerSupportsThinking(activeProviderObj.type)) && (
-                <div
-                  className="flex flex-col gap-2 px-1"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="relative flex gap-2">
-                    {providerSupportsModelChoice(activeProviderObj.type) && (
-                      <div className="flex flex-col gap-1 flex-1 min-w-0">
-                        <label
-                          htmlFor="active-provider-model-select"
-                          className="text-[10px] font-semibold text-slate-600 dark:text-slate-300"
-                        >
-                          {t('model')}
-                        </label>
-                        <div>
-                          <button
-                            id="active-provider-model-select"
-                            type="button"
-                            dir="ltr"
-                            aria-haspopup="listbox"
-                            aria-expanded={modelMenuOpen}
-                            onClick={() => setModelMenuOpen((open) => !open)}
-                            className="w-full px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996] flex items-center justify-between gap-1 text-left"
-                          >
-                            <span className="truncate">
-                              {activeProviderObj.model ||
-                                (activeModelsLoading ? '…' : t('model_auto_recommended'))}
-                            </span>
-                            <ChevronDown className="w-3 h-3 shrink-0 text-slate-500 dark:text-slate-400" />
-                          </button>
-                          {modelMenuOpen && (
-                            <>
-                              <ul
-                                dir="ltr"
-                                role="listbox"
-                                id="active-provider-model-list"
-                                className="absolute inset-x-0 z-50 mt-1 max-h-64 overflow-y-auto overscroll-contain touch-pan-y rounded-lg border border-slate-300 dark:border-[#2E384D] bg-white dark:bg-[#1B212E] shadow-xl py-1"
-                              >
-                                {([
-                                  { name: '', label: activeModelsLoading ? '…' : t('model_auto_recommended'), dimmed: false },
-                                  ...availableModels.map((m) => ({ name: m.name, label: m.name, dimmed: false })),
-                                  ...(activeProviderObj.model &&
-                                  activeProviderObj.model !== '' &&
-                                  !modelChoices.some((m) => m.name === activeProviderObj.model)
-                                    ? [{ name: activeProviderObj.model, label: activeProviderObj.model, dimmed: false }]
-                                    : []),
-                                ] as Array<{ name: string; label: string; dimmed: boolean }>).map((item) => (
-                                  <li key={item.name || '__auto__'} role="option" aria-selected={(activeProviderObj.model || '') === item.name}>
-                                    <button
-                                      type="button"
-                                      onClick={() => pickModel(item.name)}
-                                      className={`w-full px-2 py-1.5 text-left text-[11px] font-mono flex items-center justify-between gap-1 hover:bg-slate-100 dark:hover:bg-[#262E3F] ${
-                                        (activeProviderObj.model || '') === item.name
-                                          ? 'text-[#1EB996] font-semibold'
-                                          : 'text-slate-900 dark:text-slate-100'
-                                      }`}
-                                    >
-                                      <span className="truncate">{item.label}</span>
-                                      {(activeProviderObj.model || '') === item.name && (
-                                        <Check className="w-3 h-3 shrink-0" />
-                                      )}
-                                    </button>
-                                  </li>
-                                ))}
-                                {([
-                                  { heading: t('models_plan_unavailable'), models: planLimitedModels },
-                                  { heading: t('models_unavailable'), models: unavailableModels },
-                                ] as Array<{ heading: string; models: typeof planLimitedModels }>).map(
-                                  (group) =>
-                                    group.models.length > 0 && (
-                                      <li key={group.heading}>
-                                        <div dir="rtl" className="px-2 pt-1.5 pb-0.5 text-[10px] font-semibold text-slate-500 dark:text-slate-400 text-right">
-                                          {group.heading}
-                                        </div>
-                                        <ul>
-                                          {group.models.map((m) => (
-                                            <li key={m.name} role="option" aria-selected={activeProviderObj.model === m.name}>
-                                              <button
-                                                type="button"
-                                                onClick={() => pickModel(m.name)}
-                                                className={`w-full px-2 py-1.5 text-left text-[11px] font-mono flex items-center justify-between gap-1 hover:bg-slate-100 dark:hover:bg-[#262E3F] ${
-                                                  activeProviderObj.model === m.name
-                                                    ? 'text-[#1EB996] font-semibold'
-                                                    : 'text-slate-400 dark:text-slate-500'
-                                                }`}
-                                              >
-                                                <span className="truncate">{m.name}</span>
-                                                {activeProviderObj.model === m.name && (
-                                                  <Check className="w-3 h-3 shrink-0" />
-                                                )}
-                                              </button>
-                                            </li>
-                                          ))}
-                                        </ul>
-                                      </li>
-                                    )
-                                )}
-                              </ul>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                    {showThinkingPicker && (
-                      <div className={`flex flex-col gap-1 min-w-0 ${providerSupportsModelChoice(activeProviderObj.type) ? 'shrink-0' : 'flex-1'}`}>
-                        <label
-                          htmlFor="active-provider-thinking-select"
-                          className="text-[10px] font-semibold text-slate-600 dark:text-slate-300"
-                        >
-                          {t('thinking_power')}
-                        </label>
-                        <div>
-                          <button
-                            id="active-provider-thinking-select"
-                            type="button"
-                            aria-haspopup="listbox"
-                            aria-expanded={thinkingMenuOpen}
-                            onClick={() => setThinkingMenuOpen((open) => !open)}
-                            className={`px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996] flex items-center justify-between gap-2 whitespace-nowrap min-w-[6.5rem] ${providerSupportsModelChoice(activeProviderObj.type) ? '' : 'w-full'}`}
-                          >
-                            <span className="truncate">{thinkingLabel(effectiveThinking)}</span>
-                            <ChevronDown className="w-3 h-3 shrink-0 text-slate-500 dark:text-slate-400" />
-                          </button>
-                          {thinkingMenuOpen && (
-                            <>
-                              <ul
-                                role="listbox"
-                                id="active-provider-thinking-list"
-                                className="absolute end-0 z-50 mt-1 min-w-[9rem] max-h-64 overflow-y-auto overscroll-contain touch-pan-y rounded-lg border border-slate-300 dark:border-[#2E384D] bg-white dark:bg-[#1B212E] shadow-xl py-1"
-                              >
-                                {['auto', ...thinkingLevels].map((level: string) => (
-                                  <li key={level} role="option" aria-selected={effectiveThinking === level}>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setThinkingMenuOpen(false);
-                                        saveActiveModelChoice(activeProviderObj.model || '', level);
-                                      }}
-                                      className={`w-full px-2 py-1.5 text-start text-[11px] flex items-center justify-between gap-2 whitespace-nowrap hover:bg-slate-100 dark:hover:bg-[#262E3F] ${
-                                        effectiveThinking === level
-                                          ? 'text-[#1EB996] font-semibold'
-                                          : 'text-slate-900 dark:text-slate-100'
-                                      }`}
-                                    >
-                                      <span>{thinkingLabel(level)}</span>
-                                      {effectiveThinking === level && <Check className="w-3 h-3 shrink-0" />}
-                                    </button>
-                                  </li>
-                                ))}
-                              </ul>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  {(() => {
-                    // A quota note from picking this model clears the moment the model actually
-                    // runs again (a successful suggest or re-test records an 'ok' probe entry).
-                    const liveEntry = activeProviderObj?.model
-                      ? peekModelProbe(activeProviderObj.type, activeProviderObj.apiKey, activeProviderObj.model)
-                      : undefined;
-                    if (
-                      (modelProbe === 'model-quota' || modelProbe === 'daily-quota-used') &&
-                      liveEntry &&
-                      liveEntry.availability === 'ok'
-                    )
-                      return null;
-                    return modelProbe !== 'idle' && (
-                    <div
-                      className={`flex items-center gap-1.5 text-[10px] ${
-                        modelProbe === 'unavailable' ||
-                        modelProbe === 'expired-key' ||
-                        modelProbe === 'invalid-key' ||
-                        modelProbe === 'quota-exhausted'
-                          ? 'text-red-500 dark:text-red-400'
-                          : modelProbe === 'model-quota' || modelProbe === 'daily-quota-used'
-                            ? 'text-amber-600 dark:text-amber-400'
-                            : 'text-slate-500 dark:text-slate-400'
-                      }`}
-                    >
-                      {modelProbe === 'checking' ? (
-                        <>
-                          <Loader2 className="w-3 h-3 animate-spin shrink-0" />
-                          <span>{t('checking_model_availability')}</span>
-                        </>
-                      ) : (
-                        <>
-                          <AlertCircle className="w-3 h-3 shrink-0" />
-                          <span>
-                            {modelProbe === 'unavailable'
-                              ? t('model_not_available_on_plan')
-                              : modelProbe === 'expired-key'
-                                ? t('provider_key_expired')
-                                : modelProbe === 'invalid-key'
-                                  ? t('provider_key_invalid')
-                                  : modelProbe === 'quota-exhausted'
-                                    ? t('provider_quota_exhausted')
-                                    : modelProbe === 'model-quota'
-                                      ? t('model_quota_unavailable')
-                                      : modelProbe === 'daily-quota-used'
-                                        ? t('model_daily_quota_used')
-                                        : t('model_check_inconclusive')}
-                          </span>
-                        </>
-                      )}
-                    </div>
-                    );
-                  })()}
-                </div>
-              )}
-          </>
+          <ActiveProviderControls activeProviderObj={activeProviderObj} refresh={refresh} targetLang={targetLang} />
         )}
       {providerToDelete && createPortal(
         (

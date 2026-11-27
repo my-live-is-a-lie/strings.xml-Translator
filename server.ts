@@ -11,6 +11,7 @@ import {
   translateBatch,
 } from './server/providers';
 import { normalizeSourceLang } from './src/shared/sourceLang';
+import { sanitizeDeeplOptions } from './src/shared/deeplOptions';
 import { ProviderKeyError } from './src/shared/laraErrors';
 import { createRateLimiter } from './server/rateLimit';
 import { log, metrics, metricsSnapshot, requestLogger } from './server/observability';
@@ -65,7 +66,7 @@ function buildLaraExtras(f: {
 function validateProviderFields(
   body: Record<string, unknown>,
   { requireSourceText }: { requireSourceText: boolean }
-): { error?: string; fields?: Record<string, string | undefined> } {
+): { error?: string; fields?: Record<string, string | undefined>; deeplOptions?: ReturnType<typeof sanitizeDeeplOptions> } {
   const providerType = typeof body.providerType === 'string' ? body.providerType : 'auto';
   if (!ALLOWED_PROVIDER_VALUES.includes(providerType)) {
     return { error: 'نوع المزود غير مدعوم / Unsupported provider type.' };
@@ -101,6 +102,7 @@ function validateProviderFields(
       : undefined;
 
   return {
+    deeplOptions: providerType === 'deepl' ? sanitizeDeeplOptions(body.deeplOptions) : undefined,
     fields: {
       providerType,
       apiKey,
@@ -294,7 +296,8 @@ async function startServer() {
         f.pluralQuantity,
         f.folderId,
         buildLaraExtras(f),
-        f.sourceLang
+        f.sourceLang,
+        validated.deeplOptions
       );
       return res.json({ translatedText });
     } catch (error) {
@@ -333,7 +336,8 @@ async function startServer() {
         texts,
         f.targetLang as string,
         f.folderId,
-        f.sourceLang
+        f.sourceLang,
+        validated.deeplOptions
       );
       return res.json({ translations });
     } catch (error) {
