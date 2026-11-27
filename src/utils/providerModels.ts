@@ -319,16 +319,6 @@ export function getModelProbeSnapshot(
 }
 
 /**
- * After a key is added: test every discovered model once, sequentially, one bare attempt with a
- * 2s deadline and gentle pacing, so the user never has to test models by hand. Placement follows
- * the standing rule - only a model's own definite answer marks it: 404-style failures go to the
- * unavailable group, model-scoped quota to the plan group, passes float to the top, and
- * deadlines, per-minute 429s and 5xx leave the model untouched. A project/account quota answer
- * is about the key, so the sweep stops there. Thinking levels stay lazy: sweep 'ok' entries are
- * marked levelsPending and a real pick still probes the levels. Models with any known state
- * (user picks, earlier sweeps) are skipped.
- */
-/**
  * A real translation just succeeded with this model: record it as tested-and-working. Clears a
  * stale "daily quota used" mark the moment the quota resets (the first successful suggest or
  * re-test after that), floats the model to the top and clears its card line.
@@ -362,9 +352,23 @@ export function recordModelRuntimeSuccess(
   notify();
 }
 
-export async function sweepGeminiModels(apiKey: string): Promise<void> {
+/**
+ * After a key is added: test every discovered model once, sequentially, one bare attempt with a
+ * 2s deadline and gentle pacing, so the user never has to test models by hand. Placement follows
+ * the standing rule - only a model's own definite answer marks it: 404-style failures go to the
+ * unavailable group, model-scoped quota to the plan group, passes float to the top, and
+ * deadlines, per-minute 429s and 5xx leave the model untouched. A project/account quota answer
+ * is about the key, so the sweep stops there. Thinking levels stay lazy: sweep 'ok' entries are
+ * marked levelsPending and a real pick still probes the levels. Models with any known state
+ * (user picks, earlier sweeps) are skipped. `shouldContinue` is checked before each probe so the
+ * caller can end the sweep once the key is no longer in use (provider deleted), which saves quota.
+ */
+export async function sweepGeminiModels(
+  apiKey: string,
+  shouldContinue: () => boolean = () => true
+): Promise<void> {
   const key = apiKey.trim();
-  if (!key) return;
+  if (!key || !shouldContinue()) return;
   let models;
   try {
     models = await listGeminiModels(key);
@@ -372,6 +376,7 @@ export async function sweepGeminiModels(apiKey: string): Promise<void> {
     return;
   }
   for (const m of models) {
+    if (!shouldContinue()) return;
     if (peekModelProbe('gemini', key, m.name)) continue;
     const { outcome, quotaKind } = await sweepProbeGeminiModel(key, m.name, 2000);
     if (outcome === 'key-quota') return;

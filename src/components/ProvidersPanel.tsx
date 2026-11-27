@@ -18,6 +18,7 @@ import {
   parseLaraInstructions,
   LARA_INSTRUCTION_MAX_WORDS,
   removeCustomProvider,
+  getCustomProviders,
   testProviderApiKey,
 } from '../utils/translator';
 import { useT, tg } from '../i18n/i18n';
@@ -241,7 +242,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
       // Then quietly test every discovered model in the background (one bare 2s attempt each):
       // plan-limited and unusable models land in their picker groups, passes float to the top.
       if (detectedType === 'gemini') {
-        void sweepGeminiModels(combinedApiKey);
+        void sweepGeminiModels(combinedApiKey, () => getCustomProviders().some((p) => p.id === added.id));
       }
 
       refresh();
@@ -293,7 +294,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
     const keyChanged =
       combinedKey !== (prov.apiKey || '').trim() ||
       ((targetEngine === 'yandex' || targetEngine === 'libretranslate') && editedFolderId !== (prov.folderId || '').trim());
-    const sig = JSON.stringify([targetEngine, combinedKey, editedFolderId]);
+    const sig = JSON.stringify([prov.id, targetEngine, combinedKey, editedFolderId]);
     return { trimmedName, rawKey, targetEngine, combinedKey, editedFolderId, keyChanged, sig };
   };
 
@@ -439,6 +440,13 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
     | 'daily-quota-used'
   >('idle');
   const modelProbeSeq = useRef(0);
+  // Unmount invalidates any probe still polling, so its timer chain ends instead of setting state.
+  useEffect(() => {
+    const seqRef = modelProbeSeq;
+    return () => {
+      seqRef.current += 1;
+    };
+  }, []);
   // The model picker is a custom dropdown (the native Android popup swallows same-option taps
   // and ignores option styling): tapping the already-selected model re-tests it.
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
@@ -545,6 +553,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
       // NOT force - a forced poll would relaunch the probe on every tick and never settle.
       getModelProbeSnapshot(activeProviderObj.type, apiKey, model, { force });
       const waitForProbe = () => {
+        // Stale (another model was picked) or unmounted: stop polling instead of ticking on.
+        if (seq !== modelProbeSeq.current) return;
         const entry = getModelProbeSnapshot(activeProviderObj.type, apiKey, model);
         if (entry === 'loading') {
           window.setTimeout(waitForProbe, 150);
