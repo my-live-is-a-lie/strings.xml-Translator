@@ -1707,6 +1707,15 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   const [noSuggestion, setNoSuggestion] = useState(false);
   // Plural categories a suggestion could not fill (the engine did not answer for them): shown as a warning
   const [icuUnfilled, setIcuUnfilled] = useState<string[]>([]);
+  // Moving to another string clears the previous string's suggestion notices (reset during render,
+  // keyed by the string id, so the old notice never paints on the new string).
+  const [noticesForId, setNoticesForId] = useState(item.id);
+  if (noticesForId !== item.id) {
+    setNoticesForId(item.id);
+    setIcuRejected(false);
+    setNoSuggestion(false);
+    setIcuUnfilled([]);
+  }
 
   const liveSaveGuard = saveGuard?.hard ? (liveBreakIssues.length > 0 ? { ...saveGuard, remaining: liveBreakIssues } : null) : saveGuard;
   // A non-blocking warning, separate from the save guard on purpose: it never becomes `hard`, it
