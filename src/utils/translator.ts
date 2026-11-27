@@ -24,6 +24,17 @@ import {
 } from './providerModels';
 import { fetchGoogleGtxRaw, fetchWithTimeout, providerHttpError } from '../shared/translateCore';
 import { directCallProviderWithKey, directTestProviderApiKey } from './directProviders';
+import { ProviderKeyError } from '../shared/laraErrors';
+import { normalizeSourceLang } from '../shared/sourceLang';
+
+/** Source language of the open project (base ISO code). Set by the app when a project opens or its source language changes. */
+let activeSourceLang = 'en';
+export function setActiveSourceLang(code?: string | null): void {
+  activeSourceLang = normalizeSourceLang(code);
+}
+export function getActiveSourceLang(): string {
+  return activeSourceLang;
+}
 import { findClauseBodyOpens, hasMultilineIcuBlock, splitIcuBlocks, validatePlaceholders } from './placeholderCheck';
 
 /** Every engine a suggestion can come from. 'glossary' and 'heuristic' are offline. */
@@ -315,6 +326,47 @@ export interface TranslationProviderConfig {
   model?: string;
   /** Thinking/reasoning strength for providers that support it (e.g. Gemini). Empty means the model default. */
   thinkingLevel?: string;
+  /** Lara only: 'think' turns on Lara's reasoning mode; empty means Standard. */
+  laraMode?: string;
+  /** Lara only: reasoning effort (low, medium or high) used with Think. Empty means Lara's default. */
+  laraEffort?: string;
+  /** Lara only: translation instructions, one per line (each under 20 words). */
+  laraInstructions?: string;
+  /** Lara only: ask Lara not to store the translated text. */
+  laraNoTrace?: boolean;
+  /** Lara only: translation style (faithful, fluid or creative). Empty means Lara's default. */
+  laraStyle?: string;
+}
+
+/** Words in one Lara instruction line must stay under this (Lara docs: fewer than 20 words). */
+export const LARA_INSTRUCTION_MAX_WORDS = 19;
+
+export function parseLaraInstructions(raw?: string): string[] {
+  return (raw || '')
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .slice(0, 10);
+}
+
+/** Builds the Lara options (reasoning, instructions, noTrace, style) from a saved provider. */
+export function laraExtrasFor(p: TranslationProviderConfig) {
+  if (p.type !== 'lara') return undefined;
+  const instructions = parseLaraInstructions(p.laraInstructions).filter(
+    (l) => l.split(/\s+/).length <= LARA_INSTRUCTION_MAX_WORDS
+  );
+  const style = ['faithful', 'fluid', 'creative'].includes(p.laraStyle || '')
+    ? (p.laraStyle as 'faithful' | 'fluid' | 'creative')
+    : undefined;
+  const extras = {
+    ...(p.laraMode === 'think'
+      ? { reasoning: true, reasoningEffort: (p.laraEffort || 'low') as 'low' | 'medium' | 'high' }
+      : {}),
+    ...(instructions.length ? { instructions } : {}),
+    ...(p.laraNoTrace ? { noTrace: true } : {}),
+    ...(style ? { style } : {}),
+  };
+  return Object.keys(extras).length ? extras : undefined;
 }
 
 const CUSTOM_PROVIDERS_STORAGE_KEY = 'custom_translation_providers_v1';
@@ -428,7 +480,7 @@ function migrateLegacyGeminiKey(): void {
     if (!migrated) {
       migrated = {
         id: `custom_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-        name: 'Gemini AI',
+        name: 'Gemini API',
         type: 'gemini',
         apiKey: legacyKey,
         isBuiltIn: false,
@@ -532,6 +584,11 @@ export function updateCustomProvider(
     folderId?: string;
     model?: string;
     thinkingLevel?: string;
+    laraMode?: string;
+    laraEffort?: string;
+    laraInstructions?: string;
+    laraNoTrace?: boolean;
+    laraStyle?: string;
   }
 ): TranslationProviderConfig | null {
   const current = getCustomProviders();
@@ -549,6 +606,12 @@ export function updateCustomProvider(
     model: updates.model !== undefined ? updates.model || undefined : existing.model,
     thinkingLevel:
       updates.thinkingLevel !== undefined ? updates.thinkingLevel || undefined : existing.thinkingLevel,
+    laraMode: updates.laraMode !== undefined ? updates.laraMode || undefined : existing.laraMode,
+    laraEffort: updates.laraEffort !== undefined ? updates.laraEffort || undefined : existing.laraEffort,
+    laraInstructions:
+      updates.laraInstructions !== undefined ? updates.laraInstructions.trim() || undefined : existing.laraInstructions,
+    laraNoTrace: updates.laraNoTrace !== undefined ? updates.laraNoTrace || undefined : existing.laraNoTrace,
+    laraStyle: updates.laraStyle !== undefined ? updates.laraStyle || undefined : existing.laraStyle,
     verifiedAt: Date.now(),
   };
 
@@ -576,7 +639,7 @@ export interface ProviderTestResult {
   providerTranslation?: string;
   detectedType?: ProviderEngineType;
   /** Categorized failure for UI copy; the UI renders Arabic from this instead of the raw message. */
-  errorKind?: 'expired-key' | 'invalid-key' | 'quota-exhausted' | 'unreachable' | 'provider-error' | 'unknown';
+  errorKind?: 'expired-key' | 'invalid-key' | 'quota-exhausted' | 'quota-or-limit' | 'unreachable' | 'provider-error' | 'unknown';
   /** The model that answered the verification call, so it can become the provider's default. */
   workingModel?: string;
   /** Key authenticated but every model answered a model-scoped quota; accepted with a flag. */
@@ -591,7 +654,8 @@ export interface ProviderTestResult {
 export async function testProviderApiKey(
   providerType: string,
   apiKey: string,
-  folderId?: string
+  folderId?: string,
+  signal?: AbortSignal
 ): Promise<ProviderTestResult> {
   const trimmedKey = apiKey.trim();
   const trimmedFolder = folderId?.trim() || undefined;
@@ -606,12 +670,21 @@ export async function testProviderApiKey(
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ providerType, apiKey: trimmedKey, folderId: trimmedFolder }),
         },
-        30000
+        30000,
+        signal
       );
       if (res.ok) {
         return (await res.json()) as ProviderTestResult;
       }
+      // The server's own answer about this key (its reason, or a categorized key problem) is the
+      // result: do not replace it with "server unreachable" or retry it another way.
+      const failure = (await res.json().catch(() => null)) as ProviderTestResult | null;
+      if (failure && failure.success === false && (failure.errorKind || typeof failure.error === 'string')) {
+        return failure;
+      }
     } catch (serverErr) {
+      // A cancelled test stops here: no fallback request, no result.
+      if (signal?.aborted) return { success: false, matched: false, error: 'Cancelled' };
       logFallback('server provider test', serverErr);
     }
   }
@@ -621,9 +694,10 @@ export async function testProviderApiKey(
     return { success: false, matched: false, error: PROVIDERS_UNAVAILABLE };
   }
   try {
-    const directRes = await directTestProviderApiKey(providerType, trimmedKey, trimmedFolder);
+    const directRes = await directTestProviderApiKey(providerType, trimmedKey, trimmedFolder, signal);
     return directRes as ProviderTestResult;
   } catch (err) {
+    if (signal?.aborted) return { success: false, matched: false, error: 'Cancelled' };
     return {
       success: false,
       matched: false,
@@ -800,14 +874,14 @@ const INTERIOR_BOM = /\ufeff/g;
 
 const ENGINE_LABELS: Record<string, string> = {
   google: 'Google',
-  gemini: 'Gemini',
+  gemini: 'Gemini API',
   mymemory: 'MyMemory',
-  yandex: 'Yandex',
-  lara: 'Lara',
-  deepl: 'DeepL',
-  openai: 'OpenAI',
+  yandex: 'Yandex Cloud Translate',
+  lara: 'Lara Translate',
+  deepl: 'DeepL API',
+  openai: 'OpenAI API',
   google_cloud: 'Google Cloud',
-  microsoft: 'Microsoft',
+  microsoft: 'Microsoft Azure Translator',
   libretranslate: 'LibreTranslate',
   glossary: 'Glossary',
   heuristic: 'Heuristic',
@@ -1032,7 +1106,8 @@ async function translateIcuPerClause(
   baseLang: string,
   directLang: string,
   targetLocaleName?: string,
-  pluralQuantity?: 'zero' | 'one' | 'two' | 'few' | 'many' | 'other'
+  pluralQuantity?: 'zero' | 'one' | 'two' | 'few' | 'many' | 'other',
+  signal?: AbortSignal
 ): Promise<{ text: string; source: TranslationEngine } | null> {
   const parts = splitIcuBlocks(coreText);
   if (!parts) return null;
@@ -1054,7 +1129,8 @@ async function translateIcuPerClause(
         out.push(part.text);
         continue;
       }
-      const res = await translateSingleSegment(part.text, baseLang, directLang, targetLocaleName, pluralQuantity);
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+      const res = await translateSingleSegment(part.text, baseLang, directLang, targetLocaleName, pluralQuantity, signal);
       const translated = res.source !== 'heuristic' && Boolean(res.text.trim()) && res.text !== part.text;
       if (translated) {
         if (res.source !== 'glossary') overallSource = res.source;
@@ -1076,7 +1152,8 @@ async function translateIcuPerClause(
       rebuilt += part.text.slice(cursor, body.start);
       let replacement = bodyText;
       if (hasTranslatableText(bodyText)) {
-        const res = await translateSingleSegment(bodyText, baseLang, directLang, targetLocaleName, pluralQuantity);
+        if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+        const res = await translateSingleSegment(bodyText, baseLang, directLang, targetLocaleName, pluralQuantity, signal);
         const hashCount = (s: string) => (s.match(/#/g) || []).length;
         if (
           res.source !== 'heuristic' &&
@@ -1249,20 +1326,35 @@ async function translateSingleSegmentUncached(
                 targetLang: directLang,
                 targetLocaleName,
                 pluralQuantity,
+                laraMode: activeProvider.type === 'lara' ? activeProvider.laraMode : undefined,
+                laraEffort: activeProvider.type === 'lara' ? activeProvider.laraEffort : undefined,
+                laraInstructions: activeProvider.type === 'lara' ? activeProvider.laraInstructions : undefined,
+                laraNoTrace: activeProvider.type === 'lara' ? activeProvider.laraNoTrace : undefined,
+                laraStyle: activeProvider.type === 'lara' ? activeProvider.laraStyle : undefined,
+                sourceLang: activeSourceLang,
               }),
             },
-            25000,
+            activeProvider.type === 'lara' && activeProvider.laraMode === 'think' ? 70000 : 25000,
             signal
           )
         );
-        if (!pRes.ok) throw providerHttpError('server provider', pRes.status);
+        if (!pRes.ok) {
+          // The server names a definite key problem (invalid key, exhausted quota) so it can stay on the card.
+          const failure = (await pRes.json().catch(() => null)) as { errorKind?: string } | null;
+          if (failure?.errorKind === 'quota-or-limit' || failure?.errorKind === 'invalid-key') {
+            reportProviderKeyProblem(activeProvider.id, failure.errorKind);
+          }
+          throw providerHttpError('server provider', pRes.status);
+        }
         const pData = (await pRes.json()) as { translatedText?: string };
         if (pData && typeof pData.translatedText === 'string' && pData.translatedText.trim()) {
           const cleaned = stripMetadataLabels(pData.translatedText, coreText);
           if (cleaned && !isPollutedTranslation(cleaned)) {
             const restored = postProcess(restoreSegmentSyntax(cleaned, tokens, usesEscapedDoubleQuotes));
-            if (!breaksIcuStructure(restored) && !changesLineBreaks(restored) && !isEchoReply(coreText, restored, baseLang))
+            if (!breaksIcuStructure(restored) && !changesLineBreaks(restored) && !isEchoReply(coreText, restored, baseLang)) {
+              clearProviderRuntimeErrorOnSuccess(activeProvider.id);
               return restored;
+            }
           }
         }
       } catch (err) {
@@ -1281,19 +1373,24 @@ async function translateSingleSegmentUncached(
           directLang,
           targetLocaleName,
           pluralQuantity,
-          activeProvider.folderId
+          activeProvider.folderId,
+          laraExtrasFor(activeProvider),
+          activeSourceLang
         )
       );
       if (directResult && directResult.translatedText) {
         const cleaned = stripMetadataLabels(directResult.translatedText, coreText);
         if (cleaned && !isPollutedTranslation(cleaned)) {
           const restored = postProcess(restoreSegmentSyntax(cleaned, tokens, usesEscapedDoubleQuotes));
-          if (!breaksIcuStructure(restored) && !changesLineBreaks(restored) && !isEchoReply(coreText, restored, baseLang))
+          if (!breaksIcuStructure(restored) && !changesLineBreaks(restored) && !isEchoReply(coreText, restored, baseLang)) {
+            clearProviderRuntimeErrorOnSuccess(activeProvider.id);
             return restored;
+          }
         }
       }
     } catch (err) {
       logFallback('direct provider', err);
+      if (err instanceof ProviderKeyError) reportProviderKeyProblem(activeProvider.id, err.keyProblem);
     }
 
     return null;
@@ -1313,6 +1410,7 @@ async function translateSingleSegmentUncached(
         targetLocaleName,
         pluralQuantity,
         signal,
+        sourceLang: activeSourceLang,
         model: activeProvider.type === 'gemini' ? activeProvider.model : undefined,
         thinkingLevel: activeProvider.type === 'gemini' ? activeProvider.thinkingLevel : undefined,
         // A definite answer about a model (gone, or its quota not on the plan) moves it to the
@@ -1355,7 +1453,7 @@ async function translateSingleSegmentUncached(
     // HTTP error, a non-JSON page such as a consent or "sorry" page) is a failure.
     let combined: string;
     try {
-      combined = await withRetry(() => fetchGoogleGtxRaw(cleanText, directLang, 5000, signal));
+      combined = await withRetry(() => fetchGoogleGtxRaw(cleanText, directLang, 5000, signal, activeSourceLang));
     } catch (err) {
       logFallback('google', err);
       noteGtxResult(false);
@@ -1385,19 +1483,23 @@ async function translateSingleSegmentUncached(
   // Helper for MyMemory API
   const tryMyMemory = async (): Promise<string | null> => {
     try {
-      const langPair = `en|${baseLang}`;
+      const langPair = `${activeSourceLang}|${baseLang}`;
       const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(cleanText)}&langpair=${langPair}`;
 
       // One fresh timeout per attempt: a retried fetch must not reuse an already-aborted signal.
       const fetchOnce = async (): Promise<Response> => {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 6000);
+        const onOuterAbort = () => controller.abort();
+        if (signal?.aborted) throw Object.assign(new Error('cancelled'), { name: 'CancelledError' }); // not retried
+        signal?.addEventListener('abort', onOuterAbort, { once: true });
         try {
           const response = await fetch(url, { signal: controller.signal });
           if (!response.ok) throw providerHttpError('MyMemory', response.status);
           return response;
         } finally {
           clearTimeout(timeoutId);
+          signal?.removeEventListener('abort', onOuterAbort);
         }
       };
 
@@ -1484,6 +1586,7 @@ async function translateSingleSegmentUncached(
       text: await strategy.run().catch(() => null),
     }))
   );
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
   const winner = fallbacks.find((f): f is { engine: TranslationEngine; text: string } => Boolean(f.text));
   if (winner) {
     return { text: wrapResult(winner.text), source: winner.engine };
@@ -1503,7 +1606,7 @@ async function translateSingleSegmentUncached(
   // each clause body on their own keeps the structure from the source instead.
   // AI providers never reach this: their whole-string reply already succeeds.
   if (coreText.includes('{')) {
-    const perClause = await translateIcuPerClause(coreText, baseLang, directLang, targetLocaleName, pluralQuantity);
+    const perClause = await translateIcuPerClause(coreText, baseLang, directLang, targetLocaleName, pluralQuantity, signal);
     if (perClause) return { text: wrapResult(perClause.text), source: perClause.source };
   }
 
@@ -1632,6 +1735,7 @@ export async function prewarmProviderBatch(
             folderId: provider.folderId,
             targetLang: directLang,
             targetLocaleName,
+            sourceLang: activeSourceLang,
             texts: chunk,
           }),
         },

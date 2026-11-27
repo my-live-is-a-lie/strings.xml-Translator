@@ -53,6 +53,7 @@ import { LanguageSelectorModal } from './components/LanguageSelectorModal';
 import {
   getAutoTranslateEnabled,
   setAutoTranslateEnabled,
+  setActiveSourceLang,
 } from './utils/translator';
 import { Menu } from 'lucide-react';
 import { useT } from './i18n/i18n';
@@ -857,6 +858,19 @@ export default function App() {
   }, [project.id, handleSelectFile]);
 
   // Handle Locale Change with translations caching per language so nothing is lost!
+  // Picking a source language by hand replaces the detected one.
+  const handleSourceLangChange = useCallback((code: string) => {
+    setEditorState((curr) => ({
+      ...curr,
+      project: { ...curr.project, sourceLang: code, lastModified: Date.now() },
+    }));
+  }, []);
+
+  // The translator reads the open project's source language from here.
+  useEffect(() => {
+    setActiveSourceLang(project.sourceLang);
+  }, [project.sourceLang]);
+
   const handleLanguageChange = useCallback((newLocale: string) => {
     lastEditRef.current = { itemId: '', timestamp: 0 };
     setEditorState((curr) => changeLanguage(curr, newLocale));
@@ -1009,6 +1023,8 @@ currentItem ? (
                   autoCorrect={autoCorrect}
                   bottomPortal={splitActive ? bottomEl : null}
                   onResetItemHistory={handleResetItemHistory}
+                  sourceLang={project.sourceLang}
+                  onSourceLangChange={handleSourceLangChange}
                 />
               ) : (
                 <div className="flex flex-col items-center justify-center h-full p-8 text-center text-slate-400">
@@ -1140,6 +1156,7 @@ currentItem ? (
           /* Table View */
           <main className="flex-1 h-full overflow-hidden">
             <TableView
+              sourceLang={project.sourceLang}
               statsNode={renderHeader('tableLegend')}
               items={orderedItems}
               selectedId={selectedId}

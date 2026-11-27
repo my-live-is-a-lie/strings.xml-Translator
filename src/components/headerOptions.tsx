@@ -16,13 +16,13 @@ export const THEME_OPTIONS: Array<{ id: AppTheme; label: string; labelAr: string
 
 export const ENGINE_OPTIONS: Array<{ value: string; nameEn: string; nameAr: string; labelAr: string; labelEn: string }> = [
   { value: 'auto', nameEn: '', nameAr: '', labelAr: 'تعرف تلقائي على المزود', labelEn: 'Auto-Detect Provider' },
-  { value: 'gemini', nameEn: 'Gemini AI', nameAr: 'ذكاء Gemini الاصطناعي', labelAr: 'ذكاء Gemini (Google)', labelEn: 'Gemini AI (Google)' },
-  { value: 'lara', nameEn: 'Lara Translate', nameAr: 'ترجمة Lara الذكية', labelAr: 'ترجمة Lara الذكية', labelEn: 'Lara Translate AI (Translated)' },
-  { value: 'yandex', nameEn: 'Yandex AI', nameAr: 'ترجمة Yandex الذكية', labelAr: 'ترجمة Yandex الذكية', labelEn: 'Yandex AI / Translate' },
-  { value: 'deepl', nameEn: 'DeepL API', nameAr: 'ترجمة DeepL', labelAr: 'محرك DeepL للترجمة', labelEn: 'DeepL API' },
-  { value: 'openai', nameEn: 'OpenAI GPT', nameAr: 'ذكاء OpenAI GPT', labelAr: 'ذكاء OpenAI (GPT)', labelEn: 'OpenAI (GPT)' },
-  { value: 'google_cloud', nameEn: 'Google Cloud Translate', nameAr: 'ترجمة Google السحابية', labelAr: 'ترجمة Google السحابية', labelEn: 'Google Cloud Translation' },
-  { value: 'libretranslate', nameEn: 'LibreTranslate', nameAr: 'ليبرترانسليت (مفتوح المصدر)', labelAr: 'LibreTranslate (مجاني ومفتوح المصدر)', labelEn: 'LibreTranslate (free, open source)' },
-  { value: 'microsoft', nameEn: 'Microsoft Translator', nameAr: 'مترجم Microsoft', labelAr: 'مترجم Microsoft Azure', labelEn: 'Microsoft Azure Translator' },
+  { value: 'gemini', nameEn: 'Gemini API', nameAr: 'Gemini API', labelAr: 'Gemini API', labelEn: 'Gemini API' },
+  { value: 'lara', nameEn: 'Lara Translate', nameAr: 'Lara Translate', labelAr: 'Lara Translate', labelEn: 'Lara Translate' },
+  { value: 'yandex', nameEn: 'Yandex Cloud Translate', nameAr: 'Yandex Cloud Translate', labelAr: 'Yandex Cloud Translate', labelEn: 'Yandex Cloud Translate' },
+  { value: 'deepl', nameEn: 'DeepL API', nameAr: 'DeepL API', labelAr: 'DeepL API', labelEn: 'DeepL API' },
+  { value: 'openai', nameEn: 'OpenAI API', nameAr: 'OpenAI API', labelAr: 'OpenAI API', labelEn: 'OpenAI API' },
+  { value: 'google_cloud', nameEn: 'Google Cloud', nameAr: 'Google Cloud', labelAr: 'Google Cloud', labelEn: 'Google Cloud' },
+  { value: 'libretranslate', nameEn: 'LibreTranslate', nameAr: 'LibreTranslate', labelAr: 'LibreTranslate', labelEn: 'LibreTranslate' },
+  { value: 'microsoft', nameEn: 'Microsoft Azure Translator', nameAr: 'Microsoft Azure Translator', labelAr: 'Microsoft Azure Translator', labelEn: 'Microsoft Azure Translator' },
 ];
 

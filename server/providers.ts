@@ -11,6 +11,8 @@ import {
   stripMetadataWrappers,
 } from '../src/shared/translateCore';
 import { validatePlaceholders } from '../src/utils/placeholderCheck';
+import { classifyLaraError, ProviderKeyError, type LaraKeyProblem } from '../src/shared/laraErrors';
+import { normalizeSourceLang, sourceLangName, deeplSourceCode, laraSourceCode } from '../src/shared/sourceLang';
 
 export const PROVIDER_TYPES = [
   'yandex',
@@ -31,6 +33,33 @@ export interface ProviderResult {
 }
 
 const LARA_CONNECTION_TIMEOUT_MS = 10000;
+
+/** Extra Lara translate options chosen on the provider card: Think mode (reasoning) and its effort. */
+export interface LaraTranslateExtras {
+  reasoning?: boolean;
+  reasoningEffort?: 'low' | 'medium' | 'high';
+  instructions?: string[];
+  noTrace?: boolean;
+  style?: 'faithful' | 'fluid' | 'creative';
+}
+
+/** Think (reasoning) answers are much slower, so it gets a longer timeout; Standard keeps the normal one. */
+const LARA_THINK_TIMEOUT_MS = 60000;
+function laraTimeoutMs(extras?: LaraTranslateExtras): number {
+  return extras?.reasoning ? LARA_THINK_TIMEOUT_MS : LARA_CONNECTION_TIMEOUT_MS;
+}
+
+function laraTranslateOptions(extras?: LaraTranslateExtras) {
+  return {
+    timeoutInMillis: laraTimeoutMs(extras),
+    ...(extras?.instructions?.length ? { instructions: extras.instructions } : {}),
+    ...(extras?.noTrace ? { noTrace: true } : {}),
+    ...(extras?.style ? { style: extras.style } : {}),
+    ...(extras?.reasoning
+      ? { reasoning: true, ...(extras.reasoningEffort ? { reasoningEffort: extras.reasoningEffort } : {}) }
+      : {}),
+  };
+}
 
 function parseLaraCredentials(raw: string): { id?: string; secret?: string; singleToken?: string } {
   const cleaned = raw.trim();
@@ -104,8 +133,11 @@ export async function callProviderWithKey(
   targetLang: string,
   targetLocaleName?: string,
   pluralQuantity?: string,
-  folderId?: string
+  folderId?: string,
+  laraOptions?: LaraTranslateExtras,
+  sourceLang = 'en'
 ): Promise<ProviderResult> {
+  const src = normalizeSourceLang(sourceLang);
   const baseLang = targetLang.split('-')[0].toLowerCase();
   const trimmedKey = apiKey.trim();
   const trimmedFolderId = folderId?.trim() || '';
@@ -118,7 +150,7 @@ export async function callProviderWithKey(
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: authHeader },
       body: JSON.stringify({
-        sourceLanguageCode: 'en',
+        sourceLanguageCode: src,
         targetLanguageCode: baseLang,
         texts: [sourceText],
         // Required with an IAM token (personal Yandex account); a service-account API key already knows its folder.
@@ -146,7 +178,7 @@ export async function callProviderWithKey(
           { role: 'system', text: SYSTEM_INSTRUCTION },
           {
             role: 'user',
-            text: `Translate from English to ${targetLocaleName || baseLang}. Return ONLY the translated text:\n${sourceText}`,
+            text: `Translate from ${sourceLangName(src)} to ${targetLocaleName || baseLang}. Return ONLY the translated text:\n${sourceText}`,
           },
         ],
       }),
@@ -184,7 +216,7 @@ export async function callProviderWithKey(
     const res = await fetchWithTimeout(`https://${host}/v2/translate`, {
       method: 'POST',
       headers: { Authorization: `DeepL-Auth-Key ${trimmedKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: [sourceText], source_lang: 'EN', target_lang: deeplTarget }),
+      body: JSON.stringify({ text: [sourceText], source_lang: deeplSourceCode(src), target_lang: deeplTarget }),
     });
     if (!res.ok) throw providerHttpError('DeepL', res.status);
     const data = (await res.json()) as { translations?: Array<{ text?: string }> };
@@ -206,7 +238,7 @@ export async function callProviderWithKey(
           { role: 'system', content: SYSTEM_INSTRUCTION },
           {
             role: 'user',
-            content: `Translate the following Android strings.xml value from English to ${langLabel}${pluralContext}. Return ONLY the translated text:\n${sourceText}`,
+            content: `Translate the following Android strings.xml value from ${sourceLangName(src)} to ${langLabel}${pluralContext}. Return ONLY the translated text:\n${sourceText}`,
           },
         ],
       }),
@@ -232,7 +264,7 @@ export async function callProviderWithKey(
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ q: sourceText, source: 'en', target: baseLang, format: 'text' }),
+        body: JSON.stringify({ q: sourceText, source: src, target: baseLang, format: 'text' }),
       }
     );
     if (!res.ok) throw providerHttpError('Google Cloud Translation', res.status);
@@ -244,7 +276,7 @@ export async function callProviderWithKey(
 
   const tryMicrosoft = async (): Promise<string> => {
     const res = await fetchWithTimeout(
-      `https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&from=en&to=${encodeURIComponent(baseLang)}`,
+      `https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&from=${encodeURIComponent(src)}&to=${encodeURIComponent(baseLang)}`,
       {
         method: 'POST',
         headers: { 'Ocp-Apim-Subscription-Key': trimmedKey, 'Content-Type': 'application/json' },
@@ -265,16 +297,19 @@ export async function callProviderWithKey(
     // 1. Official Lara SDK with AccessKey (ID + Secret)
     if (creds.id && creds.secret) {
       const lara = new LaraTranslator(new AccessKey(creds.id, creds.secret), {
-        connectionTimeoutMs: LARA_CONNECTION_TIMEOUT_MS,
+        connectionTimeoutMs: laraTimeoutMs(laraOptions),
       });
       try {
-        const result = await lara.translate(sourceText, 'en', laraTarget, { timeoutInMillis: LARA_CONNECTION_TIMEOUT_MS });
+        const result = await lara.translate(sourceText, laraSourceCode(src), laraTarget, laraTranslateOptions(laraOptions));
         if (result && typeof result.translation === 'string' && result.translation.trim()) {
           return stripMetadataWrappers(result.translation, sourceText);
         }
       } catch (err) {
+        // A key or quota problem will not change with another language: stop here, spend nothing more.
+        const problem = classifyLaraError(err);
+        if (problem) throw new ProviderKeyError(problem);
         if (laraTarget !== baseLang) {
-          const fallback = await lara.translate(sourceText, 'en', baseLang, { timeoutInMillis: LARA_CONNECTION_TIMEOUT_MS });
+          const fallback = await lara.translate(sourceText, laraSourceCode(src), baseLang, laraTranslateOptions(laraOptions));
           if (fallback && typeof fallback.translation === 'string' && fallback.translation.trim()) {
             return stripMetadataWrappers(fallback.translation, sourceText);
           }
@@ -284,16 +319,18 @@ export async function callProviderWithKey(
     }
 
     // 2. Official Lara SDK with AuthToken (single token / JWT)
+    let tokenProblem: LaraKeyProblem | null = null;
     if (creds.singleToken) {
       try {
         const tokenClient = new LaraTranslator(new AuthToken(creds.singleToken, ''), {
-          connectionTimeoutMs: LARA_CONNECTION_TIMEOUT_MS,
+          connectionTimeoutMs: laraTimeoutMs(laraOptions),
         });
-        const result = await tokenClient.translate(sourceText, 'en', laraTarget, { timeoutInMillis: LARA_CONNECTION_TIMEOUT_MS });
+        const result = await tokenClient.translate(sourceText, laraSourceCode(src), laraTarget, laraTranslateOptions(laraOptions));
         if (result && typeof result.translation === 'string' && result.translation.trim()) {
           return stripMetadataWrappers(result.translation, sourceText);
         }
-      } catch {
+      } catch (err) {
+        tokenProblem = classifyLaraError(err);
         // Fall through to the REST header probes
       }
 
@@ -308,7 +345,7 @@ export async function callProviderWithKey(
           const restRes = await fetchWithTimeout('https://api.laratranslate.com/v2/translate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...authHeader },
-            body: JSON.stringify({ q: sourceText, source: 'en', target: laraTarget }),
+            body: JSON.stringify({ q: sourceText, source: src, target: laraTarget }),
           });
           if (!restRes.ok) continue;
           const lines = (await restRes.text())
@@ -334,9 +371,13 @@ export async function callProviderWithKey(
       }
     }
 
-    throw new Error(
-      'Lara Translate: فشل التحقق من المفتاح. أدخل Access Key ID و Secret / Authentication failed: provide the Access Key ID and Secret.'
-    );
+    if (tokenProblem) throw new ProviderKeyError(tokenProblem);
+    if (!creds.singleToken && !(creds.id && creds.secret)) {
+      throw new Error(
+        'Lara Translate: فشل التحقق من المفتاح. أدخل Access Key ID و Secret / Authentication failed: provide the Access Key ID and Secret.'
+      );
+    }
+    throw new Error('Lara Translate: فشل الطلب / Request failed.');
   };
 
   const tryLibre = async (): Promise<string> => {
@@ -344,7 +385,7 @@ export async function callProviderWithKey(
     const base = parseSafeBaseUrl(trimmedFolderId);
     const { status, json } = await safeJsonPost(base, '/translate', {
       q: sourceText,
-      source: 'en',
+      source: src,
       target: libreTarget(targetLang),
       format: 'text',
       ...(trimmedKey && trimmedKey !== 'none' ? { api_key: trimmedKey } : {}),
@@ -427,8 +468,10 @@ export async function translateBatch(
   apiKey: string,
   texts: string[],
   targetLang: string,
-  folderId?: string
+  folderId?: string,
+  sourceLang = 'en'
 ): Promise<Array<string | null>> {
+  const src = normalizeSourceLang(sourceLang);
   const trimmedKey = apiKey.trim();
   const baseLang = targetLang.split('-')[0].toLowerCase();
   const deeplTarget =
@@ -439,7 +482,7 @@ export async function translateBatch(
     const res = await fetchWithTimeout(`https://${host}/v2/translate`, {
       method: 'POST',
       headers: { Authorization: `DeepL-Auth-Key ${trimmedKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: texts, source_lang: 'EN', target_lang: deeplTarget }),
+      body: JSON.stringify({ text: texts, source_lang: deeplSourceCode(src), target_lang: deeplTarget }),
     }, 30000);
     if (!res.ok) throw providerHttpError('DeepL', res.status);
     const data = (await res.json()) as { translations?: Array<{ text?: string }> };
@@ -454,7 +497,7 @@ export async function translateBatch(
         Authorization: trimmedKey.startsWith('t1.') ? `Bearer ${trimmedKey}` : `Api-Key ${trimmedKey}`,
       },
       body: JSON.stringify({
-        sourceLanguageCode: 'en',
+        sourceLanguageCode: src,
         targetLanguageCode: baseLang,
         texts,
         ...(folderId ? { folderId } : {}),
@@ -469,7 +512,7 @@ export async function translateBatch(
 
   if (providerType === 'microsoft') {
     const res = await fetchWithTimeout(
-      `https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&from=en&to=${encodeURIComponent(baseLang)}`,
+      `https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&from=${encodeURIComponent(src)}&to=${encodeURIComponent(baseLang)}`,
       {
         method: 'POST',
         headers: { 'Ocp-Apim-Subscription-Key': trimmedKey, 'Content-Type': 'application/json' },
@@ -489,7 +532,7 @@ export async function translateBatch(
       '/translate',
       {
         q: texts,
-        source: 'en',
+        source: src,
         target: libreTarget(targetLang),
         format: 'text',
         ...(trimmedKey && trimmedKey !== 'none' ? { api_key: trimmedKey } : {}),
@@ -508,7 +551,7 @@ export async function translateBatch(
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ q: texts, source: 'en', target: baseLang, format: 'text' }),
+        body: JSON.stringify({ q: texts, source: src, target: baseLang, format: 'text' }),
       },
       30000
     );
