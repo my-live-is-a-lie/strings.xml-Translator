@@ -1053,9 +1053,6 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
 
                     {/* Swipeable / Scrollable Provider Engine List */}
                     <div className="flex flex-col gap-1.5">
-                      <span data-i18n className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
-                        {t('swipe_list_to_choose_provider')}
-                      </span>
                       <div
                         id="provider-swipe-list"
                         onTouchMove={(e) => e.stopPropagation()}
