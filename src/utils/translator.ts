@@ -24,6 +24,16 @@ import {
 } from './providerModels';
 import { fetchGoogleGtxRaw, fetchWithTimeout, providerHttpError } from '../shared/translateCore';
 import { directCallProviderWithKey, directTestProviderApiKey } from './directProviders';
+import { normalizeSourceLang } from '../shared/sourceLang';
+
+/** Source language of the open project (base ISO code). Set by the app when a project opens or its source language changes. */
+let activeSourceLang = 'en';
+export function setActiveSourceLang(code?: string | null): void {
+  activeSourceLang = normalizeSourceLang(code);
+}
+export function getActiveSourceLang(): string {
+  return activeSourceLang;
+}
 import { findClauseBodyOpens, hasMultilineIcuBlock, splitIcuBlocks, validatePlaceholders } from './placeholderCheck';
 
 /** Every engine a suggestion can come from. 'glossary' and 'heuristic' are offline. */
@@ -1306,6 +1316,7 @@ async function translateSingleSegmentUncached(
                 laraInstructions: activeProvider.type === 'lara' ? activeProvider.laraInstructions : undefined,
                 laraNoTrace: activeProvider.type === 'lara' ? activeProvider.laraNoTrace : undefined,
                 laraStyle: activeProvider.type === 'lara' ? activeProvider.laraStyle : undefined,
+                sourceLang: activeSourceLang,
               }),
             },
             activeProvider.type === 'lara' && activeProvider.laraMode === 'think' ? 70000 : 25000,
@@ -1339,7 +1350,8 @@ async function translateSingleSegmentUncached(
           targetLocaleName,
           pluralQuantity,
           activeProvider.folderId,
-          laraExtrasFor(activeProvider)
+          laraExtrasFor(activeProvider),
+          activeSourceLang
         )
       );
       if (directResult && directResult.translatedText) {
@@ -1413,7 +1425,7 @@ async function translateSingleSegmentUncached(
     // HTTP error, a non-JSON page such as a consent or "sorry" page) is a failure.
     let combined: string;
     try {
-      combined = await withRetry(() => fetchGoogleGtxRaw(cleanText, directLang, 5000, signal));
+      combined = await withRetry(() => fetchGoogleGtxRaw(cleanText, directLang, 5000, signal, activeSourceLang));
     } catch (err) {
       logFallback('google', err);
       noteGtxResult(false);
@@ -1443,7 +1455,7 @@ async function translateSingleSegmentUncached(
   // Helper for MyMemory API
   const tryMyMemory = async (): Promise<string | null> => {
     try {
-      const langPair = `en|${baseLang}`;
+      const langPair = `${activeSourceLang}|${baseLang}`;
       const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(cleanText)}&langpair=${langPair}`;
 
       // One fresh timeout per attempt: a retried fetch must not reuse an already-aborted signal.
@@ -1690,6 +1702,7 @@ export async function prewarmProviderBatch(
             folderId: provider.folderId,
             targetLang: directLang,
             targetLocaleName,
+            sourceLang: activeSourceLang,
             texts: chunk,
           }),
         },

@@ -122,9 +122,10 @@ export async function fetchGoogleGtxRaw(
   text: string,
   targetLang: string,
   timeoutMs = 5000,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  sourceLang = 'en'
 ): Promise<string> {
-  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=${encodeURIComponent(
+  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${encodeURIComponent(sourceLang)}&tl=${encodeURIComponent(
     googleGtxLanguage(targetLang)
   )}&dt=t&q=${encodeURIComponent(text)}`;
   const res = await fetchWithTimeout(url, {}, timeoutMs, signal);

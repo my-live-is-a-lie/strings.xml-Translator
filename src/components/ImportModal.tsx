@@ -16,6 +16,7 @@ import {
 } from '../utils/xmlRepair';
 import { TranslationProject } from '../types';
 import { getArabicLanguageName } from '../utils/languages';
+import { detectSourceLanguage, type SourceDetection } from '../utils/sourceLanguage';
 import { suggestedProjectName } from '../utils/multiLang';
 import { useT, tg } from '../i18n/i18n';
 
@@ -267,7 +268,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   };
 
   // Finishes the import from the result repairAndroidXml already parsed, so the file isn't parsed twice.
-  const finalizeImport = (parsed: ParsedXmlResult, xmlToParse: string, fileName: string) => {
+  const finalizeImport = async (parsed: ParsedXmlResult, xmlToParse: string, fileName: string) => {
     const { items, errors, resourcesAttributes, indentStyle, itemIndentStyle } = parsed;
     if (errors.length > 0 || items.length === 0) {
       // The error box lives in the form view, not the report view — leave the report or the message is invisible.
@@ -289,11 +290,19 @@ export const ImportModal: React.FC<ImportModalProps> = ({
       finalItems = updatedItems;
     }
 
+    let detectedSource: SourceDetection = { code: 'en', status: 'unsure' };
+    try {
+      detectedSource = await detectSourceLanguage(finalItems);
+    } catch {
+      // Detection is best effort: English stays as before.
+    }
+
     const newProject: TranslationProject = {
       id: `proj_${Date.now()}`,
       name: projectName.trim() || (t('android_strings')),
       sourceFileName: fileName,
-      sourceLang: 'en',
+      sourceLang: detectedSource.code,
+      sourceLangStatus: detectedSource.status,
       targetLang,
       targetLocaleName: isAr ? getArabicLanguageName(targetLang) : getLocaleName(targetLang),
       items: finalItems,

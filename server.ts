@@ -10,6 +10,7 @@ import {
   outputMatchesReference,
   translateBatch,
 } from './server/providers';
+import { normalizeSourceLang } from './src/shared/sourceLang';
 import { createRateLimiter } from './server/rateLimit';
 import { log, metrics, metricsSnapshot, requestLogger } from './server/observability';
 
@@ -114,6 +115,7 @@ function validateProviderFields(
           : undefined,
       laraInstructions:
         typeof body.laraInstructions === 'string' ? body.laraInstructions.slice(0, 2000) : undefined,
+      sourceLang: typeof body.sourceLang === 'string' ? normalizeSourceLang(body.sourceLang) : undefined,
       laraNoTrace: body.laraNoTrace === true ? 'true' : undefined,
       laraStyle:
         typeof body.laraStyle === 'string' && ['faithful', 'fluid', 'creative'].includes(body.laraStyle)
@@ -289,7 +291,8 @@ async function startServer() {
         f.targetLocaleName,
         f.pluralQuantity,
         f.folderId,
-        buildLaraExtras(f)
+        buildLaraExtras(f),
+        f.sourceLang
       );
       return res.json({ translatedText });
     } catch (error) {
@@ -326,7 +329,8 @@ async function startServer() {
         f.apiKey as string,
         texts,
         f.targetLang as string,
-        f.folderId
+        f.folderId,
+        f.sourceLang
       );
       return res.json({ translations });
     } catch (error) {

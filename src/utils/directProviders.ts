@@ -12,6 +12,7 @@ import {
 import { nativeFetch } from './nativeHttp';
 import { validatePlaceholders } from './placeholderCheck';
 import { geminiTranslateDirect } from './geminiDirect';
+import { normalizeSourceLang, sourceLangName, deeplSourceCode, laraSourceCode } from '../shared/sourceLang';
 
 export const DIRECT_PROVIDER_TYPES = [
   'yandex',
@@ -164,8 +165,10 @@ export async function directCallProviderWithKey(
   targetLocaleName?: string,
   pluralQuantity?: string,
   folderId?: string,
-  laraOptions?: LaraTranslateExtras
+  laraOptions?: LaraTranslateExtras,
+  sourceLang = 'en'
 ): Promise<DirectProviderResult> {
+  const src = normalizeSourceLang(sourceLang);
   const baseLang = targetLang.split('-')[0].toLowerCase();
   const trimmedKey = apiKey.trim();
   const trimmedFolderId = folderId?.trim() || '';
@@ -178,7 +181,7 @@ export async function directCallProviderWithKey(
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: authHeader },
         data: {
-          sourceLanguageCode: 'en',
+          sourceLanguageCode: src,
           targetLanguageCode: baseLang,
           texts: [sourceText],
           ...(trimmedFolderId ? { folderId: trimmedFolderId } : {}),
@@ -206,7 +209,7 @@ export async function directCallProviderWithKey(
           { role: 'system', text: SYSTEM_INSTRUCTION },
           {
             role: 'user',
-            text: `Translate from English to ${targetLocaleName || baseLang}. Return ONLY the translated text:\n${sourceText}`,
+            text: `Translate from ${sourceLangName(src)} to ${targetLocaleName || baseLang}. Return ONLY the translated text:\n${sourceText}`,
           },
         ],
       },
@@ -240,7 +243,7 @@ export async function directCallProviderWithKey(
       {
         method: 'POST',
         headers: { Authorization: `DeepL-Auth-Key ${trimmedKey}`, 'Content-Type': 'application/json' },
-        data: { text: [sourceText], source_lang: 'EN', target_lang: deeplTarget },
+        data: { text: [sourceText], source_lang: deeplSourceCode(src), target_lang: deeplTarget },
       }
     );
     if (!res.ok) throw providerHttpError('DeepL API', res.status);
@@ -265,7 +268,7 @@ export async function directCallProviderWithKey(
             { role: 'system', content: SYSTEM_INSTRUCTION },
             {
               role: 'user',
-              content: `Translate the following Android strings.xml value from English to ${langLabel}${pluralContext}. Return ONLY the translated text:\n${sourceText}`,
+              content: `Translate the following Android strings.xml value from ${sourceLangName(src)} to ${langLabel}${pluralContext}. Return ONLY the translated text:\n${sourceText}`,
             },
           ],
         },
@@ -292,7 +295,7 @@ export async function directCallProviderWithKey(
         method: 'POST',
         // Key in a header, not the URL, so it never lands in URLs/logs.
         headers: { 'Content-Type': 'application/json', 'X-goog-api-key': trimmedKey },
-        data: { q: sourceText, source: 'en', target: baseLang, format: 'text' },
+        data: { q: sourceText, source: src, target: baseLang, format: 'text' },
       }
     );
     if (!res.ok) throw providerHttpError('Google Cloud', res.status);
@@ -303,7 +306,7 @@ export async function directCallProviderWithKey(
 
   const tryMicrosoft = async (): Promise<string> => {
     const res = await nativeFetch<Array<{ translations?: Array<{ text?: string }> }>>(
-      `https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&from=en&to=${encodeURIComponent(baseLang)}`,
+      `https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&from=${encodeURIComponent(src)}&to=${encodeURIComponent(baseLang)}`,
       {
         method: 'POST',
         headers: { 'Ocp-Apim-Subscription-Key': trimmedKey, 'Content-Type': 'application/json' },
@@ -327,7 +330,7 @@ export async function directCallProviderWithKey(
         const lara = new LaraTranslator(new AccessKey(creds.id, creds.secret), {
           connectionTimeoutMs: laraTimeoutMs(laraOptions),
         });
-        const result = await lara.translate(sourceText, 'en', laraTarget, laraTranslateOptions(laraOptions));
+        const result = await lara.translate(sourceText, laraSourceCode(src), laraTarget, laraTranslateOptions(laraOptions));
         if (result && typeof result.translation === 'string' && result.translation.trim()) {
           return stripMetadataWrappers(result.translation, sourceText);
         }
@@ -337,7 +340,7 @@ export async function directCallProviderWithKey(
             const lara = new LaraTranslator(new AccessKey(creds.id, creds.secret), {
               connectionTimeoutMs: laraTimeoutMs(laraOptions),
             });
-            const fallback = await lara.translate(sourceText, 'en', baseLang, laraTranslateOptions(laraOptions));
+            const fallback = await lara.translate(sourceText, laraSourceCode(src), baseLang, laraTranslateOptions(laraOptions));
             if (fallback && typeof fallback.translation === 'string' && fallback.translation.trim()) {
               return stripMetadataWrappers(fallback.translation, sourceText);
             }
@@ -354,7 +357,7 @@ export async function directCallProviderWithKey(
         const tokenClient = new LaraTranslator(new AuthToken(creds.singleToken, ''), {
           connectionTimeoutMs: laraTimeoutMs(laraOptions),
         });
-        const result = await tokenClient.translate(sourceText, 'en', laraTarget, laraTranslateOptions(laraOptions));
+        const result = await tokenClient.translate(sourceText, laraSourceCode(src), laraTarget, laraTranslateOptions(laraOptions));
         if (result && typeof result.translation === 'string' && result.translation.trim()) {
           return stripMetadataWrappers(result.translation, sourceText);
         }
@@ -378,7 +381,7 @@ export async function directCallProviderWithKey(
           const restRes = await nativeFetch<LaraRestResponse>('https://api.laratranslate.com/v2/translate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...authHeader },
-            data: { q: sourceText, source: 'en', target: laraTarget },
+            data: { q: sourceText, source: src, target: laraTarget },
           });
           if (!restRes.ok) continue;
 
@@ -421,7 +424,7 @@ export async function directCallProviderWithKey(
       headers: { 'Content-Type': 'application/json' },
       data: {
         q: sourceText,
-        source: 'en',
+        source: src,
         target: libreTarget(targetLang),
         format: 'text',
         ...(trimmedKey && trimmedKey !== 'none' ? { api_key: trimmedKey } : {}),

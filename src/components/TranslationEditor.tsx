@@ -54,6 +54,7 @@ import {
 } from '../utils/newlines';
 import { getStoredItem, setStoredItem, copyTextToClipboard, readTextFromClipboard } from '../utils/storage';
 import { useT } from '../i18n/i18n';
+import { SourceLanguagePicker } from './SourceLanguagePicker';
 
 // The request functions the ICU category fill uses; memoized so a prefetch and the fill share replies.
 const makeIcuAsk = (targetLang: string, targetLocaleName: string) =>
@@ -190,6 +191,9 @@ interface TranslationEditorProps {
   /** Landscape split mode: the writing half (textarea, buttons) is rendered into this element. */
   bottomPortal?: HTMLElement | null;
   onResetItemHistory?: (id: string) => void;
+  sourceLang?: string;
+  sourceLangStatus?: 'detected' | 'unsure';
+  onSourceLangChange?: (code: string) => void;
 }
 
 export const TranslationEditor: React.FC<TranslationEditorProps> = ({
@@ -215,6 +219,9 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   autoCorrect = true,
   bottomPortal = null,
   onResetItemHistory,
+  sourceLang,
+  sourceLangStatus,
+  onSourceLangChange,
 }) => {
   const { t, tb } = useT();
   const isAr = appLang === 'ar';
@@ -2244,9 +2251,12 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                 <SourceChangeBadge item={item} isAr={isAr} />
               </div>
 
-              <span data-i18n className="text-slate-600 dark:text-slate-300 text-xs sm:text-sm font-medium shrink-0">
-                {t('english')}
-              </span>
+              <SourceLanguagePicker
+                sourceLang={sourceLang}
+                status={sourceLangStatus}
+                isAr={isAr}
+                onChange={onSourceLangChange}
+              />
             </div>
 
             {/* A string-array has no combined source box (it would show the first item only): each item carries its own source line */}
