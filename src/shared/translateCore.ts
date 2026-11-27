@@ -30,17 +30,21 @@ export function fetchWithTimeout(
   signal?: AbortSignal
 ): Promise<Response> {
   // AbortSignal.any is unavailable in some WebViews and test environments; combine by hand then.
+  let cleanup = () => {};
   const combined = signal
     ? typeof AbortSignal.any === 'function'
       ? AbortSignal.any([AbortSignal.timeout(timeoutMs), signal])
       : (() => {
           const controller = new AbortController();
           const sources = [AbortSignal.timeout(timeoutMs), signal];
-          const onAbort = () => {
-            // Whichever fires first wins; drop the listener on the other so nothing stays attached.
+          cleanup = () => {
             for (const s of sources) s.removeEventListener('abort', onAbort);
-            controller.abort();
           };
+          function onAbort() {
+            // Whichever fires first wins; the other listener is dropped so nothing stays attached.
+            cleanup();
+            controller.abort();
+          }
           for (const s of sources) {
             if (s.aborted) {
               onAbort();
@@ -51,7 +55,9 @@ export function fetchWithTimeout(
           return controller.signal;
         })()
     : AbortSignal.timeout(timeoutMs);
-  return fetch(url, { ...init, signal: combined });
+  // Also drop them when the fetch settles without any abort, so a long-lived caller signal
+  // does not collect one listener per request.
+  return fetch(url, { ...init, signal: combined }).finally(cleanup);
 }
 
 /** Maps an HTTP status from a provider to a message the user can act on (Arabic first). */
