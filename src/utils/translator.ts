@@ -694,9 +694,10 @@ export async function testProviderApiKey(
     return { success: false, matched: false, error: PROVIDERS_UNAVAILABLE };
   }
   try {
-    const directRes = await directTestProviderApiKey(providerType, trimmedKey, trimmedFolder);
+    const directRes = await directTestProviderApiKey(providerType, trimmedKey, trimmedFolder, signal);
     return directRes as ProviderTestResult;
   } catch (err) {
+    if (signal?.aborted) return { success: false, matched: false, error: 'Cancelled' };
     return {
       success: false,
       matched: false,
@@ -1105,7 +1106,8 @@ async function translateIcuPerClause(
   baseLang: string,
   directLang: string,
   targetLocaleName?: string,
-  pluralQuantity?: 'zero' | 'one' | 'two' | 'few' | 'many' | 'other'
+  pluralQuantity?: 'zero' | 'one' | 'two' | 'few' | 'many' | 'other',
+  signal?: AbortSignal
 ): Promise<{ text: string; source: TranslationEngine } | null> {
   const parts = splitIcuBlocks(coreText);
   if (!parts) return null;
@@ -1127,7 +1129,8 @@ async function translateIcuPerClause(
         out.push(part.text);
         continue;
       }
-      const res = await translateSingleSegment(part.text, baseLang, directLang, targetLocaleName, pluralQuantity);
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+      const res = await translateSingleSegment(part.text, baseLang, directLang, targetLocaleName, pluralQuantity, signal);
       const translated = res.source !== 'heuristic' && Boolean(res.text.trim()) && res.text !== part.text;
       if (translated) {
         if (res.source !== 'glossary') overallSource = res.source;
@@ -1149,7 +1152,8 @@ async function translateIcuPerClause(
       rebuilt += part.text.slice(cursor, body.start);
       let replacement = bodyText;
       if (hasTranslatableText(bodyText)) {
-        const res = await translateSingleSegment(bodyText, baseLang, directLang, targetLocaleName, pluralQuantity);
+        if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+        const res = await translateSingleSegment(bodyText, baseLang, directLang, targetLocaleName, pluralQuantity, signal);
         const hashCount = (s: string) => (s.match(/#/g) || []).length;
         if (
           res.source !== 'heuristic' &&
@@ -1336,9 +1340,9 @@ async function translateSingleSegmentUncached(
         );
         if (!pRes.ok) {
           // The server names a definite key problem (invalid key, exhausted quota) so it can stay on the card.
-          const failure = (await pRes.json().catch(() => null)) as { keyProblem?: string } | null;
-          if (failure?.keyProblem === 'quota-or-limit' || failure?.keyProblem === 'invalid-key') {
-            reportProviderKeyProblem(activeProvider.id, failure.keyProblem);
+          const failure = (await pRes.json().catch(() => null)) as { errorKind?: string } | null;
+          if (failure?.errorKind === 'quota-or-limit' || failure?.errorKind === 'invalid-key') {
+            reportProviderKeyProblem(activeProvider.id, failure.errorKind);
           }
           throw providerHttpError('server provider', pRes.status);
         }
@@ -1486,12 +1490,16 @@ async function translateSingleSegmentUncached(
       const fetchOnce = async (): Promise<Response> => {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 6000);
+        const onOuterAbort = () => controller.abort();
+        if (signal?.aborted) throw Object.assign(new Error('cancelled'), { name: 'CancelledError' }); // not retried
+        signal?.addEventListener('abort', onOuterAbort, { once: true });
         try {
           const response = await fetch(url, { signal: controller.signal });
           if (!response.ok) throw providerHttpError('MyMemory', response.status);
           return response;
         } finally {
           clearTimeout(timeoutId);
+          signal?.removeEventListener('abort', onOuterAbort);
         }
       };
 
@@ -1578,6 +1586,7 @@ async function translateSingleSegmentUncached(
       text: await strategy.run().catch(() => null),
     }))
   );
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
   const winner = fallbacks.find((f): f is { engine: TranslationEngine; text: string } => Boolean(f.text));
   if (winner) {
     return { text: wrapResult(winner.text), source: winner.engine };
@@ -1597,7 +1606,7 @@ async function translateSingleSegmentUncached(
   // each clause body on their own keeps the structure from the source instead.
   // AI providers never reach this: their whole-string reply already succeeds.
   if (coreText.includes('{')) {
-    const perClause = await translateIcuPerClause(coreText, baseLang, directLang, targetLocaleName, pluralQuantity);
+    const perClause = await translateIcuPerClause(coreText, baseLang, directLang, targetLocaleName, pluralQuantity, signal);
     if (perClause) return { text: wrapResult(perClause.text), source: perClause.source };
   }
 

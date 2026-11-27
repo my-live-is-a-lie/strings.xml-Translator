@@ -35,10 +35,15 @@ export function fetchWithTimeout(
       ? AbortSignal.any([AbortSignal.timeout(timeoutMs), signal])
       : (() => {
           const controller = new AbortController();
-          const onAbort = () => controller.abort();
-          for (const s of [AbortSignal.timeout(timeoutMs), signal]) {
+          const sources = [AbortSignal.timeout(timeoutMs), signal];
+          const onAbort = () => {
+            // Whichever fires first wins; drop the listener on the other so nothing stays attached.
+            for (const s of sources) s.removeEventListener('abort', onAbort);
+            controller.abort();
+          };
+          for (const s of sources) {
             if (s.aborted) {
-              controller.abort();
+              onAbort();
               break;
             }
             s.addEventListener('abort', onAbort, { once: true });
