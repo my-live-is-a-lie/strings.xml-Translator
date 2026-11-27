@@ -69,6 +69,9 @@ const LARA_CONNECTION_TIMEOUT_MS = 12000;
 export interface LaraTranslateExtras {
   reasoning?: boolean;
   reasoningEffort?: 'low' | 'medium' | 'high';
+  instructions?: string[];
+  noTrace?: boolean;
+  style?: 'faithful' | 'fluid' | 'creative';
 }
 
 /** Think (reasoning) answers are much slower, so it gets a longer timeout; Standard keeps the normal one. */
@@ -80,6 +83,9 @@ function laraTimeoutMs(extras?: LaraTranslateExtras): number {
 function laraTranslateOptions(extras?: LaraTranslateExtras) {
   return {
     timeoutInMillis: laraTimeoutMs(extras),
+    ...(extras?.instructions?.length ? { instructions: extras.instructions } : {}),
+    ...(extras?.noTrace ? { noTrace: true } : {}),
+    ...(extras?.style ? { style: extras.style } : {}),
     ...(extras?.reasoning
       ? { reasoning: true, ...(extras.reasoningEffort ? { reasoningEffort: extras.reasoningEffort } : {}) }
       : {}),

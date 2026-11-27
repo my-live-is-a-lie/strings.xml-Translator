@@ -36,6 +36,30 @@ function readBody(body: unknown): Record<string, unknown> | null {
   return body as Record<string, unknown>;
 }
 
+/** Builds the Lara options (reasoning, instructions, noTrace, style) from validated request fields. */
+function buildLaraExtras(f: {
+  laraMode?: string;
+  laraEffort?: string;
+  laraInstructions?: string;
+  laraNoTrace?: string;
+  laraStyle?: string;
+}) {
+  const instructions = (f.laraInstructions || '')
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l && l.split(/\s+/).length <= 19)
+    .slice(0, 10);
+  const extras = {
+    ...(f.laraMode === 'think'
+      ? { reasoning: true, reasoningEffort: f.laraEffort as 'low' | 'medium' | 'high' | undefined }
+      : {}),
+    ...(instructions.length ? { instructions } : {}),
+    ...(f.laraNoTrace === 'true' ? { noTrace: true } : {}),
+    ...(f.laraStyle ? { style: f.laraStyle as 'faithful' | 'fluid' | 'creative' } : {}),
+  };
+  return Object.keys(extras).length ? extras : undefined;
+}
+
 function validateProviderFields(
   body: Record<string, unknown>,
   { requireSourceText }: { requireSourceText: boolean }
@@ -87,6 +111,13 @@ function validateProviderFields(
       laraEffort:
         typeof body.laraEffort === 'string' && ['low', 'medium', 'high'].includes(body.laraEffort)
           ? body.laraEffort
+          : undefined,
+      laraInstructions:
+        typeof body.laraInstructions === 'string' ? body.laraInstructions.slice(0, 2000) : undefined,
+      laraNoTrace: body.laraNoTrace === true ? 'true' : undefined,
+      laraStyle:
+        typeof body.laraStyle === 'string' && ['faithful', 'fluid', 'creative'].includes(body.laraStyle)
+          ? body.laraStyle
           : undefined,
     },
   };
@@ -258,9 +289,7 @@ async function startServer() {
         f.targetLocaleName,
         f.pluralQuantity,
         f.folderId,
-        f.laraMode === 'think'
-          ? { reasoning: true, reasoningEffort: f.laraEffort as 'low' | 'medium' | 'high' | undefined }
-          : undefined
+        buildLaraExtras(f)
       );
       return res.json({ translatedText });
     } catch (error) {

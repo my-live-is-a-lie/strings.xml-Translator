@@ -319,6 +319,43 @@ export interface TranslationProviderConfig {
   laraMode?: string;
   /** Lara only: reasoning effort (low, medium or high) used with Think. Empty means Lara's default. */
   laraEffort?: string;
+  /** Lara only: translation instructions, one per line (each under 20 words). */
+  laraInstructions?: string;
+  /** Lara only: ask Lara not to store the translated text. */
+  laraNoTrace?: boolean;
+  /** Lara only: translation style (faithful, fluid or creative). Empty means Lara's default. */
+  laraStyle?: string;
+}
+
+/** Words in one Lara instruction line must stay under this (Lara docs: fewer than 20 words). */
+export const LARA_INSTRUCTION_MAX_WORDS = 19;
+
+export function parseLaraInstructions(raw?: string): string[] {
+  return (raw || '')
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .slice(0, 10);
+}
+
+/** Builds the Lara options (reasoning, instructions, noTrace, style) from a saved provider. */
+export function laraExtrasFor(p: TranslationProviderConfig) {
+  if (p.type !== 'lara') return undefined;
+  const instructions = parseLaraInstructions(p.laraInstructions).filter(
+    (l) => l.split(/\s+/).length <= LARA_INSTRUCTION_MAX_WORDS
+  );
+  const style = ['faithful', 'fluid', 'creative'].includes(p.laraStyle || '')
+    ? (p.laraStyle as 'faithful' | 'fluid' | 'creative')
+    : undefined;
+  const extras = {
+    ...(p.laraMode === 'think'
+      ? { reasoning: true, reasoningEffort: p.laraEffort as 'low' | 'medium' | 'high' | undefined }
+      : {}),
+    ...(instructions.length ? { instructions } : {}),
+    ...(p.laraNoTrace ? { noTrace: true } : {}),
+    ...(style ? { style } : {}),
+  };
+  return Object.keys(extras).length ? extras : undefined;
 }
 
 const CUSTOM_PROVIDERS_STORAGE_KEY = 'custom_translation_providers_v1';
@@ -538,6 +575,9 @@ export function updateCustomProvider(
     thinkingLevel?: string;
     laraMode?: string;
     laraEffort?: string;
+    laraInstructions?: string;
+    laraNoTrace?: boolean;
+    laraStyle?: string;
   }
 ): TranslationProviderConfig | null {
   const current = getCustomProviders();
@@ -557,6 +597,10 @@ export function updateCustomProvider(
       updates.thinkingLevel !== undefined ? updates.thinkingLevel || undefined : existing.thinkingLevel,
     laraMode: updates.laraMode !== undefined ? updates.laraMode || undefined : existing.laraMode,
     laraEffort: updates.laraEffort !== undefined ? updates.laraEffort || undefined : existing.laraEffort,
+    laraInstructions:
+      updates.laraInstructions !== undefined ? updates.laraInstructions.trim() || undefined : existing.laraInstructions,
+    laraNoTrace: updates.laraNoTrace !== undefined ? updates.laraNoTrace || undefined : existing.laraNoTrace,
+    laraStyle: updates.laraStyle !== undefined ? updates.laraStyle || undefined : existing.laraStyle,
     verifiedAt: Date.now(),
   };
 
@@ -1259,6 +1303,9 @@ async function translateSingleSegmentUncached(
                 pluralQuantity,
                 laraMode: activeProvider.type === 'lara' ? activeProvider.laraMode : undefined,
                 laraEffort: activeProvider.type === 'lara' ? activeProvider.laraEffort : undefined,
+                laraInstructions: activeProvider.type === 'lara' ? activeProvider.laraInstructions : undefined,
+                laraNoTrace: activeProvider.type === 'lara' ? activeProvider.laraNoTrace : undefined,
+                laraStyle: activeProvider.type === 'lara' ? activeProvider.laraStyle : undefined,
               }),
             },
             activeProvider.type === 'lara' && activeProvider.laraMode === 'think' ? 70000 : 25000,
@@ -1292,12 +1339,7 @@ async function translateSingleSegmentUncached(
           targetLocaleName,
           pluralQuantity,
           activeProvider.folderId,
-          activeProvider.type === 'lara' && activeProvider.laraMode === 'think'
-            ? {
-                reasoning: true,
-                reasoningEffort: activeProvider.laraEffort as 'low' | 'medium' | 'high' | undefined,
-              }
-            : undefined
+          laraExtrasFor(activeProvider)
         )
       );
       if (directResult && directResult.translatedText) {

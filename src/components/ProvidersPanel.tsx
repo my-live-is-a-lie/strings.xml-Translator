@@ -15,6 +15,8 @@ import {
   setActiveProviderId,
   addCustomProvider,
   updateCustomProvider,
+  parseLaraInstructions,
+  LARA_INSTRUCTION_MAX_WORDS,
   removeCustomProvider,
   testProviderApiKey,
 } from '../utils/translator';
@@ -439,6 +441,9 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   const [thinkingMenuOpen, setThinkingMenuOpen] = useState(false);
   const [laraModeMenuOpen, setLaraModeMenuOpen] = useState(false);
   const [laraEffortMenuOpen, setLaraEffortMenuOpen] = useState(false);
+  const [laraStyleMenuOpen, setLaraStyleMenuOpen] = useState(false);
+  // Unsaved text of the Lara instructions box (saved when the box loses focus).
+  const [laraInstrDraft, setLaraInstrDraft] = useState<string | null>(null);
   // The "key works, provider added" box goes away by itself after 5 seconds.
   useEffect(() => {
     if (!testResult || !(testResult.success && testResult.matched)) return;
@@ -448,7 +453,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   // Close a picker on a real tap outside it (click never fires after a drag). No full-screen overlay: it would
   // swallow touch drags meant for the drawer and let the page behind scroll.
   useEffect(() => {
-    if (!modelMenuOpen && !thinkingMenuOpen && !laraModeMenuOpen && !laraEffortMenuOpen) return;
+    if (!modelMenuOpen && !thinkingMenuOpen && !laraModeMenuOpen && !laraEffortMenuOpen && !laraStyleMenuOpen) return;
     const onDown = (e: MouseEvent) => {
       const el = e.target as Element | null;
       const inside = (id: string) => !!el?.closest(`#${id}-list, #${id}-select`);
@@ -456,10 +461,11 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
       if (thinkingMenuOpen && !inside('active-provider-thinking')) setThinkingMenuOpen(false);
       if (laraModeMenuOpen && !inside('active-lara-mode')) setLaraModeMenuOpen(false);
       if (laraEffortMenuOpen && !inside('active-lara-effort')) setLaraEffortMenuOpen(false);
+      if (laraStyleMenuOpen && !inside('active-lara-style')) setLaraStyleMenuOpen(false);
     };
     document.addEventListener('click', onDown, true);
     return () => document.removeEventListener('click', onDown, true);
-  }, [modelMenuOpen, thinkingMenuOpen, laraModeMenuOpen, laraEffortMenuOpen]);
+  }, [modelMenuOpen, thinkingMenuOpen, laraModeMenuOpen, laraEffortMenuOpen, laraStyleMenuOpen]);
   const thinkingLabel = (level: string) =>
     level === 'auto'
       ? probeLoading
@@ -1312,6 +1318,12 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
               const laraProv = activeProviderObj;
               const laraThink = laraProv.laraMode === 'think';
               const laraEffort = laraProv.laraEffort || 'high';
+              const laraStyle = laraProv.laraStyle || 'faithful';
+              const laraInstrText = laraInstrDraft ?? laraProv.laraInstructions ?? '';
+              const laraInstrTooLong = parseLaraInstructions(laraInstrText).some(
+                (l) => l.split(/\s+/).length > LARA_INSTRUCTION_MAX_WORDS
+              );
+              const laraNoTrace = !!laraProv.laraNoTrace;
               const pickerButton = 'px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996] flex items-center justify-between gap-2 whitespace-nowrap w-full';
               const listBox = 'absolute z-50 mt-1 min-w-[9rem] max-h-64 overflow-y-auto overscroll-contain touch-pan-y rounded-lg border border-slate-300 dark:border-[#2E384D] bg-white dark:bg-[#1B212E] shadow-xl py-1';
               const renderList = (
@@ -1360,6 +1372,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                           aria-expanded={laraModeMenuOpen}
                           onClick={() => {
                             setLaraEffortMenuOpen(false);
+                            setLaraStyleMenuOpen(false);
                             setLaraModeMenuOpen((open) => !open);
                           }}
                           className={pickerButton}
@@ -1427,6 +1440,94 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                       </div>
                     )}
                   </div>
+                  <div className="relative flex flex-col gap-1">
+                    <label
+                      htmlFor="active-lara-style-select"
+                      className="text-[10px] font-semibold text-slate-600 dark:text-slate-300"
+                    >
+                      {t('lara_style')}
+                    </label>
+                    <div>
+                      <button
+                        id="active-lara-style-select"
+                        type="button"
+                        aria-haspopup="listbox"
+                        aria-expanded={laraStyleMenuOpen}
+                        onClick={() => {
+                          setLaraModeMenuOpen(false);
+                          setLaraEffortMenuOpen(false);
+                          setLaraStyleMenuOpen((open) => !open);
+                        }}
+                        className={pickerButton}
+                      >
+                        <span className="truncate">{t(`lara_style_${laraStyle}`)}</span>
+                        <ChevronDown className="w-3 h-3 shrink-0 text-slate-500 dark:text-slate-400" />
+                      </button>
+                      {laraStyleMenuOpen &&
+                        renderList(
+                          'active-lara-style',
+                          'start-0',
+                          [
+                            { value: 'faithful', label: t('lara_style_faithful') },
+                            { value: 'fluid', label: t('lara_style_fluid') },
+                            { value: 'creative', label: t('lara_style_creative') },
+                          ],
+                          laraStyle,
+                          (value) => {
+                            updateCustomProvider(laraProv.id, { laraStyle: value });
+                            refresh();
+                          },
+                          () => setLaraStyleMenuOpen(false)
+                        )}
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label
+                      htmlFor="active-lara-instructions"
+                      className="text-[10px] font-semibold text-slate-600 dark:text-slate-300"
+                    >
+                      {t('lara_instructions')}
+                    </label>
+                    <textarea
+                      id="active-lara-instructions"
+                      rows={3}
+                      value={laraInstrText}
+                      placeholder={t('lara_instructions_placeholder')}
+                      onChange={(e) => setLaraInstrDraft(e.target.value)}
+                      onBlur={() => {
+                        if (laraInstrDraft === null) return;
+                        updateCustomProvider(laraProv.id, { laraInstructions: laraInstrDraft });
+                        setLaraInstrDraft(null);
+                        refresh();
+                      }}
+                      className="px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996] w-full resize-none"
+                    />
+                    {laraInstrTooLong && (
+                      <span id="active-lara-instructions-warning" className="text-[10px] text-red-500">
+                        {t('lara_instructions_too_long')}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    id="active-lara-notrace"
+                    type="button"
+                    role="switch"
+                    aria-checked={laraNoTrace}
+                    onClick={() => {
+                      updateCustomProvider(laraProv.id, { laraNoTrace: !laraNoTrace });
+                      refresh();
+                    }}
+                    className="flex items-center justify-between gap-3 text-start cursor-pointer"
+                  >
+                    <span className="text-[11px] text-slate-600 dark:text-slate-300">{t('lara_notrace')}</span>
+                    <span
+                      className={`relative w-9 h-5 rounded-full shrink-0 transition-colors ${laraNoTrace ? 'bg-[var(--accent-primary)]' : 'bg-slate-300 dark:bg-[#2A3446]'}`}
+                    >
+                      <span
+                        className={`absolute top-0.5 start-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${laraNoTrace ? 'translate-x-4 rtl:-translate-x-4' : ''}`}
+                      />
+                    </span>
+                  </button>
                 </div>
               );
             })()}
