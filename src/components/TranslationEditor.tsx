@@ -1696,6 +1696,9 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   );
   // Set when a suggestion was discarded because it would have damaged an ICU block.
   const [icuRejected, setIcuRejected] = useState(false);
+  // The suggest run came back with nothing fillable and no ICU rejection to explain it (e.g.
+  // every engine echoed a brand name back unchanged). Shown instead of silent inaction.
+  const [noSuggestion, setNoSuggestion] = useState(false);
   // Plural categories a suggestion could not fill (the engine did not answer for them): shown as a warning
   const [icuUnfilled, setIcuUnfilled] = useState<string[]>([]);
 
@@ -1782,6 +1785,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
     suggestAbortRef.current = suggestAbort;
     setIsSuggesting(true);
     setIcuUnfilled([]);
+    setNoSuggestion(false);
 
     try {
       if (draftItem.type === 'string') {
@@ -1790,7 +1794,9 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
         void prefetchAddedIcuClauses(draftItem.source, targetLang, icuAsk.body, icuAsk.message);
         const res = await suggestTranslation(draftItem.source, targetLang, targetLocaleName, undefined, suggestAbort.signal);
         if (suggestAbort.signal.aborted) return;
-        setIcuRejected(suggestionRejectedForIcu(res));
+        const rejected = suggestionRejectedForIcu(res);
+        setIcuRejected(rejected);
+        setNoSuggestion(!rejected && !isFillableSuggestion(res));
         // A rejected suggestion hands back the unchanged source text; filling it would
         // show English as "translated", so leave the box and the status untouched.
         if (isFillableSuggestion(res)) {
@@ -1824,8 +1830,10 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
         if (suggestAbort.signal.aborted) return;
         // Any rejected quantity is worth reporting: the others may have filled, so
         // without this the alert would stay silent while one form kept the source text.
-        setIcuRejected(results.some(({ res }) => suggestionRejectedForIcu(res)));
+        const rejected = results.some(({ res }) => suggestionRejectedForIcu(res));
+        setIcuRejected(rejected);
         const anyFilled = results.some(({ res }) => isFillableSuggestion(res));
+        setNoSuggestion(!rejected && !anyFilled);
         const updated = results.map(({ pi, res }) => ({
           ...pi,
           target: isFillableSuggestion(res) ? res.text : pi.target,
@@ -1847,8 +1855,10 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
           }))
         );
         if (suggestAbort.signal.aborted) return;
-        setIcuRejected(results.some(({ res }) => suggestionRejectedForIcu(res)));
+        const rejectedArr = results.some(({ res }) => suggestionRejectedForIcu(res));
+        setIcuRejected(rejectedArr);
         const anyFilled = results.some(({ res }) => isFillableSuggestion(res));
+        setNoSuggestion(!rejectedArr && !anyFilled);
         const updated = results.map(({ ai, res }) => ({
           ...ai,
           target: isFillableSuggestion(res) ? res.text : ai.target,
@@ -2923,14 +2933,14 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
           </div>
 
           {slot('r2', 'kb-r2 rounded-2xl overflow-hidden bg-white dark:bg-[#151922] border border-slate-200/80 dark:border-transparent', <>
-          {icuRejected && (
+          {(icuRejected || noSuggestion) && (
             <div
               role="alert"
               className="mx-3 sm:mx-4 mb-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-200"
             >
               <div className="flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>{t('suggestion_rejected_icu')}</span>
+                <span>{icuRejected ? t('suggestion_rejected_icu') : t('suggestion_none')}</span>
               </div>
             </div>
           )}

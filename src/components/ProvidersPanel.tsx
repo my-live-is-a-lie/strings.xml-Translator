@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useDialog } from '../utils/useDialog';
 import { createPortal } from 'react-dom';
 import { AlertCircle, Check, CheckCircle2, ChevronDown, Cpu, KeyRound, Loader2, Pencil, Plus, Trash2, X } from 'lucide-react';
@@ -21,6 +21,19 @@ import {
 import { useT, tg } from '../i18n/i18n';
 import { SecretField } from './SecretField';
 import { textDirection } from '../utils/direction';
+import {
+  getModelProbeSnapshot,
+  getModelProbeStatesVersion,
+  getProviderModelsSnapshot,
+  getProviderRuntimeErrorsSnapshot,
+  noteModelProbeSuccess,
+  peekModelProbe,
+  sweepGeminiModels,
+  peekModelProbeOkAt,
+  providerSupportsModelChoice,
+  providerSupportsThinking,
+  subscribeModelLists,
+} from '../utils/providerModels';
 
 export function getProviderDisplayName(prov: TranslationProviderConfig | undefined, isAr: boolean): string {
   if (!prov) return tg('google_translate');
@@ -70,6 +83,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   const [editApiSecret, setEditApiSecret] = useState('');
   const [editFolderId, setEditFolderId] = useState('');
   const [isTestingEditKey, setIsTestingEditKey] = useState(false);
+
   const [editTestResult, setEditTestResult] = useState<ProviderTestResult | null>(null);
   const editNameInputRef = useRef<HTMLInputElement | null>(null);
   const editTestAbortRef = useRef<{ controller: AbortController; cancelled: boolean } | null>(null);
@@ -96,6 +110,27 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
     setActiveProviderId(id);
     setSelectedProviderId(id);
     onChanged();
+  };
+
+  // Arabic-first UI: a categorized failure renders the app's Arabic copy, never the raw
+  // mixed-language API message (e.g. "Gemini: عربي / English").
+  const testErrorText = (result: ProviderTestResult): string => {
+    switch (result.errorKind) {
+      case 'expired-key':
+        return t('provider_key_expired');
+      case 'invalid-key':
+        return t('provider_key_invalid');
+      case 'quota-exhausted':
+        return t('provider_quota_exhausted');
+      case 'unreachable':
+        return t('provider_unreachable');
+      case 'provider-error':
+        return t('provider_error');
+      default:
+        // The add-key flow never shows a raw API message: anything uncategorized still gets
+        // key-scoped Arabic copy, not a mixed-language string about a model.
+        return t('provider_key_rejected');
+    }
   };
 
   const inferEngineFromName = (typedName: string, selectedEngine: string): string => {
@@ -187,6 +222,18 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
         folderId: detectedType === 'yandex' || detectedType === 'libretranslate' ? folderId : undefined,
       });
 
+      // The verification already found a model that answers on this plan: make it the default
+      // so the first real translation does not start by failing on a quota-limited one.
+      if (result.workingModel) {
+        updateCustomProvider(added.id, { model: result.workingModel });
+      }
+
+      // Then quietly test every discovered model in the background (one bare 2s attempt each):
+      // plan-limited and unusable models land in their picker groups, passes float to the top.
+      if (detectedType === 'gemini') {
+        void sweepGeminiModels(combinedApiKey);
+      }
+
       refresh();
       setSelectedProviderId(added.id);
       setNewProviderName('');
@@ -275,6 +322,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
         apiKey: combinedKey,
         type: detectedType,
         folderId: detectedType === 'yandex' || detectedType === 'libretranslate' ? editedFolderId : '',
+        // A changed key may have different model availability than the old one.
+        ...(result.workingModel ? { model: result.workingModel } : {}),
       });
       refresh();
       setEditingProviderId(null);
@@ -297,6 +346,165 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   const activeProviderObj =
     providersList.find((p) => p.id === selectedProviderId) || providersList[0];
   const providerLabel = (prov?: TranslationProviderConfig) => getProviderDisplayName(prov, isAr);
+
+  // The pickers under the provider button edit the ACTIVE provider. Its model list comes from the
+  // provider's list-models endpoint (cached external store; static fallback inside).
+  const activeProviderType = activeProviderObj?.type;
+  const activeProviderKey = activeProviderObj?.apiKey;
+  const modelListResult = useSyncExternalStore(subscribeModelLists, () =>
+    getProviderModelsSnapshot(activeProviderType ?? '', activeProviderKey)
+  );
+  const modelChoices = Array.isArray(modelListResult) ? modelListResult : [];
+  const activeModelsLoading = modelListResult === 'loading';
+  // Re-render when any probe lands so the available/unavailable groups stay current.
+  useSyncExternalStore(subscribeModelLists, getModelProbeStatesVersion);
+  // Two groups in the picker: a model lands in "unavailable" only on a definite API answer
+  // (404-style unusable, or a model-scoped quota like a free-tier limit of 0) - transient
+  // failures never move anything. Picking one from there re-tests it.
+  // Two marked groups, each placed only by the model's own definite answer: "not on your
+  // plan" (the API said the model's limit on this key is 0 - it can never run here) and
+  // "unavailable" (404-style, the model does not run at all). A model whose daily quota is
+  // used up is on the plan, so it stays in the available list and shows its note when picked.
+  // Picking one from either group re-tests it.
+  const isPlanLimitedModel = (name: string): boolean => {
+    const entry = peekModelProbe(activeProviderType ?? '', activeProviderKey, name);
+    return entry?.modelQuota === true && entry.quotaKind !== 'daily-used';
+  };
+  const isDefiniteUnavailableModel = (name: string): boolean =>
+    peekModelProbe(activeProviderType ?? '', activeProviderKey, name)?.availability === 'unavailable';
+  const isUnavailableModel = (name: string): boolean =>
+    isPlanLimitedModel(name) || isDefiniteUnavailableModel(name);
+  // A model that was tested and succeeded floats to the top, most recent success first; the
+  // rest keep the API list's order (the sort is stable).
+  const okAt = (name: string) => peekModelProbeOkAt(activeProviderType ?? '', activeProviderKey, name);
+  const availableModels = modelChoices
+    .filter((m) => !isUnavailableModel(m.name))
+    .sort((a, b) => okAt(b.name) - okAt(a.name));
+  const planLimitedModels = modelChoices.filter((m) => isPlanLimitedModel(m.name));
+  const unavailableModels = modelChoices.filter(
+    (m) => isDefiniteUnavailableModel(m.name) && !isPlanLimitedModel(m.name)
+  );
+  // Definite key/account problems (invalid key, exhausted quota) stick on the provider card.
+  const providerRuntimeErrors = useSyncExternalStore(subscribeModelLists, getProviderRuntimeErrorsSnapshot);
+
+  const [modelProbe, setModelProbe] = useState<
+    | 'idle'
+    | 'checking'
+    | 'unavailable'
+    | 'inconclusive'
+    | 'expired-key'
+    | 'invalid-key'
+    | 'quota-exhausted'
+    | 'model-quota'
+    | 'daily-quota-used'
+  >('idle');
+  const modelProbeSeq = useRef(0);
+  // The model picker is a custom dropdown (the native Android popup swallows same-option taps
+  // and ignores option styling): tapping the already-selected model re-tests it.
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
+
+  // The thinking picker only offers the levels the reference model (the pinned one, or the top of
+  // the fetched list on 'auto') actually accepted in a tiny runtime probe - nothing about model
+  // versions is hardcoded. A stored level the model rejected displays and saves as 'auto'.
+  const thinkingModelRef = activeProviderObj?.model || modelChoices[0]?.name || '';
+  const probeResult = useSyncExternalStore(subscribeModelLists, () =>
+    getModelProbeSnapshot(activeProviderType ?? '', activeProviderKey, thinkingModelRef || undefined)
+  );
+  const probeLoading = probeResult === 'loading';
+  const thinkingLevels = probeResult && probeResult !== 'loading' ? probeResult.levels : [];
+  const storedThinking = activeProviderObj?.thinkingLevel || 'auto';
+  const effectiveThinking =
+    storedThinking !== 'auto' && !probeLoading && !thinkingLevels.includes(storedThinking)
+      ? 'auto'
+      : storedThinking;
+  // The thinking picker hides when the endpoint said the reference model does not think at all.
+  const refModelInfo = modelChoices.find((m) => m.name === thinkingModelRef);
+  const showThinkingPicker = providerSupportsThinking(activeProviderObj?.type ?? '') &&
+    (refModelInfo ? refModelInfo.thinking : true);
+
+  // A tap on the already-selected model re-tests it live (cache bypassed); any other tap is a
+  // normal pick, which is probed before saving as usual. 'auto' has nothing to re-test.
+  const pickModel = (name: string) => {
+    setModelMenuOpen(false);
+    if (!activeProviderObj) return;
+    if (name && name === (activeProviderObj.model || '') && activeProviderObj.type === 'gemini') {
+      saveActiveModelChoice(name, effectiveThinking, { forceRetest: true });
+      return;
+    }
+    saveActiveModelChoice(name, effectiveThinking);
+  };
+
+  const saveActiveModelChoice = (
+    model: string,
+    thinkingLevel: string,
+    opts?: { forceRetest?: boolean }
+  ) => {
+    if (!activeProviderObj || activeProviderObj.isBuiltIn) return;
+    const providerId = activeProviderObj.id;
+    const apiKey = activeProviderObj.apiKey;
+    const persist = (level: string) => {
+      updateCustomProvider(providerId, {
+        model,
+        thinkingLevel: level === 'auto' ? '' : level,
+      });
+      refresh();
+    };
+    // A pinned model is probed before saving: the list endpoint names models the key cannot
+    // actually run (other tiers, freshly retired), and picking one of those should say so instead
+    // of silently saving a choice that 404s on the next suggestion. The probe also answers which
+    // thinking levels the new model accepts; a stored level it rejects falls back to 'auto'.
+    if (model && activeProviderObj.type === 'gemini' && apiKey) {
+      const seq = ++modelProbeSeq.current;
+      setModelProbe('checking');
+      // A model picked from the unavailable group is an explicit re-test: bypass the cache so a
+      // recovered model moves back to "available" and a still-failing one stays put.
+      const force = opts?.forceRetest === true || isUnavailableModel(model);
+      // Kicks off the probe: force bypasses the cache for the re-test. The polling below must
+      // NOT force - a forced poll would relaunch the probe on every tick and never settle.
+      getModelProbeSnapshot(activeProviderObj.type, apiKey, model, { force });
+      const waitForProbe = () => {
+        const entry = getModelProbeSnapshot(activeProviderObj.type, apiKey, model);
+        if (entry === 'loading') {
+          window.setTimeout(waitForProbe, 150);
+          return;
+        }
+        if (seq !== modelProbeSeq.current) return;
+        if (!entry || entry.availability === 'unavailable') {
+          setModelProbe('unavailable');
+          return;
+        }
+        // A definite key problem (invalid/expired key, quota exhausted) is named in red; a
+        // model-scoped quota (this model not on the key's tier) warns in amber but keeps the
+        // pick; an inconclusive probe (transient key/network trouble) just notes the check did
+        // not run. Picking a different model re-probes and resets this state, so the warning
+        // clears as soon as a working model is picked.
+        setModelProbe(
+          entry.keyProblem ??
+            (entry.modelQuota
+              ? entry.quotaKind === 'daily-used'
+                ? 'daily-quota-used'
+                : 'model-quota'
+              : entry.availability === 'unknown'
+                ? 'inconclusive'
+                : 'idle')
+        );
+        // A successful (re-)test clears this model's runtime line from the provider card and
+        // floats it to the top of the picker - including cache-hit picks, which skip the
+        // network path where the ordering timestamp is otherwise set.
+        if (entry.availability === 'ok') {
+          noteModelProbeSuccess(activeProviderObj.type, apiKey, model);
+        }
+        const levelForModel =
+          thinkingLevel !== 'auto' && !entry.levels.includes(thinkingLevel) ? 'auto' : thinkingLevel;
+        persist(levelForModel);
+      };
+      waitForProbe();
+      return;
+    }
+    modelProbeSeq.current += 1;
+    setModelProbe('idle');
+    persist(thinkingLevel);
+  };
 
   return (
     <>
@@ -326,6 +534,207 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
               }`}
             />
           </button>
+
+          {activeProviderObj &&
+            !activeProviderObj.isBuiltIn &&
+            (providerSupportsModelChoice(activeProviderObj.type) ||
+              providerSupportsThinking(activeProviderObj.type)) && (
+              <div
+                className={`flex flex-col gap-2 px-3 pb-3 pt-2.5 ${
+                  providersPanelOpen ? 'border-b' : ''
+                } border-slate-200/80 dark:border-[#2A3244]`}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex gap-2">
+                  {providerSupportsModelChoice(activeProviderObj.type) && (
+                    <div className="flex flex-col gap-1 flex-1 min-w-0">
+                      <label
+                        htmlFor="active-provider-model-select"
+                        className="text-[10px] font-semibold text-slate-600 dark:text-slate-300"
+                      >
+                        {t('model')}
+                      </label>
+                      <div className="relative">
+                        <button
+                          id="active-provider-model-select"
+                          type="button"
+                          dir="ltr"
+                          aria-haspopup="listbox"
+                          aria-expanded={modelMenuOpen}
+                          onClick={() => setModelMenuOpen((open) => !open)}
+                          className="w-full px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996] flex items-center justify-between gap-1 text-left"
+                        >
+                          <span className="truncate">
+                            {activeProviderObj.model ||
+                              (activeModelsLoading ? '…' : t('model_auto_recommended'))}
+                          </span>
+                          <ChevronDown className="w-3 h-3 shrink-0 text-slate-500 dark:text-slate-400" />
+                        </button>
+                        {modelMenuOpen && (
+                          <>
+                            <div
+                              className="fixed inset-0 z-40 cursor-default"
+                              onClick={() => setModelMenuOpen(false)}
+                            />
+                            <ul
+                              dir="ltr"
+                              role="listbox"
+                              className="absolute right-0 z-50 mt-1 w-[calc(200%_+_0.5rem)] max-h-64 overflow-auto rounded-lg border border-slate-300 dark:border-[#2E384D] bg-white dark:bg-[#1B212E] shadow-xl py-1"
+                            >
+                              {([
+                                { name: '', label: activeModelsLoading ? '…' : t('model_auto_recommended'), dimmed: false },
+                                ...availableModels.map((m) => ({ name: m.name, label: m.name, dimmed: false })),
+                                ...(activeProviderObj.model &&
+                                activeProviderObj.model !== '' &&
+                                !modelChoices.some((m) => m.name === activeProviderObj.model)
+                                  ? [{ name: activeProviderObj.model, label: activeProviderObj.model, dimmed: false }]
+                                  : []),
+                              ] as Array<{ name: string; label: string; dimmed: boolean }>).map((item) => (
+                                <li key={item.name || '__auto__'} role="option" aria-selected={(activeProviderObj.model || '') === item.name}>
+                                  <button
+                                    type="button"
+                                    onClick={() => pickModel(item.name)}
+                                    className={`w-full px-2 py-1.5 text-left text-[11px] font-mono flex items-center justify-between gap-1 hover:bg-slate-100 dark:hover:bg-[#262E3F] ${
+                                      (activeProviderObj.model || '') === item.name
+                                        ? 'text-[#1EB996] font-semibold'
+                                        : 'text-slate-900 dark:text-slate-100'
+                                    }`}
+                                  >
+                                    <span className="truncate">{item.label}</span>
+                                    {(activeProviderObj.model || '') === item.name && (
+                                      <Check className="w-3 h-3 shrink-0" />
+                                    )}
+                                  </button>
+                                </li>
+                              ))}
+                              {([
+                                { heading: t('models_plan_unavailable'), models: planLimitedModels },
+                                { heading: t('models_unavailable'), models: unavailableModels },
+                              ] as Array<{ heading: string; models: typeof planLimitedModels }>).map(
+                                (group) =>
+                                  group.models.length > 0 && (
+                                    <li key={group.heading}>
+                                      <div dir="rtl" className="px-2 pt-1.5 pb-0.5 text-[10px] font-semibold text-slate-500 dark:text-slate-400 text-right">
+                                        {group.heading}
+                                      </div>
+                                      <ul>
+                                        {group.models.map((m) => (
+                                          <li key={m.name} role="option" aria-selected={activeProviderObj.model === m.name}>
+                                            <button
+                                              type="button"
+                                              onClick={() => pickModel(m.name)}
+                                              className={`w-full px-2 py-1.5 text-left text-[11px] font-mono flex items-center justify-between gap-1 hover:bg-slate-100 dark:hover:bg-[#262E3F] ${
+                                                activeProviderObj.model === m.name
+                                                  ? 'text-[#1EB996] font-semibold'
+                                                  : 'text-slate-400 dark:text-slate-500'
+                                              }`}
+                                            >
+                                              <span className="truncate">{m.name}</span>
+                                              {activeProviderObj.model === m.name && (
+                                                <Check className="w-3 h-3 shrink-0" />
+                                              )}
+                                            </button>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </li>
+                                  )
+                              )}
+                            </ul>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {showThinkingPicker && (
+                    <div className="flex flex-col gap-1 flex-1 min-w-0">
+                      <label
+                        htmlFor="active-provider-thinking-select"
+                        className="text-[10px] font-semibold text-slate-600 dark:text-slate-300"
+                      >
+                        {t('thinking_power')}
+                      </label>
+                      <select
+                        id="active-provider-thinking-select"
+                        value={effectiveThinking}
+                        onChange={(e) => saveActiveModelChoice(activeProviderObj.model || '', e.target.value)}
+                        className="w-full px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
+                      >
+                        <option value="auto">
+                          {probeLoading ? '…' : t('thinking_auto')}
+                        </option>
+                        {thinkingLevels.map((level: string) => (
+                          <option key={level} value={level}>
+                            {level === 'minimal'
+                              ? t('thinking_minimal')
+                              : level === 'low'
+                                ? t('thinking_low')
+                                : level === 'medium'
+                                  ? t('thinking_medium')
+                                  : level === 'high'
+                                    ? t('thinking_high')
+                                    : t('thinking_xhigh')}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+                {(() => {
+                  // A quota note from picking this model clears the moment the model actually
+                  // runs again (a successful suggest or re-test records an 'ok' probe entry).
+                  const liveEntry = activeProviderObj?.model
+                    ? peekModelProbe(activeProviderObj.type, activeProviderObj.apiKey, activeProviderObj.model)
+                    : undefined;
+                  if (
+                    (modelProbe === 'model-quota' || modelProbe === 'daily-quota-used') &&
+                    liveEntry &&
+                    liveEntry.availability === 'ok'
+                  )
+                    return null;
+                  return modelProbe !== 'idle' && (
+                  <div
+                    className={`flex items-center gap-1.5 text-[10px] ${
+                      modelProbe === 'unavailable' ||
+                      modelProbe === 'expired-key' ||
+                      modelProbe === 'invalid-key' ||
+                      modelProbe === 'quota-exhausted'
+                        ? 'text-red-500 dark:text-red-400'
+                        : modelProbe === 'model-quota' || modelProbe === 'daily-quota-used'
+                          ? 'text-amber-600 dark:text-amber-400'
+                          : 'text-slate-500 dark:text-slate-400'
+                    }`}
+                  >
+                    {modelProbe === 'checking' ? (
+                      <>
+                        <Loader2 className="w-3 h-3 animate-spin shrink-0" />
+                        <span>{t('checking_model_availability')}</span>
+                      </>
+                    ) : (
+                      <>
+                        <AlertCircle className="w-3 h-3 shrink-0" />
+                        <span>
+                          {modelProbe === 'unavailable'
+                            ? t('model_not_available_on_plan')
+                            : modelProbe === 'expired-key'
+                              ? t('provider_key_expired')
+                              : modelProbe === 'invalid-key'
+                                ? t('provider_key_invalid')
+                                : modelProbe === 'quota-exhausted'
+                                  ? t('provider_quota_exhausted')
+                                  : modelProbe === 'model-quota'
+                                    ? t('model_quota_unavailable')
+                                    : modelProbe === 'daily-quota-used'
+                                      ? t('model_daily_quota_used')
+                                      : t('model_check_inconclusive')}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                  );
+                })()}
+              </div>
+            )}
 
           {providersPanelOpen && (
             <div className="p-3 flex flex-col gap-3 border-t border-slate-200/80 dark:border-[#2A3244]">
@@ -429,6 +838,21 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                             </div>
                           )}
                         </div>
+
+                        {providerRuntimeErrors.get(prov.id) && (
+                          <div
+                            className="flex items-center gap-1.5 mt-1.5 text-[10px] text-red-500 dark:text-red-400"
+                          >
+                            <AlertCircle className="w-3 h-3 shrink-0" />
+                            <span>
+                              {providerRuntimeErrors.get(prov.id)?.kind === 'expired-key'
+                                ? t('provider_key_expired')
+                                : providerRuntimeErrors.get(prov.id)?.kind === 'invalid-key'
+                                  ? t('provider_key_invalid')
+                                  : t('provider_quota_exhausted')}
+                            </span>
+                          </div>
+                        )}
 
                         {/* Inline Edit Form for Custom Provider Name & API Key */}
                         {!prov.isBuiltIn && isEditing && (
@@ -574,7 +998,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                   </span>
                                 </div>
                                 {editTestResult.error && (
-                                  <p className="opacity-90 leading-snug">{editTestResult.error}</p>
+                                  <p className="opacity-90 leading-snug">{testErrorText(editTestResult)}</p>
                                 )}
                               </div>
                             )}
@@ -900,7 +1324,11 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                             <>
                               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                               <span data-i18n>
-                                {t('api_key_works_translation_matched')}
+                                {testResult.modelsQuotaLimited || testResult.noWorkingModel
+                                  ? t('api_key_works_no_models')
+                                  : testResult.translationUnverified
+                                    ? t('api_key_works')
+                                    : t('api_key_works_translation_matched')}
                               </span>
                             </>
                           ) : (
@@ -946,7 +1374,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
 
                         {testResult.error && (
                           <p className="text-[10px] leading-snug opacity-90">
-                            {testResult.error}
+                            {testErrorText(testResult)}
                           </p>
                         )}
                       </div>

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { geminiTranslateDirect, isModelUnavailableMessage, looksLikeGeminiKey } from '../src/utils/geminiDirect';
+import { geminiTranslateDirect, geminiThinkingConfig, isModelUnavailableMessage, looksLikeGeminiKey } from '../src/utils/geminiDirect';
 
 const ok = (text: string) =>
   new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text }] } }] }), { status: 200 });
@@ -32,7 +32,10 @@ describe('gemini model fallback', () => {
   it('does not hide a bad key behind the fallback', async () => {
     const fetchMock = vi.fn(async () => err(400, 'API key not valid. Please pass a valid API key.'));
     vi.stubGlobal('fetch', fetchMock);
-    await expect(geminiTranslateDirect({ apiKey: 'bad', sourceText: 'Hello' })).rejects.toThrow(/API key not valid/);
+    // Google's 400 is classified: the rejection names the key problem, not the raw API wording.
+    await expect(geminiTranslateDirect({ apiKey: 'bad', sourceText: 'Hello' })).rejects.toThrow(
+      /invalid or disabled/
+    );
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -155,5 +158,60 @@ describe('hedged model race', () => {
     const start = Date.now();
     await expect(geminiTranslateDirect({ apiKey: 'bad', sourceText: 'Hello' })).rejects.toThrow(/not valid|غير صالح/i);
     expect(Date.now() - start).toBeLessThan(3500);
+  });
+});
+
+describe('geminiThinkingConfig', () => {
+  it('sends the level as thinkingLevel for any model (validity is probed at runtime)', () => {
+    expect(geminiThinkingConfig('low')).toEqual({ thinkingLevel: 'low' });
+    expect(geminiThinkingConfig('minimal')).toEqual({ thinkingLevel: 'minimal' });
+    expect(geminiThinkingConfig('xhigh')).toEqual({ thinkingLevel: 'xhigh' });
+  });
+
+  it('leaves the model default for auto/empty/unknown levels', () => {
+    expect(geminiThinkingConfig('auto')).toBeUndefined();
+    expect(geminiThinkingConfig(undefined)).toBeUndefined();
+    expect(geminiThinkingConfig('')).toBeUndefined();
+    expect(geminiThinkingConfig('ultra')).toBeUndefined();
+  });
+});
+
+describe('pinned model and thinking level', () => {
+  it('calls the pinned model first with its thinking config', async () => {
+    const calls: Array<{ url: string; body: { model?: string; generationConfig?: { thinkingConfig?: unknown } } }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        calls.push({ url, body: JSON.parse(String(init?.body || '{}')) });
+        return ok('مرحبا');
+      })
+    );
+    const text = await geminiTranslateDirect({
+      apiKey: 'k',
+      sourceText: 'Hello',
+      model: 'gemini-3.8-flash',
+      thinkingLevel: 'low',
+    });
+    expect(text).toBe('مرحبا');
+    expect(calls[0].url).toContain('gemini-3.8-flash');
+    expect(calls[0].body.generationConfig?.thinkingConfig).toEqual({ thinkingLevel: 'low' });
+  });
+
+  it('retries without the thinking config when the model rejects it', async () => {
+    const bodies: Array<{ generationConfig?: { thinkingConfig?: unknown } }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body || '{}'));
+        bodies.push(body);
+        if (body.generationConfig?.thinkingConfig) return err(400, 'Unknown field thinkingLevel in thinking config');
+        return ok('مرحبا');
+      })
+    );
+    expect(
+      await geminiTranslateDirect({ apiKey: 'k', sourceText: 'Hello', model: 'gemini-3.8-flash', thinkingLevel: 'high' })
+    ).toBe('مرحبا');
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1].generationConfig?.thinkingConfig).toBeUndefined();
   });
 });

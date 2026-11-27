@@ -15,7 +15,13 @@ import {
   isStorageInitialized,
   scheduleStoredWrite,
 } from './storage';
-import { geminiTranslateDirect } from './geminiDirect';
+import { GeminiHttpError, geminiTranslateDirect } from './geminiDirect';
+import {
+  clearProviderRuntimeErrorOnSuccess,
+  recordModelRuntimeSuccess,
+  reportModelDefiniteFailure,
+  reportProviderKeyProblem,
+} from './providerModels';
 import { fetchGoogleGtxRaw, fetchWithTimeout, providerHttpError } from '../shared/translateCore';
 import { directCallProviderWithKey, directTestProviderApiKey } from './directProviders';
 import { findClauseBodyOpens, hasMultilineIcuBlock, splitIcuBlocks, validatePlaceholders } from './placeholderCheck';
@@ -305,6 +311,10 @@ export interface TranslationProviderConfig {
   folderId?: string;
   isBuiltIn?: boolean;
   verifiedAt?: number;
+  /** Pinned model for providers that offer a choice (e.g. Gemini). Empty means auto. */
+  model?: string;
+  /** Thinking/reasoning strength for providers that support it (e.g. Gemini). Empty means the model default. */
+  thinkingLevel?: string;
 }
 
 const CUSTOM_PROVIDERS_STORAGE_KEY = 'custom_translation_providers_v1';
@@ -492,6 +502,8 @@ export function addCustomProvider(input: {
   type: ProviderEngineType;
   apiKey: string;
   folderId?: string;
+  model?: string;
+  thinkingLevel?: string;
 }): TranslationProviderConfig {
   const current = getCustomProviders();
   const newProvider: TranslationProviderConfig = {
@@ -500,6 +512,8 @@ export function addCustomProvider(input: {
     type: input.type,
     apiKey: input.apiKey.trim(),
     folderId: input.folderId?.trim() || undefined,
+    model: input.model?.trim() || undefined,
+    thinkingLevel: input.thinkingLevel || undefined,
     isBuiltIn: false,
     verifiedAt: Date.now(),
   };
@@ -516,6 +530,8 @@ export function updateCustomProvider(
     type?: ProviderEngineType;
     apiKey?: string;
     folderId?: string;
+    model?: string;
+    thinkingLevel?: string;
   }
 ): TranslationProviderConfig | null {
   const current = getCustomProviders();
@@ -530,6 +546,9 @@ export function updateCustomProvider(
     apiKey: updates.apiKey !== undefined ? updates.apiKey.trim() : existing.apiKey,
     folderId:
       updates.folderId !== undefined ? updates.folderId.trim() || undefined : existing.folderId,
+    model: updates.model !== undefined ? updates.model || undefined : existing.model,
+    thinkingLevel:
+      updates.thinkingLevel !== undefined ? updates.thinkingLevel || undefined : existing.thinkingLevel,
     verifiedAt: Date.now(),
   };
 
@@ -556,6 +575,16 @@ export interface ProviderTestResult {
   googleTranslation?: string;
   providerTranslation?: string;
   detectedType?: ProviderEngineType;
+  /** Categorized failure for UI copy; the UI renders Arabic from this instead of the raw message. */
+  errorKind?: 'expired-key' | 'invalid-key' | 'quota-exhausted' | 'unreachable' | 'provider-error' | 'unknown';
+  /** The model that answered the verification call, so it can become the provider's default. */
+  workingModel?: string;
+  /** Key authenticated but every model answered a model-scoped quota; accepted with a flag. */
+  modelsQuotaLimited?: boolean;
+  /** Key authenticated but every candidate model is gone or retired; accepted with a flag. */
+  noWorkingModel?: boolean;
+  /** Key authenticated and models answered, but no clean translation came back to compare. */
+  translationUnverified?: boolean;
   error?: string;
 }
 
@@ -1284,15 +1313,38 @@ async function translateSingleSegmentUncached(
         targetLocaleName,
         pluralQuantity,
         signal,
+        model: activeProvider.type === 'gemini' ? activeProvider.model : undefined,
+        thinkingLevel: activeProvider.type === 'gemini' ? activeProvider.thinkingLevel : undefined,
+        // A definite answer about a model (gone, or its quota not on the plan) moves it to the
+        // picker's unavailable group and shows it on the card; transient failures never do.
+        onModelDefiniteFailure: (model, kind, quotaKind) =>
+          reportModelDefiniteFailure(activeProvider.id, 'gemini', userGeminiKey, model, kind, quotaKind),
+        // A suggest that succeeds with any model records it as tested-and-working, which floats
+        // it to the top of the picker and clears a stale quota line the moment the quota resets.
+        onModelSuccess: (model) =>
+          recordModelRuntimeSuccess(activeProvider.id, 'gemini', userGeminiKey, model),
+        // When the picked model is definitely out and another model translated, the saved
+        // selection moves to the model that actually did the work.
+        onModelFailover: (model) => {
+          recordModelRuntimeSuccess(activeProvider.id, 'gemini', userGeminiKey, model);
+          updateCustomProvider(activeProvider.id, { model });
+        },
       });
       const cleanedAi = stripMetadataLabels(translated, coreText);
       if (cleanedAi && !isPollutedTranslation(cleanedAi)) {
         const restored = postProcess(restoreSegmentSyntax(cleanedAi, tokens, usesEscapedDoubleQuotes));
-        if (!breaksIcuStructure(restored) && !changesLineBreaks(restored) && !isEchoReply(coreText, restored, baseLang))
+        if (!breaksIcuStructure(restored) && !changesLineBreaks(restored) && !isEchoReply(coreText, restored, baseLang)) {
+          clearProviderRuntimeErrorOnSuccess(activeProvider.id);
           return restored;
+        }
       }
     } catch (err) {
       logFallback('gemini', err);
+      // A definite key problem (invalid/expired key, exhausted quota) must not fall back to the
+      // free engines silently: it stays on the provider card until the key works again.
+      if (err instanceof GeminiHttpError && err.keyProblem) {
+        reportProviderKeyProblem(activeProvider.id, err.keyProblem);
+      }
     }
     return null;
   };
