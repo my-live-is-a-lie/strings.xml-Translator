@@ -300,7 +300,7 @@ async function startServer() {
     } catch (error) {
       logProviderError('providers/translate', error);
       return res.status(502).json({
-        ...(error instanceof ProviderKeyError ? { keyProblem: error.keyProblem } : {}),
+        ...(error instanceof ProviderKeyError ? { errorKind: error.keyProblem } : {}),
         error: toUserMessage(error, 'فشلت الترجمة عبر المزود / Provider translation failed.'),
       });
     }

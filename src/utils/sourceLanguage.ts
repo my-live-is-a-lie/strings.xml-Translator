@@ -1,4 +1,4 @@
-import { normalizeSourceLang, SOURCE_LANGUAGES } from '../shared/sourceLang';
+import { normalizeSourceLang } from '../shared/sourceLang';
 import type { ResourceItem } from '../types';
 
 export interface SourceDetection {
@@ -51,8 +51,9 @@ export async function detectSourceLanguage(items: ResourceItem[]): Promise<Sourc
     const top = detectAll(text)[0];
     if (!top || top.accuracy < MIN_ACCURACY) return { code: 'en', status: 'unsure' };
     const code = normalizeSourceLang(top.lang);
-    // A language the app has no entry for cannot be shown or sent: keep English.
-    if (!SOURCE_LANGUAGES.some((l) => l.code === code) || code !== top.lang.split('-')[0]) {
+    // normalizeSourceLang maps a language the app has no entry for to English, so a code that
+    // changed here is one that cannot be shown or sent: keep English.
+    if (code !== top.lang.split('-')[0]) {
       return { code: 'en', status: 'unsure' };
     }
     return { code, status: 'detected' };
