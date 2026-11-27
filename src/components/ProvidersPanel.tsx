@@ -437,6 +437,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   // and ignores option styling): tapping the already-selected model re-tests it.
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [thinkingMenuOpen, setThinkingMenuOpen] = useState(false);
+  const [laraModeMenuOpen, setLaraModeMenuOpen] = useState(false);
+  const [laraEffortMenuOpen, setLaraEffortMenuOpen] = useState(false);
   // The "key works, provider added" box goes away by itself after 5 seconds.
   useEffect(() => {
     if (!testResult || !(testResult.success && testResult.matched)) return;
@@ -446,16 +448,18 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   // Close a picker on a real tap outside it (click never fires after a drag). No full-screen overlay: it would
   // swallow touch drags meant for the drawer and let the page behind scroll.
   useEffect(() => {
-    if (!modelMenuOpen && !thinkingMenuOpen) return;
+    if (!modelMenuOpen && !thinkingMenuOpen && !laraModeMenuOpen && !laraEffortMenuOpen) return;
     const onDown = (e: MouseEvent) => {
       const el = e.target as Element | null;
       const inside = (id: string) => !!el?.closest(`#${id}-list, #${id}-select`);
       if (modelMenuOpen && !inside('active-provider-model')) setModelMenuOpen(false);
       if (thinkingMenuOpen && !inside('active-provider-thinking')) setThinkingMenuOpen(false);
+      if (laraModeMenuOpen && !inside('active-lara-mode')) setLaraModeMenuOpen(false);
+      if (laraEffortMenuOpen && !inside('active-lara-effort')) setLaraEffortMenuOpen(false);
     };
     document.addEventListener('click', onDown, true);
     return () => document.removeEventListener('click', onDown, true);
-  }, [modelMenuOpen, thinkingMenuOpen]);
+  }, [modelMenuOpen, thinkingMenuOpen, laraModeMenuOpen, laraEffortMenuOpen]);
   const thinkingLabel = (level: string) =>
     level === 'auto'
       ? probeLoading
@@ -1304,6 +1308,128 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
         {/* Model and thinking pickers: loose controls under the provider card (no card around them), hidden while the provider list is expanded */}
         {!providersPanelOpen && (
           <>
+            {activeProviderObj && !activeProviderObj.isBuiltIn && activeProviderObj.type === 'lara' && (() => {
+              const laraProv = activeProviderObj;
+              const laraThink = laraProv.laraMode === 'think';
+              const laraEffort = laraProv.laraEffort || 'high';
+              const pickerButton = 'px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996] flex items-center justify-between gap-2 whitespace-nowrap w-full';
+              const listBox = 'absolute z-50 mt-1 min-w-[9rem] max-h-64 overflow-y-auto overscroll-contain touch-pan-y rounded-lg border border-slate-300 dark:border-[#2E384D] bg-white dark:bg-[#1B212E] shadow-xl py-1';
+              const renderList = (
+                id: string,
+                position: string,
+                options: Array<{ value: string; label: string }>,
+                current: string,
+                onPick: (value: string) => void,
+                close: () => void
+              ) => (
+                <ul role="listbox" id={`${id}-list`} className={`${listBox} ${position}`}>
+                  {options.map((o) => (
+                    <li key={o.value} role="option" aria-selected={current === o.value}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          close();
+                          onPick(o.value);
+                        }}
+                        className={`w-full px-2 py-1.5 text-start text-[11px] flex items-center justify-between gap-2 whitespace-nowrap hover:bg-slate-100 dark:hover:bg-[#262E3F] ${
+                          current === o.value ? 'text-[#1EB996] font-semibold' : 'text-slate-900 dark:text-slate-100'
+                        }`}
+                      >
+                        <span>{o.label}</span>
+                        {current === o.value && <Check className="w-3 h-3 shrink-0" />}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              );
+              return (
+                <div className="flex flex-col gap-2 px-1" onClick={(e) => e.stopPropagation()}>
+                  <div className="relative flex gap-2">
+                    <div className="flex flex-col gap-1 flex-1 min-w-0">
+                      <label
+                        htmlFor="active-lara-mode-select"
+                        className="text-[10px] font-semibold text-slate-600 dark:text-slate-300"
+                      >
+                        {t('lara_mode')}
+                      </label>
+                      <div>
+                        <button
+                          id="active-lara-mode-select"
+                          type="button"
+                          aria-haspopup="listbox"
+                          aria-expanded={laraModeMenuOpen}
+                          onClick={() => {
+                            setLaraEffortMenuOpen(false);
+                            setLaraModeMenuOpen((open) => !open);
+                          }}
+                          className={pickerButton}
+                        >
+                          <span className="truncate">{laraThink ? t('lara_mode_think') : t('lara_mode_standard')}</span>
+                          <ChevronDown className="w-3 h-3 shrink-0 text-slate-500 dark:text-slate-400" />
+                        </button>
+                        {laraModeMenuOpen &&
+                          renderList(
+                            'active-lara-mode',
+                            'start-0',
+                            [
+                              { value: 'standard', label: t('lara_mode_standard') },
+                              { value: 'think', label: t('lara_mode_think') },
+                            ],
+                            laraThink ? 'think' : 'standard',
+                            (value) => {
+                              updateCustomProvider(laraProv.id, { laraMode: value === 'think' ? 'think' : '' });
+                              refresh();
+                            },
+                            () => setLaraModeMenuOpen(false)
+                          )}
+                      </div>
+                    </div>
+                    {laraThink && (
+                      <div className="flex flex-col gap-1 min-w-0 shrink-0">
+                        <label
+                          htmlFor="active-lara-effort-select"
+                          className="text-[10px] font-semibold text-slate-600 dark:text-slate-300"
+                        >
+                          {t('lara_effort')}
+                        </label>
+                        <div>
+                          <button
+                            id="active-lara-effort-select"
+                            type="button"
+                            aria-haspopup="listbox"
+                            aria-expanded={laraEffortMenuOpen}
+                            onClick={() => {
+                              setLaraModeMenuOpen(false);
+                              setLaraEffortMenuOpen((open) => !open);
+                            }}
+                            className={`${pickerButton} min-w-[6.5rem]`}
+                          >
+                            <span className="truncate">{t(`thinking_${laraEffort}`)}</span>
+                            <ChevronDown className="w-3 h-3 shrink-0 text-slate-500 dark:text-slate-400" />
+                          </button>
+                          {laraEffortMenuOpen &&
+                            renderList(
+                              'active-lara-effort',
+                              'end-0',
+                              [
+                                { value: 'low', label: t('thinking_low') },
+                                { value: 'medium', label: t('thinking_medium') },
+                                { value: 'high', label: t('thinking_high') },
+                              ],
+                              laraEffort,
+                              (value) => {
+                                updateCustomProvider(laraProv.id, { laraEffort: value });
+                                refresh();
+                              },
+                              () => setLaraEffortMenuOpen(false)
+                            )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
             {activeProviderObj &&
               !activeProviderObj.isBuiltIn &&
               (providerSupportsModelChoice(activeProviderObj.type) ||

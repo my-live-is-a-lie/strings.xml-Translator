@@ -32,6 +32,21 @@ export interface ProviderResult {
 
 const LARA_CONNECTION_TIMEOUT_MS = 10000;
 
+/** Extra Lara translate options chosen on the provider card: Think mode (reasoning) and its effort. */
+export interface LaraTranslateExtras {
+  reasoning?: boolean;
+  reasoningEffort?: 'low' | 'medium' | 'high';
+}
+
+function laraTranslateOptions(extras?: LaraTranslateExtras) {
+  return {
+    timeoutInMillis: LARA_CONNECTION_TIMEOUT_MS,
+    ...(extras?.reasoning
+      ? { reasoning: true, ...(extras.reasoningEffort ? { reasoningEffort: extras.reasoningEffort } : {}) }
+      : {}),
+  };
+}
+
 function parseLaraCredentials(raw: string): { id?: string; secret?: string; singleToken?: string } {
   const cleaned = raw.trim();
 
@@ -104,7 +119,8 @@ export async function callProviderWithKey(
   targetLang: string,
   targetLocaleName?: string,
   pluralQuantity?: string,
-  folderId?: string
+  folderId?: string,
+  laraOptions?: LaraTranslateExtras
 ): Promise<ProviderResult> {
   const baseLang = targetLang.split('-')[0].toLowerCase();
   const trimmedKey = apiKey.trim();
@@ -268,13 +284,13 @@ export async function callProviderWithKey(
         connectionTimeoutMs: LARA_CONNECTION_TIMEOUT_MS,
       });
       try {
-        const result = await lara.translate(sourceText, 'en', laraTarget, { timeoutInMillis: LARA_CONNECTION_TIMEOUT_MS });
+        const result = await lara.translate(sourceText, 'en', laraTarget, laraTranslateOptions(laraOptions));
         if (result && typeof result.translation === 'string' && result.translation.trim()) {
           return stripMetadataWrappers(result.translation, sourceText);
         }
       } catch (err) {
         if (laraTarget !== baseLang) {
-          const fallback = await lara.translate(sourceText, 'en', baseLang, { timeoutInMillis: LARA_CONNECTION_TIMEOUT_MS });
+          const fallback = await lara.translate(sourceText, 'en', baseLang, laraTranslateOptions(laraOptions));
           if (fallback && typeof fallback.translation === 'string' && fallback.translation.trim()) {
             return stripMetadataWrappers(fallback.translation, sourceText);
           }
@@ -289,7 +305,7 @@ export async function callProviderWithKey(
         const tokenClient = new LaraTranslator(new AuthToken(creds.singleToken, ''), {
           connectionTimeoutMs: LARA_CONNECTION_TIMEOUT_MS,
         });
-        const result = await tokenClient.translate(sourceText, 'en', laraTarget, { timeoutInMillis: LARA_CONNECTION_TIMEOUT_MS });
+        const result = await tokenClient.translate(sourceText, 'en', laraTarget, laraTranslateOptions(laraOptions));
         if (result && typeof result.translation === 'string' && result.translation.trim()) {
           return stripMetadataWrappers(result.translation, sourceText);
         }

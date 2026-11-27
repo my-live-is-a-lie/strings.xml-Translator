@@ -83,6 +83,11 @@ function validateProviderFields(
       sourceText,
       targetLocaleName,
       pluralQuantity,
+      laraMode: body.laraMode === 'think' ? 'think' : undefined,
+      laraEffort:
+        typeof body.laraEffort === 'string' && ['low', 'medium', 'high'].includes(body.laraEffort)
+          ? body.laraEffort
+          : undefined,
     },
   };
 }
@@ -252,7 +257,10 @@ async function startServer() {
         f.targetLang as string,
         f.targetLocaleName,
         f.pluralQuantity,
-        f.folderId
+        f.folderId,
+        f.laraMode === 'think'
+          ? { reasoning: true, reasoningEffort: f.laraEffort as 'low' | 'medium' | 'high' | undefined }
+          : undefined
       );
       return res.json({ translatedText });
     } catch (error) {

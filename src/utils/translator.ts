@@ -315,6 +315,10 @@ export interface TranslationProviderConfig {
   model?: string;
   /** Thinking/reasoning strength for providers that support it (e.g. Gemini). Empty means the model default. */
   thinkingLevel?: string;
+  /** Lara only: 'think' turns on Lara's reasoning mode; empty means Standard. */
+  laraMode?: string;
+  /** Lara only: reasoning effort (low, medium or high) used with Think. Empty means Lara's default. */
+  laraEffort?: string;
 }
 
 const CUSTOM_PROVIDERS_STORAGE_KEY = 'custom_translation_providers_v1';
@@ -532,6 +536,8 @@ export function updateCustomProvider(
     folderId?: string;
     model?: string;
     thinkingLevel?: string;
+    laraMode?: string;
+    laraEffort?: string;
   }
 ): TranslationProviderConfig | null {
   const current = getCustomProviders();
@@ -549,6 +555,8 @@ export function updateCustomProvider(
     model: updates.model !== undefined ? updates.model || undefined : existing.model,
     thinkingLevel:
       updates.thinkingLevel !== undefined ? updates.thinkingLevel || undefined : existing.thinkingLevel,
+    laraMode: updates.laraMode !== undefined ? updates.laraMode || undefined : existing.laraMode,
+    laraEffort: updates.laraEffort !== undefined ? updates.laraEffort || undefined : existing.laraEffort,
     verifiedAt: Date.now(),
   };
 
@@ -1249,6 +1257,8 @@ async function translateSingleSegmentUncached(
                 targetLang: directLang,
                 targetLocaleName,
                 pluralQuantity,
+                laraMode: activeProvider.type === 'lara' ? activeProvider.laraMode : undefined,
+                laraEffort: activeProvider.type === 'lara' ? activeProvider.laraEffort : undefined,
               }),
             },
             25000,
@@ -1281,7 +1291,13 @@ async function translateSingleSegmentUncached(
           directLang,
           targetLocaleName,
           pluralQuantity,
-          activeProvider.folderId
+          activeProvider.folderId,
+          activeProvider.type === 'lara' && activeProvider.laraMode === 'think'
+            ? {
+                reasoning: true,
+                reasoningEffort: activeProvider.laraEffort as 'low' | 'medium' | 'high' | undefined,
+              }
+            : undefined
         )
       );
       if (directResult && directResult.translatedText) {
