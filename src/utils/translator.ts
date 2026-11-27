@@ -842,9 +842,13 @@ function hashString(value: string): string {
   return (h >>> 0).toString(36);
 }
 
-function cacheKeyFor(segment: string, directLang: string, pluralQuantity: string | undefined): string {
+export function cacheKeyFor(segment: string, directLang: string, pluralQuantity: string | undefined): string {
   const provider = getActiveProvider();
-  const providerSignature = `${provider.id}:${provider.type}:${hashString(provider.apiKey || '')}:${provider.folderId || ''}:${JSON.stringify(provider.type === 'deepl' ? sanitizeDeeplOptions(provider.deeplOptions) ?? '' : '')}`;
+  const deeplOpts = provider.type === 'deepl' ? sanitizeDeeplOptions(provider.deeplOptions) : undefined;
+  // DeepL options only join the signature when set, so every other key stays as it was
+  const providerSignature =
+    `${provider.id}:${provider.type}:${hashString(provider.apiKey || '')}:${provider.folderId || ''}` +
+    (deeplOpts ? `:${JSON.stringify(deeplOpts)}` : '');
   return [providerSignature, directLang, pluralQuantity || '', segment].join('\u0001');
 }
 
