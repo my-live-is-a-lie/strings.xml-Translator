@@ -116,3 +116,23 @@ describe('DeepL options on the provider card', () => {
     expect(byId('active-deepl-formality')).not.toBeNull();
   });
 });
+
+describe('DeepL context draft', () => {
+  it('is saved when the panel closes while the field is still focused', () => {
+    const deepl = addCustomProvider({ name: 'DeepL', type: 'deepl', apiKey: 'k:fx' });
+    setActiveProviderId(deepl.id);
+    render();
+    const area = byId('active-deepl-context') as HTMLTextAreaElement;
+    area.focus();
+    const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;
+    act(() => {
+      set.call(area, 'Button on the settings screen');
+      area.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(saved()).toBeUndefined();
+    act(() => root.unmount());
+    expect(saved()).toEqual({ context: 'Button on the settings screen' });
+    // afterEach unmounts again
+    root = createRoot(document.createElement('div'));
+  });
+});

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { TranslationProviderConfig, updateCustomProvider } from '../../utils/translator';
+import React, { useEffect, useRef, useState } from 'react';
+import { TranslationProviderConfig, getCustomProviders, updateCustomProvider } from '../../utils/translator';
 import { useT } from '../../i18n/i18n';
 import { sanitizeDeeplOptions, deeplSupportsFormality, DEEPL_CONTEXT_MAX_LENGTH, type DeeplOptions } from '../../shared/deeplOptions';
 
@@ -17,6 +17,21 @@ export const DeeplOptionsControls: React.FC<DeeplOptionsControlsProps> = ({ prov
   const options: DeeplOptions = sanitizeDeeplOptions(provider.deeplOptions) ?? {};
   const [contextDraft, setContextDraft] = useState<string | null>(null);
   const contextText = contextDraft ?? options.context ?? '';
+
+  // Blur never fires when the panel unmounts (drawer closed while the field is focused), so the
+  // cleanup saves a pending draft. The ref holds the latest values for the cleanup to read.
+  const pending = useRef({ id: provider.id, draft: contextDraft, saved: options.context });
+  pending.current = { id: provider.id, draft: contextDraft, saved: options.context };
+  useEffect(
+    () => () => {
+      const { id, draft, saved } = pending.current;
+      if (draft === null || draft === (saved ?? '')) return;
+      const current = getCustomProviders().find((p) => p.id === id);
+      if (!current) return;
+      updateCustomProvider(id, { deeplOptions: { ...sanitizeDeeplOptions(current.deeplOptions), context: draft } });
+    },
+    []
+  );
 
   const save = (patch: Partial<DeeplOptions>) => {
     updateCustomProvider(provider.id, { deeplOptions: { ...options, ...patch } });
