@@ -1317,7 +1317,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
             {activeProviderObj && !activeProviderObj.isBuiltIn && activeProviderObj.type === 'lara' && (() => {
               const laraProv = activeProviderObj;
               const laraThink = laraProv.laraMode === 'think';
-              const laraEffort = laraProv.laraEffort || 'high';
+              const laraEffort = laraProv.laraEffort || 'low';
               const laraStyle = laraProv.laraStyle || 'faithful';
               const laraInstrText = laraInstrDraft ?? laraProv.laraInstructions ?? '';
               const laraInstrTooLong = parseLaraInstructions(laraInstrText).some(

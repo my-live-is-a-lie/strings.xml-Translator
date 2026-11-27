@@ -349,7 +349,7 @@ export function laraExtrasFor(p: TranslationProviderConfig) {
     : undefined;
   const extras = {
     ...(p.laraMode === 'think'
-      ? { reasoning: true, reasoningEffort: p.laraEffort as 'low' | 'medium' | 'high' | undefined }
+      ? { reasoning: true, reasoningEffort: (p.laraEffort || 'low') as 'low' | 'medium' | 'high' }
       : {}),
     ...(instructions.length ? { instructions } : {}),
     ...(p.laraNoTrace ? { noTrace: true } : {}),

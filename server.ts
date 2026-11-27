@@ -51,7 +51,7 @@ function buildLaraExtras(f: {
     .slice(0, 10);
   const extras = {
     ...(f.laraMode === 'think'
-      ? { reasoning: true, reasoningEffort: f.laraEffort as 'low' | 'medium' | 'high' | undefined }
+      ? { reasoning: true, reasoningEffort: (f.laraEffort || 'low') as 'low' | 'medium' | 'high' }
       : {}),
     ...(instructions.length ? { instructions } : {}),
     ...(f.laraNoTrace === 'true' ? { noTrace: true } : {}),
