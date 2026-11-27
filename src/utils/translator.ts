@@ -25,7 +25,7 @@ import {
 } from './providerModels';
 import { fetchGoogleGtxRaw, fetchWithTimeout, providerHttpError } from '../shared/translateCore';
 import { directCallProviderWithKey, directTestProviderApiKey } from './directProviders';
-import { ProviderKeyError } from '../shared/laraErrors';
+import { ProviderKeyError } from '../shared/providerErrors';
 import { normalizeSourceLang } from '../shared/sourceLang';
 
 /** Source language of the open project (base ISO code). Set by the app when a project opens or its source language changes. */

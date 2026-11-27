@@ -5,6 +5,16 @@ import type { ProviderTestResult } from './translator';
 import { sourceLangName } from '../shared/sourceLang';
 import { SYSTEM_INSTRUCTION, fetchWithTimeout } from '../shared/translateCore';
 import { validatePlaceholders } from './placeholderCheck';
+import {
+  classifyGeminiKeyProblem,
+  isModelQuotaMessage,
+  isModelUnavailableMessage,
+  type GeminiKeyProblem,
+} from '../shared/providerErrors';
+
+// Kept so existing imports of these names keep working; they now live in shared/providerErrors.ts.
+export { classifyGeminiKeyProblem, isModelQuotaMessage, isModelUnavailableMessage };
+export type { GeminiKeyProblem };
 
 const API_ROOT = 'https://generativelanguage.googleapis.com/v1beta';
 // Google retires models for new keys from time to time ("no longer available to new users"), so no single
@@ -31,52 +41,6 @@ export const looksLikeGeminiKey = (key: string): boolean => {
   const trimmed = key.trim();
   return trimmed.startsWith('AIza') || trimmed.startsWith('AQ.');
 };
-
-/** Definite key/account problems the user must hear about, distinct from a plain rate limit. */
-export type GeminiKeyProblem = 'expired-key' | 'invalid-key' | 'quota-exhausted';
-
-/**
- * Maps a Gemini error to a definite key problem: an expired key (403 saying so), 401 and other
- * key-related 403s (invalid or restricted), and a 429 about daily quota or billing (exhausted
- * credit). A plain 429 (per-minute rate limit) and model-specific 403s are NOT key problems.
- */
-export function classifyGeminiKeyProblem(status: number, message: string): GeminiKeyProblem | null {
-  if (isModelUnavailableMessage(status, message)) return null;
-  if (status === 401) return 'invalid-key';
-  // Google's API_KEY_INVALID answer is a 400, not a 401.
-  if (status === 400 && /api_?key_invalid|api key not valid|key not valid|invalid (api )?key/i.test(message)) {
-    return 'invalid-key';
-  }
-  if (status === 403 && /key|permission|leaked|referer|ip address|disabled|expired/i.test(message)) {
-    return /expired|renew/i.test(message) ? 'expired-key' : 'invalid-key';
-  }
-  if (status === 429) {
-    // Model-scoped quota (per-model daily limit, e.g. limit 0 on the free tier) says something
-    // about THIS model on this plan, not about the key: it is not a key problem.
-    if (isModelQuotaMessage(status, message)) return null;
-    // Only an explicit project/account metric blames the key. The generic "check your plan and
-    // billing" wording is what a per-model limit-0 answers on some models (verified live: lite
-    // models answer 200 for the same key in the same burst), so ambiguous 429s never blame the key.
-    if (/per_?project|per_?account/i.test(message)) return 'quota-exhausted';
-  }
-  return null;
-}
-
-/**
- * True when a 429 is scoped to one model: either the metric names the model
- * ("generate_requests_per_model_per_day, limit: 0, model: gemini-3.1-pro") or the wording is the
- * generic plan/billing quota text, which Google also returns for per-model limit-0. A per-minute
- * variant is a plain rate limit and matches neither this nor the key problem.
- */
-export function isModelQuotaMessage(status: number, message: string): boolean {
-  return (
-    status === 429 &&
-    !/per_?minute/i.test(message) &&
-    (/per_?model/i.test(message) ||
-      /model:\s*\S+/i.test(message) ||
-      /current quota|plan and billing|billing details/i.test(message))
-  );
-}
 
 /** Two different model-scoped quota answers hide behind the same generic 429 wording. */
 export type ModelQuotaKind = 'limit-zero' | 'daily-used';
@@ -126,15 +90,6 @@ export class GeminiNoModelError extends Error {
     super(message);
     this.name = 'NoModelError';
   }
-}
-
-/** True when the API says this model can't be used (retired, unknown, or not for this key), not that the key is bad. */
-export function isModelUnavailableMessage(status: number, message: string): boolean {
-  if (status === 404) return true;
-  return (
-    (status === 400 || status === 403) &&
-    /no longer available|not found|is not supported|not available to new users|deprecated/i.test(message)
-  );
 }
 
 /** The model that answered the most recent successful call; null after a full failure. */

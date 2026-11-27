@@ -11,7 +11,7 @@ import {
   stripMetadataWrappers,
 } from '../src/shared/translateCore';
 import { validatePlaceholders } from '../src/utils/placeholderCheck';
-import { classifyLaraError, ProviderKeyError, type LaraKeyProblem } from '../src/shared/laraErrors';
+import { classifyLaraError, ProviderKeyError, type LaraKeyProblem } from '../src/shared/providerErrors';
 import { deeplRequestFields, type DeeplOptions } from '../src/shared/deeplOptions';
 import { normalizeSourceLang, sourceLangName, deeplSourceCode, laraSourceCode } from '../src/shared/sourceLang';
 

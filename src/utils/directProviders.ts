@@ -13,7 +13,7 @@ import {
 import { abortable, nativeFetch } from './nativeHttp';
 import { validatePlaceholders } from './placeholderCheck';
 import { geminiTranslateDirect } from './geminiDirect';
-import { classifyLaraError, ProviderKeyError, type LaraKeyProblem } from '../shared/laraErrors';
+import { classifyLaraError, ProviderKeyError, type LaraKeyProblem } from '../shared/providerErrors';
 import { normalizeSourceLang, sourceLangName, deeplSourceCode, laraSourceCode } from '../shared/sourceLang';
 
 export const DIRECT_PROVIDER_TYPES = [
