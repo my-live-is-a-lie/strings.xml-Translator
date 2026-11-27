@@ -56,10 +56,9 @@ export const GEMINI_ERROR_CASES: GeminiErrorCase[] = [
   { name: '404 model not found is not a key problem', status: 404, message: 'models/x is not found', expected: null },
   { name: '429 daily project quota blames the key', status: 429, message: 'Quota exceeded for metric: generate_requests_per_project_per_day', expected: 'quota-exhausted' },
   { name: '429 account quota blames the key', status: 429, message: 'Quota exceeded for metric: requests_per_account', expected: 'quota-exhausted' },
-  // KNOWN WRONG: blames the key for a per-minute limit, to be fixed in R1.3. The per_project check runs
-  // after the per-minute check only excludes model-scoped quota, so this transient limit reads as an
-  // exhausted key. This row pins today's result; R1.3 should change the expected value to null.
-  { name: '429 per-minute limit that names the project (known wrong: blames the key)', status: 429, message: 'Quota exceeded for metric: generativelanguage.googleapis.com/generate_requests_per_minute_per_project', expected: 'quota-exhausted' },
+  { name: '429 per-minute limit that names the project is not a key problem', status: 429, message: 'Quota exceeded for metric: generativelanguage.googleapis.com/generate_requests_per_minute_per_project', expected: null },
+  { name: '429 per-minute limit with a CamelCase metric id is not a key problem', status: 429, message: 'Quota exceeded for quota metric GenerateRequestsPerMinutePerProjectPerModel', expected: null },
+  { name: '429 per-minute limit with a per-model free-tier metric is not a key problem', status: 429, message: 'Quota exceeded for metric: generate_content_free_tier_requests_per_minute_per_project_per_model, limit: 5, model: gemini-2.5-flash', expected: null },
   { name: '429 per-minute rate limit is not a key problem', status: 429, message: 'Quota exceeded for metric: generate_requests_per_model_per_minute', expected: null },
   { name: '429 limit 0 on one model is not a key problem', status: 429, message: 'Quota exceeded for metric: generate_requests_per_model_per_day, limit: 0, model: gemini-3.1-pro', expected: null },
   { name: '429 with a positive per-model daily limit is not a key problem', status: 429, message: 'Quota exceeded for metric: generate_requests_per_model_per_day, limit: 20, model: gemini-3-flash', expected: null },

@@ -63,7 +63,8 @@ export type GeminiKeyProblem = Extract<ProviderKeyKind, 'expired-key' | 'invalid
 /**
  * Maps a Gemini error to a definite key problem: an expired key (403 saying so), 401 and other
  * key-related 403s (invalid or restricted), and a 429 about daily quota or billing (exhausted
- * credit). A plain 429 (per-minute rate limit) and model-specific 403s are NOT key problems.
+ * credit). A per-minute 429 (even one whose metric names the project), a 429 scoped to one model, and
+ * model-specific 403s are NOT key problems.
  */
 export function classifyGeminiKeyProblem(status: number, message: string): GeminiKeyProblem | null {
   if (isModelUnavailableMessage(status, message)) return null;
@@ -76,6 +77,9 @@ export function classifyGeminiKeyProblem(status: number, message: string): Gemin
     return /expired|renew/i.test(message) ? 'expired-key' : 'invalid-key';
   }
   if (status === 429) {
+    // A per-minute limit is a plain rate limit that clears on its own, even when its metric id also
+    // names the project or account. It never blames the key.
+    if (/per_?minute/i.test(message)) return null;
     // Model-scoped quota (per-model daily limit, e.g. limit 0 on the free tier) says something
     // about THIS model on this plan, not about the key: it is not a key problem.
     if (isModelQuotaMessage(status, message)) return null;
