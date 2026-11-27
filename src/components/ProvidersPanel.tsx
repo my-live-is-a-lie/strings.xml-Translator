@@ -437,6 +437,12 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   // and ignores option styling): tapping the already-selected model re-tests it.
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [thinkingMenuOpen, setThinkingMenuOpen] = useState(false);
+  // The "key works, provider added" box goes away by itself after 5 seconds.
+  useEffect(() => {
+    if (!testResult || !(testResult.success && testResult.matched)) return;
+    const timer = window.setTimeout(() => setTestResult(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [testResult]);
   // Close a picker on a real tap outside it (click never fires after a drag). No full-screen overlay: it would
   // swallow touch drags meant for the drawer and let the page behind scroll.
   useEffect(() => {
