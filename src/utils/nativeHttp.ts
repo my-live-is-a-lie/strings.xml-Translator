@@ -8,6 +8,30 @@ export interface NativeRequestOptions {
   timeoutMs?: number;
 }
 
+/**
+ * Stops waiting for a request when `signal` aborts. CapacitorHttp has no cancel call, so on a
+ * device the request itself may still finish in the background; the caller just no longer waits
+ * for it or acts on its answer.
+ */
+export function abortable<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(new DOMException('Aborted', 'AbortError'));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(new DOMException('Aborted', 'AbortError'));
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(
+      (v) => {
+        signal.removeEventListener('abort', onAbort);
+        resolve(v);
+      },
+      (e) => {
+        signal.removeEventListener('abort', onAbort);
+        reject(e);
+      }
+    );
+  });
+}
+
 export interface NativeResponse<T = unknown> {
   status: number;
   ok: boolean;

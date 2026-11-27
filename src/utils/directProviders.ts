@@ -9,7 +9,7 @@ import {
   providerHttpError,
   stripMetadataWrappers,
 } from '../shared/translateCore';
-import { nativeFetch } from './nativeHttp';
+import { abortable, nativeFetch } from './nativeHttp';
 import { validatePlaceholders } from './placeholderCheck';
 import { geminiTranslateDirect } from './geminiDirect';
 import { classifyLaraError, ProviderKeyError, type LaraKeyProblem } from '../shared/laraErrors';
@@ -505,21 +505,17 @@ export async function directCallProviderWithKey(
 export async function directTestProviderApiKey(
   providerType: string,
   apiKey: string,
-  folderId?: string
+  folderId?: string,
+  signal?: AbortSignal
 ): Promise<DirectProviderTestResult> {
   const testPhrase = 'Save';
   const targetLang = 'ar';
   const acceptedAnswers = ['حفظ', 'احفظ', 'تخزين', 'حفظ الملف'];
 
   try {
-    const res = await directCallProviderWithKey(
-      providerType,
-      apiKey,
-      testPhrase,
-      targetLang,
-      'Arabic',
-      undefined,
-      folderId
+    const res = await abortable(
+      directCallProviderWithKey(providerType, apiKey, testPhrase, targetLang, 'Arabic', undefined, folderId),
+      signal
     );
 
     let reference: string | null = null;
