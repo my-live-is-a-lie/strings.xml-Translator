@@ -19,6 +19,13 @@ export default tseslint.config(
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-empty-object-type': 'off',
       'no-empty': ['error', { allowEmptyCatch: false }],
+      // A warning, not an error, so a long file never fails CI. It flags new files that grow past the limit.
+      'max-lines': ['warn', { max: 1500 }],
     },
+  },
+  {
+    // Files that were already past the limit when the rule was added. Remove an entry once its file is split.
+    files: ['src/components/TranslationEditor.tsx', 'src/utils/placeholderCheck.ts', 'src/utils/translator.ts'],
+    rules: { 'max-lines': 'off' },
   },
 );
