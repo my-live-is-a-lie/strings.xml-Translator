@@ -771,11 +771,14 @@ test('plural clone and paste act on the picked form only, and hint when none is 
   await page.getByRole('button', { name: /بدء الترجمة|Start Translating/ }).click();
 
   const fields = page.locator('textarea:visible');
-  const count = await fields.count();
   const hint = page.getByTestId('plural-pick-hint');
 
-  // The source section always shows the singular and the plural source, each with its own copy and clone
+  // Import finishes asynchronously (the source language is detected first), so wait for the editor
+  // before counting its fields.
   await expect(page.getByTestId('plural-source-one')).toContainText('%d file');
+  const count = await fields.count();
+
+  // The source section always shows the singular and the plural source, each with its own copy and clone
   await expect(page.getByTestId('plural-source-other')).toContainText('%d files');
   await expect(page.getByTestId('plural-source-label-one')).toHaveText(/مفرد|Singular/);
   await expect(page.getByTestId('plural-source-label-other')).toHaveText(/الجمع|Plural/);
