@@ -55,6 +55,7 @@ import {
 import { getStoredItem, setStoredItem, copyTextToClipboard, readTextFromClipboard } from '../utils/storage';
 import { useT } from '../i18n/i18n';
 import { SourceLanguagePicker } from './SourceLanguagePicker';
+import { sourceLangLabel } from '../shared/sourceLang';
 
 // The request functions the ICU category fill uses; memoized so a prefetch and the fill share replies.
 const makeIcuAsk = (targetLang: string, targetLocaleName: string) =>
@@ -192,7 +193,6 @@ interface TranslationEditorProps {
   bottomPortal?: HTMLElement | null;
   onResetItemHistory?: (id: string) => void;
   sourceLang?: string;
-  sourceLangStatus?: 'detected' | 'unsure';
   onSourceLangChange?: (code: string) => void;
 }
 
@@ -220,7 +220,6 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   bottomPortal = null,
   onResetItemHistory,
   sourceLang,
-  sourceLangStatus,
   onSourceLangChange,
 }) => {
   const { t, tb } = useT();
@@ -2253,7 +2252,6 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
 
               <SourceLanguagePicker
                 sourceLang={sourceLang}
-                status={sourceLangStatus}
                 isAr={isAr}
                 onChange={onSourceLangChange}
               />
@@ -2286,7 +2284,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                             type="button"
                             onClick={() => copyPluralSource(box.quantity, box.text)}
                             className="shrink-0 p-0.5 rounded-md text-slate-500 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-[#202736] transition cursor-pointer"
-                            title={t('copy_english_source_text')}
+                            title={t('copy_english_source_text', sourceLangLabel(sourceLang, isAr))}
                             data-testid={`plural-source-copy-${box.quantity}`}
                           >
                             {copiedPluralSource === box.quantity ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
@@ -2306,7 +2304,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                           type="button"
                           onClick={() => copyPluralSource(box.quantity, box.text)}
                           className="float-left mr-2 -mt-px p-0.5 rounded-md text-slate-500 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-[#202736] transition cursor-pointer"
-                          title={t('copy_english_source_text')}
+                          title={t('copy_english_source_text', sourceLangLabel(sourceLang, isAr))}
                           data-testid={`plural-source-copy-${box.quantity}`}
                         >
                           {copiedPluralSource === box.quantity ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
@@ -2359,7 +2357,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                     type="button"
                     onClick={handleCopySource}
                     className="float-left mr-2 -mt-px p-0.5 rounded-md text-slate-500 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-[#202736] transition cursor-pointer"
-                    title={t('copy_english_source_text')}
+                    title={t('copy_english_source_text', sourceLangLabel(sourceLang, isAr))}
                   >
                     {copiedSource ? (
                       <Check className="w-4 h-4 text-emerald-400" />
@@ -2731,7 +2729,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => copyArrayItemSource(ai.index, ai.source)}
                         className="p-0.5 rounded-md text-slate-500 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-[#1C2330] transition cursor-pointer"
-                        title={t('copy_english_source_text')}
+                        title={t('copy_english_source_text', sourceLangLabel(sourceLang, isAr))}
                         data-testid={`array-copy-${ai.index}`}
                       >
                         {copiedArrayIdx === ai.index ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}

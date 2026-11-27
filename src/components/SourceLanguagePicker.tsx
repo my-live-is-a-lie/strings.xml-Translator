@@ -1,17 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Check, ChevronDown } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { useT } from '../i18n/i18n';
 import { SOURCE_LANGUAGES, normalizeSourceLang } from '../shared/sourceLang';
 
 interface SourceLanguagePickerProps {
   sourceLang?: string;
-  status?: 'detected' | 'unsure';
   isAr: boolean;
   onChange?: (code: string) => void;
 }
 
 /** The language name that sits on each string card; tap it to change the project's source language. */
-export const SourceLanguagePicker: React.FC<SourceLanguagePickerProps> = ({ sourceLang, status, isAr, onChange }) => {
+export const SourceLanguagePicker: React.FC<SourceLanguagePickerProps> = ({ sourceLang, isAr, onChange }) => {
   const { t } = useT();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -40,19 +39,10 @@ export const SourceLanguagePicker: React.FC<SourceLanguagePickerProps> = ({ sour
         aria-expanded={open}
         aria-label={t('source_language')}
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1 text-slate-600 dark:text-slate-300 text-xs sm:text-sm font-medium"
+        className="text-slate-600 dark:text-slate-300 text-xs sm:text-sm font-medium"
       >
         <span>{nameOf(code)}</span>
-        <ChevronDown className="w-3 h-3 shrink-0 text-slate-500 dark:text-slate-400" />
       </button>
-      {status && (
-        <span
-          id="source-lang-note"
-          className={`text-[10px] ${status === 'unsure' ? 'text-amber-600 dark:text-amber-400' : 'text-slate-500 dark:text-slate-400'}`}
-        >
-          {status === 'unsure' ? t('source_unsure') : t('source_detected')}
-        </span>
-      )}
       {open && (
         <ul
           role="listbox"

@@ -1,3 +1,5 @@
+import { getActiveSourceLang } from '../utils/translator';
+import { sourceLangName } from '../shared/sourceLang';
 import { ChevronDown } from 'lucide-react';
 import { saveFile } from '../utils/saveFile';
 import React, { useMemo, useRef, useState } from 'react';
@@ -114,7 +116,7 @@ export const ExternalAiModal: React.FC<Props> = ({ items: selectedItems, reviewP
 
   const missingRequest = () => {
     const redo = problems.map((r) => r.segment);
-    const prompt = buildPrompt(label, 'text');
+    const prompt = buildPrompt(label, 'text', [], sourceLangName(getActiveSourceLang()));
     return buildTextRequest(prompt, requestJson(redo, label));
   };
 
@@ -191,7 +193,7 @@ export const ExternalAiModal: React.FC<Props> = ({ items: selectedItems, reviewP
                       ? t('external_ai_part_count', t('part_of', i + 1, parts.length), part.length)
                       : t('external_ai_string_count', part.length)}
                   </span>
-                  <button type="button" data-ext="copy-text" className="btn-ext" onClick={() => copy(buildTextRequest(buildPrompt(label, 'text'), json), t('request_copied'))}>
+                  <button type="button" data-ext="copy-text" className="btn-ext" onClick={() => copy(buildTextRequest(buildPrompt(label, 'text', [], sourceLangName(getActiveSourceLang())), json), t('request_copied'))}>
                     {tb('copy_as_text')}
                   </button>
                   <button type="button" data-ext="download" className="btn-ext" onClick={() => downloadText(`strings-to-translate${suffix}.json`, json)}>
@@ -201,7 +203,7 @@ export const ExternalAiModal: React.FC<Props> = ({ items: selectedItems, reviewP
               );
             })}
           </ul>
-          <button type="button" data-ext="copy-prompt" className="btn-ext" onClick={() => copy(buildPrompt(label, 'file'), t('prompt_copied'))}>
+          <button type="button" data-ext="copy-prompt" className="btn-ext" onClick={() => copy(buildPrompt(label, 'file', [], sourceLangName(getActiveSourceLang())), t('prompt_copied'))}>
             {tb('copy_the_prompt_only_to')}
           </button>
         </section>

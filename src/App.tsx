@@ -858,11 +858,11 @@ export default function App() {
   }, [project.id, handleSelectFile]);
 
   // Handle Locale Change with translations caching per language so nothing is lost!
-  // Picking a source language by hand replaces the detected one (and its note).
+  // Picking a source language by hand replaces the detected one.
   const handleSourceLangChange = useCallback((code: string) => {
     setEditorState((curr) => ({
       ...curr,
-      project: { ...curr.project, sourceLang: code, sourceLangStatus: undefined, lastModified: Date.now() },
+      project: { ...curr.project, sourceLang: code, lastModified: Date.now() },
     }));
   }, []);
 
@@ -1024,7 +1024,6 @@ currentItem ? (
                   bottomPortal={splitActive ? bottomEl : null}
                   onResetItemHistory={handleResetItemHistory}
                   sourceLang={project.sourceLang}
-                  sourceLangStatus={project.sourceLangStatus}
                   onSourceLangChange={handleSourceLangChange}
                 />
               ) : (
@@ -1157,6 +1156,7 @@ currentItem ? (
           /* Table View */
           <main className="flex-1 h-full overflow-hidden">
             <TableView
+              sourceLang={project.sourceLang}
               statsNode={renderHeader('tableLegend')}
               items={orderedItems}
               selectedId={selectedId}

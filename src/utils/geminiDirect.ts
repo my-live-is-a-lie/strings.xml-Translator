@@ -2,6 +2,7 @@ import { debugIgnored } from './debug';
 // Calls the Gemini API straight from the browser with the user's own key.
 // The key goes from this browser to Google only; it never passes through this app's server.
 import type { ProviderTestResult } from './translator';
+import { sourceLangName } from '../shared/sourceLang';
 import { SYSTEM_INSTRUCTION, fetchWithTimeout } from '../shared/translateCore';
 import { validatePlaceholders } from './placeholderCheck';
 
@@ -434,6 +435,8 @@ export function geminiThinkingConfig(level: string | undefined): { thinkingLevel
 }
 
 export async function geminiTranslateDirect(opts: {
+  /** Source language of the project (base ISO code); English when omitted. */
+  sourceLang?: string;
   apiKey: string;
   sourceText: string;
   targetLang?: string;
@@ -464,13 +467,13 @@ export async function geminiTranslateDirect(opts: {
    */
   onModelFailover?: (model: string) => void;
 }): Promise<string> {
-  const { apiKey, sourceText, targetLang = 'ar', targetLocaleName, pluralQuantity, signal } = opts;
+  const { apiKey, sourceText, targetLang = 'ar', targetLocaleName, pluralQuantity, signal, sourceLang } = opts;
   const langLabel = targetLocaleName ? `${targetLocaleName} (${targetLang})` : targetLang;
   const pluralContext = pluralQuantity
     ? `\nThis value is the "${pluralQuantity}" CLDR plural form for ${langLabel}. Translate only this form; ` +
       'do not add, drop or renumber any ICU block or clause.'
     : '';
-  const prompt = `Translate the following Android strings.xml value from English to ${langLabel}.${pluralContext}
+  const prompt = `Translate the following Android strings.xml value from ${sourceLangName(sourceLang)} to ${langLabel}.${pluralContext}
 Return ONLY the translated text without any metadata labels (never output "[ترجمة المصطلح: ...]") and preserve all placeholders (%s, %d, %1$s, %2$d, \\n, HTML tags) exactly as they appear; for an ICU MessageFormat block, protect only its syntax (variable names, format types, clause keywords, offset:, =0/=1 selectors, #, and the ' quote marks) and translate the human-readable text inside each clause.
 
 Source string:

@@ -58,7 +58,6 @@ export interface TranslationProject {
   name: string; // e.g., "My Android App"
   sourceFileName: string; // e.g., "strings.xml"
   sourceLang: string; // e.g., "en"
-  sourceLangStatus?: 'detected' | 'unsure'; // set when the language was auto-detected at import; unset for projects made before detection or picked by hand
   targetLang: string; // e.g., "es", "ar", "fr", "de"
   targetLocaleName: string; // e.g., "Spanish", "Arabic"
   items: ResourceItem[];

@@ -302,7 +302,6 @@ export const ImportModal: React.FC<ImportModalProps> = ({
       name: projectName.trim() || (t('android_strings')),
       sourceFileName: fileName,
       sourceLang: detectedSource.code,
-      sourceLangStatus: detectedSource.status,
       targetLang,
       targetLocaleName: isAr ? getArabicLanguageName(targetLang) : getLocaleName(targetLang),
       items: finalItems,

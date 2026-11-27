@@ -1383,6 +1383,7 @@ async function translateSingleSegmentUncached(
         targetLocaleName,
         pluralQuantity,
         signal,
+        sourceLang: activeSourceLang,
         model: activeProvider.type === 'gemini' ? activeProvider.model : undefined,
         thinkingLevel: activeProvider.type === 'gemini' ? activeProvider.thinkingLevel : undefined,
         // A definite answer about a model (gone, or its quota not on the plan) moves it to the

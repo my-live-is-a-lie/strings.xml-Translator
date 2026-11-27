@@ -45,6 +45,13 @@ export function normalizeSourceLang(code?: string | null): string {
   return SOURCE_LANGUAGES.some((l) => l.code === base) ? base : 'en';
 }
 
+/** Name shown in the UI, in the interface language (Arabic or English). */
+export function sourceLangLabel(code: string | null | undefined, isAr: boolean): string {
+  const base = normalizeSourceLang(code);
+  const l = SOURCE_LANGUAGES.find((x) => x.code === base) || SOURCE_LANGUAGES[0];
+  return isAr ? l.nameAr : l.name;
+}
+
 /** English name used inside provider prompts ("from Arabic to ..."). */
 export function sourceLangName(code?: string | null): string {
   const base = normalizeSourceLang(code);
