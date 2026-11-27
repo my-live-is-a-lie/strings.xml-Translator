@@ -35,10 +35,12 @@ interface ActiveProviderControlsProps {
   activeProviderObj: TranslationProviderConfig | undefined;
   /** Called after the provider's settings are saved */
   refresh: () => void;
+  /** The project's target language code */
+  targetLang: string;
 }
 
 /** Model, thinking and Lara controls shown under the provider card; they edit the ACTIVE provider. */
-export const ActiveProviderControls: React.FC<ActiveProviderControlsProps> = ({ activeProviderObj, refresh }) => {
+export const ActiveProviderControls: React.FC<ActiveProviderControlsProps> = ({ activeProviderObj, refresh, targetLang }) => {
   const { t } = useT();
   // The pickers under the provider button edit the ACTIVE provider. Its model list comes from the
   // provider's list-models endpoint (cached external store; static fallback inside).
@@ -245,7 +247,7 @@ export const ActiveProviderControls: React.FC<ActiveProviderControlsProps> = ({ 
   return (
  <>
             {activeProviderObj && !activeProviderObj.isBuiltIn && activeProviderObj.type === 'deepl' && (
-              <DeeplOptionsControls provider={activeProviderObj} refresh={refresh} />
+              <DeeplOptionsControls provider={activeProviderObj} targetLang={targetLang} refresh={refresh} />
             )}
             {activeProviderObj && !activeProviderObj.isBuiltIn && activeProviderObj.type === 'lara' && (() => {
               const laraProv = activeProviderObj;

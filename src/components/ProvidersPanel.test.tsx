@@ -52,7 +52,7 @@ afterEach(() => {
 function renderPanel() {
   act(() => {
     root = createRoot(container);
-    root.render(<ProvidersPanel isAr onChanged={onChanged} />);
+    root.render(<ProvidersPanel isAr targetLang="de" onChanged={onChanged} />);
   });
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deeplRequestFields, sanitizeDeeplOptions, DEEPL_CONTEXT_MAX_LENGTH } from './deeplOptions';
+import { deeplSupportsFormality, deeplRequestFields, sanitizeDeeplOptions, DEEPL_CONTEXT_MAX_LENGTH } from './deeplOptions';
 
 describe('deeplRequestFields', () => {
   it('sends nothing when no option is set, so DeepL keeps its defaults', () => {
@@ -46,5 +46,14 @@ describe('sanitizeDeeplOptions', () => {
   it('caps the context length and ignores a blank one', () => {
     expect(sanitizeDeeplOptions({ context: '   ' })).toBeUndefined();
     expect(sanitizeDeeplOptions({ context: 'a'.repeat(5000) })?.context).toHaveLength(DEEPL_CONTEXT_MAX_LENGTH);
+  });
+});
+
+describe('deeplSupportsFormality', () => {
+  it('is true for the languages DeepL lists with formality', () => {
+    for (const l of ['de', 'es', 'fr', 'it', 'ja', 'nl', 'pl', 'pt', 'pt-rBR', 'ru']) expect(deeplSupportsFormality(l)).toBe(true);
+  });
+  it('is false for Arabic and other languages without it', () => {
+    for (const l of ['ar', 'en', 'tr', 'zh-rCN', 'ko', 'hi']) expect(deeplSupportsFormality(l)).toBe(false);
   });
 });

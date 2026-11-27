@@ -1,16 +1,18 @@
 import React, { useState } from 'react';
 import { TranslationProviderConfig, updateCustomProvider } from '../../utils/translator';
 import { useT } from '../../i18n/i18n';
-import { sanitizeDeeplOptions, DEEPL_CONTEXT_MAX_LENGTH, type DeeplOptions } from '../../shared/deeplOptions';
+import { sanitizeDeeplOptions, deeplSupportsFormality, DEEPL_CONTEXT_MAX_LENGTH, type DeeplOptions } from '../../shared/deeplOptions';
 
 interface DeeplOptionsControlsProps {
   provider: TranslationProviderConfig;
+  /** The project's target language code; formality is shown only where DeepL supports it */
+  targetLang: string;
   /** Called after the provider's settings are saved */
   refresh: () => void;
 }
 
 /** DeepL options shown under the provider card: formality, model type, context, formatting, sentence splitting. */
-export const DeeplOptionsControls: React.FC<DeeplOptionsControlsProps> = ({ provider, refresh }) => {
+export const DeeplOptionsControls: React.FC<DeeplOptionsControlsProps> = ({ provider, targetLang, refresh }) => {
   const { t } = useT();
   const options: DeeplOptions = sanitizeDeeplOptions(provider.deeplOptions) ?? {};
   const [contextDraft, setContextDraft] = useState<string | null>(null);
@@ -60,7 +62,7 @@ export const DeeplOptionsControls: React.FC<DeeplOptionsControlsProps> = ({ prov
 
   return (
     <div id="active-deepl-options" className="flex flex-col gap-2 px-1" onClick={(e) => e.stopPropagation()}>
-      {segmented(
+      {deeplSupportsFormality(targetLang) && segmented(
         'active-deepl-formality',
         t('deepl_formality'),
         [

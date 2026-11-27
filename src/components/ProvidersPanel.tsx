@@ -53,9 +53,11 @@ interface ProvidersPanelProps {
   isAr: boolean;
   /** Called after providers are added, edited, removed or the active one changes */
   onChanged: () => void;
+  /** The project's target language code */
+  targetLang: string;
 }
 
-export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged }) => {
+export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged, targetLang }) => {
   const { t, tb } = useT();
   // Translation Providers state inside the sidebar
   const [providersPanelOpen, setProvidersPanelOpen] = useState(false);
@@ -658,7 +660,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
         </div>
 
         {!providersPanelOpen && (
-          <ActiveProviderControls activeProviderObj={activeProviderObj} refresh={refresh} />
+          <ActiveProviderControls activeProviderObj={activeProviderObj} refresh={refresh} targetLang={targetLang} />
         )}
       {providerToDelete && createPortal(
         (

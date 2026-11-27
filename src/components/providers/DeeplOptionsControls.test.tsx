@@ -23,10 +23,10 @@ const click = (el: Element) =>
   });
 const saved = () => getCustomProviders().find((p) => p.type === 'deepl')!.deeplOptions;
 
-function render() {
+function render(targetLang = 'de') {
   act(() => {
     root = createRoot(container);
-    root.render(<ProvidersPanel isAr onChanged={() => {}} />);
+    root.render(<ProvidersPanel isAr targetLang={targetLang} onChanged={() => {}} />);
   });
 }
 
@@ -100,5 +100,19 @@ describe('DeepL options on the provider card', () => {
     type('');
     blur();
     expect(saved()).toBeUndefined();
+  });
+
+  it('hides the formality choice when DeepL has no formality for the target language', () => {
+    const deepl = addCustomProvider({ name: 'DeepL', type: 'deepl', apiKey: 'k:fx' });
+    setActiveProviderId(deepl.id);
+    render('ar');
+    expect(byId('active-deepl-formality')).toBeNull();
+    expect(byId('active-deepl-model-type')).not.toBeNull();
+    act(() => root.unmount());
+    render('de');
+    expect(byId('active-deepl-formality')).not.toBeNull();
+    act(() => root.unmount());
+    render('pt-rBR');
+    expect(byId('active-deepl-formality')).not.toBeNull();
   });
 });

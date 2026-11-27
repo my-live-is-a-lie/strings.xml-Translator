@@ -45,3 +45,15 @@ export function deeplRequestFields(options?: DeeplOptions): Record<string, strin
     ...(o.splitSentences ? { split_sentences: o.splitSentences } : {}),
   };
 }
+
+/**
+ * Target languages (base codes) DeepL accepts the formality option for. Taken from DeepL's
+ * GET /v3/languages?resource=translate_text (feature "formality"): DE, ES, FR, IT, JA, NL, PL, PT, RU.
+ * Any other target (Arabic included) is rejected by DeepL when formality is sent as plain more/less.
+ */
+const FORMALITY_BASE_LANGS = new Set(['de', 'es', 'fr', 'it', 'ja', 'nl', 'pl', 'pt', 'ru']);
+
+/** Whether DeepL supports formality for an app target language code (e.g. 'de', 'pt-rBR'). */
+export function deeplSupportsFormality(targetLang: string): boolean {
+  return FORMALITY_BASE_LANGS.has(targetLang.split('-')[0].toLowerCase());
+}
