@@ -279,6 +279,92 @@ describe('ProvidersPanel: editing and deleting a saved provider', () => {
     expect(text()).not.toContain('RAW');
   });
 
+  const openEdit = () => {
+    click(byId('drawer-translate-providers-btn'));
+    click(document.querySelector('[aria-label="Edit DeepL API"]'));
+    const keyInput = document.querySelector<HTMLInputElement>('input[data-1p-ignore]');
+    const form = keyInput!.closest('form')!;
+    return { keyInput, form, nameInput: form.querySelector<HTMLInputElement>('input')! };
+  };
+  const submit = (form: HTMLFormElement) =>
+    act(async () => {
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+
+  it('the edit form opens with the saved name and key, and the pencil closes it again', () => {
+    saved();
+    renderPanel();
+    const { keyInput, nameInput } = openEdit();
+    expect(nameInput.value).toBe('DeepL API');
+    expect(keyInput?.value).toBe('old-key');
+    click(document.querySelector('[aria-label="Edit DeepL API"]'));
+    expect(document.querySelector('input[data-1p-ignore]')).toBeNull();
+  });
+
+  it('saving only a new name needs no verification and keeps the key', async () => {
+    saved();
+    renderPanel();
+    const { form, nameInput } = openEdit();
+    typeInto(nameInput, 'DeepL work');
+    await submit(form);
+    expect(testProviderApiKey).not.toHaveBeenCalled();
+    expect(getCustomProviders()[0]).toMatchObject({ name: 'DeepL work', apiKey: 'old-key', type: 'deepl' });
+    expect(document.querySelector('input[data-1p-ignore]')).toBeNull();
+    expect(onChanged).toHaveBeenCalled();
+  });
+
+  it('a changed key is saved only after it was verified, then the form closes', async () => {
+    vi.useFakeTimers();
+    saved();
+    testProviderApiKey.mockResolvedValue({ success: true, matched: true });
+    renderPanel();
+    const { keyInput, form } = openEdit();
+    typeInto(keyInput, 'new-key');
+    // Not verified yet: saving does nothing.
+    await submit(form);
+    expect(getCustomProviders()[0].apiKey).toBe('old-key');
+    await act(async () => {
+      vi.advanceTimersByTime(450);
+    });
+    await submit(form);
+    expect(getCustomProviders()[0].apiKey).toBe('new-key');
+    expect(document.querySelector('input[data-1p-ignore]')).toBeNull();
+  });
+
+  const openEditFor = (name: string) => {
+    click(byId('drawer-translate-providers-btn'));
+    click(document.querySelector(`[aria-label="Edit ${name}"]`));
+    const keyInput = document.querySelector<HTMLInputElement>('input[data-1p-ignore]');
+    const form = keyInput!.closest('form')!;
+    return { keyInput, form, inputs: Array.from(form.querySelectorAll<HTMLInputElement>('input')) };
+  };
+
+  it('a saved Lara key "id:secret" opens as two fields', () => {
+    addCustomProvider({ name: 'Lara MT', type: 'lara', apiKey: 'id1:sec1' });
+    renderPanel();
+    const { keyInput, inputs } = openEditFor('Lara MT');
+    expect(keyInput?.value).toBe('id1');
+    expect(inputs.some((i) => i !== keyInput && i.value === 'sec1')).toBe(true);
+  });
+
+  it('a Lara key ending in ":fx" stays whole in the key field', () => {
+    addCustomProvider({ name: 'Lara MT', type: 'lara', apiKey: 'k:fx' });
+    renderPanel();
+    const { keyInput, inputs } = openEditFor('Lara MT');
+    expect(keyInput?.value).toBe('k:fx');
+    expect(inputs.some((i) => i !== keyInput && i.value === 'fx')).toBe(false);
+  });
+
+  it('deleting the provider that is being edited closes its form', () => {
+    saved();
+    renderPanel();
+    openEdit();
+    click(document.querySelector('[aria-label="Delete DeepL API"]'));
+    click(byId('confirm-delete-provider-btn'));
+    expect(getCustomProviders()).toHaveLength(0);
+    expect(document.querySelector('input[data-1p-ignore]')).toBeNull();
+  });
+
   it('deleting asks first, then removes the provider and reports the change', () => {
     saved();
     renderPanel();
