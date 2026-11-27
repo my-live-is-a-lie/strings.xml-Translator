@@ -136,3 +136,36 @@ describe('DeepL context draft', () => {
     root = createRoot(document.createElement('div'));
   });
 });
+
+describe('DeepL context after closing the field unblurred', () => {
+  it('shows the saved text when the provider is selected again and keeps it on the next option change', () => {
+    const a = addCustomProvider({ name: 'DeepL A', type: 'deepl', apiKey: 'a:fx' });
+    addCustomProvider({ name: 'DeepL B', type: 'deepl', apiKey: 'b:fx' });
+    setActiveProviderId(a.id);
+    render();
+    const click2 = (el: Element) =>
+      act(() => {
+        el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      });
+    const toggle = () => click2(byId('drawer-translate-providers-btn')!);
+    const pick = (name: string) =>
+      click2(Array.from(document.querySelectorAll('button')).find((x) => x.textContent?.trim().startsWith(name))!);
+    const area = () => byId('active-deepl-context') as HTMLTextAreaElement;
+    const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;
+    act(() => {
+      area().focus();
+      set.call(area(), 'Button on the settings screen');
+      area().dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    toggle();
+    pick('DeepL B');
+    pick('DeepL A');
+    toggle();
+    expect(area().value).toBe('Button on the settings screen');
+    click(radios('active-deepl-formality')[1]);
+    expect(getCustomProviders().find((p) => p.id === a.id)!.deeplOptions).toMatchObject({
+      context: 'Button on the settings screen',
+      formality: expect.any(String),
+    });
+  });
+});
