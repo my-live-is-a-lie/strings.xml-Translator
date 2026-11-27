@@ -23,6 +23,27 @@ export async function mockProviderApi(page: Page, hits: string[] = []): Promise<
     hits.push(`single:${body.apiKey}`);
     await route.fulfill({ json: { translatedText: fake(body.targetLang, body.sourceText) } });
   });
+  // Strings the key-provider mock cannot answer validly (ICU blocks) fall back to the built-in engines.
+  await mockBuiltInEngines(page);
+}
+
+/**
+ * Keeps the built-in engines off the network. A reply that the key-provider mock cannot make valid
+ * (an ICU block whose keywords it uppercases) falls back to Google and MyMemory, and the real ones
+ * answer differently from run to run (rate limits, slow retries, console errors).
+ */
+export async function mockBuiltInEngines(page: Page): Promise<void> {
+  // Like the real engines: every word changes (ICU keywords included, so a whole block is rejected
+  // and translated clause by clause), while the masked tokens and digits stay as they are.
+  const translate = (q: string) => q.replace(/[A-Za-z]{2,}/g, (w) => `ع${w}`);
+  await page.route('**/translate.googleapis.com/**', async (route) => {
+    const q = new URL(route.request().url()).searchParams.get('q') ?? '';
+    await route.fulfill({ json: [[[translate(q), q, null, null, 1]], null, 'en'] });
+  });
+  await page.route('**/api.mymemory.translated.net/**', async (route) => {
+    const q = new URL(route.request().url()).searchParams.get('q') ?? '';
+    await route.fulfill({ json: { responseStatus: 200, responseData: { translatedText: translate(q) }, matches: [] } });
+  });
 }
 
 /** Opens the app with a saved DeepL provider (stored the legacy plain-text way, so migration is exercised). */

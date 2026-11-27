@@ -5,6 +5,7 @@ import { ResourceItem, FilterStatus, SourceFilter, SingleStringItem } from '../t
 import { breakAfterUnderscores } from './keyBreaks';
 import { Search, X, CheckCircle2, AlertCircle, Check, Sparkles, CheckSquare, Square, Loader2, ChevronDown, ChevronUp, ArrowUpDown, ArrowUp } from 'lucide-react';
 import { bulkTranslateItems, withTranslationProvider } from '../utils/translator';
+import { sourceLangLabel } from '../shared/sourceLang';
 import { BulkProviderModal, EXTERNAL_AI_PROVIDER_ID } from './BulkProviderModal';
 import { ExternalAiModal } from './ExternalAiModal';
 import { filterProjectItems } from '../utils/xmlExporter';
@@ -13,6 +14,7 @@ import { getLanguageOption } from '../utils/languages';
 import { useT } from '../i18n/i18n';
 
 interface TableViewProps {
+  sourceLang?: string;
   items: ResourceItem[];
   /** The string currently open in the editor: the table opens on its page and scrolls to it. */
   selectedId?: string;
@@ -41,6 +43,7 @@ const EST_HEIGHT = 120;
 // Wrapped with React.memo below: re-renders only when its props change
 const TableViewBase: React.FC<TableViewProps> = ({
   items,
+  sourceLang,
   onSelectString,
   onUpdateTranslation,
   targetLang = 'ar',
@@ -1030,7 +1033,7 @@ const TableViewBase: React.FC<TableViewProps> = ({
                 )}
                 <th data-i18n className="py-3 px-3 w-12 text-center">{t('status')}</th>
                 <th data-i18n className="py-3 px-4 w-52">{t('key_name')}</th>
-                <th data-i18n className="py-3 px-4">{t('english_source')}</th>
+                <th data-i18n className="py-3 px-4">{t('english_source', sourceLangLabel(sourceLang, isAr))}</th>
                 <th data-i18n className="py-3 px-4">{t('target_translation')}</th>
               </tr>
             </thead>

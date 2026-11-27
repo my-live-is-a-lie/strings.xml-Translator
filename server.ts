@@ -10,6 +10,8 @@ import {
   outputMatchesReference,
   translateBatch,
 } from './server/providers';
+import { normalizeSourceLang } from './src/shared/sourceLang';
+import { ProviderKeyError } from './src/shared/laraErrors';
 import { createRateLimiter } from './server/rateLimit';
 import { log, metrics, metricsSnapshot, requestLogger } from './server/observability';
 
@@ -34,6 +36,30 @@ const ALLOWED_PROVIDER_VALUES = ['auto', ...PROVIDER_TYPES];
 function readBody(body: unknown): Record<string, unknown> | null {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
   return body as Record<string, unknown>;
+}
+
+/** Builds the Lara options (reasoning, instructions, noTrace, style) from validated request fields. */
+function buildLaraExtras(f: {
+  laraMode?: string;
+  laraEffort?: string;
+  laraInstructions?: string;
+  laraNoTrace?: string;
+  laraStyle?: string;
+}) {
+  const instructions = (f.laraInstructions || '')
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l && l.split(/\s+/).length <= 19)
+    .slice(0, 10);
+  const extras = {
+    ...(f.laraMode === 'think'
+      ? { reasoning: true, reasoningEffort: (f.laraEffort || 'low') as 'low' | 'medium' | 'high' }
+      : {}),
+    ...(instructions.length ? { instructions } : {}),
+    ...(f.laraNoTrace === 'true' ? { noTrace: true } : {}),
+    ...(f.laraStyle ? { style: f.laraStyle as 'faithful' | 'fluid' | 'creative' } : {}),
+  };
+  return Object.keys(extras).length ? extras : undefined;
 }
 
 function validateProviderFields(
@@ -83,6 +109,19 @@ function validateProviderFields(
       sourceText,
       targetLocaleName,
       pluralQuantity,
+      laraMode: body.laraMode === 'think' ? 'think' : undefined,
+      laraEffort:
+        typeof body.laraEffort === 'string' && ['low', 'medium', 'high'].includes(body.laraEffort)
+          ? body.laraEffort
+          : undefined,
+      laraInstructions:
+        typeof body.laraInstructions === 'string' ? body.laraInstructions.slice(0, 2000) : undefined,
+      sourceLang: typeof body.sourceLang === 'string' ? normalizeSourceLang(body.sourceLang) : undefined,
+      laraNoTrace: body.laraNoTrace === true ? 'true' : undefined,
+      laraStyle:
+        typeof body.laraStyle === 'string' && ['faithful', 'fluid', 'creative'].includes(body.laraStyle)
+          ? body.laraStyle
+          : undefined,
     },
   };
 }
@@ -231,6 +270,7 @@ async function startServer() {
       return res.status(400).json({
         success: false,
         matched: false,
+        ...(error instanceof ProviderKeyError ? { errorKind: error.keyProblem } : {}),
         error: toUserMessage(error, 'فشل اختبار المفتاح / API key test failed.'),
       });
     }
@@ -252,12 +292,15 @@ async function startServer() {
         f.targetLang as string,
         f.targetLocaleName,
         f.pluralQuantity,
-        f.folderId
+        f.folderId,
+        buildLaraExtras(f),
+        f.sourceLang
       );
       return res.json({ translatedText });
     } catch (error) {
       logProviderError('providers/translate', error);
       return res.status(502).json({
+        ...(error instanceof ProviderKeyError ? { errorKind: error.keyProblem } : {}),
         error: toUserMessage(error, 'فشلت الترجمة عبر المزود / Provider translation failed.'),
       });
     }
@@ -289,7 +332,8 @@ async function startServer() {
         f.apiKey as string,
         texts,
         f.targetLang as string,
-        f.folderId
+        f.folderId,
+        f.sourceLang
       );
       return res.json({ translations });
     } catch (error) {

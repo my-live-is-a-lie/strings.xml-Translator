@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useDialog } from '../utils/useDialog';
 import { createPortal } from 'react-dom';
-import { AlertCircle, Check, CheckCircle2, ChevronDown, Cpu, KeyRound, Loader2, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { AlertCircle, Check, CheckCircle2, ChevronDown, Clipboard, Cpu, KeyRound, Loader2, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { ENGINE_OPTIONS } from './headerOptions';
 import { testGeminiKeyDirect, looksLikeGeminiKey } from '../utils/geminiDirect';
 import {
@@ -15,11 +15,14 @@ import {
   setActiveProviderId,
   addCustomProvider,
   updateCustomProvider,
+  parseLaraInstructions,
+  LARA_INSTRUCTION_MAX_WORDS,
   removeCustomProvider,
+  getCustomProviders,
   testProviderApiKey,
 } from '../utils/translator';
 import { useT, tg } from '../i18n/i18n';
-import { SecretField } from './SecretField';
+import { SecretField, readClipboardText } from './SecretField';
 import { textDirection } from '../utils/direction';
 import {
   getModelProbeSnapshot,
@@ -85,7 +88,10 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   const [isTestingEditKey, setIsTestingEditKey] = useState(false);
 
   const [editTestResult, setEditTestResult] = useState<ProviderTestResult | null>(null);
+  // The edited key that was verified valid; saving a changed key is allowed only for this exact value.
+  const [editVerified, setEditVerified] = useState<{ sig: string; result: ProviderTestResult } | null>(null);
   const editNameInputRef = useRef<HTMLInputElement | null>(null);
+  const editKeyInputRef = useRef<HTMLInputElement | null>(null);
   const editTestAbortRef = useRef<{ controller: AbortController; cancelled: boolean } | null>(null);
 
   // Warn when the free Google engine keeps failing, since it relies on an unofficial endpoint.
@@ -122,13 +128,17 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
         return t('provider_key_invalid');
       case 'quota-exhausted':
         return t('provider_quota_exhausted');
+      case 'quota-or-limit':
+        return t('provider_quota_or_limit');
       case 'unreachable':
         return t('provider_unreachable');
       case 'provider-error':
         return t('provider_error');
       default:
-        // The add-key flow never shows a raw API message: anything uncategorized still gets
-        // key-scoped Arabic copy, not a mixed-language string about a model.
+        // Gemini always sets errorKind, so its raw messages (mixed language, about a model) never
+        // reach here. Other providers do not categorize: show what they actually said (HTTP status,
+        // "folder ID required", ...) instead of hiding it behind a generic line.
+        if (result.errorKind === undefined && result.error) return result.error;
         return t('provider_key_rejected');
     }
   };
@@ -170,7 +180,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
     // the server is unreachable (static web demo). Google allows CORS from any origin.
     engine === 'gemini' || (engine === 'auto' && looksLikeGeminiKey(key))
       ? testGeminiKeyDirect(key, signal)
-      : testProviderApiKey(engine, key, folderId);
+      : testProviderApiKey(engine, key, folderId, signal);
 
   const handleTestAndAddProvider = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -204,16 +214,17 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
 
       const defaultNameMap: Record<string, string> = {
         lara: 'Lara Translate',
-        yandex: 'Yandex AI',
-        deepl: 'DeepL',
-        gemini: 'Gemini AI',
-        openai: 'OpenAI GPT',
+        yandex: 'Yandex Cloud Translate',
+        deepl: 'DeepL API',
+        gemini: 'Gemini API',
+        openai: 'OpenAI API',
         google_cloud: 'Google Cloud',
-        microsoft: 'Microsoft Translator',
+        libretranslate: 'LibreTranslate',
+        microsoft: 'Microsoft Azure Translator',
       };
 
       const finalName =
-        newProviderName.trim() || `${defaultNameMap[detectedType] || 'Custom'} API`;
+        newProviderName.trim() || defaultNameMap[detectedType] || 'Custom API';
 
       const added = addCustomProvider({
         name: finalName,
@@ -231,7 +242,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
       // Then quietly test every discovered model in the background (one bare 2s attempt each):
       // plan-limited and unusable models land in their picker groups, passes float to the top.
       if (detectedType === 'gemini') {
-        void sweepGeminiModels(combinedApiKey);
+        void sweepGeminiModels(combinedApiKey, () => getCustomProviders().some((p) => p.id === added.id));
       }
 
       refresh();
@@ -267,29 +278,68 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
     }, 60);
   };
 
+  // What the edit form would save, and whether it changes the stored key/folder.
+  const resolveEditTarget = (prov: TranslationProviderConfig) => {
+    const trimmedName = editProviderName.trim() || prov.name;
+    const rawKey = editApiKey.trim() || (prov.type === 'libretranslate' ? 'none' : '');
+    const rawSecret = editApiSecret.trim();
+    const inferredEngine = inferEngineFromName(trimmedName, 'auto');
+    const targetEngine =
+      inferredEngine !== 'auto' ? (inferredEngine as ProviderEngineType) : prov.type;
+    const combinedKey =
+      targetEngine === 'lara' && rawSecret && !rawKey.includes(':')
+        ? `${rawKey}:${rawSecret}`
+        : rawKey;
+    const editedFolderId = editFolderId.trim();
+    const keyChanged =
+      combinedKey !== (prov.apiKey || '').trim() ||
+      ((targetEngine === 'yandex' || targetEngine === 'libretranslate') && editedFolderId !== (prov.folderId || '').trim());
+    const sig = JSON.stringify([prov.id, targetEngine, combinedKey, editedFolderId]);
+    return { trimmedName, rawKey, targetEngine, combinedKey, editedFolderId, keyChanged, sig };
+  };
+
+  // A changed key is verified automatically once typing pauses; Save stays disabled until it passes
+  // (an unchanged key needs no check).
+  const editingProv = editingProviderId ? providersList.find((p) => p.id === editingProviderId) : undefined;
+  const editSig = editingProv ? resolveEditTarget(editingProv).sig : '';
+  useEffect(() => {
+    if (!editingProv) return;
+    const target = resolveEditTarget(editingProv);
+    if (!target.keyChanged || !target.rawKey) return;
+    const abort = { controller: new AbortController(), cancelled: false };
+    const timer = setTimeout(async () => {
+      editTestAbortRef.current = abort;
+      setIsTestingEditKey(true);
+      const result = await testEngineKey(
+        target.targetEngine,
+        target.combinedKey,
+        target.editedFolderId,
+        abort.controller.signal
+      );
+      if (abort.cancelled) return;
+      editTestAbortRef.current = null;
+      setIsTestingEditKey(false);
+      setEditTestResult(result);
+      if (result.success && result.matched) setEditVerified({ sig: target.sig, result });
+    }, 400);
+    return () => {
+      clearTimeout(timer);
+      abort.cancelled = true;
+      abort.controller.abort();
+      if (editTestAbortRef.current === abort) editTestAbortRef.current = null;
+      setIsTestingEditKey(false);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingProviderId, editSig]);
+
   const handleSaveEditedProvider = async (
     e: React.FormEvent,
     prov: TranslationProviderConfig
   ) => {
     e.preventDefault();
-    const trimmedName = editProviderName.trim() || prov.name;
-    const rawKey = editApiKey.trim() || (prov.type === 'libretranslate' ? 'none' : '');
-    const rawSecret = editApiSecret.trim();
+    const { trimmedName, rawKey, targetEngine, combinedKey, editedFolderId, keyChanged, sig } =
+      resolveEditTarget(prov);
     if (!rawKey) return;
-
-    const inferredEngine = inferEngineFromName(trimmedName, 'auto');
-    const targetEngine =
-      inferredEngine !== 'auto' ? (inferredEngine as ProviderEngineType) : prov.type;
-
-    const combinedKey =
-      targetEngine === 'lara' && rawSecret && !rawKey.includes(':')
-        ? `${rawKey}:${rawSecret}`
-        : rawKey;
-
-    const editedFolderId = editFolderId.trim();
-    const keyChanged =
-      combinedKey !== (prov.apiKey || '').trim() ||
-      ((targetEngine === 'yandex' || targetEngine === 'libretranslate') && editedFolderId !== (prov.folderId || '').trim());
 
     // If only the provider name was changed, save immediately without re-running network verification
     if (!keyChanged) {
@@ -303,32 +353,23 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
       return;
     }
 
-    // If the API key was modified, verify the new API key against Google Translate first
-    setIsTestingEditKey(true);
+    // A changed key is saved only if this exact key was already verified valid
+    const result = editVerified && editVerified.sig === sig ? editVerified.result : null;
+    if (!result) return;
+
+    const detectedType: ProviderEngineType = result.detectedType || targetEngine;
+    updateCustomProvider(prov.id, {
+      name: trimmedName,
+      apiKey: combinedKey,
+      type: detectedType,
+      folderId: detectedType === 'yandex' || detectedType === 'libretranslate' ? editedFolderId : '',
+      // A changed key may have different model availability than the old one.
+      ...(result.workingModel ? { model: result.workingModel } : {}),
+    });
+    refresh();
+    setEditingProviderId(null);
     setEditTestResult(null);
-    const editTestAbort = { controller: new AbortController(), cancelled: false };
-    editTestAbortRef.current = editTestAbort;
-
-    const result = await testEngineKey(targetEngine, combinedKey, editedFolderId, editTestAbort.controller.signal);
-    if (editTestAbort.cancelled) return; // cancelled: keep editing without a stale result
-    editTestAbortRef.current = null;
-    setIsTestingEditKey(false);
-    setEditTestResult(result);
-
-    if (result.success && result.matched) {
-      const detectedType: ProviderEngineType = result.detectedType || targetEngine;
-      updateCustomProvider(prov.id, {
-        name: trimmedName,
-        apiKey: combinedKey,
-        type: detectedType,
-        folderId: detectedType === 'yandex' || detectedType === 'libretranslate' ? editedFolderId : '',
-        // A changed key may have different model availability than the old one.
-        ...(result.workingModel ? { model: result.workingModel } : {}),
-      });
-      refresh();
-      setEditingProviderId(null);
-      setEditTestResult(null);
-    }
+    setEditVerified(null);
   };
 
   const handleConfirmDeleteProvider = () => {
@@ -399,9 +440,58 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
     | 'daily-quota-used'
   >('idle');
   const modelProbeSeq = useRef(0);
+  // Unmount invalidates any probe still polling, so its timer chain ends instead of setting state.
+  useEffect(() => {
+    const seqRef = modelProbeSeq;
+    return () => {
+      seqRef.current += 1;
+    };
+  }, []);
   // The model picker is a custom dropdown (the native Android popup swallows same-option taps
   // and ignores option styling): tapping the already-selected model re-tests it.
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [thinkingMenuOpen, setThinkingMenuOpen] = useState(false);
+  const [laraModeMenuOpen, setLaraModeMenuOpen] = useState(false);
+  const [laraEffortMenuOpen, setLaraEffortMenuOpen] = useState(false);
+  const [laraStyleMenuOpen, setLaraStyleMenuOpen] = useState(false);
+  // Unsaved text of the Lara instructions box (saved when the box loses focus).
+  const [laraInstrDraft, setLaraInstrDraft] = useState<string | null>(null);
+  // The "key works, provider added" box goes away by itself after 5 seconds.
+  useEffect(() => {
+    if (!testResult || !(testResult.success && testResult.matched)) return;
+    const timer = window.setTimeout(() => setTestResult(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [testResult]);
+  // Close a picker on a real tap outside it (click never fires after a drag). No full-screen overlay: it would
+  // swallow touch drags meant for the drawer and let the page behind scroll.
+  useEffect(() => {
+    if (!modelMenuOpen && !thinkingMenuOpen && !laraModeMenuOpen && !laraEffortMenuOpen && !laraStyleMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const el = e.target as Element | null;
+      const inside = (id: string) => !!el?.closest(`#${id}-list, #${id}-select`);
+      if (modelMenuOpen && !inside('active-provider-model')) setModelMenuOpen(false);
+      if (thinkingMenuOpen && !inside('active-provider-thinking')) setThinkingMenuOpen(false);
+      if (laraModeMenuOpen && !inside('active-lara-mode')) setLaraModeMenuOpen(false);
+      if (laraEffortMenuOpen && !inside('active-lara-effort')) setLaraEffortMenuOpen(false);
+      if (laraStyleMenuOpen && !inside('active-lara-style')) setLaraStyleMenuOpen(false);
+    };
+    document.addEventListener('click', onDown, true);
+    return () => document.removeEventListener('click', onDown, true);
+  }, [modelMenuOpen, thinkingMenuOpen, laraModeMenuOpen, laraEffortMenuOpen, laraStyleMenuOpen]);
+  const thinkingLabel = (level: string) =>
+    level === 'auto'
+      ? probeLoading
+        ? '…'
+        : t('thinking_auto')
+      : level === 'minimal'
+        ? t('thinking_minimal')
+        : level === 'low'
+          ? t('thinking_low')
+          : level === 'medium'
+            ? t('thinking_medium')
+            : level === 'high'
+              ? t('thinking_high')
+              : t('thinking_xhigh');
 
   // The thinking picker only offers the levels the reference model (the pinned one, or the top of
   // the fetched list on 'auto') actually accepted in a tiny runtime probe - nothing about model
@@ -463,6 +553,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
       // NOT force - a forced poll would relaunch the probe on every tick and never settle.
       getModelProbeSnapshot(activeProviderObj.type, apiKey, model, { force });
       const waitForProbe = () => {
+        // Stale (another model was picked) or unmounted: stop polling instead of ticking on.
+        if (seq !== modelProbeSeq.current) return;
         const entry = getModelProbeSnapshot(activeProviderObj.type, apiKey, model);
         if (entry === 'loading') {
           window.setTimeout(waitForProbe, 150);
@@ -535,207 +627,6 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
             />
           </button>
 
-          {activeProviderObj &&
-            !activeProviderObj.isBuiltIn &&
-            (providerSupportsModelChoice(activeProviderObj.type) ||
-              providerSupportsThinking(activeProviderObj.type)) && (
-              <div
-                className={`flex flex-col gap-2 px-3 pb-3 pt-2.5 ${
-                  providersPanelOpen ? 'border-b' : ''
-                } border-slate-200/80 dark:border-[#2A3244]`}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="flex gap-2">
-                  {providerSupportsModelChoice(activeProviderObj.type) && (
-                    <div className="flex flex-col gap-1 flex-1 min-w-0">
-                      <label
-                        htmlFor="active-provider-model-select"
-                        className="text-[10px] font-semibold text-slate-600 dark:text-slate-300"
-                      >
-                        {t('model')}
-                      </label>
-                      <div className="relative">
-                        <button
-                          id="active-provider-model-select"
-                          type="button"
-                          dir="ltr"
-                          aria-haspopup="listbox"
-                          aria-expanded={modelMenuOpen}
-                          onClick={() => setModelMenuOpen((open) => !open)}
-                          className="w-full px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996] flex items-center justify-between gap-1 text-left"
-                        >
-                          <span className="truncate">
-                            {activeProviderObj.model ||
-                              (activeModelsLoading ? '…' : t('model_auto_recommended'))}
-                          </span>
-                          <ChevronDown className="w-3 h-3 shrink-0 text-slate-500 dark:text-slate-400" />
-                        </button>
-                        {modelMenuOpen && (
-                          <>
-                            <div
-                              className="fixed inset-0 z-40 cursor-default"
-                              onClick={() => setModelMenuOpen(false)}
-                            />
-                            <ul
-                              dir="ltr"
-                              role="listbox"
-                              className="absolute right-0 z-50 mt-1 w-[calc(200%_+_0.5rem)] max-h-64 overflow-auto rounded-lg border border-slate-300 dark:border-[#2E384D] bg-white dark:bg-[#1B212E] shadow-xl py-1"
-                            >
-                              {([
-                                { name: '', label: activeModelsLoading ? '…' : t('model_auto_recommended'), dimmed: false },
-                                ...availableModels.map((m) => ({ name: m.name, label: m.name, dimmed: false })),
-                                ...(activeProviderObj.model &&
-                                activeProviderObj.model !== '' &&
-                                !modelChoices.some((m) => m.name === activeProviderObj.model)
-                                  ? [{ name: activeProviderObj.model, label: activeProviderObj.model, dimmed: false }]
-                                  : []),
-                              ] as Array<{ name: string; label: string; dimmed: boolean }>).map((item) => (
-                                <li key={item.name || '__auto__'} role="option" aria-selected={(activeProviderObj.model || '') === item.name}>
-                                  <button
-                                    type="button"
-                                    onClick={() => pickModel(item.name)}
-                                    className={`w-full px-2 py-1.5 text-left text-[11px] font-mono flex items-center justify-between gap-1 hover:bg-slate-100 dark:hover:bg-[#262E3F] ${
-                                      (activeProviderObj.model || '') === item.name
-                                        ? 'text-[#1EB996] font-semibold'
-                                        : 'text-slate-900 dark:text-slate-100'
-                                    }`}
-                                  >
-                                    <span className="truncate">{item.label}</span>
-                                    {(activeProviderObj.model || '') === item.name && (
-                                      <Check className="w-3 h-3 shrink-0" />
-                                    )}
-                                  </button>
-                                </li>
-                              ))}
-                              {([
-                                { heading: t('models_plan_unavailable'), models: planLimitedModels },
-                                { heading: t('models_unavailable'), models: unavailableModels },
-                              ] as Array<{ heading: string; models: typeof planLimitedModels }>).map(
-                                (group) =>
-                                  group.models.length > 0 && (
-                                    <li key={group.heading}>
-                                      <div dir="rtl" className="px-2 pt-1.5 pb-0.5 text-[10px] font-semibold text-slate-500 dark:text-slate-400 text-right">
-                                        {group.heading}
-                                      </div>
-                                      <ul>
-                                        {group.models.map((m) => (
-                                          <li key={m.name} role="option" aria-selected={activeProviderObj.model === m.name}>
-                                            <button
-                                              type="button"
-                                              onClick={() => pickModel(m.name)}
-                                              className={`w-full px-2 py-1.5 text-left text-[11px] font-mono flex items-center justify-between gap-1 hover:bg-slate-100 dark:hover:bg-[#262E3F] ${
-                                                activeProviderObj.model === m.name
-                                                  ? 'text-[#1EB996] font-semibold'
-                                                  : 'text-slate-400 dark:text-slate-500'
-                                              }`}
-                                            >
-                                              <span className="truncate">{m.name}</span>
-                                              {activeProviderObj.model === m.name && (
-                                                <Check className="w-3 h-3 shrink-0" />
-                                              )}
-                                            </button>
-                                          </li>
-                                        ))}
-                                      </ul>
-                                    </li>
-                                  )
-                              )}
-                            </ul>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                  {showThinkingPicker && (
-                    <div className="flex flex-col gap-1 flex-1 min-w-0">
-                      <label
-                        htmlFor="active-provider-thinking-select"
-                        className="text-[10px] font-semibold text-slate-600 dark:text-slate-300"
-                      >
-                        {t('thinking_power')}
-                      </label>
-                      <select
-                        id="active-provider-thinking-select"
-                        value={effectiveThinking}
-                        onChange={(e) => saveActiveModelChoice(activeProviderObj.model || '', e.target.value)}
-                        className="w-full px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
-                      >
-                        <option value="auto">
-                          {probeLoading ? '…' : t('thinking_auto')}
-                        </option>
-                        {thinkingLevels.map((level: string) => (
-                          <option key={level} value={level}>
-                            {level === 'minimal'
-                              ? t('thinking_minimal')
-                              : level === 'low'
-                                ? t('thinking_low')
-                                : level === 'medium'
-                                  ? t('thinking_medium')
-                                  : level === 'high'
-                                    ? t('thinking_high')
-                                    : t('thinking_xhigh')}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                </div>
-                {(() => {
-                  // A quota note from picking this model clears the moment the model actually
-                  // runs again (a successful suggest or re-test records an 'ok' probe entry).
-                  const liveEntry = activeProviderObj?.model
-                    ? peekModelProbe(activeProviderObj.type, activeProviderObj.apiKey, activeProviderObj.model)
-                    : undefined;
-                  if (
-                    (modelProbe === 'model-quota' || modelProbe === 'daily-quota-used') &&
-                    liveEntry &&
-                    liveEntry.availability === 'ok'
-                  )
-                    return null;
-                  return modelProbe !== 'idle' && (
-                  <div
-                    className={`flex items-center gap-1.5 text-[10px] ${
-                      modelProbe === 'unavailable' ||
-                      modelProbe === 'expired-key' ||
-                      modelProbe === 'invalid-key' ||
-                      modelProbe === 'quota-exhausted'
-                        ? 'text-red-500 dark:text-red-400'
-                        : modelProbe === 'model-quota' || modelProbe === 'daily-quota-used'
-                          ? 'text-amber-600 dark:text-amber-400'
-                          : 'text-slate-500 dark:text-slate-400'
-                    }`}
-                  >
-                    {modelProbe === 'checking' ? (
-                      <>
-                        <Loader2 className="w-3 h-3 animate-spin shrink-0" />
-                        <span>{t('checking_model_availability')}</span>
-                      </>
-                    ) : (
-                      <>
-                        <AlertCircle className="w-3 h-3 shrink-0" />
-                        <span>
-                          {modelProbe === 'unavailable'
-                            ? t('model_not_available_on_plan')
-                            : modelProbe === 'expired-key'
-                              ? t('provider_key_expired')
-                              : modelProbe === 'invalid-key'
-                                ? t('provider_key_invalid')
-                                : modelProbe === 'quota-exhausted'
-                                  ? t('provider_quota_exhausted')
-                                  : modelProbe === 'model-quota'
-                                    ? t('model_quota_unavailable')
-                                    : modelProbe === 'daily-quota-used'
-                                      ? t('model_daily_quota_used')
-                                      : t('model_check_inconclusive')}
-                        </span>
-                      </>
-                    )}
-                  </div>
-                  );
-                })()}
-              </div>
-            )}
-
           {providersPanelOpen && (
             <div className="p-3 flex flex-col gap-3 border-t border-slate-200/80 dark:border-[#2A3244]">
               {gtxDown && (
@@ -790,7 +681,9 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                     ? t('yandex_ai_translator')
                                     : prov.type === 'gemini'
                                       ? t('gemini_ai_engine')
-                                      : prov.type === 'google' || prov.type === 'google_cloud'
+                                      : prov.type === 'google_cloud'
+                                        ? 'Google Cloud'
+                                      : prov.type === 'google'
                                         ? t('google_neural_translate')
                                         : prov.type === 'deepl'
                                           ? t('deepl_neural_mt')
@@ -849,7 +742,9 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                 ? t('provider_key_expired')
                                 : providerRuntimeErrors.get(prov.id)?.kind === 'invalid-key'
                                   ? t('provider_key_invalid')
-                                  : t('provider_quota_exhausted')}
+                                  : providerRuntimeErrors.get(prov.id)?.kind === 'quota-or-limit'
+                                    ? t('provider_quota_or_limit')
+                                    : t('provider_quota_exhausted')}
                             </span>
                           </div>
                         )}
@@ -905,25 +800,61 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                   ? t('lara_access_key_id_or')
                                   : t('edit_api_key')}
                               </label>
-                              <input
-                                type="text"
-                                autoComplete="off"
-                                value={editApiKey}
-                                onChange={(e) => {
-                                  cancelOngoingTest(editTestAbortRef, setIsTestingEditKey);
-                                  setEditApiKey(e.target.value);
-                                }}
-                                onKeyDown={(e) => e.stopPropagation()}
-                                onTouchStart={(e) => e.stopPropagation()}
-                                placeholder={
-                                  prov.type === 'lara' ||
-                                  inferEngineFromName(editProviderName, 'auto') === 'lara'
-                                    ? t('access_key_id_or_id')
-                                    : t('api_key')
-                                }
-                                required
-                                className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
-                              />
+                              <div className="relative flex items-center" dir="ltr">
+                                <input
+                                  ref={editKeyInputRef}
+                                  type="text"
+                                  autoComplete="off"
+                                  autoCapitalize="off"
+                                  autoCorrect="off"
+                                  spellCheck={false}
+                                  data-1p-ignore
+                                  value={editApiKey}
+                                  onChange={(e) => {
+                                    cancelOngoingTest(editTestAbortRef, setIsTestingEditKey);
+                                    setEditTestResult(null);
+                                    setEditApiKey(e.target.value);
+                                  }}
+                                  onKeyDown={(e) => e.stopPropagation()}
+                                  onTouchStart={(e) => e.stopPropagation()}
+                                  placeholder={
+                                    prov.type === 'lara' ||
+                                    inferEngineFromName(editProviderName, 'auto') === 'lara'
+                                      ? t('access_key_id_or_id')
+                                      : t('api_key')
+                                  }
+                                  required
+                                  // The key is always masked and can never be revealed
+                                  style={{ WebkitTextSecurity: 'disc' } as React.CSSProperties}
+                                  className="w-full px-2.5 pe-8 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    if (editApiKey) {
+                                      cancelOngoingTest(editTestAbortRef, setIsTestingEditKey);
+                                      setEditTestResult(null);
+                                      setEditApiKey('');
+                                      editKeyInputRef.current?.focus();
+                                      return;
+                                    }
+                                    try {
+                                      const text = (await readClipboardText()).trim();
+                                      if (text) {
+                                        setEditTestResult(null);
+                                        setEditApiKey(text);
+                                      }
+                                    } catch {
+                                      editKeyInputRef.current?.focus(); // clipboard blocked: paste manually
+                                    }
+                                  }}
+                                  className="absolute end-2 p-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                                  title={editApiKey ? t('clear_key_field') : t('paste_from_clipboard')}
+                                  aria-label={editApiKey ? t('clear_key_field') : t('paste_from_clipboard')}
+                                >
+                                  {editApiKey ? <X className="w-3 h-3" /> : <Clipboard className="w-3.5 h-3.5" />}
+                                </button>
+                              </div>
                             </div>
 
                             {(prov.type === 'lara' ||
@@ -936,7 +867,10 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                   type="text"
                                   autoComplete="off"
                                   value={editApiSecret}
-                                  onChange={(e) => setEditApiSecret(e.target.value)}
+                                  onChange={(e) => {
+                                    setEditTestResult(null);
+                                    setEditApiSecret(e.target.value);
+                                  }}
                                   onKeyDown={(e) => e.stopPropagation()}
                                   onTouchStart={(e) => e.stopPropagation()}
                                   placeholder={
@@ -957,7 +891,10 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                   dir="ltr"
                                   autoComplete="off"
                                   value={editFolderId}
-                                  onChange={(e) => setEditFolderId(e.target.value)}
+                                  onChange={(e) => {
+                                    setEditTestResult(null);
+                                    setEditFolderId(e.target.value);
+                                  }}
                                   onKeyDown={(e) => e.stopPropagation()}
                                   onTouchStart={(e) => e.stopPropagation()}
                                   placeholder="https://libretranslate.example.com"
@@ -978,7 +915,10 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                   dir="ltr"
                                   autoComplete="off"
                                   value={editFolderId}
-                                  onChange={(e) => setEditFolderId(e.target.value)}
+                                  onChange={(e) => {
+                                    setEditTestResult(null);
+                                    setEditFolderId(e.target.value);
+                                  }}
                                   onKeyDown={(e) => e.stopPropagation()}
                                   onTouchStart={(e) => e.stopPropagation()}
                                   placeholder={
@@ -1029,6 +969,10 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                 type="submit"
                                 disabled={
                                   isTestingEditKey ||
+                                  (() => {
+                                    const target = resolveEditTarget(prov);
+                                    return target.keyChanged && editVerified?.sig !== target.sig;
+                                  })() ||
                                   !editProviderName.trim() ||
                                   (!editApiKey.trim() && prov.type !== 'libretranslate')
                                 }
@@ -1141,9 +1085,6 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
 
                     {/* Swipeable / Scrollable Provider Engine List */}
                     <div className="flex flex-col gap-1.5">
-                      <span data-i18n className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
-                        {t('swipe_list_to_choose_provider')}
-                      </span>
                       <div
                         id="provider-swipe-list"
                         onTouchMove={(e) => e.stopPropagation()}
@@ -1385,6 +1326,443 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
             </div>
           )}
         </div>
+
+        {/* Model and thinking pickers: loose controls under the provider card (no card around them), hidden while the provider list is expanded */}
+        {!providersPanelOpen && (
+          <>
+            {activeProviderObj && !activeProviderObj.isBuiltIn && activeProviderObj.type === 'lara' && (() => {
+              const laraProv = activeProviderObj;
+              const laraThink = laraProv.laraMode === 'think';
+              const laraEffort = laraProv.laraEffort || 'low';
+              const laraStyle = laraProv.laraStyle || 'faithful';
+              const laraInstrText = laraInstrDraft ?? laraProv.laraInstructions ?? '';
+              const laraInstrTooLong = parseLaraInstructions(laraInstrText).some(
+                (l) => l.split(/\s+/).length > LARA_INSTRUCTION_MAX_WORDS
+              );
+              const laraNoTrace = !!laraProv.laraNoTrace;
+              const pickerButton = 'px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996] flex items-center justify-between gap-2 whitespace-nowrap w-full';
+              const listBox = 'absolute z-50 mt-1 min-w-[9rem] max-h-64 overflow-y-auto overscroll-contain touch-pan-y rounded-lg border border-slate-300 dark:border-[#2E384D] bg-white dark:bg-[#1B212E] shadow-xl py-1';
+              const renderList = (
+                id: string,
+                position: string,
+                options: Array<{ value: string; label: string }>,
+                current: string,
+                onPick: (value: string) => void,
+                close: () => void
+              ) => (
+                <ul role="listbox" id={`${id}-list`} className={`${listBox} ${position}`}>
+                  {options.map((o) => (
+                    <li key={o.value} role="option" aria-selected={current === o.value}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          close();
+                          onPick(o.value);
+                        }}
+                        className={`w-full px-2 py-1.5 text-start text-[11px] flex items-center justify-between gap-2 whitespace-nowrap hover:bg-slate-100 dark:hover:bg-[#262E3F] ${
+                          current === o.value ? 'text-[#1EB996] font-semibold' : 'text-slate-900 dark:text-slate-100'
+                        }`}
+                      >
+                        <span>{o.label}</span>
+                        {current === o.value && <Check className="w-3 h-3 shrink-0" />}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              );
+              return (
+                <div className="flex flex-col gap-2 px-1" onClick={(e) => e.stopPropagation()}>
+                  <div className="relative flex gap-2">
+                    <div className="flex flex-col gap-1 flex-1 min-w-0">
+                      <label
+                        htmlFor="active-lara-mode-select"
+                        className="text-[10px] font-semibold text-slate-600 dark:text-slate-300"
+                      >
+                        {t('lara_mode')}
+                      </label>
+                      <div>
+                        <button
+                          id="active-lara-mode-select"
+                          type="button"
+                          aria-haspopup="listbox"
+                          aria-expanded={laraModeMenuOpen}
+                          onClick={() => {
+                            setLaraEffortMenuOpen(false);
+                            setLaraStyleMenuOpen(false);
+                            setLaraModeMenuOpen((open) => !open);
+                          }}
+                          className={pickerButton}
+                        >
+                          <span className="truncate">{laraThink ? t('lara_mode_think') : t('lara_mode_standard')}</span>
+                          <ChevronDown className="w-3 h-3 shrink-0 text-slate-500 dark:text-slate-400" />
+                        </button>
+                        {laraModeMenuOpen &&
+                          renderList(
+                            'active-lara-mode',
+                            'start-0',
+                            [
+                              { value: 'standard', label: t('lara_mode_standard') },
+                              { value: 'think', label: t('lara_mode_think') },
+                            ],
+                            laraThink ? 'think' : 'standard',
+                            (value) => {
+                              updateCustomProvider(laraProv.id, { laraMode: value === 'think' ? 'think' : '' });
+                              refresh();
+                            },
+                            () => setLaraModeMenuOpen(false)
+                          )}
+                      </div>
+                    </div>
+                    {laraThink && (
+                      <div className="flex flex-col gap-1 min-w-0 shrink-0">
+                        <label
+                          htmlFor="active-lara-effort-select"
+                          className="text-[10px] font-semibold text-slate-600 dark:text-slate-300"
+                        >
+                          {t('lara_effort')}
+                        </label>
+                        <div>
+                          <button
+                            id="active-lara-effort-select"
+                            type="button"
+                            aria-haspopup="listbox"
+                            aria-expanded={laraEffortMenuOpen}
+                            onClick={() => {
+                              setLaraModeMenuOpen(false);
+                              setLaraEffortMenuOpen((open) => !open);
+                            }}
+                            className={`${pickerButton} min-w-[6.5rem]`}
+                          >
+                            <span className="truncate">{t(`thinking_${laraEffort}`)}</span>
+                            <ChevronDown className="w-3 h-3 shrink-0 text-slate-500 dark:text-slate-400" />
+                          </button>
+                          {laraEffortMenuOpen &&
+                            renderList(
+                              'active-lara-effort',
+                              'end-0',
+                              [
+                                { value: 'low', label: t('thinking_low') },
+                                { value: 'medium', label: t('thinking_medium') },
+                                { value: 'high', label: t('thinking_high') },
+                              ],
+                              laraEffort,
+                              (value) => {
+                                updateCustomProvider(laraProv.id, { laraEffort: value });
+                                refresh();
+                              },
+                              () => setLaraEffortMenuOpen(false)
+                            )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="relative flex flex-col gap-1">
+                    <label
+                      htmlFor="active-lara-style-select"
+                      className="text-[10px] font-semibold text-slate-600 dark:text-slate-300"
+                    >
+                      {t('lara_style')}
+                    </label>
+                    <div>
+                      <button
+                        id="active-lara-style-select"
+                        type="button"
+                        aria-haspopup="listbox"
+                        aria-expanded={laraStyleMenuOpen}
+                        onClick={() => {
+                          setLaraModeMenuOpen(false);
+                          setLaraEffortMenuOpen(false);
+                          setLaraStyleMenuOpen((open) => !open);
+                        }}
+                        className={pickerButton}
+                      >
+                        <span className="truncate">{t(`lara_style_${laraStyle}`)}</span>
+                        <ChevronDown className="w-3 h-3 shrink-0 text-slate-500 dark:text-slate-400" />
+                      </button>
+                      {laraStyleMenuOpen &&
+                        renderList(
+                          'active-lara-style',
+                          'start-0',
+                          [
+                            { value: 'faithful', label: t('lara_style_faithful') },
+                            { value: 'fluid', label: t('lara_style_fluid') },
+                            { value: 'creative', label: t('lara_style_creative') },
+                          ],
+                          laraStyle,
+                          (value) => {
+                            updateCustomProvider(laraProv.id, { laraStyle: value });
+                            refresh();
+                          },
+                          () => setLaraStyleMenuOpen(false)
+                        )}
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label
+                      htmlFor="active-lara-instructions"
+                      className="text-[10px] font-semibold text-slate-600 dark:text-slate-300"
+                    >
+                      {t('lara_instructions')}
+                    </label>
+                    <textarea
+                      id="active-lara-instructions"
+                      rows={3}
+                      value={laraInstrText}
+                      placeholder={t('lara_instructions_placeholder')}
+                      onChange={(e) => setLaraInstrDraft(e.target.value)}
+                      onBlur={() => {
+                        if (laraInstrDraft === null) return;
+                        updateCustomProvider(laraProv.id, { laraInstructions: laraInstrDraft });
+                        setLaraInstrDraft(null);
+                        refresh();
+                      }}
+                      className="px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996] w-full resize-none"
+                    />
+                    {laraInstrTooLong && (
+                      <span id="active-lara-instructions-warning" className="text-[10px] text-red-500">
+                        {t('lara_instructions_too_long')}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    id="active-lara-notrace"
+                    type="button"
+                    role="switch"
+                    aria-checked={laraNoTrace}
+                    onClick={() => {
+                      updateCustomProvider(laraProv.id, { laraNoTrace: !laraNoTrace });
+                      refresh();
+                    }}
+                    className="flex items-center justify-between gap-3 text-start cursor-pointer"
+                  >
+                    <span className="text-[11px] text-slate-600 dark:text-slate-300">{t('lara_notrace')}</span>
+                    <span
+                      className={`relative w-9 h-5 rounded-full shrink-0 transition-colors ${laraNoTrace ? 'bg-[var(--accent-primary)]' : 'bg-slate-300 dark:bg-[#2A3446]'}`}
+                    >
+                      <span
+                        className={`absolute top-0.5 start-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${laraNoTrace ? 'translate-x-4 rtl:-translate-x-4' : ''}`}
+                      />
+                    </span>
+                  </button>
+                </div>
+              );
+            })()}
+            {activeProviderObj &&
+              !activeProviderObj.isBuiltIn &&
+              (providerSupportsModelChoice(activeProviderObj.type) ||
+                providerSupportsThinking(activeProviderObj.type)) && (
+                <div
+                  className="flex flex-col gap-2 px-1"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="relative flex gap-2">
+                    {providerSupportsModelChoice(activeProviderObj.type) && (
+                      <div className="flex flex-col gap-1 flex-1 min-w-0">
+                        <label
+                          htmlFor="active-provider-model-select"
+                          className="text-[10px] font-semibold text-slate-600 dark:text-slate-300"
+                        >
+                          {t('model')}
+                        </label>
+                        <div>
+                          <button
+                            id="active-provider-model-select"
+                            type="button"
+                            dir="ltr"
+                            aria-haspopup="listbox"
+                            aria-expanded={modelMenuOpen}
+                            onClick={() => setModelMenuOpen((open) => !open)}
+                            className="w-full px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996] flex items-center justify-between gap-1 text-left"
+                          >
+                            <span className="truncate">
+                              {activeProviderObj.model ||
+                                (activeModelsLoading ? '…' : t('model_auto_recommended'))}
+                            </span>
+                            <ChevronDown className="w-3 h-3 shrink-0 text-slate-500 dark:text-slate-400" />
+                          </button>
+                          {modelMenuOpen && (
+                            <>
+                              <ul
+                                dir="ltr"
+                                role="listbox"
+                                id="active-provider-model-list"
+                                className="absolute inset-x-0 z-50 mt-1 max-h-64 overflow-y-auto overscroll-contain touch-pan-y rounded-lg border border-slate-300 dark:border-[#2E384D] bg-white dark:bg-[#1B212E] shadow-xl py-1"
+                              >
+                                {([
+                                  { name: '', label: activeModelsLoading ? '…' : t('model_auto_recommended'), dimmed: false },
+                                  ...availableModels.map((m) => ({ name: m.name, label: m.name, dimmed: false })),
+                                  ...(activeProviderObj.model &&
+                                  activeProviderObj.model !== '' &&
+                                  !modelChoices.some((m) => m.name === activeProviderObj.model)
+                                    ? [{ name: activeProviderObj.model, label: activeProviderObj.model, dimmed: false }]
+                                    : []),
+                                ] as Array<{ name: string; label: string; dimmed: boolean }>).map((item) => (
+                                  <li key={item.name || '__auto__'} role="option" aria-selected={(activeProviderObj.model || '') === item.name}>
+                                    <button
+                                      type="button"
+                                      onClick={() => pickModel(item.name)}
+                                      className={`w-full px-2 py-1.5 text-left text-[11px] font-mono flex items-center justify-between gap-1 hover:bg-slate-100 dark:hover:bg-[#262E3F] ${
+                                        (activeProviderObj.model || '') === item.name
+                                          ? 'text-[#1EB996] font-semibold'
+                                          : 'text-slate-900 dark:text-slate-100'
+                                      }`}
+                                    >
+                                      <span className="truncate">{item.label}</span>
+                                      {(activeProviderObj.model || '') === item.name && (
+                                        <Check className="w-3 h-3 shrink-0" />
+                                      )}
+                                    </button>
+                                  </li>
+                                ))}
+                                {([
+                                  { heading: t('models_plan_unavailable'), models: planLimitedModels },
+                                  { heading: t('models_unavailable'), models: unavailableModels },
+                                ] as Array<{ heading: string; models: typeof planLimitedModels }>).map(
+                                  (group) =>
+                                    group.models.length > 0 && (
+                                      <li key={group.heading}>
+                                        <div dir="rtl" className="px-2 pt-1.5 pb-0.5 text-[10px] font-semibold text-slate-500 dark:text-slate-400 text-right">
+                                          {group.heading}
+                                        </div>
+                                        <ul>
+                                          {group.models.map((m) => (
+                                            <li key={m.name} role="option" aria-selected={activeProviderObj.model === m.name}>
+                                              <button
+                                                type="button"
+                                                onClick={() => pickModel(m.name)}
+                                                className={`w-full px-2 py-1.5 text-left text-[11px] font-mono flex items-center justify-between gap-1 hover:bg-slate-100 dark:hover:bg-[#262E3F] ${
+                                                  activeProviderObj.model === m.name
+                                                    ? 'text-[#1EB996] font-semibold'
+                                                    : 'text-slate-400 dark:text-slate-500'
+                                                }`}
+                                              >
+                                                <span className="truncate">{m.name}</span>
+                                                {activeProviderObj.model === m.name && (
+                                                  <Check className="w-3 h-3 shrink-0" />
+                                                )}
+                                              </button>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      </li>
+                                    )
+                                )}
+                              </ul>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    {showThinkingPicker && (
+                      <div className={`flex flex-col gap-1 min-w-0 ${providerSupportsModelChoice(activeProviderObj.type) ? 'shrink-0' : 'flex-1'}`}>
+                        <label
+                          htmlFor="active-provider-thinking-select"
+                          className="text-[10px] font-semibold text-slate-600 dark:text-slate-300"
+                        >
+                          {t('thinking_power')}
+                        </label>
+                        <div>
+                          <button
+                            id="active-provider-thinking-select"
+                            type="button"
+                            aria-haspopup="listbox"
+                            aria-expanded={thinkingMenuOpen}
+                            onClick={() => setThinkingMenuOpen((open) => !open)}
+                            className={`px-2 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-[11px] text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996] flex items-center justify-between gap-2 whitespace-nowrap min-w-[6.5rem] ${providerSupportsModelChoice(activeProviderObj.type) ? '' : 'w-full'}`}
+                          >
+                            <span className="truncate">{thinkingLabel(effectiveThinking)}</span>
+                            <ChevronDown className="w-3 h-3 shrink-0 text-slate-500 dark:text-slate-400" />
+                          </button>
+                          {thinkingMenuOpen && (
+                            <>
+                              <ul
+                                role="listbox"
+                                id="active-provider-thinking-list"
+                                className="absolute end-0 z-50 mt-1 min-w-[9rem] max-h-64 overflow-y-auto overscroll-contain touch-pan-y rounded-lg border border-slate-300 dark:border-[#2E384D] bg-white dark:bg-[#1B212E] shadow-xl py-1"
+                              >
+                                {['auto', ...thinkingLevels].map((level: string) => (
+                                  <li key={level} role="option" aria-selected={effectiveThinking === level}>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setThinkingMenuOpen(false);
+                                        saveActiveModelChoice(activeProviderObj.model || '', level);
+                                      }}
+                                      className={`w-full px-2 py-1.5 text-start text-[11px] flex items-center justify-between gap-2 whitespace-nowrap hover:bg-slate-100 dark:hover:bg-[#262E3F] ${
+                                        effectiveThinking === level
+                                          ? 'text-[#1EB996] font-semibold'
+                                          : 'text-slate-900 dark:text-slate-100'
+                                      }`}
+                                    >
+                                      <span>{thinkingLabel(level)}</span>
+                                      {effectiveThinking === level && <Check className="w-3 h-3 shrink-0" />}
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  {(() => {
+                    // A quota note from picking this model clears the moment the model actually
+                    // runs again (a successful suggest or re-test records an 'ok' probe entry).
+                    const liveEntry = activeProviderObj?.model
+                      ? peekModelProbe(activeProviderObj.type, activeProviderObj.apiKey, activeProviderObj.model)
+                      : undefined;
+                    if (
+                      (modelProbe === 'model-quota' || modelProbe === 'daily-quota-used') &&
+                      liveEntry &&
+                      liveEntry.availability === 'ok'
+                    )
+                      return null;
+                    return modelProbe !== 'idle' && (
+                    <div
+                      className={`flex items-center gap-1.5 text-[10px] ${
+                        modelProbe === 'unavailable' ||
+                        modelProbe === 'expired-key' ||
+                        modelProbe === 'invalid-key' ||
+                        modelProbe === 'quota-exhausted'
+                          ? 'text-red-500 dark:text-red-400'
+                          : modelProbe === 'model-quota' || modelProbe === 'daily-quota-used'
+                            ? 'text-amber-600 dark:text-amber-400'
+                            : 'text-slate-500 dark:text-slate-400'
+                      }`}
+                    >
+                      {modelProbe === 'checking' ? (
+                        <>
+                          <Loader2 className="w-3 h-3 animate-spin shrink-0" />
+                          <span>{t('checking_model_availability')}</span>
+                        </>
+                      ) : (
+                        <>
+                          <AlertCircle className="w-3 h-3 shrink-0" />
+                          <span>
+                            {modelProbe === 'unavailable'
+                              ? t('model_not_available_on_plan')
+                              : modelProbe === 'expired-key'
+                                ? t('provider_key_expired')
+                                : modelProbe === 'invalid-key'
+                                  ? t('provider_key_invalid')
+                                  : modelProbe === 'quota-exhausted'
+                                    ? t('provider_quota_exhausted')
+                                    : modelProbe === 'model-quota'
+                                      ? t('model_quota_unavailable')
+                                      : modelProbe === 'daily-quota-used'
+                                        ? t('model_daily_quota_used')
+                                        : t('model_check_inconclusive')}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                    );
+                  })()}
+                </div>
+              )}
+          </>
+        )}
       {providerToDelete && createPortal(
         (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">

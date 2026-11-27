@@ -54,6 +54,8 @@ import {
 } from '../utils/newlines';
 import { getStoredItem, setStoredItem, copyTextToClipboard, readTextFromClipboard } from '../utils/storage';
 import { useT } from '../i18n/i18n';
+import { SourceLanguagePicker } from './SourceLanguagePicker';
+import { sourceLangLabel } from '../shared/sourceLang';
 
 // The request functions the ICU category fill uses; memoized so a prefetch and the fill share replies.
 const makeIcuAsk = (targetLang: string, targetLocaleName: string) =>
@@ -190,6 +192,8 @@ interface TranslationEditorProps {
   /** Landscape split mode: the writing half (textarea, buttons) is rendered into this element. */
   bottomPortal?: HTMLElement | null;
   onResetItemHistory?: (id: string) => void;
+  sourceLang?: string;
+  onSourceLangChange?: (code: string) => void;
 }
 
 export const TranslationEditor: React.FC<TranslationEditorProps> = ({
@@ -215,6 +219,8 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   autoCorrect = true,
   bottomPortal = null,
   onResetItemHistory,
+  sourceLang,
+  onSourceLangChange,
 }) => {
   const { t, tb } = useT();
   const isAr = appLang === 'ar';
@@ -1701,6 +1707,15 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
   const [noSuggestion, setNoSuggestion] = useState(false);
   // Plural categories a suggestion could not fill (the engine did not answer for them): shown as a warning
   const [icuUnfilled, setIcuUnfilled] = useState<string[]>([]);
+  // Moving to another string clears the previous string's suggestion notices (reset during render,
+  // keyed by the string id, so the old notice never paints on the new string).
+  const [noticesForId, setNoticesForId] = useState(item.id);
+  if (noticesForId !== item.id) {
+    setNoticesForId(item.id);
+    setIcuRejected(false);
+    setNoSuggestion(false);
+    setIcuUnfilled([]);
+  }
 
   const liveSaveGuard = saveGuard?.hard ? (liveBreakIssues.length > 0 ? { ...saveGuard, remaining: liveBreakIssues } : null) : saveGuard;
   // A non-blocking warning, separate from the save guard on purpose: it never becomes `hard`, it
@@ -2244,9 +2259,11 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                 <SourceChangeBadge item={item} isAr={isAr} />
               </div>
 
-              <span data-i18n className="text-slate-600 dark:text-slate-300 text-xs sm:text-sm font-medium shrink-0">
-                {t('english')}
-              </span>
+              <SourceLanguagePicker
+                sourceLang={sourceLang}
+                isAr={isAr}
+                onChange={onSourceLangChange}
+              />
             </div>
 
             {/* A string-array has no combined source box (it would show the first item only): each item carries its own source line */}
@@ -2276,7 +2293,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                             type="button"
                             onClick={() => copyPluralSource(box.quantity, box.text)}
                             className="shrink-0 p-0.5 rounded-md text-slate-500 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-[#202736] transition cursor-pointer"
-                            title={t('copy_english_source_text')}
+                            title={t('copy_english_source_text', sourceLangLabel(sourceLang, isAr))}
                             data-testid={`plural-source-copy-${box.quantity}`}
                           >
                             {copiedPluralSource === box.quantity ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
@@ -2296,7 +2313,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                           type="button"
                           onClick={() => copyPluralSource(box.quantity, box.text)}
                           className="float-left mr-2 -mt-px p-0.5 rounded-md text-slate-500 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-[#202736] transition cursor-pointer"
-                          title={t('copy_english_source_text')}
+                          title={t('copy_english_source_text', sourceLangLabel(sourceLang, isAr))}
                           data-testid={`plural-source-copy-${box.quantity}`}
                         >
                           {copiedPluralSource === box.quantity ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
@@ -2349,7 +2366,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                     type="button"
                     onClick={handleCopySource}
                     className="float-left mr-2 -mt-px p-0.5 rounded-md text-slate-500 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-[#202736] transition cursor-pointer"
-                    title={t('copy_english_source_text')}
+                    title={t('copy_english_source_text', sourceLangLabel(sourceLang, isAr))}
                   >
                     {copiedSource ? (
                       <Check className="w-4 h-4 text-emerald-400" />
@@ -2721,7 +2738,7 @@ export const TranslationEditor: React.FC<TranslationEditorProps> = ({
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => copyArrayItemSource(ai.index, ai.source)}
                         className="p-0.5 rounded-md text-slate-500 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-[#1C2330] transition cursor-pointer"
-                        title={t('copy_english_source_text')}
+                        title={t('copy_english_source_text', sourceLangLabel(sourceLang, isAr))}
                         data-testid={`array-copy-${ai.index}`}
                       >
                         {copiedArrayIdx === ai.index ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}

@@ -51,10 +51,10 @@ export function requestJson(segments: Segment[], targetLangLabel: string): strin
 }
 
 /** The prompt that goes with the request. `file` = the JSON is attached, `text` = the JSON follows in the message. */
-export function buildPrompt(targetLangLabel: string, mode: 'file' | 'text', glossary: Array<[string, string]> = []): string {
+export function buildPrompt(targetLangLabel: string, mode: 'file' | 'text', glossary: Array<[string, string]> = [], sourceName = 'English'): string {
   const terms = glossary.length ? `\nUse these fixed translations for these terms:\n${glossary.map(([a, b]) => `- ${a} = ${b}`).join('\n')}\n` : '';
   return `You are a professional translator for Android app strings (strings.xml).
-Translate every "text" value from English to ${targetLangLabel}.
+Translate every "text" value from ${sourceName} to ${targetLangLabel}.
 
 Rules:
 1. Reply with ONLY valid JSON, no explanations, no markdown, in exactly this shape: {"translations":[{"id":1,"text":"..."}]}

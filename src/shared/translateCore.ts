@@ -30,15 +30,24 @@ export function fetchWithTimeout(
   signal?: AbortSignal
 ): Promise<Response> {
   // AbortSignal.any is unavailable in some WebViews and test environments; combine by hand then.
+  let cleanup = () => {};
   const combined = signal
     ? typeof AbortSignal.any === 'function'
       ? AbortSignal.any([AbortSignal.timeout(timeoutMs), signal])
       : (() => {
           const controller = new AbortController();
-          const onAbort = () => controller.abort();
-          for (const s of [AbortSignal.timeout(timeoutMs), signal]) {
+          const sources = [AbortSignal.timeout(timeoutMs), signal];
+          cleanup = () => {
+            for (const s of sources) s.removeEventListener('abort', onAbort);
+          };
+          function onAbort() {
+            // Whichever fires first wins; the other listener is dropped so nothing stays attached.
+            cleanup();
+            controller.abort();
+          }
+          for (const s of sources) {
             if (s.aborted) {
-              controller.abort();
+              onAbort();
               break;
             }
             s.addEventListener('abort', onAbort, { once: true });
@@ -46,7 +55,9 @@ export function fetchWithTimeout(
           return controller.signal;
         })()
     : AbortSignal.timeout(timeoutMs);
-  return fetch(url, { ...init, signal: combined });
+  // Also drop them when the fetch settles without any abort, so a long-lived caller signal
+  // does not collect one listener per request.
+  return fetch(url, { ...init, signal: combined }).finally(cleanup);
 }
 
 /** Maps an HTTP status from a provider to a message the user can act on (Arabic first). */
@@ -122,9 +133,10 @@ export async function fetchGoogleGtxRaw(
   text: string,
   targetLang: string,
   timeoutMs = 5000,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  sourceLang = 'en'
 ): Promise<string> {
-  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=${encodeURIComponent(
+  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${encodeURIComponent(sourceLang)}&tl=${encodeURIComponent(
     googleGtxLanguage(targetLang)
   )}&dt=t&q=${encodeURIComponent(text)}`;
   const res = await fetchWithTimeout(url, {}, timeoutMs, signal);

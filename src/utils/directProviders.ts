@@ -9,9 +9,11 @@ import {
   providerHttpError,
   stripMetadataWrappers,
 } from '../shared/translateCore';
-import { nativeFetch } from './nativeHttp';
+import { abortable, nativeFetch } from './nativeHttp';
 import { validatePlaceholders } from './placeholderCheck';
 import { geminiTranslateDirect } from './geminiDirect';
+import { classifyLaraError, ProviderKeyError, type LaraKeyProblem } from '../shared/laraErrors';
+import { normalizeSourceLang, sourceLangName, deeplSourceCode, laraSourceCode } from '../shared/sourceLang';
 
 export const DIRECT_PROVIDER_TYPES = [
   'yandex',
@@ -39,6 +41,7 @@ export interface DirectProviderTestResult {
   providerTranslation?: string;
   detectedType?: string;
   error?: string;
+  errorKind?: LaraKeyProblem;
 }
 
 // The Lara SDK is Node-oriented; load it only when a Lara key is actually used.
@@ -64,6 +67,33 @@ export function assertSafeLibreBase(raw: string): string {
 }
 
 const LARA_CONNECTION_TIMEOUT_MS = 12000;
+
+/** Extra Lara translate options chosen on the provider card: Think mode (reasoning) and its effort. */
+export interface LaraTranslateExtras {
+  reasoning?: boolean;
+  reasoningEffort?: 'low' | 'medium' | 'high';
+  instructions?: string[];
+  noTrace?: boolean;
+  style?: 'faithful' | 'fluid' | 'creative';
+}
+
+/** Think (reasoning) answers are much slower, so it gets a longer timeout; Standard keeps the normal one. */
+const LARA_THINK_TIMEOUT_MS = 60000;
+function laraTimeoutMs(extras?: LaraTranslateExtras): number {
+  return extras?.reasoning ? LARA_THINK_TIMEOUT_MS : LARA_CONNECTION_TIMEOUT_MS;
+}
+
+function laraTranslateOptions(extras?: LaraTranslateExtras) {
+  return {
+    timeoutInMillis: laraTimeoutMs(extras),
+    ...(extras?.instructions?.length ? { instructions: extras.instructions } : {}),
+    ...(extras?.noTrace ? { noTrace: true } : {}),
+    ...(extras?.style ? { style: extras.style } : {}),
+    ...(extras?.reasoning
+      ? { reasoning: true, ...(extras.reasoningEffort ? { reasoningEffort: extras.reasoningEffort } : {}) }
+      : {}),
+  };
+}
 
 function parseLaraCredentials(raw: string): { id?: string; secret?: string; singleToken?: string } {
   const cleaned = raw.trim();
@@ -136,8 +166,11 @@ export async function directCallProviderWithKey(
   targetLang: string,
   targetLocaleName?: string,
   pluralQuantity?: string,
-  folderId?: string
+  folderId?: string,
+  laraOptions?: LaraTranslateExtras,
+  sourceLang = 'en'
 ): Promise<DirectProviderResult> {
+  const src = normalizeSourceLang(sourceLang);
   const baseLang = targetLang.split('-')[0].toLowerCase();
   const trimmedKey = apiKey.trim();
   const trimmedFolderId = folderId?.trim() || '';
@@ -150,7 +183,7 @@ export async function directCallProviderWithKey(
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: authHeader },
         data: {
-          sourceLanguageCode: 'en',
+          sourceLanguageCode: src,
           targetLanguageCode: baseLang,
           texts: [sourceText],
           ...(trimmedFolderId ? { folderId: trimmedFolderId } : {}),
@@ -178,7 +211,7 @@ export async function directCallProviderWithKey(
           { role: 'system', text: SYSTEM_INSTRUCTION },
           {
             role: 'user',
-            text: `Translate from English to ${targetLocaleName || baseLang}. Return ONLY the translated text:\n${sourceText}`,
+            text: `Translate from ${sourceLangName(src)} to ${targetLocaleName || baseLang}. Return ONLY the translated text:\n${sourceText}`,
           },
         ],
       },
@@ -188,14 +221,14 @@ export async function directCallProviderWithKey(
       // Never return a reply that breaks the ICU structure (it throws at runtime).
       if (!validatePlaceholders(sourceText, cleaned, targetLang).valid) {
         throw Object.assign(
-          new Error('Yandex: الردّ يخالف بنية ICU / The AI reply damaged the ICU MessageFormat structure'),
+          new Error('Yandex Cloud Translate: الردّ يخالف بنية ICU / The AI reply damaged the ICU MessageFormat structure'),
           { name: 'StructuralError' }
         );
       }
       return cleaned;
     }
 
-    throw new Error('Yandex: فشل التحقق من المفتاح / Authentication failed: check key and folder ID.');
+    throw new Error('Yandex Cloud Translate: فشل التحقق من المفتاح / Authentication failed: check key and folder ID.');
   };
 
   const tryDeepL = async (): Promise<string> => {
@@ -212,12 +245,12 @@ export async function directCallProviderWithKey(
       {
         method: 'POST',
         headers: { Authorization: `DeepL-Auth-Key ${trimmedKey}`, 'Content-Type': 'application/json' },
-        data: { text: [sourceText], source_lang: 'EN', target_lang: deeplTarget },
+        data: { text: [sourceText], source_lang: deeplSourceCode(src), target_lang: deeplTarget },
       }
     );
-    if (!res.ok) throw providerHttpError('DeepL', res.status);
+    if (!res.ok) throw providerHttpError('DeepL API', res.status);
     const text = res.data?.translations?.[0]?.text;
-    if (!text) throw new Error('DeepL: استجابة فارغة / Empty translation response');
+    if (!text) throw new Error('DeepL API: استجابة فارغة / Empty translation response');
     return stripMetadataWrappers(text, sourceText);
   };
 
@@ -237,20 +270,20 @@ export async function directCallProviderWithKey(
             { role: 'system', content: SYSTEM_INSTRUCTION },
             {
               role: 'user',
-              content: `Translate the following Android strings.xml value from English to ${langLabel}${pluralContext}. Return ONLY the translated text:\n${sourceText}`,
+              content: `Translate the following Android strings.xml value from ${sourceLangName(src)} to ${langLabel}${pluralContext}. Return ONLY the translated text:\n${sourceText}`,
             },
           ],
         },
       }
     );
-    if (!res.ok) throw providerHttpError('OpenAI', res.status);
+    if (!res.ok) throw providerHttpError('OpenAI API', res.status);
     const content = res.data?.choices?.[0]?.message?.content;
-    if (!content) throw new Error('OpenAI: استجابة فارغة / Empty response');
+    if (!content) throw new Error('OpenAI API: استجابة فارغة / Empty response');
     const cleaned = stripMetadataWrappers(content, sourceText);
     // Never return a reply that breaks the ICU structure (it throws at runtime).
     if (!validatePlaceholders(sourceText, cleaned, targetLang).valid) {
       throw Object.assign(
-          new Error('OpenAI: الردّ يخالف بنية ICU / The AI reply damaged the ICU MessageFormat structure'),
+          new Error('OpenAI API: الردّ يخالف بنية ICU / The AI reply damaged the ICU MessageFormat structure'),
           { name: 'StructuralError' }
         );
     }
@@ -264,27 +297,27 @@ export async function directCallProviderWithKey(
         method: 'POST',
         // Key in a header, not the URL, so it never lands in URLs/logs.
         headers: { 'Content-Type': 'application/json', 'X-goog-api-key': trimmedKey },
-        data: { q: sourceText, source: 'en', target: baseLang, format: 'text' },
+        data: { q: sourceText, source: src, target: baseLang, format: 'text' },
       }
     );
-    if (!res.ok) throw providerHttpError('Google Cloud Translation', res.status);
+    if (!res.ok) throw providerHttpError('Google Cloud', res.status);
     const t = res.data?.data?.translations?.[0]?.translatedText;
-    if (!t) throw new Error('Google Cloud Translation: استجابة فارغة / Empty response');
+    if (!t) throw new Error('Google Cloud: استجابة فارغة / Empty response');
     return stripMetadataWrappers(t, sourceText);
   };
 
   const tryMicrosoft = async (): Promise<string> => {
     const res = await nativeFetch<Array<{ translations?: Array<{ text?: string }> }>>(
-      `https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&from=en&to=${encodeURIComponent(baseLang)}`,
+      `https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&from=${encodeURIComponent(src)}&to=${encodeURIComponent(baseLang)}`,
       {
         method: 'POST',
         headers: { 'Ocp-Apim-Subscription-Key': trimmedKey, 'Content-Type': 'application/json' },
         data: [{ Text: sourceText }],
       }
     );
-    if (!res.ok) throw providerHttpError('Microsoft Translator', res.status);
+    if (!res.ok) throw providerHttpError('Microsoft Azure Translator', res.status);
     const text = res.data?.[0]?.translations?.[0]?.text;
-    if (!text) throw new Error('Microsoft Translator: استجابة فارغة / Empty response');
+    if (!text) throw new Error('Microsoft Azure Translator: استجابة فارغة / Empty response');
     return stripMetadataWrappers(text, sourceText);
   };
 
@@ -297,19 +330,22 @@ export async function directCallProviderWithKey(
     if (creds.id && creds.secret) {
       try {
         const lara = new LaraTranslator(new AccessKey(creds.id, creds.secret), {
-          connectionTimeoutMs: LARA_CONNECTION_TIMEOUT_MS,
+          connectionTimeoutMs: laraTimeoutMs(laraOptions),
         });
-        const result = await lara.translate(sourceText, 'en', laraTarget, { timeoutInMillis: LARA_CONNECTION_TIMEOUT_MS });
+        const result = await lara.translate(sourceText, laraSourceCode(src), laraTarget, laraTranslateOptions(laraOptions));
         if (result && typeof result.translation === 'string' && result.translation.trim()) {
           return stripMetadataWrappers(result.translation, sourceText);
         }
-      } catch {
+      } catch (err) {
+        // A key or quota problem will not change with another language: stop here, spend nothing more.
+        const problem = classifyLaraError(err);
+        if (problem) throw new ProviderKeyError(problem);
         if (laraTarget !== baseLang) {
           try {
             const lara = new LaraTranslator(new AccessKey(creds.id, creds.secret), {
-              connectionTimeoutMs: LARA_CONNECTION_TIMEOUT_MS,
+              connectionTimeoutMs: laraTimeoutMs(laraOptions),
             });
-            const fallback = await lara.translate(sourceText, 'en', baseLang, { timeoutInMillis: LARA_CONNECTION_TIMEOUT_MS });
+            const fallback = await lara.translate(sourceText, laraSourceCode(src), baseLang, laraTranslateOptions(laraOptions));
             if (fallback && typeof fallback.translation === 'string' && fallback.translation.trim()) {
               return stripMetadataWrappers(fallback.translation, sourceText);
             }
@@ -321,16 +357,18 @@ export async function directCallProviderWithKey(
     }
 
     // 2. Official Lara SDK with AuthToken
+    let tokenProblem: LaraKeyProblem | null = null;
     if (creds.singleToken) {
       try {
         const tokenClient = new LaraTranslator(new AuthToken(creds.singleToken, ''), {
-          connectionTimeoutMs: LARA_CONNECTION_TIMEOUT_MS,
+          connectionTimeoutMs: laraTimeoutMs(laraOptions),
         });
-        const result = await tokenClient.translate(sourceText, 'en', laraTarget, { timeoutInMillis: LARA_CONNECTION_TIMEOUT_MS });
+        const result = await tokenClient.translate(sourceText, laraSourceCode(src), laraTarget, laraTranslateOptions(laraOptions));
         if (result && typeof result.translation === 'string' && result.translation.trim()) {
           return stripMetadataWrappers(result.translation, sourceText);
         }
-      } catch {
+      } catch (err) {
+        tokenProblem = classifyLaraError(err);
         // Fall through to direct REST probes
       }
 
@@ -350,7 +388,7 @@ export async function directCallProviderWithKey(
           const restRes = await nativeFetch<LaraRestResponse>('https://api.laratranslate.com/v2/translate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...authHeader },
-            data: { q: sourceText, source: 'en', target: laraTarget },
+            data: { q: sourceText, source: src, target: laraTarget },
           });
           if (!restRes.ok) continue;
 
@@ -377,9 +415,13 @@ export async function directCallProviderWithKey(
       }
     }
 
-    throw new Error(
-      'Lara Translate: فشل التحقق من المفتاح. أدخل Access Key ID و Secret / Authentication failed: check credentials.'
-    );
+    if (tokenProblem) throw new ProviderKeyError(tokenProblem);
+    if (!creds.singleToken && !(creds.id && creds.secret)) {
+      throw new Error(
+        'Lara Translate: فشل التحقق من المفتاح. أدخل Access Key ID و Secret / Authentication failed: check credentials.'
+      );
+    }
+    throw new Error('Lara Translate: فشل الطلب / Request failed.');
   };
 
   const tryLibre = async (): Promise<string> => {
@@ -393,7 +435,7 @@ export async function directCallProviderWithKey(
       headers: { 'Content-Type': 'application/json' },
       data: {
         q: sourceText,
-        source: 'en',
+        source: src,
         target: libreTarget(targetLang),
         format: 'text',
         ...(trimmedKey && trimmedKey !== 'none' ? { api_key: trimmedKey } : {}),
@@ -463,21 +505,17 @@ export async function directCallProviderWithKey(
 export async function directTestProviderApiKey(
   providerType: string,
   apiKey: string,
-  folderId?: string
+  folderId?: string,
+  signal?: AbortSignal
 ): Promise<DirectProviderTestResult> {
   const testPhrase = 'Save';
   const targetLang = 'ar';
   const acceptedAnswers = ['حفظ', 'احفظ', 'تخزين', 'حفظ الملف'];
 
   try {
-    const res = await directCallProviderWithKey(
-      providerType,
-      apiKey,
-      testPhrase,
-      targetLang,
-      'Arabic',
-      undefined,
-      folderId
+    const res = await abortable(
+      directCallProviderWithKey(providerType, apiKey, testPhrase, targetLang, 'Arabic', undefined, folderId),
+      signal
     );
 
     let reference: string | null = null;
@@ -505,6 +543,7 @@ export async function directTestProviderApiKey(
       success: false,
       matched: false,
       error: err instanceof Error ? err.message : 'Unknown authentication error',
+      ...(err instanceof ProviderKeyError ? { errorKind: err.keyProblem } : {}),
     };
   }
 }

@@ -1,3 +1,4 @@
+import { sourceLangLabel } from '../shared/sourceLang';
 import React, { useState, useMemo } from 'react';
 import { X, Download, Share2, Copy, Check, Sliders, Filter, ShieldAlert, ChevronDown } from 'lucide-react';
 import { useDialog } from '../utils/useDialog';
@@ -218,7 +219,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   className="rounded border-slate-300 text-[#0B57D0] focus:ring-[#0B57D0] cursor-pointer"
                 />
                 <span data-i18n>
-                  {t('fallback_to_english_for_untranslated')}
+                  {t('fallback_to_english_for_untranslated', sourceLangLabel(project.sourceLang, isAr))}
                 </span>
               </label>
 
