@@ -10,9 +10,26 @@ const API_ROOT = 'https://generativelanguage.googleapis.com/v1beta';
 // name is trusted: the alias that always points at the current Flash model goes first, then pinned names,
 // and as a last resort the list of models the key can actually use is asked for.
 export const GEMINI_MODEL_CANDIDATES = ['gemini-flash-latest', 'gemini-3.8-flash', 'gemini-2.5-flash'];
-const GEMINI_TIMEOUT_MS = 15000;
+// High-demand spikes make a healthy model answer in 20s+ sometimes; the per-attempt timeout must
+// outlast that or every candidate times out one after another and verification always fails.
+const GEMINI_TIMEOUT_MS = 30000;
+// Candidates run hedged, not sequentially: the first model starts alone, and every HEDGE_DELAY_MS
+// another candidate joins in parallel. A hanging or overloaded model no longer serializes the wait
+// (before, 3 candidates x 30s timeout meant up to 90s+ before an answer that now takes the time of
+// the fastest model), and the extra calls only happen while no model has answered yet.
+const HEDGE_DELAY_MS = 4000;
 
 let workingModel: string | null = null;
+
+/**
+ * True when the key looks like an AI Studio Gemini key (classic `AIza...` or the newer `AQ.`
+ * format). Used so Auto-Detect can route such keys straight to the Gemini check: Google answers
+ * CORS requests from any origin, so Gemini is the one provider that verifies without the server.
+ */
+export const looksLikeGeminiKey = (key: string): boolean => {
+  const trimmed = key.trim();
+  return trimmed.startsWith('AIza') || trimmed.startsWith('AQ.');
+};
 
 class GeminiHttpError extends Error {
   constructor(
@@ -46,11 +63,12 @@ export function isModelUnavailableMessage(status: number, message: string): bool
 }
 
 /** Asks Google which models this key can call and returns Flash models, newest first. */
-async function discoverFlashModels(apiKey: string): Promise<string[]> {
+async function discoverFlashModels(apiKey: string, signal?: AbortSignal): Promise<string[]> {
   const res = await fetchWithTimeout(
     `${API_ROOT}/models?pageSize=200`,
     { headers: { 'x-goog-api-key': apiKey.trim() } },
-    GEMINI_TIMEOUT_MS
+    GEMINI_TIMEOUT_MS,
+    signal
   );
   if (!res.ok) return [];
   const data = (await res.json()) as { models?: Array<{ name?: string; supportedGenerationMethods?: string[] }> };
@@ -68,8 +86,10 @@ export async function geminiTranslateDirect(opts: {
   targetLang?: string;
   targetLocaleName?: string;
   pluralQuantity?: string;
+  /** Aborts the call when the user cancels (distinct from the per-attempt timeout). */
+  signal?: AbortSignal;
 }): Promise<string> {
-  const { apiKey, sourceText, targetLang = 'ar', targetLocaleName, pluralQuantity } = opts;
+  const { apiKey, sourceText, targetLang = 'ar', targetLocaleName, pluralQuantity, signal } = opts;
   const langLabel = targetLocaleName ? `${targetLocaleName} (${targetLang})` : targetLang;
   const pluralContext = pluralQuantity
     ? `\nThis value is the "${pluralQuantity}" CLDR plural form for ${langLabel}. Translate only this form; ` +
@@ -81,7 +101,7 @@ Return ONLY the translated text without any metadata labels (never output "[تر
 Source string:
 ${sourceText}`;
 
-  const callModel = async (model: string): Promise<string> => {
+  const callModel = async (model: string, sig?: AbortSignal): Promise<string> => {
     const res = await fetchWithTimeout(
       `${API_ROOT}/models/${model}:generateContent`,
       {
@@ -96,7 +116,8 @@ ${sourceText}`;
           generationConfig: { temperature: 0.1 },
         }),
       },
-      GEMINI_TIMEOUT_MS
+      GEMINI_TIMEOUT_MS,
+      sig
     );
 
     if (!res.ok) {
@@ -138,16 +159,28 @@ ${sourceText}`;
     return text;
   };
 
+  // A flaky model (overloaded 503, rate limit, timeout, network hiccup) must fail over to the
+  // next candidate, not kill the whole call: during demand spikes the first alias can hang while
+  // the next pinned model answers fine. The last such error is surfaced only if every model fails.
+  const isTransientError = (err: unknown): boolean => {
+    if (err instanceof GeminiHttpError) return err.status >= 500 || err.status === 429;
+    if (err instanceof TypeError) return true; // network failure
+    return err instanceof DOMException && (err.name === 'TimeoutError' || err.name === 'AbortError');
+  };
+
   const tried = new Set<string>();
   let structureError: GeminiStructureError | null = null;
-  const attempt = async (model: string): Promise<string | null> => {
+  let transientError: unknown = null;
+  const attempt = async (model: string, sig?: AbortSignal): Promise<string | null> => {
     if (tried.has(model)) return null;
     tried.add(model);
     try {
-      const out = await callModel(model);
+      const out = await callModel(model, sig);
       workingModel = model;
       return out;
     } catch (err) {
+      if (signal?.aborted) throw err; // the user cancelled: stop, don't fail over
+      if (sig?.aborted) return null; // a sibling model won the race and aborted this one
       if (err instanceof GeminiHttpError && err.modelUnavailable) return null; // try the next model
       // A reply that breaks the ICU structure is worth retrying on another model too,
       // but the model itself works, so it stays the working model.
@@ -155,30 +188,77 @@ ${sourceText}`;
         structureError = err;
         return null;
       }
+      if (isTransientError(err)) {
+        transientError = err;
+        return null; // overloaded/slow model: try the next candidate
+      }
       throw err;
     }
   };
 
-  for (const model of [workingModel, ...GEMINI_MODEL_CANDIDATES]) {
-    if (!model) continue;
-    const out = await attempt(model);
-    if (out !== null) return out;
-  }
-  for (const model of await discoverFlashModels(apiKey)) {
-    const out = await attempt(model);
-    if (out !== null) return out;
-  }
+  // Hedged race over untried models: first success wins and aborts the rest, a fatal error
+  // (bad key) rejects immediately, and a model that fails fast brings the next one in early.
+  // Resolves null when every model failed, leaving the recorded errors for the caller.
+  const raceModels = (models: Array<string | null>): Promise<string | null> => {
+    const fresh = models.filter((m): m is string => typeof m === 'string' && m.length > 0 && !tried.has(m));
+    if (!fresh.length) return Promise.resolve(null);
+    return new Promise<string | null>((resolve, reject) => {
+      const inner = new AbortController();
+      const timers: Array<ReturnType<typeof setTimeout>> = [];
+      let settled = false;
+      let launched = 0;
+      let pending = 0;
+      const finish = (fn: () => void) => {
+        if (settled) return;
+        settled = true;
+        timers.forEach(clearTimeout);
+        signal?.removeEventListener('abort', onAbort);
+        inner.abort();
+        fn();
+      };
+      const onAbort = () => finish(() => reject(new DOMException('Aborted', 'AbortError')));
+      const launchNext = () => {
+        if (settled || launched >= fresh.length) return;
+        const model = fresh[launched++];
+        pending++;
+        attempt(model, inner.signal).then(
+          (out) => {
+            if (out !== null) finish(() => resolve(out));
+            else {
+              pending--;
+              if (pending === 0 && launched >= fresh.length) finish(() => resolve(null));
+              else launchNext(); // failed fast: bring the next candidate in without waiting
+            }
+          },
+          (err) => finish(() => reject(err))
+        );
+      };
+      signal?.addEventListener('abort', onAbort);
+      launchNext();
+      for (let i = 1; i < fresh.length; i++) {
+        timers.push(setTimeout(launchNext, i * HEDGE_DELAY_MS));
+      }
+    });
+  };
+
+  const raced = await raceModels([workingModel, ...GEMINI_MODEL_CANDIDATES]);
+  if (raced !== null) return raced;
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+  const discovered = await raceModels(await discoverFlashModels(apiKey, signal));
+  if (discovered !== null) return discovered;
   workingModel = null;
   // Reachable only when every model failed; surface the structural problem when that was
   // the reason, since "no model available" would send the user to check a working key.
   if (structureError) throw structureError;
+  // Every model failed transiently (demand spike, timeouts): say so instead of "no model available".
+  if (transientError) throw transientError;
   throw new Error(
     'Gemini: لا يوجد نموذج متاح لهذا المفتاح حالياً / No Gemini model is available for this key. Check the key in Google AI Studio.'
   );
 }
 
 /** Verifies a Gemini key by translating one short word, entirely from the browser. */
-export async function testGeminiKeyDirect(apiKey: string): Promise<ProviderTestResult> {
+export async function testGeminiKeyDirect(apiKey: string, signal?: AbortSignal): Promise<ProviderTestResult> {
   const testSource = 'Install';
   try {
     const providerTranslation = await geminiTranslateDirect({
@@ -186,6 +266,7 @@ export async function testGeminiKeyDirect(apiKey: string): Promise<ProviderTestR
       sourceText: testSource,
       targetLang: 'ar',
       targetLocaleName: 'Arabic',
+      signal,
     });
     return { success: true, matched: true, testSource, providerTranslation, detectedType: 'gemini' };
   } catch (err) {

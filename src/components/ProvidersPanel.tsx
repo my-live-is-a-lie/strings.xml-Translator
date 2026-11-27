@@ -3,7 +3,7 @@ import { useDialog } from '../utils/useDialog';
 import { createPortal } from 'react-dom';
 import { AlertCircle, Check, CheckCircle2, ChevronDown, Cpu, KeyRound, Loader2, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { ENGINE_OPTIONS } from './headerOptions';
-import { testGeminiKeyDirect } from '../utils/geminiDirect';
+import { testGeminiKeyDirect, looksLikeGeminiKey } from '../utils/geminiDirect';
 import {
   TranslationProviderConfig,
   ProviderEngineType,
@@ -20,6 +20,7 @@ import {
 } from '../utils/translator';
 import { useT, tg } from '../i18n/i18n';
 import { SecretField } from './SecretField';
+import { textDirection } from '../utils/direction';
 
 export function getProviderDisplayName(prov: TranslationProviderConfig | undefined, isAr: boolean): string {
   if (!prov) return tg('google_translate');
@@ -55,6 +56,9 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   const [testResult, setTestResult] = useState<ProviderTestResult | null>(null);
   const addKeyFormRef = useRef<HTMLFormElement | null>(null);
   const providerNameInputRef = useRef<HTMLInputElement | null>(null);
+  // An in-flight verification: aborting lets the user stop a stuck check; editing the key
+  // cancels it too, since the result would describe a key that is no longer in the field.
+  const testAbortRef = useRef<{ controller: AbortController; cancelled: boolean } | null>(null);
 
   // Confirm delete dialog state
   const [providerToDelete, setProviderToDelete] = useState<TranslationProviderConfig | null>(null);
@@ -68,6 +72,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   const [isTestingEditKey, setIsTestingEditKey] = useState(false);
   const [editTestResult, setEditTestResult] = useState<ProviderTestResult | null>(null);
   const editNameInputRef = useRef<HTMLInputElement | null>(null);
+  const editTestAbortRef = useRef<{ controller: AbortController; cancelled: boolean } | null>(null);
 
   // Warn when the free Google engine keeps failing, since it relies on an unofficial endpoint.
   // The status is read on every render: it expires with time (no event fires for that), and the
@@ -108,12 +113,29 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   };
 
   // Gemini keys are verified straight from the browser; every other provider goes through the server
+  const cancelOngoingTest = (
+    ref: React.MutableRefObject<{ controller: AbortController; cancelled: boolean } | null>,
+    stopSpinner: (v: boolean) => void
+  ) => {
+    if (!ref.current) return;
+    ref.current.cancelled = true;
+    ref.current.controller.abort();
+    ref.current = null;
+    stopSpinner(false);
+  };
+
   const testEngineKey = (
     engine: string,
     key: string,
-    folderId?: string
+    folderId?: string,
+    signal?: AbortSignal
   ): Promise<ProviderTestResult> =>
-    engine === 'gemini' ? testGeminiKeyDirect(key) : testProviderApiKey(engine, key, folderId);
+    // Gemini verifies straight from the browser even on Auto-Detect when the key shape gives it
+    // away: without this, Auto-Detect + a Gemini key lands on the server path and fails wherever
+    // the server is unreachable (static web demo). Google allows CORS from any origin.
+    engine === 'gemini' || (engine === 'auto' && looksLikeGeminiKey(key))
+      ? testGeminiKeyDirect(key, signal)
+      : testProviderApiKey(engine, key, folderId);
 
   const handleTestAndAddProvider = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -122,6 +144,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
 
     setIsTestingKey(true);
     setTestResult(null);
+    const testAbort = { controller: new AbortController(), cancelled: false };
+    testAbortRef.current = testAbort;
 
     const effectiveEngine = inferEngineFromName(newProviderName, newProviderEngine);
     const rawKey = newApiKey.trim() || (effectiveEngine === 'libretranslate' ? 'none' : '');
@@ -132,7 +156,9 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
         : rawKey;
 
     const folderId = newFolderId.trim();
-    const result = await testEngineKey(effectiveEngine, combinedApiKey, folderId);
+    const result = await testEngineKey(effectiveEngine, combinedApiKey, folderId, testAbort.controller.signal);
+    if (testAbort.cancelled) return; // cancelled: the user already moved on
+    testAbortRef.current = null;
     setIsTestingKey(false);
     setTestResult(result);
 
@@ -233,8 +259,12 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
     // If the API key was modified, verify the new API key against Google Translate first
     setIsTestingEditKey(true);
     setEditTestResult(null);
+    const editTestAbort = { controller: new AbortController(), cancelled: false };
+    editTestAbortRef.current = editTestAbort;
 
-    const result = await testEngineKey(targetEngine, combinedKey, editedFolderId);
+    const result = await testEngineKey(targetEngine, combinedKey, editedFolderId, editTestAbort.controller.signal);
+    if (editTestAbort.cancelled) return; // cancelled: keep editing without a stale result
+    editTestAbortRef.current = null;
     setIsTestingEditKey(false);
     setEditTestResult(result);
 
@@ -411,18 +441,22 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                               <label data-i18n className="text-[10px] font-semibold text-slate-600 dark:text-slate-300">
                                 {t('edit_provider_name')}
                               </label>
-                              <div className="relative flex items-center">
+                              <div
+                                className="relative flex items-center"
+                                dir={textDirection(editProviderName)}
+                              >
                                 <input
                                   ref={editNameInputRef}
                                   type="text"
                                   autoComplete="off"
+                                  dir={textDirection(editProviderName)}
                                   value={editProviderName}
                                   onChange={(e) => setEditProviderName(e.target.value)}
                                   onKeyDown={(e) => e.stopPropagation()}
                                   onTouchStart={(e) => e.stopPropagation()}
                                   placeholder={t('provider_name')}
                                   required
-                                  className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
+                                  className="w-full px-2.5 pe-7 py-1.5 rounded-lg bg-white dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
                                 />
                                 {editProviderName && (
                                   <button
@@ -451,7 +485,10 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                 type="text"
                                 autoComplete="off"
                                 value={editApiKey}
-                                onChange={(e) => setEditApiKey(e.target.value)}
+                                onChange={(e) => {
+                                  cancelOngoingTest(editTestAbortRef, setIsTestingEditKey);
+                                  setEditApiKey(e.target.value);
+                                }}
                                 onKeyDown={(e) => e.stopPropagation()}
                                 onTouchStart={(e) => e.stopPropagation()}
                                 placeholder={
@@ -543,9 +580,20 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                             )}
 
                             <div className="flex items-center justify-end gap-1.5 pt-0.5">
+                              {isTestingEditKey && (
+                                <button
+                                  type="button"
+                                  onClick={() => cancelOngoingTest(editTestAbortRef, setIsTestingEditKey)}
+                                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-600 dark:text-rose-300 text-[11px] font-semibold transition cursor-pointer"
+                                >
+                                  <X className="w-3 h-3" />
+                                  <span data-i18n>{tb('cancel')}</span>
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => {
+                                  cancelOngoingTest(editTestAbortRef, setIsTestingEditKey);
                                   setEditingProviderId(null);
                                   setEditTestResult(null);
                                 }}
@@ -625,12 +673,16 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                       >
                         {t('provider_name_type_or_swipe')}
                       </label>
-                      <div className="relative flex items-center">
+                      <div
+                        className="relative flex items-center"
+                        dir={textDirection(newProviderName)}
+                      >
                         <input
                           ref={providerNameInputRef}
                           id="provider-custom-name-input"
                           type="text"
                           autoComplete="off"
+                          dir={textDirection(newProviderName)}
                           value={newProviderName}
                           onChange={(e) => {
                             const val = e.target.value;
@@ -645,7 +697,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                           placeholder={
                             t('type_provider_name_e_g')
                           }
-                          className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
+                          className="w-full px-3 pe-9 py-2 rounded-lg bg-slate-50 dark:bg-[#1B212E] border border-slate-300 dark:border-[#2E384D] text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1EB996]/30 focus:border-[#1EB996]"
                         />
                         {newProviderName && (
                           <button
@@ -711,7 +763,10 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                           : t('translator_api_key')
                       }
                       value={newApiKey}
-                      onChange={setNewApiKey}
+                      onChange={(v) => {
+                        cancelOngoingTest(testAbortRef, setIsTestingKey);
+                        setNewApiKey(v);
+                      }}
                       placeholder={
                         inferEngineFromName(newProviderName, newProviderEngine) === 'lara'
                           ? t('paste_access_key_id_or')
@@ -817,6 +872,19 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                         </>
                       )}
                     </button>
+
+                    {/* Stop a stuck verification instead of waiting it out */}
+                    {isTestingKey && (
+                      <button
+                        id="provider-verify-cancel-btn"
+                        type="button"
+                        onClick={() => cancelOngoingTest(testAbortRef, setIsTestingKey)}
+                        className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-600 dark:text-rose-300 text-xs font-semibold transition cursor-pointer shrink-0"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        <span data-i18n>{tb('cancel')}</span>
+                      </button>
+                    )}
 
                     {/* Verification & Google Comparison Result Box */}
                     {testResult && (

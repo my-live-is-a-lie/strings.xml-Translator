@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { geminiTranslateDirect, isModelUnavailableMessage } from '../src/utils/geminiDirect';
+import { geminiTranslateDirect, isModelUnavailableMessage, looksLikeGeminiKey } from '../src/utils/geminiDirect';
 
 const ok = (text: string) =>
   new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text }] } }] }), { status: 200 });
@@ -100,5 +100,60 @@ describe('gemini model fallback', () => {
     expect(await geminiTranslateDirect({ apiKey: 'k', sourceText: source, targetLang: 'ar' })).toBe(
       '{count, plural, one {# رسالة} other {# رسائل}}'
     );
+  });
+});
+
+describe('looksLikeGeminiKey', () => {
+  it('recognises AI Studio Gemini key shapes', () => {
+    // Synthetic placeholder: deliberately not a valid key, keeps secret scanners quiet.
+    expect(looksLikeGeminiKey('AIzaTEST-ONLY-not-a-real-key')).toBe(true);
+    expect(looksLikeGeminiKey('AQ.AbCdEfGh123')).toBe(true);
+    expect(looksLikeGeminiKey('  AIzaTEST-ONLY-not-a-real-key  ')).toBe(true);
+  });
+
+  it('rejects other providers\' key shapes', () => {
+    expect(looksLikeGeminiKey('sk-proj-abc123')).toBe(false);
+    expect(looksLikeGeminiKey('AQVN0123456789')).toBe(false); // Yandex IAM
+    expect(looksLikeGeminiKey('trnsl.1.1.20240101T000000Z.abc')).toBe(false);
+    expect(looksLikeGeminiKey('abcdef123:fx')).toBe(false); // DeepL
+    expect(looksLikeGeminiKey('')).toBe(false);
+  });
+});
+
+describe('hedged model race', () => {
+  it('a hanging first model no longer blocks the whole call', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.includes('gemini-flash-latest')) return new Promise<Response>(() => {}); // hangs
+        return ok('مرحبا');
+      })
+    );
+    const start = Date.now();
+    const text = await geminiTranslateDirect({ apiKey: 'k', sourceText: 'Hello' });
+    const elapsed = Date.now() - start;
+    expect(text).toBe('مرحبا');
+    // hedged: answered by the second candidate after the 4s stagger, not after the 30s timeout
+    expect(elapsed).toBeLessThan(15000);
+  }, 20000);
+
+  it('a fast-failing model brings the next candidate in without waiting', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.includes('gemini-flash-latest')) return err(503, 'high demand');
+        return ok('مرحبا');
+      })
+    );
+    const start = Date.now();
+    expect(await geminiTranslateDirect({ apiKey: 'k', sourceText: 'Hello' })).toBe('مرحبا');
+    expect(Date.now() - start).toBeLessThan(3500); // no 4s hedge wait after a fast failure
+  });
+
+  it('a bad key fails fast without waiting out the timeout', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => err(403, 'API key not valid. Please pass a valid API key.')));
+    const start = Date.now();
+    await expect(geminiTranslateDirect({ apiKey: 'bad', sourceText: 'Hello' })).rejects.toThrow(/not valid|غير صالح/i);
+    expect(Date.now() - start).toBeLessThan(3500);
   });
 });

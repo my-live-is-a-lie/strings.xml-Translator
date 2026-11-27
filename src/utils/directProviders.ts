@@ -11,6 +11,7 @@ import {
 } from '../shared/translateCore';
 import { nativeFetch } from './nativeHttp';
 import { validatePlaceholders } from './placeholderCheck';
+import { geminiTranslateDirect } from './geminiDirect';
 
 export const DIRECT_PROVIDER_TYPES = [
   'yandex',
@@ -18,6 +19,7 @@ export const DIRECT_PROVIDER_TYPES = [
   'deepl',
   'openai',
   'google_cloud',
+  'gemini',
   'microsoft',
   'libretranslate',
 ] as const;
@@ -403,12 +405,23 @@ export async function directCallProviderWithKey(
     return stripMetadataWrappers(text, sourceText);
   };
 
+  // Gemini keys are called with their dedicated direct caller (browser/native fetch to Google).
+  const tryGemini = async (): Promise<string> =>
+    geminiTranslateDirect({
+      apiKey: trimmedKey,
+      sourceText,
+      targetLang,
+      targetLocaleName,
+      pluralQuantity,
+    });
+
   const runners: Record<DirectProviderType, { type: string; fn: () => Promise<string> }> = {
     yandex: { type: 'yandex', fn: tryYandex },
     lara: { type: 'lara', fn: tryLara },
     deepl: { type: 'deepl', fn: tryDeepL },
     openai: { type: 'openai', fn: tryOpenAI },
     google_cloud: { type: 'google_cloud', fn: tryGoogleCloudKey },
+    gemini: { type: 'gemini', fn: tryGemini },
     microsoft: { type: 'microsoft', fn: tryMicrosoft },
     libretranslate: { type: 'libretranslate', fn: tryLibre },
   };
@@ -420,7 +433,11 @@ export async function directCallProviderWithKey(
 
   // Auto-detect based on key pattern
   let order: DirectProviderType[] = [...DIRECT_PROVIDER_TYPES.filter((t) => t !== 'libretranslate')];
-  if (trimmedKey.startsWith('AIza')) order = ['google_cloud', ...order.filter((t) => t !== 'google_cloud')];
+  // AI Studio Gemini keys (AIza... and the newer AQ.. format) are far more common here than
+  // Cloud Translation keys, and Cloud Translation rejects Gemini keys anyway, so Gemini goes first.
+  if (trimmedKey.startsWith('AIza'))
+    order = ['gemini', 'google_cloud', ...order.filter((t) => t !== 'google_cloud' && t !== 'gemini')];
+  else if (trimmedKey.startsWith('AQ.')) order = ['gemini', ...order.filter((t) => t !== 'gemini')];
   else if (trimmedKey.startsWith('sk-')) order = ['openai', ...order.filter((t) => t !== 'openai')];
   else if (trimmedKey.endsWith(':fx')) order = ['deepl', ...order.filter((t) => t !== 'deepl')];
   else if (trimmedKey.startsWith('AQVN') || trimmedKey.startsWith('trnsl.') || trimmedKey.startsWith('t1.'))

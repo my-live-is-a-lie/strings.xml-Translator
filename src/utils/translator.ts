@@ -939,12 +939,13 @@ async function translateSingleSegment(
   baseLang: string,
   directLang: string,
   targetLocaleName?: string,
-  pluralQuantity?: 'zero' | 'one' | 'two' | 'few' | 'many' | 'other'
+  pluralQuantity?: 'zero' | 'one' | 'two' | 'few' | 'many' | 'other',
+  signal?: AbortSignal
 ): Promise<SuggestionResult> {
   const key = cacheKeyFor(segment, directLang, pluralQuantity);
   const cached = cachedSegmentLookup(key);
   if (cached) return cached;
-  const result = await translateSingleSegmentUncached(segment, baseLang, directLang, targetLocaleName, pluralQuantity);
+  const result = await translateSingleSegmentUncached(segment, baseLang, directLang, targetLocaleName, pluralQuantity, signal);
   cacheSegmentResult(key, result);
   return result;
 }
@@ -1076,7 +1077,8 @@ async function translateSingleSegmentUncached(
   baseLang: string,
   directLang: string,
   targetLocaleName?: string,
-  pluralQuantity?: 'zero' | 'one' | 'two' | 'few' | 'many' | 'other'
+  pluralQuantity?: 'zero' | 'one' | 'two' | 'few' | 'many' | 'other',
+  signal?: AbortSignal
 ): Promise<SuggestionResult> {
   // The outer whitespace is captured and put back by wrapResult, so a translation keeps
   // the segment's exact surroundings. It must include line breaks, not just spaces and
@@ -1220,7 +1222,8 @@ async function translateSingleSegmentUncached(
                 pluralQuantity,
               }),
             },
-            25000
+            25000,
+            signal
           )
         );
         if (!pRes.ok) throw providerHttpError('server provider', pRes.status);
@@ -1280,6 +1283,7 @@ async function translateSingleSegmentUncached(
         targetLang: directLang,
         targetLocaleName,
         pluralQuantity,
+        signal,
       });
       const cleanedAi = stripMetadataLabels(translated, coreText);
       if (cleanedAi && !isPollutedTranslation(cleanedAi)) {
@@ -1299,7 +1303,7 @@ async function translateSingleSegmentUncached(
     // HTTP error, a non-JSON page such as a consent or "sorry" page) is a failure.
     let combined: string;
     try {
-      combined = await withRetry(() => fetchGoogleGtxRaw(cleanText, directLang, 5000));
+      combined = await withRetry(() => fetchGoogleGtxRaw(cleanText, directLang, 5000, signal));
     } catch (err) {
       logFallback('google', err);
       noteGtxResult(false);
@@ -1418,6 +1422,7 @@ async function translateSingleSegmentUncached(
   // earlier engine broke, this suggestion is good, so it carries no rejection.
   const primary = strategies[0];
   const primaryResult = await primary.run().catch(() => null);
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
   if (primaryResult) {
     return { text: wrapResult(primaryResult), source: primary.engine };
   }
@@ -1474,7 +1479,9 @@ export async function suggestTranslation(
   sourceText: string,
   targetLang: string,
   targetLocaleName?: string,
-  pluralQuantity?: 'zero' | 'one' | 'two' | 'few' | 'many' | 'other'
+  pluralQuantity?: 'zero' | 'one' | 'two' | 'few' | 'many' | 'other',
+  /** Aborts the in-flight engine calls (e.g. the user navigated to another string mid-suggestion). */
+  signal?: AbortSignal
 ): Promise<SuggestionResult> {
   // Both the shared last-call flag and each result's own flag describe this suggestion.
   lastSuggestionRejectedForIcu = false;
@@ -1491,7 +1498,7 @@ export async function suggestTranslation(
 
   if (parts.length === 1) {
     return finishSuggestion(
-      await translateSingleSegment(sourceText, baseLang, directLang, targetLocaleName, pluralQuantity)
+      await translateSingleSegment(sourceText, baseLang, directLang, targetLocaleName, pluralQuantity, signal)
     );
   }
 
@@ -1500,7 +1507,7 @@ export async function suggestTranslation(
   // accepted. Such a string is translated whole and checked whole.
   if (hasMultilineIcuBlock(sourceText)) {
     return finishSuggestion(
-      await translateSingleSegment(sourceText, baseLang, directLang, targetLocaleName, pluralQuantity)
+      await translateSingleSegment(sourceText, baseLang, directLang, targetLocaleName, pluralQuantity, signal)
     );
   }
 
@@ -1514,7 +1521,7 @@ export async function suggestTranslation(
         return part; // Keep exact \n / \\n / multiline separator untouched
       }
       separatorRegex.lastIndex = 0;
-      const res = await translateSingleSegment(part, baseLang, directLang, targetLocaleName, pluralQuantity);
+      const res = await translateSingleSegment(part, baseLang, directLang, targetLocaleName, pluralQuantity, signal);
       if (res.icuRejected) anyPartRejected = true;
       if (res.source !== 'glossary' && res.source !== 'heuristic') overallSource = res.source;
       return res.text;
@@ -1528,7 +1535,7 @@ export async function suggestTranslation(
   // splitting. A damaged block is never returned.
   if (sourceText.includes('{') && !validatePlaceholders(sourceText, joined, directLang).valid) {
     return finishSuggestion(
-      await translateSingleSegment(sourceText, baseLang, directLang, targetLocaleName, pluralQuantity)
+      await translateSingleSegment(sourceText, baseLang, directLang, targetLocaleName, pluralQuantity, signal)
     );
   }
 

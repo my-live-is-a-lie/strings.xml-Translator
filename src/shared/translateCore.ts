@@ -21,9 +21,32 @@ Follow these strict rules for every translation:
 4. Use natural, concise mobile UI terminology appropriate for Android applications (for example, translate "Install" to "تثبيت" in Arabic).
 5. Preserve leading or trailing whitespace and outer quotes only if they exist in the source string.`;
 
-/** fetch() with a hard timeout so a slow provider can never freeze a translation. */
-export function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = 10000): Promise<Response> {
-  return fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+/** fetch() with a hard timeout so a slow provider can never freeze a translation.
+ *  An optional caller signal (e.g. a Cancel button) is combined with the timeout. */
+export function fetchWithTimeout(
+  url: string,
+  init: RequestInit = {},
+  timeoutMs = 10000,
+  signal?: AbortSignal
+): Promise<Response> {
+  // AbortSignal.any is unavailable in some WebViews and test environments; combine by hand then.
+  const combined = signal
+    ? typeof AbortSignal.any === 'function'
+      ? AbortSignal.any([AbortSignal.timeout(timeoutMs), signal])
+      : (() => {
+          const controller = new AbortController();
+          const onAbort = () => controller.abort();
+          for (const s of [AbortSignal.timeout(timeoutMs), signal]) {
+            if (s.aborted) {
+              controller.abort();
+              break;
+            }
+            s.addEventListener('abort', onAbort, { once: true });
+          }
+          return controller.signal;
+        })()
+    : AbortSignal.timeout(timeoutMs);
+  return fetch(url, { ...init, signal: combined });
 }
 
 /** Maps an HTTP status from a provider to a message the user can act on (Arabic first). */
@@ -95,11 +118,16 @@ export function googleGtxLanguage(targetLang: string): string {
 }
 
 /** Returns the raw translated text from Google GTX (concatenated chunks). Throws on failure. */
-export async function fetchGoogleGtxRaw(text: string, targetLang: string, timeoutMs = 5000): Promise<string> {
+export async function fetchGoogleGtxRaw(
+  text: string,
+  targetLang: string,
+  timeoutMs = 5000,
+  signal?: AbortSignal
+): Promise<string> {
   const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=${encodeURIComponent(
     googleGtxLanguage(targetLang)
   )}&dt=t&q=${encodeURIComponent(text)}`;
-  const res = await fetchWithTimeout(url, {}, timeoutMs);
+  const res = await fetchWithTimeout(url, {}, timeoutMs, signal);
   if (!res.ok) {
     throw new Error(`Google Translate HTTP ${res.status}`);
   }
