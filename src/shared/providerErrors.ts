@@ -79,7 +79,7 @@ export function classifyGeminiKeyProblem(status: number, message: string): Gemin
   if (status === 429) {
     // A per-minute limit is a plain rate limit that clears on its own, even when its metric id also
     // names the project or account. It never blames the key.
-    if (/per_?minute/i.test(message)) return null;
+    if (/per[_\s-]?minute/i.test(message)) return null;
     // Model-scoped quota (per-model daily limit, e.g. limit 0 on the free tier) says something
     // about THIS model on this plan, not about the key: it is not a key problem.
     if (isModelQuotaMessage(status, message)) return null;

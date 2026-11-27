@@ -57,6 +57,8 @@ export const GEMINI_ERROR_CASES: GeminiErrorCase[] = [
   { name: '429 daily project quota blames the key', status: 429, message: 'Quota exceeded for metric: generate_requests_per_project_per_day', expected: 'quota-exhausted' },
   { name: '429 account quota blames the key', status: 429, message: 'Quota exceeded for metric: requests_per_account', expected: 'quota-exhausted' },
   { name: '429 per-minute limit that names the project is not a key problem', status: 429, message: 'Quota exceeded for metric: generativelanguage.googleapis.com/generate_requests_per_minute_per_project', expected: null },
+  { name: '429 per minute written with spaces next to a per_project id is not a key problem', status: 429, message: "Quota exceeded for quota metric 'requests per minute' (generativelanguage.googleapis.com/generate_requests_per_project)", expected: null },
+  { name: '429 daily project quota with no per-minute wording still blames the key', status: 429, message: 'Quota exceeded for metric: generate_requests_per_project_per_day, limit: 1500. Daily quota; resets at midnight Pacific.', expected: 'quota-exhausted' },
   { name: '429 per-minute limit with a CamelCase metric id is not a key problem', status: 429, message: 'Quota exceeded for quota metric GenerateRequestsPerMinutePerProjectPerModel', expected: null },
   { name: '429 per-minute limit with a per-model free-tier metric is not a key problem', status: 429, message: 'Quota exceeded for metric: generate_content_free_tier_requests_per_minute_per_project_per_model, limit: 5, model: gemini-2.5-flash', expected: null },
   { name: '429 per-minute rate limit is not a key problem', status: 429, message: 'Quota exceeded for metric: generate_requests_per_model_per_minute', expected: null },
