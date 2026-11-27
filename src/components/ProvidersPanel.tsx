@@ -3,7 +3,6 @@ import { useDialog } from '../utils/useDialog';
 import { createPortal } from 'react-dom';
 import { AlertCircle, Check, CheckCircle2, ChevronDown, Clipboard, Cpu, KeyRound, Loader2, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { ENGINE_OPTIONS } from './headerOptions';
-import { testGeminiKeyDirect, looksLikeGeminiKey } from '../utils/geminiDirect';
 import {
   TranslationProviderConfig,
   ProviderEngineType,
@@ -19,8 +18,8 @@ import {
   LARA_INSTRUCTION_MAX_WORDS,
   removeCustomProvider,
   getCustomProviders,
-  testProviderApiKey,
 } from '../utils/translator';
+import { useKeyTest } from './providers/useKeyTest';
 import { useT, tg } from '../i18n/i18n';
 import { SecretField, readClipboardText } from './SecretField';
 import { textDirection } from '../utils/direction';
@@ -68,13 +67,9 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   const [newApiKey, setNewApiKey] = useState('');
   const [newApiSecret, setNewApiSecret] = useState('');
   const [newFolderId, setNewFolderId] = useState('');
-  const [isTestingKey, setIsTestingKey] = useState(false);
-  const [testResult, setTestResult] = useState<ProviderTestResult | null>(null);
+  const addTest = useKeyTest();
   const addKeyFormRef = useRef<HTMLFormElement | null>(null);
   const providerNameInputRef = useRef<HTMLInputElement | null>(null);
-  // An in-flight verification: aborting lets the user stop a stuck check; editing the key
-  // cancels it too, since the result would describe a key that is no longer in the field.
-  const testAbortRef = useRef<{ controller: AbortController; cancelled: boolean } | null>(null);
 
   // Confirm delete dialog state
   const [providerToDelete, setProviderToDelete] = useState<TranslationProviderConfig | null>(null);
@@ -85,14 +80,11 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   const [editApiKey, setEditApiKey] = useState('');
   const [editApiSecret, setEditApiSecret] = useState('');
   const [editFolderId, setEditFolderId] = useState('');
-  const [isTestingEditKey, setIsTestingEditKey] = useState(false);
-
-  const [editTestResult, setEditTestResult] = useState<ProviderTestResult | null>(null);
+  const editTest = useKeyTest();
   // The edited key that was verified valid; saving a changed key is allowed only for this exact value.
   const [editVerified, setEditVerified] = useState<{ sig: string; result: ProviderTestResult } | null>(null);
   const editNameInputRef = useRef<HTMLInputElement | null>(null);
   const editKeyInputRef = useRef<HTMLInputElement | null>(null);
-  const editTestAbortRef = useRef<{ controller: AbortController; cancelled: boolean } | null>(null);
 
   // Warn when the free Google engine keeps failing, since it relies on an unofficial endpoint.
   // The status is read on every render: it expires with time (no event fires for that), and the
@@ -157,40 +149,12 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
     return 'auto';
   };
 
-  // Gemini keys are verified straight from the browser; every other provider goes through the server
-  const cancelOngoingTest = (
-    ref: React.MutableRefObject<{ controller: AbortController; cancelled: boolean } | null>,
-    stopSpinner: (v: boolean) => void
-  ) => {
-    if (!ref.current) return;
-    ref.current.cancelled = true;
-    ref.current.controller.abort();
-    ref.current = null;
-    stopSpinner(false);
-  };
-
-  const testEngineKey = (
-    engine: string,
-    key: string,
-    folderId?: string,
-    signal?: AbortSignal
-  ): Promise<ProviderTestResult> =>
-    // Gemini verifies straight from the browser even on Auto-Detect when the key shape gives it
-    // away: without this, Auto-Detect + a Gemini key lands on the server path and fails wherever
-    // the server is unreachable (static web demo). Google allows CORS from any origin.
-    engine === 'gemini' || (engine === 'auto' && looksLikeGeminiKey(key))
-      ? testGeminiKeyDirect(key, signal)
-      : testProviderApiKey(engine, key, folderId, signal);
-
   const handleTestAndAddProvider = async (e: React.FormEvent) => {
     e.preventDefault();
     const pendingEngine = inferEngineFromName(newProviderName, newProviderEngine);
     if (!newApiKey.trim() && pendingEngine !== 'libretranslate') return;
 
-    setIsTestingKey(true);
-    setTestResult(null);
-    const testAbort = { controller: new AbortController(), cancelled: false };
-    testAbortRef.current = testAbort;
+    addTest.setResult(null);
 
     const effectiveEngine = inferEngineFromName(newProviderName, newProviderEngine);
     const rawKey = newApiKey.trim() || (effectiveEngine === 'libretranslate' ? 'none' : '');
@@ -201,11 +165,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
         : rawKey;
 
     const folderId = newFolderId.trim();
-    const result = await testEngineKey(effectiveEngine, combinedApiKey, folderId, testAbort.controller.signal);
-    if (testAbort.cancelled) return; // cancelled: the user already moved on
-    testAbortRef.current = null;
-    setIsTestingKey(false);
-    setTestResult(result);
+    const result = await addTest.run(effectiveEngine, combinedApiKey, folderId);
+    if (!result) return; // cancelled: the user already moved on
 
     if (result.success && result.matched) {
       const detectedType: ProviderEngineType =
@@ -257,7 +218,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   const handleStartEditProvider = (prov: TranslationProviderConfig) => {
     if (editingProviderId === prov.id) {
       setEditingProviderId(null);
-      setEditTestResult(null);
+      editTest.setResult(null);
       return;
     }
     setEditingProviderId(prov.id);
@@ -272,7 +233,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
       setEditApiSecret('');
     }
     setEditFolderId(prov.folderId || '');
-    setEditTestResult(null);
+    editTest.setResult(null);
     setTimeout(() => {
       editNameInputRef.current?.focus();
     }, 60);
@@ -306,28 +267,14 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
     if (!editingProv) return;
     const target = resolveEditTarget(editingProv);
     if (!target.keyChanged || !target.rawKey) return;
-    const abort = { controller: new AbortController(), cancelled: false };
     const timer = setTimeout(async () => {
-      editTestAbortRef.current = abort;
-      setIsTestingEditKey(true);
-      const result = await testEngineKey(
-        target.targetEngine,
-        target.combinedKey,
-        target.editedFolderId,
-        abort.controller.signal
-      );
-      if (abort.cancelled) return;
-      editTestAbortRef.current = null;
-      setIsTestingEditKey(false);
-      setEditTestResult(result);
+      const result = await editTest.run(target.targetEngine, target.combinedKey, target.editedFolderId);
+      if (!result) return;
       if (result.success && result.matched) setEditVerified({ sig: target.sig, result });
     }, 400);
     return () => {
       clearTimeout(timer);
-      abort.cancelled = true;
-      abort.controller.abort();
-      if (editTestAbortRef.current === abort) editTestAbortRef.current = null;
-      setIsTestingEditKey(false);
+      editTest.cancel();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingProviderId, editSig]);
@@ -349,7 +296,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
       });
       refresh();
       setEditingProviderId(null);
-      setEditTestResult(null);
+      editTest.setResult(null);
       return;
     }
 
@@ -368,7 +315,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
     });
     refresh();
     setEditingProviderId(null);
-    setEditTestResult(null);
+    editTest.setResult(null);
     setEditVerified(null);
   };
 
@@ -458,10 +405,12 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
   const [laraInstrDraft, setLaraInstrDraft] = useState<string | null>(null);
   // The "key works, provider added" box goes away by itself after 5 seconds.
   useEffect(() => {
-    if (!testResult || !(testResult.success && testResult.matched)) return;
-    const timer = window.setTimeout(() => setTestResult(null), 5000);
+    if (!addTest.result || !(addTest.result.success && addTest.result.matched)) return;
+    const timer = window.setTimeout(() => addTest.setResult(null), 5000);
     return () => window.clearTimeout(timer);
-  }, [testResult]);
+    // setResult is a stable state setter; only a new result should restart the timer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addTest.result]);
   // Close a picker on a real tap outside it (click never fires after a drag). No full-screen overlay: it would
   // swallow touch drags meant for the drawer and let the page behind scroll.
   useEffect(() => {
@@ -811,8 +760,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                   data-1p-ignore
                                   value={editApiKey}
                                   onChange={(e) => {
-                                    cancelOngoingTest(editTestAbortRef, setIsTestingEditKey);
-                                    setEditTestResult(null);
+                                    editTest.cancel();
+                                    editTest.setResult(null);
                                     setEditApiKey(e.target.value);
                                   }}
                                   onKeyDown={(e) => e.stopPropagation()}
@@ -832,8 +781,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                   type="button"
                                   onClick={async () => {
                                     if (editApiKey) {
-                                      cancelOngoingTest(editTestAbortRef, setIsTestingEditKey);
-                                      setEditTestResult(null);
+                                      editTest.cancel();
+                                      editTest.setResult(null);
                                       setEditApiKey('');
                                       editKeyInputRef.current?.focus();
                                       return;
@@ -841,7 +790,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                     try {
                                       const text = (await readClipboardText()).trim();
                                       if (text) {
-                                        setEditTestResult(null);
+                                        editTest.setResult(null);
                                         setEditApiKey(text);
                                       }
                                     } catch {
@@ -868,7 +817,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                   autoComplete="off"
                                   value={editApiSecret}
                                   onChange={(e) => {
-                                    setEditTestResult(null);
+                                    editTest.setResult(null);
                                     setEditApiSecret(e.target.value);
                                   }}
                                   onKeyDown={(e) => e.stopPropagation()}
@@ -892,7 +841,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                   autoComplete="off"
                                   value={editFolderId}
                                   onChange={(e) => {
-                                    setEditTestResult(null);
+                                    editTest.setResult(null);
                                     setEditFolderId(e.target.value);
                                   }}
                                   onKeyDown={(e) => e.stopPropagation()}
@@ -916,7 +865,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                   autoComplete="off"
                                   value={editFolderId}
                                   onChange={(e) => {
-                                    setEditTestResult(null);
+                                    editTest.setResult(null);
                                     setEditFolderId(e.target.value);
                                   }}
                                   onKeyDown={(e) => e.stopPropagation()}
@@ -929,7 +878,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                               </div>
                             )}
 
-                            {editTestResult && !editTestResult.matched && (
+                            {editTest.result && !editTest.result.matched && (
                               <div className="p-2 rounded-lg border bg-rose-500/10 border-rose-500/30 text-rose-700 dark:text-rose-300 text-[10px] flex flex-col gap-1">
                                 <div className="flex items-center gap-1 font-semibold">
                                   <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
@@ -937,17 +886,17 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                     {t('new_api_key_verification_failed')}
                                   </span>
                                 </div>
-                                {editTestResult.error && (
-                                  <p className="opacity-90 leading-snug">{testErrorText(editTestResult)}</p>
+                                {editTest.result.error && (
+                                  <p className="opacity-90 leading-snug">{testErrorText(editTest.result)}</p>
                                 )}
                               </div>
                             )}
 
                             <div className="flex items-center justify-end gap-1.5 pt-0.5">
-                              {isTestingEditKey && (
+                              {editTest.running && (
                                 <button
                                   type="button"
-                                  onClick={() => cancelOngoingTest(editTestAbortRef, setIsTestingEditKey)}
+                                  onClick={() => editTest.cancel()}
                                   className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-600 dark:text-rose-300 text-[11px] font-semibold transition cursor-pointer"
                                 >
                                   <X className="w-3 h-3" />
@@ -957,9 +906,9 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                               <button
                                 type="button"
                                 onClick={() => {
-                                  cancelOngoingTest(editTestAbortRef, setIsTestingEditKey);
+                                  editTest.cancel();
                                   setEditingProviderId(null);
-                                  setEditTestResult(null);
+                                  editTest.setResult(null);
                                 }}
                                 className="px-2.5 py-1.5 rounded-lg bg-slate-200/70 hover:bg-slate-200 dark:bg-[#252D3D] dark:hover:bg-[#2E384B] text-slate-700 dark:text-slate-200 text-[11px] font-semibold transition cursor-pointer"
                               >
@@ -968,7 +917,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                               <button
                                 type="submit"
                                 disabled={
-                                  isTestingEditKey ||
+                                  editTest.running ||
                                   (() => {
                                     const target = resolveEditTarget(prov);
                                     return target.keyChanged && editVerified?.sig !== target.sig;
@@ -978,7 +927,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                                 }
                                 className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#1EB996] hover:bg-[#19A585] disabled:opacity-50 text-white text-[11px] font-semibold transition cursor-pointer shadow-xs"
                               >
-                                {isTestingEditKey ? (
+                                {editTest.running ? (
                                   <>
                                     <Loader2 className="w-3 h-3 animate-spin" />
                                     <span data-i18n>{t('verifying')}</span>
@@ -1007,7 +956,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                   onClick={() => {
                     const nextOpen = !showAddKeyForm;
                     setShowAddKeyForm(nextOpen);
-                    setTestResult(null);
+                    addTest.setResult(null);
                     if (nextOpen) {
                       setTimeout(() => {
                         addKeyFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -1129,7 +1078,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                       }
                       value={newApiKey}
                       onChange={(v) => {
-                        cancelOngoingTest(testAbortRef, setIsTestingKey);
+                        addTest.cancel();
                         setNewApiKey(v);
                       }}
                       placeholder={
@@ -1216,12 +1165,12 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                       id="provider-verify-add-btn"
                       type="submit"
                       disabled={
-                        isTestingKey ||
+                        addTest.running ||
                         (!newApiKey.trim() && inferEngineFromName(newProviderName, newProviderEngine) !== 'libretranslate')
                       }
                       className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg bg-[#1EB996] hover:bg-[#19A585] disabled:opacity-50 text-white text-xs font-semibold transition cursor-pointer shadow-xs shrink-0"
                     >
-                      {isTestingKey ? (
+                      {addTest.running ? (
                         <>
                           <Loader2 className="w-3.5 h-3.5 animate-spin" />
                           <span data-i18n>
@@ -1239,11 +1188,11 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                     </button>
 
                     {/* Stop a stuck verification instead of waiting it out */}
-                    {isTestingKey && (
+                    {addTest.running && (
                       <button
                         id="provider-verify-cancel-btn"
                         type="button"
-                        onClick={() => cancelOngoingTest(testAbortRef, setIsTestingKey)}
+                        onClick={() => addTest.cancel()}
                         className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-600 dark:text-rose-300 text-xs font-semibold transition cursor-pointer shrink-0"
                       >
                         <X className="w-3.5 h-3.5" />
@@ -1252,22 +1201,22 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                     )}
 
                     {/* Verification & Google Comparison Result Box */}
-                    {testResult && (
+                    {addTest.result && (
                       <div
                         className={`p-2.5 rounded-lg border text-[11px] flex flex-col gap-1.5 ${
-                          testResult.success && testResult.matched
+                          addTest.result.success && addTest.result.matched
                             ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300'
                             : 'bg-rose-500/10 border-rose-500/30 text-rose-700 dark:text-rose-300'
                         }`}
                       >
                         <div className="flex items-center gap-1.5 font-semibold">
-                          {testResult.success && testResult.matched ? (
+                          {addTest.result.success && addTest.result.matched ? (
                             <>
                               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                               <span data-i18n>
-                                {testResult.modelsQuotaLimited || testResult.noWorkingModel
+                                {addTest.result.modelsQuotaLimited || addTest.result.noWorkingModel
                                   ? t('api_key_works_no_models')
-                                  : testResult.translationUnverified
+                                  : addTest.result.translationUnverified
                                     ? t('api_key_works')
                                     : t('api_key_works_translation_matched')}
                               </span>
@@ -1282,40 +1231,40 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
                           )}
                         </div>
 
-                        {testResult.testSource && (
+                        {addTest.result.testSource && (
                           <div className="text-[10px] space-y-0.5 text-slate-600 dark:text-slate-300 bg-black/5 dark:bg-black/25 p-1.5 rounded">
                             <div>
                               <span data-i18n className="opacity-70">
                                 {t('test')}
                               </span>
-                              <span className="font-mono">{testResult.testSource}</span>
+                              <span className="font-mono">{addTest.result.testSource}</span>
                             </div>
-                            {testResult.googleTranslation && (
+                            {addTest.result.googleTranslation && (
                               <div>
                                 <span data-i18n className="opacity-70">
                                   {t('google_translate_2')}
                                 </span>
                                 <span className="font-semibold">
-                                  {testResult.googleTranslation}
+                                  {addTest.result.googleTranslation}
                                 </span>
                               </div>
                             )}
-                            {testResult.providerTranslation && (
+                            {addTest.result.providerTranslation && (
                               <div>
                                 <span data-i18n className="opacity-70">
                                   {t('provider')}
                                 </span>
                                 <span className="font-semibold">
-                                  {testResult.providerTranslation}
+                                  {addTest.result.providerTranslation}
                                 </span>
                               </div>
                             )}
                           </div>
                         )}
 
-                        {testResult.error && (
+                        {addTest.result.error && (
                           <p className="text-[10px] leading-snug opacity-90">
-                            {testErrorText(testResult)}
+                            {testErrorText(addTest.result)}
                           </p>
                         )}
                       </div>
