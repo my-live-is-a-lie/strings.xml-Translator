@@ -134,8 +134,10 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
       case 'provider-error':
         return t('provider_error');
       default:
-        // The add-key flow never shows a raw API message: anything uncategorized still gets
-        // key-scoped Arabic copy, not a mixed-language string about a model.
+        // Gemini always sets errorKind, so its raw messages (mixed language, about a model) never
+        // reach here. Other providers do not categorize: show what they actually said (HTTP status,
+        // "folder ID required", ...) instead of hiding it behind a generic line.
+        if (result.errorKind === undefined && result.error) return result.error;
         return t('provider_key_rejected');
     }
   };
@@ -177,7 +179,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({ isAr, onChanged 
     // the server is unreachable (static web demo). Google allows CORS from any origin.
     engine === 'gemini' || (engine === 'auto' && looksLikeGeminiKey(key))
       ? testGeminiKeyDirect(key, signal)
-      : testProviderApiKey(engine, key, folderId);
+      : testProviderApiKey(engine, key, folderId, signal);
 
   const handleTestAndAddProvider = async (e: React.FormEvent) => {
     e.preventDefault();

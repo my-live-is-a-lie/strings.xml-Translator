@@ -654,7 +654,8 @@ export interface ProviderTestResult {
 export async function testProviderApiKey(
   providerType: string,
   apiKey: string,
-  folderId?: string
+  folderId?: string,
+  signal?: AbortSignal
 ): Promise<ProviderTestResult> {
   const trimmedKey = apiKey.trim();
   const trimmedFolder = folderId?.trim() || undefined;
@@ -669,17 +670,21 @@ export async function testProviderApiKey(
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ providerType, apiKey: trimmedKey, folderId: trimmedFolder }),
         },
-        30000
+        30000,
+        signal
       );
       if (res.ok) {
         return (await res.json()) as ProviderTestResult;
       }
-      // A definite key problem named by the server is the answer; do not retry it another way.
+      // The server's own answer about this key (its reason, or a categorized key problem) is the
+      // result: do not replace it with "server unreachable" or retry it another way.
       const failure = (await res.json().catch(() => null)) as ProviderTestResult | null;
-      if (failure && (failure.errorKind === 'quota-or-limit' || failure.errorKind === 'invalid-key')) {
+      if (failure && failure.success === false && (failure.errorKind || typeof failure.error === 'string')) {
         return failure;
       }
     } catch (serverErr) {
+      // A cancelled test stops here: no fallback request, no result.
+      if (signal?.aborted) return { success: false, matched: false, error: 'Cancelled' };
       logFallback('server provider test', serverErr);
     }
   }
