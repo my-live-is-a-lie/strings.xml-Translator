@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useReducer, useRef } from 'react';
 import { AlertCircle, Check, CheckCircle2, Loader2, X } from 'lucide-react';
 import { ENGINE_OPTIONS } from '../headerOptions';
 import {
@@ -16,6 +16,19 @@ import { useKeyTest } from './useKeyTest';
 import { inferEngineFromName } from './engineInference';
 import { testErrorText as testErrorTextFor } from './testErrorText';
 
+interface FormState {
+  name: string;
+  engine: string;
+  apiKey: string;
+  apiSecret: string;
+  folderId: string;
+}
+const EMPTY_FORM: FormState = { name: '', engine: 'auto', apiKey: '', apiSecret: '', folderId: '' };
+const formReducer = (state: FormState, action: { field: keyof FormState; value: string }): FormState => ({
+  ...state,
+  [action.field]: action.value,
+});
+
 interface AddProviderFormProps {
   /** Whether the form is shown. It stays mounted when closed so typed values are kept */
   open: boolean;
@@ -27,11 +40,13 @@ interface AddProviderFormProps {
 /** The "add translator API key" form: pick an engine, verify the key, add the provider. */
 export const AddProviderForm: React.FC<AddProviderFormProps> = ({ open, isAr, onAdded }) => {
   const { t, tb } = useT();
-  const [newProviderName, setNewProviderName] = useState('');
-  const [newProviderEngine, setNewProviderEngine] = useState<string>('auto');
-  const [newApiKey, setNewApiKey] = useState('');
-  const [newApiSecret, setNewApiSecret] = useState('');
-  const [newFolderId, setNewFolderId] = useState('');
+  const [form, dispatch] = useReducer(formReducer, EMPTY_FORM);
+  const { name: newProviderName, engine: newProviderEngine, apiKey: newApiKey, apiSecret: newApiSecret, folderId: newFolderId } = form;
+  const setNewProviderName = (v: string) => dispatch({ field: 'name', value: v });
+  const setNewProviderEngine = (v: string) => dispatch({ field: 'engine', value: v });
+  const setNewApiKey = (v: string) => dispatch({ field: 'apiKey', value: v });
+  const setNewApiSecret = (v: string) => dispatch({ field: 'apiSecret', value: v });
+  const setNewFolderId = (v: string) => dispatch({ field: 'folderId', value: v });
   const addTest = useKeyTest();
   const addKeyFormRef = useRef<HTMLFormElement | null>(null);
   const providerNameInputRef = useRef<HTMLInputElement | null>(null);
