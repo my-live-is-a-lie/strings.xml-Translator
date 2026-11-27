@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classifyLaraError } from './laraErrors';
-import { classifyGeminiKeyProblem } from '../utils/geminiDirect';
+import { classifyGeminiKeyProblem, classifyLaraError } from './providerErrors';
 import { GEMINI_ERROR_CASES, LARA_ERROR_CASES } from './providerErrorFixtures';
 
 describe('Lara error cases', () => {

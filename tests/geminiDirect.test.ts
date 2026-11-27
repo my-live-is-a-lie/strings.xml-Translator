@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { geminiTranslateDirect, geminiThinkingConfig, isModelUnavailableMessage, looksLikeGeminiKey } from '../src/utils/geminiDirect';
+import { geminiTranslateDirect, geminiThinkingConfig, looksLikeGeminiKey } from '../src/utils/geminiDirect';
+import { isModelUnavailableMessage } from '../src/shared/providerErrors';
 
 const ok = (text: string) =>
   new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text }] } }] }), { status: 200 });

@@ -29,6 +29,7 @@ import {
   providerSupportsThinking,
   subscribeModelLists,
 } from '../../utils/providerModels';
+import type { GeminiKeyProblem } from '../../shared/providerErrors';
 
 interface ActiveProviderControlsProps {
   /** The provider these controls edit */
@@ -85,9 +86,7 @@ export const ActiveProviderControls: React.FC<ActiveProviderControlsProps> = ({ 
     | 'checking'
     | 'unavailable'
     | 'inconclusive'
-    | 'expired-key'
-    | 'invalid-key'
-    | 'quota-exhausted'
+    | GeminiKeyProblem
     | 'model-quota'
     | 'daily-quota-used'
   >('idle');

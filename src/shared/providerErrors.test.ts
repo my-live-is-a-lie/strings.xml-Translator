@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { classifyLaraError, ProviderKeyError } from './laraErrors';
+import { classifyLaraError, ProviderKeyError } from './providerErrors';
 
 const apiError = (statusCode: number, type = 'UnknownError', message = 'x') => ({ statusCode, type, message });
 
