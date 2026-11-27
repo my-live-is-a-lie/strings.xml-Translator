@@ -331,6 +331,30 @@ describe('ProvidersPanel: editing and deleting a saved provider', () => {
     expect(document.querySelector('input[data-1p-ignore]')).toBeNull();
   });
 
+  const openEditFor = (name: string) => {
+    click(byId('drawer-translate-providers-btn'));
+    click(document.querySelector(`[aria-label="Edit ${name}"]`));
+    const keyInput = document.querySelector<HTMLInputElement>('input[data-1p-ignore]');
+    const form = keyInput!.closest('form')!;
+    return { keyInput, form, inputs: Array.from(form.querySelectorAll<HTMLInputElement>('input')) };
+  };
+
+  it('a saved Lara key "id:secret" opens as two fields', () => {
+    addCustomProvider({ name: 'Lara MT', type: 'lara', apiKey: 'id1:sec1' });
+    renderPanel();
+    const { keyInput, inputs } = openEditFor('Lara MT');
+    expect(keyInput?.value).toBe('id1');
+    expect(inputs.some((i) => i !== keyInput && i.value === 'sec1')).toBe(true);
+  });
+
+  it('a Lara key ending in ":fx" stays whole in the key field', () => {
+    addCustomProvider({ name: 'Lara MT', type: 'lara', apiKey: 'k:fx' });
+    renderPanel();
+    const { keyInput, inputs } = openEditFor('Lara MT');
+    expect(keyInput?.value).toBe('k:fx');
+    expect(inputs.some((i) => i !== keyInput && i.value === 'fx')).toBe(false);
+  });
+
   it('deleting the provider that is being edited closes its form', () => {
     saved();
     renderPanel();
