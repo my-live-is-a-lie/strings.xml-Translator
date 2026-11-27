@@ -1,3 +1,4 @@
+import { sanitizeDeeplOptions, type DeeplOptions } from '../shared/deeplOptions';
 import { debugIgnored } from './debug';
 import { countLineBreaks, toStoredText } from './newlines';
 // Robust translation engine for Android strings with offline glossary, format token protection, and machine translation
@@ -336,6 +337,8 @@ export interface TranslationProviderConfig {
   laraNoTrace?: boolean;
   /** Lara only: translation style (faithful, fluid or creative). Empty means Lara's default. */
   laraStyle?: string;
+  /** DeepL only: formality, model type, context, formatting and sentence splitting. Unset means DeepL's default. */
+  deeplOptions?: DeeplOptions;
 }
 
 /** Words in one Lara instruction line must stay under this (Lara docs: fewer than 20 words). */
@@ -589,6 +592,7 @@ export function updateCustomProvider(
     laraInstructions?: string;
     laraNoTrace?: boolean;
     laraStyle?: string;
+    deeplOptions?: DeeplOptions;
   }
 ): TranslationProviderConfig | null {
   const current = getCustomProviders();
@@ -612,6 +616,8 @@ export function updateCustomProvider(
       updates.laraInstructions !== undefined ? updates.laraInstructions.trim() || undefined : existing.laraInstructions,
     laraNoTrace: updates.laraNoTrace !== undefined ? updates.laraNoTrace || undefined : existing.laraNoTrace,
     laraStyle: updates.laraStyle !== undefined ? updates.laraStyle || undefined : existing.laraStyle,
+    deeplOptions:
+      updates.deeplOptions !== undefined ? sanitizeDeeplOptions(updates.deeplOptions) : existing.deeplOptions,
     verifiedAt: Date.now(),
   };
 
@@ -838,7 +844,7 @@ function hashString(value: string): string {
 
 function cacheKeyFor(segment: string, directLang: string, pluralQuantity: string | undefined): string {
   const provider = getActiveProvider();
-  const providerSignature = `${provider.id}:${provider.type}:${hashString(provider.apiKey || '')}:${provider.folderId || ''}`;
+  const providerSignature = `${provider.id}:${provider.type}:${hashString(provider.apiKey || '')}:${provider.folderId || ''}:${JSON.stringify(provider.type === 'deepl' ? sanitizeDeeplOptions(provider.deeplOptions) ?? '' : '')}`;
   return [providerSignature, directLang, pluralQuantity || '', segment].join('\u0001');
 }
 
@@ -1331,6 +1337,7 @@ async function translateSingleSegmentUncached(
                 laraInstructions: activeProvider.type === 'lara' ? activeProvider.laraInstructions : undefined,
                 laraNoTrace: activeProvider.type === 'lara' ? activeProvider.laraNoTrace : undefined,
                 laraStyle: activeProvider.type === 'lara' ? activeProvider.laraStyle : undefined,
+                deeplOptions: activeProvider.type === 'deepl' ? sanitizeDeeplOptions(activeProvider.deeplOptions) : undefined,
                 sourceLang: activeSourceLang,
               }),
             },
@@ -1375,7 +1382,8 @@ async function translateSingleSegmentUncached(
           pluralQuantity,
           activeProvider.folderId,
           laraExtrasFor(activeProvider),
-          activeSourceLang
+          activeSourceLang,
+          activeProvider.type === 'deepl' ? sanitizeDeeplOptions(activeProvider.deeplOptions) : undefined
         )
       );
       if (directResult && directResult.translatedText) {
@@ -1736,6 +1744,7 @@ export async function prewarmProviderBatch(
             targetLang: directLang,
             targetLocaleName,
             sourceLang: activeSourceLang,
+            deeplOptions: provider.type === 'deepl' ? sanitizeDeeplOptions(provider.deeplOptions) : undefined,
             texts: chunk,
           }),
         },

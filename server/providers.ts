@@ -12,6 +12,7 @@ import {
 } from '../src/shared/translateCore';
 import { validatePlaceholders } from '../src/utils/placeholderCheck';
 import { classifyLaraError, ProviderKeyError, type LaraKeyProblem } from '../src/shared/laraErrors';
+import { deeplRequestFields, type DeeplOptions } from '../src/shared/deeplOptions';
 import { normalizeSourceLang, sourceLangName, deeplSourceCode, laraSourceCode } from '../src/shared/sourceLang';
 
 export const PROVIDER_TYPES = [
@@ -135,7 +136,8 @@ export async function callProviderWithKey(
   pluralQuantity?: string,
   folderId?: string,
   laraOptions?: LaraTranslateExtras,
-  sourceLang = 'en'
+  sourceLang = 'en',
+  deeplOptions?: DeeplOptions
 ): Promise<ProviderResult> {
   const src = normalizeSourceLang(sourceLang);
   const baseLang = targetLang.split('-')[0].toLowerCase();
@@ -216,7 +218,7 @@ export async function callProviderWithKey(
     const res = await fetchWithTimeout(`https://${host}/v2/translate`, {
       method: 'POST',
       headers: { Authorization: `DeepL-Auth-Key ${trimmedKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: [sourceText], source_lang: deeplSourceCode(src), target_lang: deeplTarget }),
+      body: JSON.stringify({ text: [sourceText], source_lang: deeplSourceCode(src), target_lang: deeplTarget, ...deeplRequestFields(deeplOptions) }),
     });
     if (!res.ok) throw providerHttpError('DeepL', res.status);
     const data = (await res.json()) as { translations?: Array<{ text?: string }> };
@@ -469,7 +471,8 @@ export async function translateBatch(
   texts: string[],
   targetLang: string,
   folderId?: string,
-  sourceLang = 'en'
+  sourceLang = 'en',
+  deeplOptions?: DeeplOptions
 ): Promise<Array<string | null>> {
   const src = normalizeSourceLang(sourceLang);
   const trimmedKey = apiKey.trim();
@@ -482,7 +485,7 @@ export async function translateBatch(
     const res = await fetchWithTimeout(`https://${host}/v2/translate`, {
       method: 'POST',
       headers: { Authorization: `DeepL-Auth-Key ${trimmedKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: texts, source_lang: deeplSourceCode(src), target_lang: deeplTarget }),
+      body: JSON.stringify({ text: texts, source_lang: deeplSourceCode(src), target_lang: deeplTarget, ...deeplRequestFields(deeplOptions) }),
     }, 30000);
     if (!res.ok) throw providerHttpError('DeepL', res.status);
     const data = (await res.json()) as { translations?: Array<{ text?: string }> };
@@ -567,7 +570,7 @@ export async function translateBatch(
     while (next < texts.length) {
       const idx = next++;
       try {
-        results[idx] = (await callProviderWithKey(providerType, apiKey, texts[idx], targetLang, undefined, undefined, folderId))
+        results[idx] = (await callProviderWithKey(providerType, apiKey, texts[idx], targetLang, undefined, undefined, folderId, undefined, undefined, deeplOptions))
           .translatedText;
       } catch {
         results[idx] = null;

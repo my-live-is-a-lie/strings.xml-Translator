@@ -16,6 +16,7 @@ import {
   parseLaraInstructions,
   LARA_INSTRUCTION_MAX_WORDS,
 } from '../../utils/translator';
+import { DeeplOptionsControls } from './DeeplOptionsControls';
 import { useT } from '../../i18n/i18n';
 import {
   getModelProbeSnapshot,
@@ -243,6 +244,9 @@ export const ActiveProviderControls: React.FC<ActiveProviderControlsProps> = ({ 
 
   return (
  <>
+            {activeProviderObj && !activeProviderObj.isBuiltIn && activeProviderObj.type === 'deepl' && (
+              <DeeplOptionsControls provider={activeProviderObj} refresh={refresh} />
+            )}
             {activeProviderObj && !activeProviderObj.isBuiltIn && activeProviderObj.type === 'lara' && (() => {
               const laraProv = activeProviderObj;
               const laraThink = laraProv.laraMode === 'think';
