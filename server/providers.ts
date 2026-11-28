@@ -570,7 +570,7 @@ export async function translateBatch(
     while (next < texts.length) {
       const idx = next++;
       try {
-        results[idx] = (await callProviderWithKey(providerType, apiKey, texts[idx], targetLang, undefined, undefined, folderId, undefined, undefined, deeplOptions))
+        results[idx] = (await callProviderWithKey(providerType, apiKey, texts[idx], targetLang, undefined, undefined, folderId, undefined, src, deeplOptions))
           .translatedText;
       } catch {
         results[idx] = null;
