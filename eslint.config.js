@@ -23,9 +23,20 @@ export default tseslint.config(
       'max-lines': ['warn', { max: 1500 }],
     },
   },
+  // Files that were already past the limit when the rule was added. Each has its own cap, a little above its
+  // size at that time, so it cannot keep growing. Lower the cap when the file shrinks, and delete the entry once
+  // the file is under 1500 lines.
   {
-    // Files that were already past the limit when the rule was added. Remove an entry once its file is split.
-    files: ['src/components/TranslationEditor.tsx', 'src/utils/placeholderCheck.ts', 'src/utils/translator.ts'],
-    rules: { 'max-lines': 'off' },
+    files: ['src/components/TranslationEditor.tsx'],
+    rules: { 'max-lines': ['warn', { max: 3100 }] },
   },
+  {
+    files: ['src/utils/placeholderCheck.ts'],
+    rules: { 'max-lines': ['warn', { max: 2700 }] },
+  },
+  {
+    files: ['src/utils/translator.ts'],
+    rules: { 'max-lines': ['warn', { max: 1950 }] },
+  },
+
 );
