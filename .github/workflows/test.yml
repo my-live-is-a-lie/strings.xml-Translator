@@ -31,6 +31,9 @@ jobs:
       - name: Run linter and type check
         run: npm run lint
 
+      - name: Check for circular imports
+        run: npm run check:cycles
+
       - name: Run unit tests
         run: npm test
 
