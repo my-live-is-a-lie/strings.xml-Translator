@@ -43,3 +43,56 @@ describe('DeepL request body', () => {
     expect(sentBody(fn)).toMatchObject({ text: ['A', 'B'], formality: 'prefer_more' });
   });
 });
+
+describe('DeepL options from untrusted input', () => {
+  it('drops invalid values and sends only the three base fields', async () => {
+    const fn = stubFetch(['مرحبا']);
+    await callProviderWithKey('deepl', 'k:fx', 'Hello', 'ar', undefined, undefined, undefined, undefined, 'en', {
+      formality: 'bogus',
+      modelType: 'nope',
+      context: '   ',
+      preserveFormatting: false,
+      splitSentences: '1',
+    } as never);
+    expect(sentBody(fn)).toEqual({ text: ['Hello'], source_lang: 'EN', target_lang: 'AR' });
+  });
+
+  it('keeps the valid options and drops the invalid ones in the same object', async () => {
+    const fn = stubFetch(['مرحبا']);
+    await callProviderWithKey('deepl', 'k:fx', 'Hello', 'de', undefined, undefined, undefined, undefined, 'en', {
+      formality: 'more',
+      modelType: 'nope',
+    } as never);
+    const body = sentBody(fn);
+    expect(body.formality).toBe('prefer_more');
+    expect(body).not.toHaveProperty('model_type');
+  });
+
+  it('cuts a very long context to the shared limit', async () => {
+    const fn = stubFetch(['مرحبا']);
+    await callProviderWithKey('deepl', 'k:fx', 'Hello', 'ar', undefined, undefined, undefined, undefined, 'en', {
+      context: 'x'.repeat(5000),
+    });
+    expect(sentBody(fn).context).toHaveLength(1000);
+  });
+
+  it('ignores an array or a string given as options', async () => {
+    const fn = stubFetch(['مرحبا']);
+    await callProviderWithKey('deepl', 'k:fx', 'Hello', 'ar', undefined, undefined, undefined, undefined, 'en', [
+      { formality: 'more' },
+    ] as never);
+    expect(sentBody(fn)).toEqual({ text: ['Hello'], source_lang: 'EN', target_lang: 'AR' });
+  });
+
+  it('does not put DeepL options in the request of another provider', async () => {
+    const fn = vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: 'Bonjour' } }] }), { status: 200 }));
+    vi.stubGlobal('fetch', fn);
+    await callProviderWithKey('openai', 'sk-x', 'Hello', 'fr', undefined, undefined, undefined, undefined, 'en', {
+      formality: 'more',
+      context: 'secret note',
+    });
+    const raw = String(((fn.mock.calls[0] as unknown[])[1] as { body: string }).body);
+    expect(raw).not.toContain('secret note');
+    expect(raw).not.toContain('formality');
+  });
+});
