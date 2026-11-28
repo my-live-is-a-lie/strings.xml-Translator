@@ -178,7 +178,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
   // Swipe in from either screen edge to open the drawer from that side
   useEffect(() => {
     if (!drawerOwner || rightDrawerOpen) return;
-    const EDGE = 28;
+    const EDGE = 48;
     let start: { x: number; y: number; side: 'left' | 'right' } | null = null;
     const onStart = (e: TouchEvent) => {
       if (e.touches.length !== 1) return;
@@ -187,6 +187,15 @@ const HeaderBase: React.FC<HeaderProps> = ({
       if (t.clientX <= EDGE) start = { x: t.clientX, y: t.clientY, side: 'left' };
       else if (t.clientX >= w - EDGE) start = { x: t.clientX, y: t.clientY, side: 'right' };
       else start = null;
+      if (!start) return;
+      // A touch that begins on something that scrolls sideways (e.g. the symbol bar on a narrow phone) belongs to it
+      for (let n = e.target instanceof Element ? e.target : null; n && n !== document.body; n = n.parentElement) {
+        const ox = getComputedStyle(n).overflowX;
+        if ((ox === 'auto' || ox === 'scroll') && n.scrollWidth > n.clientWidth + 1) {
+          start = null;
+          return;
+        }
+      }
     };
     const onMove = (e: TouchEvent) => {
       if (!start || e.touches.length !== 1) return;

@@ -70,7 +70,7 @@ const StringsListDrawerBase: React.FC<StringsListDrawerProps> = ({
   const handleDismiss = useCallback(() => {
     if (asideRef.current) {
       asideRef.current.style.transition = 'transform 0.18s cubic-bezier(0.16, 1, 0.3, 1)';
-      asideRef.current.style.transform = `translateX(-100%)`;
+      asideRef.current.style.transform = `translateX(${100 * inlineSign()}%)`;
     }
     if (backdropRef.current) {
       backdropRef.current.style.transition = 'opacity 0.18s ease-out';
@@ -90,7 +90,7 @@ const StringsListDrawerBase: React.FC<StringsListDrawerProps> = ({
 
   if (!isOpen) return null;
 
-  const isRtl = inlineSign() === 1;
+  const isRtl = inlineSign() === -1;
   // Focus inside the tap itself so the keyboard comes up with the bar instead of a beat later
   const openSearch = () => {
     searchInputRef.current?.focus({ preventScroll: true });
@@ -110,7 +110,7 @@ const StringsListDrawerBase: React.FC<StringsListDrawerProps> = ({
   };
 
   return (
-    <div className={`fixed inset-0 z-50 ${always ? '' : 'md:hidden'} flex justify-start`} style={{ direction: 'ltr' }}>
+    <div className={`fixed inset-0 z-50 ${always ? '' : 'md:hidden'} flex`} style={{ direction: 'ltr', justifyContent: inlineSign() === -1 ? 'flex-start' : 'flex-end' }}>
       {/* Backdrop with 200ms snappy fade */}
       <div
         ref={backdropRef}
@@ -118,7 +118,7 @@ const StringsListDrawerBase: React.FC<StringsListDrawerProps> = ({
         onClick={handleDismiss}
       />
 
-      {/* Drawer Content on Left Side - GPU-accelerated direct DOM tracking */}
+      {/* Drawer Content (left in Arabic, right in English) - GPU-accelerated direct DOM tracking */}
       <aside
         ref={asideRef}
         style={{ direction: inlineSign() === -1 ? 'rtl' : 'ltr' }}
@@ -150,8 +150,8 @@ const StringsListDrawerBase: React.FC<StringsListDrawerProps> = ({
           if (gestureRef.current === 'v') return;
 
           // Only track movement towards the drawer's own edge
-          // (always leftward: the panel opens from the left edge in both directions); `shift` is negative in that direction.
-          const shift = deltaX;
+          // (leftward in Arabic where the panel is on the left, rightward in English where it is on the right); `shift` is negative in that direction.
+          const shift = deltaX * -inlineSign();
           if (shift < 0) {
             // Horizontal movement check (allows natural diagonal swipe)
             if (Math.abs(deltaX) > Math.abs(deltaY) * 0.4 || isDraggingRef.current) {
@@ -178,7 +178,7 @@ const StringsListDrawerBase: React.FC<StringsListDrawerProps> = ({
           const deltaY = endY - touchStartRef.current.y;
           const duration = Math.max(1, Date.now() - touchStartRef.current.time);
           const velocity = Math.abs(deltaX) / duration;
-          const shiftEnd = deltaX;
+          const shiftEnd = deltaX * -inlineSign();
 
           // Small swipe & quick flick detection:
           // Closes on a small flick (deltaX < -15px within 350ms or velocity > 0.15)
@@ -220,7 +220,7 @@ const StringsListDrawerBase: React.FC<StringsListDrawerProps> = ({
           currentDeltaXRef.current = 0;
           gestureRef.current = null;
         }}
-        className="relative w-72 sm:w-80 max-w-[85vw] h-dvh max-h-dvh overflow-hidden bg-white dark:bg-[#161922] border-r border-slate-200 dark:border-[#252C3A] shadow-2xl z-10 flex flex-col animate-in slide-in-from-left duration-200 touch-pan-y will-change-transform"
+        className={`relative w-72 sm:w-80 max-w-[85vw] h-dvh max-h-dvh overflow-hidden bg-white dark:bg-[#161922] ${inlineSign() === -1 ? 'border-r slide-in-from-left' : 'border-l slide-in-from-right'} border-slate-200 dark:border-[#252C3A] shadow-2xl z-10 flex flex-col animate-in duration-200 touch-pan-y will-change-transform`}
       >
         {/* Drawer Header */}
         <div className="relative flex items-center justify-between gap-2 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] border-b border-slate-200/80 dark:border-[#252C3A]">
