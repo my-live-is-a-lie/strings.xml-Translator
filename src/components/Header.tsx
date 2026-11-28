@@ -178,7 +178,7 @@ const HeaderBase: React.FC<HeaderProps> = ({
   // Swipe in from either screen edge to open the drawer from that side
   useEffect(() => {
     if (!drawerOwner || rightDrawerOpen) return;
-    const EDGE = 28;
+    const EDGE = 48;
     let start: { x: number; y: number; side: 'left' | 'right' } | null = null;
     const onStart = (e: TouchEvent) => {
       if (e.touches.length !== 1) return;
